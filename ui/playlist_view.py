@@ -132,6 +132,13 @@ class PlaylistView(QWidget):
         header_layout.addStretch()
 
         # Playlist actions
+        self._play_playlist_btn = QPushButton("▶️ Play")
+        self._play_playlist_btn.setObjectName("playlistActionBtn")
+        self._play_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._play_playlist_btn.setEnabled(False)
+        self._play_playlist_btn.clicked.connect(self._play_current_playlist)
+        header_layout.addWidget(self._play_playlist_btn)
+
         self._delete_playlist_btn = QPushButton("🗑️ Delete")
         self._delete_playlist_btn.setObjectName("playlistActionBtn")
         self._delete_playlist_btn.setCursor(Qt.PointingHandCursor)
@@ -374,13 +381,22 @@ class PlaylistView(QWidget):
         if playlist:
             self._playlist_title.setText(playlist.name)
 
-        # Enable delete button
+        # Enable buttons
         self._delete_playlist_btn.setEnabled(True)
+        tracks = self._db.get_playlist_tracks(playlist_id)
+        self._play_playlist_btn.setEnabled(len(tracks) > 0)
 
         # Load tracks
-        tracks = self._db.get_playlist_tracks(playlist_id)
         self._populate_table(tracks)
         self._status_label.setText(f"{len(tracks)} tracks")
+
+    def _play_current_playlist(self):
+        """Play the current playlist."""
+        if self._current_playlist_id is None:
+            return
+        self._player.load_playlist(self._current_playlist_id)
+        if self._player.engine.playlist:
+            self._player.engine.play()
 
     def _clear_playlist_content(self):
         """Clear the playlist content view."""
@@ -388,6 +404,7 @@ class PlaylistView(QWidget):
         self._tracks_table.setRowCount(0)
         self._status_label.setText("")
         self._delete_playlist_btn.setEnabled(False)
+        self._play_playlist_btn.setEnabled(False)
 
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
@@ -590,7 +607,8 @@ class PlaylistView(QWidget):
                 QMessageBox.information(
                     self, "Success", "Media information saved successfully."
                 )
-                self._load_playlist(self._current_playlist_id)
+                if self._current_playlist_id:
+                    self._load_playlist(self._current_playlist_id)
             else:
                 QMessageBox.warning(self, "Error", "Failed to save media information.")
 
