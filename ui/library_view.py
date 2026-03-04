@@ -603,7 +603,6 @@ class LibraryView(QWidget):
         playlists = self._db.get_all_playlists()
 
         if not playlists:
-            # No playlists exist, ask to create one
             reply = QMessageBox.question(
                 self,
                 "No Playlists",
@@ -612,10 +611,39 @@ class LibraryView(QWidget):
             )
 
             if reply == QMessageBox.Yes:
-                # Trigger new playlist creation
                 if hasattr(self, "window()") and self.window():
-                    # Try to trigger the playlist view's new playlist action
                     self.window()._nav_playlists.click()
+            return
+
+        # If only one playlist, add directly
+        if len(playlists) == 1:
+            playlist = playlists[0]
+            added_count = 0
+            duplicate_count = 0
+            for track_id in track_ids:
+                if self._db.add_track_to_playlist(playlist.id, track_id):
+                    added_count += 1
+                else:
+                    duplicate_count += 1
+
+            if duplicate_count == 0:
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f'Added {added_count} track{"s" if added_count > 1 else ""} to "{playlist.name}"',
+                )
+            elif added_count == 0:
+                QMessageBox.warning(
+                    self,
+                    "Duplicate",
+                    f'All {duplicate_count} track{"s" if duplicate_count > 1 else ""} already in "{playlist.name}"',
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Partially Added",
+                    f"Added {added_count}, skipped {duplicate_count} duplicate{'s' if duplicate_count > 1 else ''}",
+                )
             return
 
         # Create dialog to select playlist
@@ -671,6 +699,7 @@ class LibraryView(QWidget):
         playlist_list = QListWidget()
         for playlist in playlists:
             playlist_list.addItem(playlist.name)
+        playlist_list.setCurrentRow(0)
         layout.addWidget(playlist_list)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -682,19 +711,34 @@ class LibraryView(QWidget):
             selected_items = playlist_list.selectedItems()
             if selected_items:
                 playlist_name = selected_items[0].text()
-                # Find playlist by name
                 playlist = next((p for p in playlists if p.name == playlist_name), None)
                 if playlist:
-                    # Add tracks to playlist
+                    added_count = 0
+                    duplicate_count = 0
                     for track_id in track_ids:
-                        self._db.add_track_to_playlist(playlist.id, track_id)
+                        if self._db.add_track_to_playlist(playlist.id, track_id):
+                            added_count += 1
+                        else:
+                            duplicate_count += 1
 
-                    # Show confirmation
-                    QMessageBox.information(
-                        self,
-                        "Success",
-                        f'Added {len(track_ids)} track{"s" if len(track_ids) > 1 else ""} to "{playlist_name}"',
-                    )
+                    if duplicate_count == 0:
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            f'Added {added_count} track{"s" if added_count > 1 else ""} to "{playlist_name}"',
+                        )
+                    elif added_count == 0:
+                        QMessageBox.warning(
+                            self,
+                            "Duplicate",
+                            f'All {duplicate_count} track{"s" if duplicate_count > 1 else ""} already in "{playlist_name}"',
+                        )
+                    else:
+                        QMessageBox.information(
+                            self,
+                            "Partially Added",
+                            f"Added {added_count}, skipped {duplicate_count} duplicate{'s' if duplicate_count > 1 else ''}",
+                        )
 
     def _edit_media_info(self):
         """Edit media information for selected track."""

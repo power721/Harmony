@@ -1,6 +1,7 @@
 """
 Player controller that manages playback state and database interactions.
 """
+
 from typing import Optional, List
 from pathlib import Path
 from PySide6.QtCore import QUrl
@@ -65,18 +66,18 @@ class PlayerController:
         target_index = -1
 
         for i, t in enumerate(current_playlist):
-            if t.get('id') == track_id:
+            if t.get("id") == track_id:
                 target_index = i
                 break
 
         # Build track dict
         track_dict = {
-            'id': track.id,
-            'path': track.path,
-            'title': track.title,
-            'artist': track.artist,
-            'album': track.album,
-            'duration': track.duration
+            "id": track.id,
+            "path": track.path,
+            "title": track.title,
+            "artist": track.artist,
+            "album": track.album,
+            "duration": track.duration,
         }
 
         if target_index >= 0:
@@ -90,12 +91,12 @@ class PlayerController:
 
             for i, t in enumerate(tracks):
                 t_dict = {
-                    'id': t.id,
-                    'path': t.path,
-                    'title': t.title,
-                    'artist': t.artist,
-                    'album': t.album,
-                    'duration': t.duration
+                    "id": t.id,
+                    "path": t.path,
+                    "title": t.title,
+                    "artist": t.artist,
+                    "album": t.album,
+                    "duration": t.duration,
                 }
                 if t.id == track_id:
                     start_index = i
@@ -125,12 +126,12 @@ class PlayerController:
             track = self._db.get_track(track_id)
             if track and Path(track.path).exists():
                 track_dict = {
-                    'id': track.id,
-                    'path': track.path,
-                    'title': track.title,
-                    'artist': track.artist,
-                    'album': track.album,
-                    'duration': track.duration
+                    "id": track.id,
+                    "path": track.path,
+                    "title": track.title,
+                    "artist": track.artist,
+                    "album": track.album,
+                    "duration": track.duration,
                 }
                 self._engine.add_track(track_dict)
 
@@ -149,14 +150,16 @@ class PlayerController:
         track_dicts = []
         for track in tracks:
             if Path(track.path).exists():
-                track_dicts.append({
-                    'id': track.id,
-                    'path': track.path,
-                    'title': track.title,
-                    'artist': track.artist,
-                    'album': track.album,
-                    'duration': track.duration
-                })
+                track_dicts.append(
+                    {
+                        "id": track.id,
+                        "path": track.path,
+                        "title": track.title,
+                        "artist": track.artist,
+                        "album": track.album,
+                        "duration": track.duration,
+                    }
+                )
 
         self._engine.load_playlist(track_dicts)
 
@@ -167,14 +170,16 @@ class PlayerController:
         track_dicts = []
         for track in tracks:
             if Path(track.path).exists():
-                track_dicts.append({
-                    'id': track.id,
-                    'path': track.path,
-                    'title': track.title,
-                    'artist': track.artist,
-                    'album': track.album,
-                    'duration': track.duration
-                })
+                track_dicts.append(
+                    {
+                        "id": track.id,
+                        "path": track.path,
+                        "title": track.title,
+                        "artist": track.artist,
+                        "album": track.album,
+                        "duration": track.duration,
+                    }
+                )
 
         self._engine.load_playlist(track_dicts)
 
@@ -185,14 +190,16 @@ class PlayerController:
         track_dicts = []
         for track in tracks:
             if Path(track.path).exists():
-                track_dicts.append({
-                    'id': track.id,
-                    'path': track.path,
-                    'title': track.title,
-                    'artist': track.artist,
-                    'album': track.album,
-                    'duration': track.duration
-                })
+                track_dicts.append(
+                    {
+                        "id": track.id,
+                        "path": track.path,
+                        "title": track.title,
+                        "artist": track.artist,
+                        "album": track.album,
+                        "duration": track.duration,
+                    }
+                )
 
         self._engine.load_playlist(track_dicts)
 
@@ -204,6 +211,7 @@ class PlayerController:
             track_id: Track ID to play
         """
         if self.load_track(track_id):
+            self._db.add_play_history(track_id)
             self._engine.play()
 
     def scan_directory(self, directory: str, progress_callback=None) -> int:
@@ -226,7 +234,7 @@ class PlayerController:
 
         # Find all supported audio files
         for ext in MetadataService.SUPPORTED_FORMATS:
-            audio_files.extend(path.rglob(f'*{ext}'))
+            audio_files.extend(path.rglob(f"*{ext}"))
 
         total = len(audio_files)
 
@@ -241,24 +249,24 @@ class PlayerController:
 
             # Save cover if available
             cover_path = None
-            if metadata.get('cover'):
+            if metadata.get("cover"):
                 # Save to cache directory
-                cache_dir = Path.home() / '.cache' / 'harmony_player' / 'covers'
+                cache_dir = Path.home() / ".cache" / "harmony_player" / "covers"
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 cover_filename = f"{file_path.stem}.jpg"
                 cover_path = str(cache_dir / cover_filename)
 
                 if MetadataService.save_cover(str(file_path), cover_path):
-                    metadata['cover_path'] = cover_path
+                    metadata["cover_path"] = cover_path
 
             # Create track and add to database
             track = Track(
                 path=str(file_path),
-                title=metadata.get('title', ''),
-                artist=metadata.get('artist', ''),
-                album=metadata.get('album', ''),
-                duration=metadata.get('duration', 0),
-                cover_path=metadata.get('cover_path')
+                title=metadata.get("title", ""),
+                artist=metadata.get("artist", ""),
+                album=metadata.get("album", ""),
+                duration=metadata.get("duration", 0),
+                cover_path=metadata.get("cover_path"),
             )
 
             self._db.add_track(track)
@@ -272,20 +280,12 @@ class PlayerController:
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change in engine."""
-        self._current_track_id = track_dict.get('id')
+        self._current_track_id = track_dict.get("id")
 
     def _on_position_changed(self, position_ms: int):
         """
         Handle position change.
-        Records play history when track starts playing (position > 0).
         """
-        if position_ms > 0 and self._current_track_id:
-            # Record play history (debounced to avoid multiple entries)
-            if not hasattr(self, '_history_recorded'):
-                self._db.add_play_history(self._current_track_id)
-                self._history_recorded = True
-        elif position_ms == 0:
-            self._history_recorded = False
 
     def toggle_favorite(self, track_id: int = None) -> bool:
         """

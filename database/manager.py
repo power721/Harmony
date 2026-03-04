@@ -69,6 +69,7 @@ class DatabaseManager:
                 position INTEGER NOT NULL,
                 FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
                 FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+                UNIQUE(playlist_id, track_id),
                 UNIQUE(playlist_id, position)
             )
         """)
@@ -113,6 +114,16 @@ class DatabaseManager:
         """)
 
         conn.commit()
+
+        # Migration: add unique constraint if not exists
+        try:
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_items_track
+                ON playlist_items(playlist_id, track_id)
+            """)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
     # Track operations
 
@@ -370,13 +381,17 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # Check if already exists
+        cursor.execute(
+            "SELECT 1 FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
+            (playlist_id, track_id),
+        )
+        if cursor.fetchone():
+            return False
+
         # Get the next position
         cursor.execute(
-            """
-            SELECT MAX(position) as max_pos
-            FROM playlist_items
-            WHERE playlist_id = ?
-        """,
+            "SELECT MAX(position) as max_pos FROM playlist_items WHERE playlist_id = ?",
             (playlist_id,),
         )
 
@@ -385,13 +400,9 @@ class DatabaseManager:
 
         try:
             cursor.execute(
-                """
-                INSERT INTO playlist_items (playlist_id, track_id, position)
-                VALUES (?, ?, ?)
-            """,
+                "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?, ?, ?)",
                 (playlist_id, track_id, next_position),
             )
-
             conn.commit()
             return True
         except sqlite3.IntegrityError:

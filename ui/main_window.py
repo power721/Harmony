@@ -438,6 +438,16 @@ class MainWindow(QMainWindow):
         # Switch view
         self._stacked_widget.setCurrentIndex(index)
 
+        # Auto-select first playlist when showing playlists
+        if index == 1:
+            playlist_view = self._stacked_widget.widget(1)
+            if playlist_view and playlist_view._playlist_list.count() > 0:
+                if playlist_view._current_playlist_id is None:
+                    playlist_view._playlist_list.setCurrentRow(0)
+                    first_item = playlist_view._playlist_list.item(0)
+                    if first_item:
+                        playlist_view._load_playlist(first_item.data(Qt.UserRole))
+
         # Reset library view mode when showing library (delayed to avoid blocking)
         if index == 0:
             from PySide6.QtCore import QTimer
