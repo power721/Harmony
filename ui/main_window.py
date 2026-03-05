@@ -141,6 +141,10 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
 
+        # Set sidebar width
+        sidebar.setMinimumWidth(180)
+        sidebar.setMaximumWidth(220)
+
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(5)

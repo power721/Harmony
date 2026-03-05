@@ -160,6 +160,10 @@ class PlaylistView(QWidget):
         self._tracks_table.setAlternatingRowColors(True)
         self._tracks_table.verticalHeader().setVisible(False)
         self._tracks_table.horizontalHeader().setStretchLastSection(True)
+        # Disable editing
+        self._tracks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        # Remove focus outline
+        self._tracks_table.setFocusPolicy(Qt.NoFocus)
 
         # Set column widths
         header = self._tracks_table.horizontalHeader()

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QAction, QColor, QBrush
 from typing import List
 
@@ -43,8 +43,10 @@ class QueueView(QWidget):
         self._db = db_manager if db_manager else player._db
         self._setup_ui()
         self._setup_connections()
-        self._refresh_timer = None
-        self._start_auto_refresh()
+
+        # Load initial queue content and update indicators
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._initialize_view)
 
     def _setup_ui(self):
         """Setup the user interface."""
@@ -215,13 +217,64 @@ class QueueView(QWidget):
             self._on_player_state_changed
         )
 
-    def _start_auto_refresh(self):
-        """Start auto-refresh timer."""
-        from PySide6.QtCore import QTimer
+    def _initialize_view(self):
+        """Initialize the queue view with current content and indicators."""
+        # Get current playlist from engine
+        playlist = self._player.engine.playlist
+        current_index = self._player.engine.current_index
+        is_playing = self._player.engine.state == PlayerState.PLAYING
 
-        self._refresh_timer = QTimer(self)
-        self._refresh_timer.timeout.connect(self._refresh_queue)
-        self._refresh_timer.start(1000)  # Refresh every second
+        # Save current selection
+        selected_items = self._queue_list.selectedItems()
+        selected_indices = [self._queue_list.row(item) for item in selected_items]
+
+        # Block signals to prevent feedback
+        self._queue_list.blockSignals(True)
+
+        # Clear and repopulate
+        self._queue_list.clear()
+
+        for i, track in enumerate(playlist):
+            title = track.get("title", "Unknown")
+            artist = track.get("artist", "Unknown")
+
+            # Add play/pause icon for current track
+            if i == current_index:
+                icon = "▶️ " if is_playing else "⏸️ "
+                item_text = f"{i + 1}. {icon}{title} - {artist}"
+            else:
+                item_text = f"{i + 1}. {title} - {artist}"
+
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, track)
+
+            # Set default text color
+            item.setForeground(QBrush(QColor("#e0e0e0")))
+
+            # Highlight current track
+            if i == current_index:
+                item.setData(Qt.UserRole + 1, True)  # Mark as current
+                item.setBackground(QColor("#1db954"))
+                item.setForeground(QBrush(QColor("#000000")))
+
+            self._queue_list.addItem(item)
+
+        # Restore selection
+        for row in selected_indices:
+            if row < self._queue_list.count():
+                self._queue_list.item(row).setSelected(True)
+
+        self._queue_list.blockSignals(False)
+
+        # Update status
+        self._status_label.setText(f"{len(playlist)} tracks in queue")
+
+        # Scroll to current track after a delay
+        QTimer.singleShot(100, self._scroll_to_current_track)
+
+    def refresh_queue(self):
+        """Refresh the queue display (can be called externally)."""
+        self._refresh_queue()
 
     def _refresh_queue(self):
         """Refresh the queue display."""
@@ -517,9 +570,14 @@ class QueueView(QWidget):
 
     def closeEvent(self, event):
         """Handle close event."""
-        if self._refresh_timer:
-            self._refresh_timer.stop()
         event.accept()
+
+    def showEvent(self, event):
+        """Handle show event - refresh queue when view becomes visible."""
+        super().showEvent(event)
+        # Refresh queue content and update indicators when the view becomes visible
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(50, self._initialize_view)
 
     def _edit_media_info(self):
         """Edit media information for selected track."""

@@ -53,6 +53,7 @@ class LibraryView(QWidget):
         self._db = db_manager
         self._player = player
         self._current_view = "all"  # all, favorites, history
+        self._current_sub_view = "all"  # all, artists, albums (for library view)
         self._current_playing_track_id = None  # Track currently playing
         self._current_playing_row = -1  # Row of currently playing track
 
@@ -222,14 +223,29 @@ class LibraryView(QWidget):
         self._tracks_table.horizontalHeader().setStretchLastSection(True)
         self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
+        # Disable editing
+        self._tracks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        # Remove focus outline
+        self._tracks_table.setFocusPolicy(Qt.NoFocus)
 
-        # Set column widths
+        # Set column widths - Title gets all remaining space
         header = self._tracks_table.horizontalHeader()
+        header.setStretchLastSection(False)
+
+        # Set resize modes - Title stretches to fill remaining space
+        # Title: stretch to fill all remaining space
         header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        # Artist: fixed width
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(1, 120)
+        # Album: fixed width
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(2, 150)
+        # Duration: fit content
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        # Favorites: fixed small width
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(4, 40)
 
         # Styling - Modern, eye-friendly design
         self._tracks_table.setStyleSheet("""
@@ -270,6 +286,15 @@ class LibraryView(QWidget):
             }
             QTableWidget#tracksTable::item:selected:hover {
                 background-color: #1ed760;
+            }
+            /* Remove focus outline */
+            QTableWidget#tracksTable::item:focus {
+                outline: none;
+                border: none;
+            }
+            QTableWidget#tracksTable:focus {
+                outline: none;
+                border: none;
             }
             /* Header styling */
             QTableWidget#tracksTable QHeaderView::section {
@@ -359,7 +384,12 @@ class LibraryView(QWidget):
     def refresh(self):
         """Refresh the library view."""
         if self._current_view == "all":
-            self._load_all_tracks()
+            if self._current_sub_view == "artists":
+                self._load_artists()
+            elif self._current_sub_view == "albums":
+                self._load_albums()
+            else:
+                self._load_all_tracks()
         elif self._current_view == "favorites":
             self._load_favorites()
         elif self._current_view == "history":
@@ -370,21 +400,49 @@ class LibraryView(QWidget):
         self._current_view = "all"
         self._title_label.setText("Your Library")
         self._load_all_tracks()
+        # Show view buttons
+        self._btn_all.setVisible(True)
+        self._btn_artists.setVisible(True)
+        self._btn_albums.setVisible(True)
+        # Restore the sub-view button state
+        self._btn_all.setChecked(self._current_sub_view == "all")
+        self._btn_artists.setChecked(self._current_sub_view == "artists")
+        self._btn_albums.setChecked(self._current_sub_view == "albums")
+        # Load the appropriate sub-view content
+        if self._current_sub_view == "artists":
+            self._load_artists()
+        elif self._current_sub_view == "albums":
+            self._load_albums()
+
+        # Select and scroll to current playing track after UI updates
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(150, self._select_and_scroll_to_current)
 
     def show_favorites(self):
         """Show favorite tracks."""
         self._current_view = "favorites"
         self._title_label.setText("⭐ Favorites")
         self._load_favorites()
+        # Hide view buttons
+        self._btn_all.setVisible(False)
+        self._btn_artists.setVisible(False)
+        self._btn_albums.setVisible(False)
 
     def show_history(self):
         """Show play history."""
         self._current_view = "history"
         self._title_label.setText("🕐 Recently Played")
         self._load_history()
+        # Hide view buttons
+        self._btn_all.setVisible(False)
+        self._btn_artists.setVisible(False)
+        self._btn_albums.setVisible(False)
 
     def _change_view(self, view_type: str):
         """Change the view type."""
+        # Save the sub-view state
+        self._current_sub_view = view_type
+
         # Update button states
         self._btn_all.setChecked(view_type == "all")
         self._btn_artists.setChecked(view_type == "artists")
@@ -683,6 +741,22 @@ class LibraryView(QWidget):
                     # Select the row
                     self._tracks_table.selectRow(row)
                     break
+
+    def _select_and_scroll_to_current(self):
+        """Select and scroll to the currently playing track."""
+        if self._current_playing_track_id is not None:
+            # Find the row with the current playing track
+            for row in range(self._tracks_table.rowCount()):
+                title_item = self._tracks_table.item(row, 0)
+                if title_item:
+                    track_id = title_item.data(Qt.UserRole)
+                    if track_id == self._current_playing_track_id:
+                        # Clear previous selection and select this row
+                        self._tracks_table.clearSelection()
+                        self._tracks_table.selectRow(row)
+                        # Scroll to the item with center positioning
+                        self._tracks_table.scrollToItem(title_item)
+                        break
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
         """Handle item double click."""
