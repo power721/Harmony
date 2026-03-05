@@ -221,11 +221,11 @@ class PlayerControls(QWidget):
         layout.addWidget(self._volume_slider)
 
         # Queue button (placeholder)
-        self._queue_btn = QPushButton('📋')
-        self._queue_btn.setObjectName('queueBtn')
-        self._queue_btn.setFixedSize(35, 35)
-        self._queue_btn.setCursor(Qt.PointingHandCursor)
-        layout.addWidget(self._queue_btn)
+        # self._queue_btn = QPushButton('📋')
+        # self._queue_btn.setObjectName('queueBtn')
+        # self._queue_btn.setFixedSize(35, 35)
+        # self._queue_btn.setCursor(Qt.PointingHandCursor)
+        # layout.addWidget(self._queue_btn)
 
         return widget
 
