@@ -1,7 +1,7 @@
 """
 Main application window for the music player.
 """
-
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -303,63 +303,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(title_layout)
 
         # Lyrics text browser (has built-in scrolling)
-        self._lyrics_browser = QTextBrowser()
-        self._lyrics_browser.setObjectName("lyricsContent")
-        self._lyrics_browser.setOpenExternalLinks(False)
-        self._lyrics_browser.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._lyrics_browser.customContextMenuRequested.connect(
+        self._lyrics_view = QWebEngineView()
+        self._lyrics_view.setObjectName("lyricsContent")
+        self._lyrics_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._lyrics_view.customContextMenuRequested.connect(
             self._show_lyrics_context_menu
         )
-        self._lyrics_browser.setFocusPolicy(Qt.NoFocus)  # Prevent stealing focus
+        self._lyrics_view.setFocusPolicy(Qt.NoFocus)  # Prevent stealing focus
 
-        # Store anchor positions for each line
-        self._lyric_line_anchors = {}
-
-        self._lyrics_browser.setStyleSheet("""
-            QTextBrowser#lyricsContent {
-                border: none;
-                background-color: #1a1a1a;
-                color: #c0c0c0;
-                font-size: 14px;
-                border-radius: 8px;
-                padding: 10px;
-            }
-            QScrollBar:vertical {
-                background-color: #1a1a1a;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar:horizontal {
-                background-color: #1a1a1a;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-                width: 0px;
-            }
-        """)
-
-        layout.addWidget(self._lyrics_browser, 1)  # Give it stretch to fill space
+        layout.addWidget(self._lyrics_view, 1)  # Give it stretch to fill space
 
         return panel
 
@@ -628,7 +580,6 @@ class MainWindow(QMainWindow):
         """Handle track change."""
         # Reset lyric line tracking
         self._current_lyric_line = None
-        self._lyric_line_anchors = {}
 
         # Sync selection in both library and queue views
         if track_dict:
@@ -640,7 +591,7 @@ class MainWindow(QMainWindow):
                 self._queue_view._select_track_by_id(track_id)
 
         if not track_dict:
-            self._lyrics_browser.setHtml(
+            self._lyrics_view.setHtml(
                 f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("not_playing")}</div>'
             )
             return
@@ -651,7 +602,7 @@ class MainWindow(QMainWindow):
         path = track_dict.get("path", "")
 
         # Show loading message
-        self._lyrics_browser.setHtml(
+        self._lyrics_view.setHtml(
             f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}</div>'
         )
         self._current_lyrics = []
@@ -659,14 +610,7 @@ class MainWindow(QMainWindow):
         # Try to load lyrics
         lyrics = LyricsService.get_lyrics(path, title, artist)
         if lyrics:
-            self._current_lyrics = lyrics
-            # Display first few lines as preview
-            preview_lines = "<br>".join(text for _, text in lyrics[:3])
-            if len(lyrics) > 3:
-                preview_lines += "<br>..."
-            self._lyrics_browser.setHtml(
-                f'<div style="color: #b3b3b3; padding: 10px;">{preview_lines}</div>'
-            )
+            self._load_lyrics(lyrics)
         else:
             # Check if .lrc file exists nearby
             from pathlib import Path
@@ -677,11 +621,11 @@ class MainWindow(QMainWindow):
             lrc_alt = lyrics_dir / f"{track_path.stem}.lrc"
 
             if lrc_path.exists() or lrc_alt.exists():
-                self._lyrics_browser.setHtml(
+                self._lyrics_view.setHtml(
                     f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("lyrics_found_parse_failed")}<br><br>{t("ensure_lrc_valid")}</div>'
                 )
             else:
-                self._lyrics_browser.setHtml(
+                self._lyrics_view.setHtml(
                     f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>'
                 )
 
@@ -694,7 +638,7 @@ class MainWindow(QMainWindow):
         if not track:
             return
 
-        self._lyrics_browser.setHtml(
+        self._lyrics_view.setHtml(
             f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">⏳<br><br>{t("searching_lyrics")}</div>'
         )
 
@@ -711,19 +655,19 @@ class MainWindow(QMainWindow):
                 if lyrics:
                     self._current_lyrics = lyrics
                     html = (
-                        '<div style="color: #b3b3b3; padding: 10px;">'
-                        + "<br>".join(text for _, text in lyrics)
-                        + "</div>"
+                            '<div style="color: #b3b3b3; padding: 10px;">'
+                            + "<br>".join(text for _, text in lyrics)
+                            + "</div>"
                     )
                     QMetaObject.invokeMethod(
-                        self._lyrics_browser,
+                        self._lyrics_view,
                         "setHtml",
                         Qt.QueuedConnection,
                         Q_ARG(str, html),
                     )
                 else:
                     QMetaObject.invokeMethod(
-                        self._lyrics_browser,
+                        self._lyrics_view,
                         "setHtml",
                         Qt.QueuedConnection,
                         Q_ARG(
@@ -733,7 +677,7 @@ class MainWindow(QMainWindow):
                     )
             else:
                 QMetaObject.invokeMethod(
-                    self._lyrics_browser,
+                    self._lyrics_view,
                     "setHtml",
                     Qt.QueuedConnection,
                     Q_ARG(
@@ -769,7 +713,7 @@ class MainWindow(QMainWindow):
         refresh_action = menu.addAction(t("refresh"))
         refresh_action.triggered.connect(self._refresh_lyrics)
 
-        menu.exec_(self._lyrics_browser.mapToGlobal(pos))
+        menu.exec_(self._lyrics_view.mapToGlobal(pos))
 
     def _refresh_lyrics(self):
         """Refresh lyrics display."""
@@ -797,57 +741,133 @@ class MainWindow(QMainWindow):
         msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
         self._status_bar.showMessage(msg, 3000)
 
+    def _load_lyrics(self, lyrics):
+        """
+        lyrics: List[(time_in_seconds, text)]
+        """
+        self._current_lyrics = lyrics
+        self._current_index = -1
+
+        html = self._build_html(lyrics)
+        self._lyrics_view.setHtml(html)
+
     def _on_position_changed(self, position_ms: int):
-        """Handle position change for lyrics sync with highlight and auto-scroll."""
-        if not hasattr(self, "_current_lyrics") or not self._current_lyrics:
+        if not self._current_lyrics:
             return
 
-        position_s = position_ms / 1000.0
+        seconds = position_ms / 1000.0
+        index = self._find_line(seconds)
 
-        from utils import find_lyric_line
+        if index != -1 and index != self._current_index:
+            self._highlight_line(index)
+            self._current_index = index
 
-        line_index = find_lyric_line(self._current_lyrics, position_s)
+    def _find_line(self, seconds: float):
+        """
+        Binary search could be used here if lyrics are large.
+        """
+        for i in range(len(self._current_lyrics) - 1):
+            if self._current_lyrics[i][0] <= seconds < self._current_lyrics[i + 1][0]:
+                return i
 
-        if line_index is not None and line_index >= 0:
-            # Only update if line changed (avoid unnecessary updates)
-            if self._current_lyric_line != line_index:
-                self._current_lyric_line = line_index
+        if self._current_lyrics and seconds >= self._current_lyrics[-1][0]:
+            return len(self._current_lyrics) - 1
 
-                # Build lyrics HTML with current line highlighted and anchors for scrolling
-                lyrics_html = '<div style="line-height: 2.2; color: #b3b3b3; font-size: 14px; padding: 10px;">'
+        return -1
 
-                for i, (time, text) in enumerate(self._current_lyrics):
-                    anchor_name = f"line{i}"
-                    if i == line_index:
-                        # Highlight current line with different color, size, and weight
-                        lyrics_html += (
-                            f'<a id="{anchor_name}" name="{anchor_name}"></a>'
-                        )
-                        lyrics_html += f'<p style="color: #1db954; font-size: 17px; font-weight: bold; margin: 6px 0; padding: 10px; background-color: rgba(29, 185, 84, 0.15); border-radius: 6px;">{text}</p>'
-                    else:
-                        # Normal line with subtle opacity
-                        lyrics_html += (
-                            f'<a id="{anchor_name}" name="{anchor_name}"></a>'
-                        )
-                        lyrics_html += (
-                            f'<p style="margin: 4px 0; opacity: 0.7;">{text}</p>'
-                        )
+    def _highlight_line(self, index: int):
+        prev = self._current_index
 
-                lyrics_html += "</div>"
-                self._lyrics_browser.setHtml(lyrics_html)
+        js = f"""
+        if ({prev} >= 0) {{
+            var prevEl = document.getElementById("line{prev}");
+            if (prevEl) prevEl.classList.remove("active");
+        }}
 
-                # Use QTimer to scroll after HTML is rendered
-                from PySide6.QtCore import QTimer
+        var el = document.getElementById("line{index}");
+        if (el) {{
+            el.classList.add("active");
+            el.scrollIntoView({{
+                behavior: "smooth",
+                block: "center"
+            }});
+        }}
+        """
 
-                QTimer.singleShot(10, lambda: self._scroll_to_line(line_index))
+        self._lyrics_view.page().runJavaScript(js)
 
-    def _scroll_to_line(self, line_index: int):
-        """Scroll lyrics to show the specified line using anchor-based scrolling."""
-        anchor_name = f"line{line_index}"
+    def _build_html(self, lyrics):
+        html = """
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+            html, body {
+                background: #000000;
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                overflow-y: auto;
+            }
 
-        # Use QTextBrowser's built-in scrollToAnchor method
-        # This is much more reliable than manual pixel calculations
-        self._lyrics_browser.scrollToAnchor(anchor_name)
+            .container {
+                padding: 80px 20px;
+                line-height: 2.4;
+                font-size: 16px;
+                color: #666666;
+                text-align: center;
+                scroll-behavior: smooth;
+            }
+
+            .line {
+                margin: 10px 0;
+                padding: 12px;
+                border-radius: 10px;
+                transition: all 0.25s ease;
+                opacity: 0.4;
+            }
+
+            .line.active {
+                color: #1db954;
+                font-size: 22px;
+                font-weight: bold;
+                background-color: rgba(29,185,84,0.12);
+                opacity: 1;
+                transform: scale(1.10);
+            }
+
+            /* 上下渐隐遮罩 */
+            body {
+                mask-image: linear-gradient(
+                    to bottom,
+                    transparent,
+                    black 15%,
+                    black 85%,
+                    transparent
+                );
+            }
+
+            /* 滚动条隐藏（更干净） */
+            ::-webkit-scrollbar {
+                display: none;
+            }
+
+        </style>
+        </head>
+        <body>
+        <div class="container">
+        """
+
+        for i, (_, text) in enumerate(lyrics):
+            html += f'<div id="line{i}" class="line">{text}</div>'
+
+        html += """
+        </div>
+        </body>
+        </html>
+        """
+
+        return html
 
     def _toggle_play_pause(self):
         """Toggle play/pause."""
