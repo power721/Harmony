@@ -639,3 +639,7 @@ class QueueView(QWidget):
         cancel_button.clicked.connect(dialog.reject)
 
         dialog.exec_()
+
+    def refresh(self):
+        """Refresh the queue display."""
+        self._refresh_queue()
