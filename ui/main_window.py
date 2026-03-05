@@ -8,36 +8,29 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QSplitter,
-    QListWidget,
     QStackedWidget,
     QPushButton,
-    QLineEdit,
     QFileDialog,
-    QSlider,
     QLabel,
     QMenu,
     QMessageBox,
     QSystemTrayIcon,
     QStyle,
-    QTextBrowser,
 )
-from PySide6.QtCore import Qt, Signal, QSettings, QSize
-from PySide6.QtGui import QIcon, QCursor, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QSettings
 from typing import Optional
-import sys
-from pathlib import Path
 
 from database import DatabaseManager
 from player import PlayerController
-from player.engine import PlayMode, PlayerState
-from services import LyricsService, CoverService
+from player.engine import PlayerState
+from services import LyricsService
 from ui.library_view import LibraryView
 from ui.playlist_view import PlaylistView
 from ui.player_controls import PlayerControls
 from ui.mini_player import MiniPlayer
 from ui.queue_view import QueueView
 from utils.global_hotkeys import GlobalHotkeys, setup_media_key_handler
-from utils import t, set_language, get_language
+from utils import t, set_language
 
 
 class MainWindow(QMainWindow):
@@ -45,6 +38,7 @@ class MainWindow(QMainWindow):
 
     # Signals
     play_track = Signal(int)  # Signal to play a track by ID
+    lyricsHtmlReady = Signal(str)
 
     def __init__(self):
         """Initialize the main window."""
@@ -337,6 +331,9 @@ class MainWindow(QMainWindow):
         self._playlist_view.track_double_clicked.connect(self._play_track)
         self._queue_view.play_track.connect(self._play_track)
 
+        # lyrics
+        self.lyricsHtmlReady.connect(self._lyrics_view.setHtml)
+
     def _setup_system_tray(self):
         """Setup system tray icon."""
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -519,9 +516,6 @@ class MainWindow(QMainWindow):
         from threading import Thread
 
         def scan():
-            count = self._player.scan_directory(
-                folder, progress_callback=lambda current, total: None
-            )
             self._library_view.refresh()
 
         # Run in thread to avoid blocking UI
@@ -592,7 +586,7 @@ class MainWindow(QMainWindow):
 
         if not track_dict:
             self._lyrics_view.setHtml(
-                f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("not_playing")}</div>'
+                self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("not_playing")}</div>')
             )
             return
 
@@ -603,7 +597,7 @@ class MainWindow(QMainWindow):
 
         # Show loading message
         self._lyrics_view.setHtml(
-            f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}</div>'
+            self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}</div>')
         )
         self._current_lyrics = []
 
@@ -622,11 +616,11 @@ class MainWindow(QMainWindow):
 
             if lrc_path.exists() or lrc_alt.exists():
                 self._lyrics_view.setHtml(
-                    f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("lyrics_found_parse_failed")}<br><br>{t("ensure_lrc_valid")}</div>'
+                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("lyrics_found_parse_failed")}<br><br>{t("ensure_lrc_valid")}</div>')
                 )
             else:
                 self._lyrics_view.setHtml(
-                    f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>'
+                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>')
                 )
 
     def _download_lyrics(self):
@@ -639,11 +633,10 @@ class MainWindow(QMainWindow):
             return
 
         self._lyrics_view.setHtml(
-            f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">⏳<br><br>{t("searching_lyrics")}</div>'
+            self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">⏳<br><br>{t("searching_lyrics")}</div>')
         )
 
         from threading import Thread
-        from PySide6.QtCore import QMetaObject, Qt, Q_ARG
 
         def download():
             success = LyricsService.download_and_save_lyrics(
@@ -654,37 +647,14 @@ class MainWindow(QMainWindow):
                 lyrics = LyricsService.get_lyrics(track.path, track.title, track.artist)
                 if lyrics:
                     self._current_lyrics = lyrics
-                    html = (
-                            '<div style="color: #b3b3b3; padding: 10px;">'
-                            + "<br>".join(text for _, text in lyrics)
-                            + "</div>"
-                    )
-                    QMetaObject.invokeMethod(
-                        self._lyrics_view,
-                        "setHtml",
-                        Qt.QueuedConnection,
-                        Q_ARG(str, html),
-                    )
+                    html = self._build_lyrics_html(lyrics)
+                    self.lyricsHtmlReady.emit(html)
                 else:
-                    QMetaObject.invokeMethod(
-                        self._lyrics_view,
-                        "setHtml",
-                        Qt.QueuedConnection,
-                        Q_ARG(
-                            str,
-                            f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_downloaded_parsing_failed")}</div>',
-                        ),
-                    )
+                    html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_downloaded_parsing_failed")}</div>')
+                    self.lyricsHtmlReady.emit(html)
             else:
-                QMetaObject.invokeMethod(
-                    self._lyrics_view,
-                    "setHtml",
-                    Qt.QueuedConnection,
-                    Q_ARG(
-                        str,
-                        f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_not_found")}</div>',
-                    ),
-                )
+                html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_not_found")}</div>')
+                self.lyricsHtmlReady.emit(html)
 
         thread = Thread(target=download)
         thread.daemon = True
@@ -748,7 +718,7 @@ class MainWindow(QMainWindow):
         self._current_lyrics = lyrics
         self._current_index = -1
 
-        html = self._build_html(lyrics)
+        html = self._build_lyrics_html(lyrics)
         self._lyrics_view.setHtml(html)
 
     def _on_position_changed(self, position_ms: int):
@@ -796,7 +766,13 @@ class MainWindow(QMainWindow):
 
         self._lyrics_view.page().runJavaScript(js)
 
-    def _build_html(self, lyrics):
+    def _build_lyrics_html(self, lyrics):
+        html = ""
+        for i, (_, text) in enumerate(lyrics):
+            html += f'<div id="line{i}" class="line">{text}</div>'
+        return self._build_html(html)
+
+    def _build_html(self, content):
         html = """
         <html>
         <head>
@@ -811,7 +787,7 @@ class MainWindow(QMainWindow):
             }
 
             .container {
-                padding: 80px 20px;
+                padding: 35vh 20px;
                 line-height: 2.4;
                 font-size: 16px;
                 color: #666666;
@@ -858,8 +834,7 @@ class MainWindow(QMainWindow):
         <div class="container">
         """
 
-        for i, (_, text) in enumerate(lyrics):
-            html += f'<div id="line{i}" class="line">{text}</div>'
+        html += content
 
         html += """
         </div>
