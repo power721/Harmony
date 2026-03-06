@@ -125,3 +125,22 @@ def truncate_text(text: str, max_length: int, suffix: str = '...') -> str:
     if len(text) <= max_length:
         return text
     return text[:max_length - len(suffix)] + suffix
+
+
+def format_count_message(key: str, count: int) -> str:
+    """
+    Format a message with count and plural form.
+
+    Args:
+        key: Translation key
+        count: Count for pluralization
+
+    Returns:
+        Formatted message string
+    """
+    from .i18n import t
+
+    template = t(key)
+    plural_suffix = 's' if count > 1 else ''
+
+    return template.format(count=count, s=plural_suffix)

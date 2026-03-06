@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QStyle,
 )
-from PySide6.QtCore import Qt, Signal, QSettings
+from PySide6.QtCore import Qt, Signal, QSettings, QThread
 from typing import Optional
 
 from database import DatabaseManager
@@ -62,6 +62,10 @@ class MainWindow(QMainWindow):
 
         # Lyrics sync
         self._current_lyric_line: Optional[int] = None
+
+        # Lyrics download thread (to prevent multiple downloads)
+        self._lyrics_thread: Optional[QThread] = None
+        self._lyrics_worker = None
 
         # Setup UI
         self._setup_ui()
@@ -634,33 +638,71 @@ class MainWindow(QMainWindow):
         if not track:
             return
 
+        # Clean up existing thread if any
+        if self._lyrics_thread and self._lyrics_thread.isRunning():
+            self._lyrics_thread.quit()
+            self._lyrics_thread.wait()
+
         self._lyrics_view.setHtml(
             self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">⏳<br><br>{t("searching_lyrics")}</div>')
         )
 
-        from threading import Thread
+        from PySide6.QtCore import QObject
 
-        def download():
-            success = LyricsService.download_and_save_lyrics(
-                track.path, track.title, track.artist
-            )
+        class LyricsDownloadWorker(QObject):
+            finished = Signal(bool)
+            lyrics_ready = Signal(list)
+            error_ready = Signal(str)
 
-            if success:
-                lyrics = LyricsService.get_lyrics(track.path, track.title, track.artist)
-                if lyrics:
-                    self._current_lyrics = lyrics
-                    html = self._build_lyrics_html(lyrics)
-                    self.lyricsHtmlReady.emit(html)
+            def __init__(self, track_path, title, artist):
+                super().__init__()
+                self._track_path = track_path
+                self._title = title
+                self._artist = artist
+
+            def run(self):
+                success = LyricsService.download_and_save_lyrics(
+                    self._track_path, self._title, self._artist
+                )
+
+                if success:
+                    lyrics = LyricsService.get_lyrics(self._track_path, self._title, self._artist)
+                    if lyrics:
+                        self.lyrics_ready.emit(lyrics)
+                    else:
+                        self.error_ready.emit("parse_failed")
                 else:
-                    html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_downloaded_parsing_failed")}</div>')
-                    self.lyricsHtmlReady.emit(html)
-            else:
-                html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_not_found")}</div>')
-                self.lyricsHtmlReady.emit(html)
+                    self.error_ready.emit("not_found")
 
-        thread = Thread(target=download)
-        thread.daemon = True
-        thread.start()
+                self.finished.emit(True)
+
+        # Create and start thread
+        self._lyrics_thread = QThread()
+        self._lyrics_worker = LyricsDownloadWorker(track.path, track.title, track.artist)
+        self._lyrics_worker.moveToThread(self._lyrics_thread)
+
+        self._lyrics_thread.started.connect(self._lyrics_worker.run)
+        self._lyrics_worker.lyrics_ready.connect(self._on_lyrics_download_success)
+        self._lyrics_worker.error_ready.connect(self._on_lyrics_download_error)
+        self._lyrics_worker.finished.connect(self._lyrics_thread.quit)
+        self._lyrics_worker.finished.connect(self._lyrics_worker.deleteLater)
+        self._lyrics_thread.finished.connect(self._lyrics_thread.deleteLater)
+
+        self._lyrics_thread.start()
+
+    def _on_lyrics_download_success(self, lyrics):
+        """Handle successful lyrics download."""
+        self._current_lyrics = lyrics
+        html = self._build_lyrics_html(lyrics)
+        self._lyrics_view.setHtml(html)
+
+    def _on_lyrics_download_error(self, error_type: str):
+        """Handle lyrics download error."""
+        if error_type == "parse_failed":
+            html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_downloaded_parsing_failed")}</div>')
+        else:  # not_found
+            html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_not_found")}</div>')
+        self._lyrics_view.setHtml(html)
 
     def _show_lyrics_context_menu(self, pos):
         """Show context menu for lyrics panel."""

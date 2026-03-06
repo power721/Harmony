@@ -483,22 +483,27 @@ class QueueView(QWidget):
                 added_count += 1
 
         if added_count > 0 and removed_count == 0:
+            from utils import format_count_message
+            message = format_count_message("added_x_tracks_to_favorites", added_count)
             QMessageBox.information(
                 self,
                 t("added_to_favorites"),
-                f"Added {added_count} track{'s' if added_count > 1 else ''} to favorites",
+                message,
             )
         elif removed_count > 0 and added_count == 0:
+            from utils import format_count_message
+            message = format_count_message("removed_x_tracks_from_favorites", removed_count)
             QMessageBox.information(
                 self,
                 t("removed_from_favorites"),
-                f"Removed {removed_count} track{'s' if removed_count > 1 else ''} from favorites",
+                message,
             )
         else:
+            message = t("added_x_removed_y").format(added=added_count, removed=removed_count)
             QMessageBox.information(
                 self,
                 t("updated_favorites"),
-                f"Added {added_count}, removed {removed_count}",
+                message,
             )
 
     def _show_context_menu(self, pos):

@@ -218,7 +218,6 @@ class PlayerController:
             track_id: Track ID to play
         """
         if self.load_track(track_id):
-            self._db.add_play_history(track_id)
             self._engine.play()
 
     def scan_directory(self, directory: str, progress_callback=None) -> int:
@@ -288,6 +287,11 @@ class PlayerController:
     def _on_track_changed(self, track_dict: dict):
         """Handle track change in engine."""
         self._current_track_id = track_dict.get("id")
+
+        # Record play history when a track starts playing
+        track_id = track_dict.get("id")
+        if track_id:
+            self._db.add_play_history(track_id)
 
     def _on_position_changed(self, position_ms: int):
         """
