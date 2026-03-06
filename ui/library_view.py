@@ -713,6 +713,34 @@ class LibraryView(QWidget):
             size_bytes /= 1024.0
         return f"{size_bytes:.1f} TB"
 
+    def _restore_track_selection(self, track_ids: list):
+        """Restore selection for given track IDs after table refresh."""
+        if not track_ids:
+            return
+
+        def restore_selection():
+            # Clear current selection
+            self._tracks_table.clearSelection()
+
+            # Find and select each track
+            for track_id in track_ids:
+                # Iterate through all rows to find matching track ID
+                for row in range(self._tracks_table.rowCount()):
+                    item = self._tracks_table.item(row, 0)
+                    if item and item.data(Qt.UserRole) == track_id:
+                        # Select the row
+                        self._tracks_table.selectRow(row)
+                        break
+
+            # Scroll to first selected item
+            selected_items = self._tracks_table.selectedItems()
+            if selected_items:
+                self._tracks_table.scrollToItem(selected_items[0])
+
+        # Use QTimer to delay restoration until after table is fully updated
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(50, restore_selection)
+
     def _on_search(self, query: str):
         """Handle search based on current view."""
         # 保存当前视图的搜索文本
@@ -1501,7 +1529,11 @@ class LibraryView(QWidget):
                     QMessageBox.information(
                         self, t("success"), f"{t('batch_save_success')}: {success_count}/{len(track_ids)}"
                     )
+                    # Save the track IDs to restore selection after refresh
+                    self._track_ids_to_restore = track_ids
                     self.refresh()
+                    # Restore selection after refresh
+                    self._restore_track_selection(track_ids)
                 else:
                     QMessageBox.warning(self, "Error", t("media_save_failed"))
 
@@ -1521,7 +1553,11 @@ class LibraryView(QWidget):
                         track_ids[0], title=new_title, artist=new_artist, album=new_album
                     )
                     QMessageBox.information(self, t("success"), t("media_saved"))
+                    # Save the track ID to restore selection after refresh
+                    self._track_ids_to_restore = track_ids
                     self.refresh()
+                    # Restore selection after refresh
+                    self._restore_track_selection(track_ids)
                 else:
                     QMessageBox.warning(self, "Error", t("media_save_failed"))
 
