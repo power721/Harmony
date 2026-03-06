@@ -702,6 +702,17 @@ class LibraryView(QWidget):
             (track.album and query_lower in track.album.lower())
         )
 
+    def _format_file_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                if unit == 'B':
+                    return f"{size_bytes} {unit}"
+                else:
+                    return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
     def _on_search(self, query: str):
         """Handle search based on current view."""
         # 保存当前视图的搜索文本
@@ -1339,11 +1350,74 @@ class LibraryView(QWidget):
             form_layout.addRow(t("artist") + ":", artist_input)
             form_layout.addRow(t("album") + ":", album_input)
 
-            # Show file path for single track
-            path_label = QLabel(first_track.path)
-            path_label.setStyleSheet("color: #808080; font-size: 11px;")
-            path_label.setWordWrap(True)
-            form_layout.addRow(t("file") + ":", path_label)
+            # Show file information for single track
+            from pathlib import Path
+            try:
+                track_file = Path(first_track.path)
+                file_size = track_file.stat().st_size
+                file_size_str = self._format_file_size(file_size)
+
+                # Get audio codec info using mutagen
+                import mutagen
+                audio_info = mutagen.File(first_track.path)
+                media_info = []
+
+                if audio_info and hasattr(audio_info, 'info'):
+                    info = audio_info.info
+                    # Bitrate
+                    if hasattr(info, 'bitrate') and info.bitrate:
+                        media_info.append(f"{info.bitrate // 1000} kbps")
+
+                    # Sample rate
+                    if hasattr(info, 'sample_rate') and info.sample_rate:
+                        media_info.append(f"{info.sample_rate // 1000} kHz")
+
+                    # Length/Duration
+                    if hasattr(info, 'length') and info.length:
+                        minutes = int(info.length // 60)
+                        seconds = int(info.length % 60)
+                        media_info.append(f"{minutes}:{seconds:02d}")
+
+                # Format (codec)
+                if audio_info:
+                    mime_type = audio_info.mime if hasattr(audio_info, 'mime') else []
+                    if mime_type:
+                        format_str = mime_type[0].split('/')[-1].upper()
+                        media_info.append(format_str)
+                    else:
+                        # Try to get format from type
+                        if hasattr(audio_info, 'type'):
+                            media_info.append(audio_info.type)
+
+                # Create info text
+                file_info_text = f"{file_size_str}"
+                if media_info:
+                    file_info_text += f" | {' | '.join(media_info)}"
+
+                info_label = QLabel(file_info_text)
+                info_label.setStyleSheet("color: #808080; font-size: 11px;")
+
+                # File path
+                path_label = QLabel(first_track.path)
+                path_label.setStyleSheet("color: #606060; font-size: 10px;")
+                path_label.setWordWrap(True)
+
+                # Add both labels in a vertical layout
+                info_container = QWidget()
+                info_layout = QVBoxLayout(info_container)
+                info_layout.setContentsMargins(0, 0, 0, 0)
+                info_layout.setSpacing(2)
+                info_layout.addWidget(info_label)
+                info_layout.addWidget(path_label)
+
+                form_layout.addRow(t("file") + ":", info_container)
+
+            except Exception as e:
+                # Fallback to just show path if there's an error
+                path_label = QLabel(first_track.path)
+                path_label.setStyleSheet("color: #808080; font-size: 11px;")
+                path_label.setWordWrap(True)
+                form_layout.addRow(t("file") + ":", path_label)
 
         layout.addLayout(form_layout)
 
