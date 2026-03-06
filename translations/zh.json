@@ -91,5 +91,12 @@
     "clear_queue_confirm": "确定要清空整个播放队列吗？",
     "remove_from_queue": "从队列移除",
     "tracks_in_queue": "首歌曲在队列中",
-    "tip_right_click": "💡 提示：在音乐库中右键点击曲目可添加到队列"
+    "tip_right_click": "💡 提示：在音乐库中右键点击曲目可添加到队列",
+    "batch_edit_info": "批量编辑",
+    "update_artist": "更新歌手",
+    "update_album": "更新专辑",
+    "select_fields_to_update": "请至少选择一个要更新的字段",
+    "enter_artist_or_album": "请输入歌手或专辑名称",
+    "saving": "保存中",
+    "batch_save_success": "成功更新"
 }

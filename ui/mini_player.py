@@ -228,6 +228,9 @@ class MiniPlayer(QWidget):
         self._player.engine.duration_changed.connect(self._on_duration_changed)
         self._player.engine.current_track_changed.connect(self._on_track_changed)
 
+        # Initialize with current track info
+        self._initialize_current_track()
+
     def _toggle_play_pause(self):
         """Toggle play/pause."""
         if self._player.engine.state == PlayerState.PLAYING:
@@ -243,6 +246,30 @@ class MiniPlayer(QWidget):
                 (self._progress_slider.value() / 1000) * self._current_duration * 1000
             )
             self._player.engine.seek(position_ms)
+
+    def _initialize_current_track(self):
+        """Initialize with current track info if playing."""
+        # Update play/pause button state
+        if self._player.engine.state == PlayerState.PLAYING:
+            self._play_pause_btn.setText("⏸")
+        else:
+            self._play_pause_btn.setText("▶️")
+
+        # Get current track info
+        current_track = self._player.engine.current_track
+        if current_track:
+            self._on_track_changed(current_track)
+
+            # Initialize position and duration
+            position_ms = self._player.engine.position()
+            self._on_position_changed(position_ms)
+
+            # Get duration from player if available
+            duration_ms = self._player.engine.duration()
+            if duration_ms > 0:
+                self._on_duration_changed(duration_ms)
+        else:
+            self._on_track_changed(None)
 
     def _on_state_changed(self, state: PlayerState):
         """Handle player state change."""

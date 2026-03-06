@@ -1082,7 +1082,7 @@ class LibraryView(QWidget):
                         )
 
     def _edit_media_info(self):
-        """Edit media information for selected track."""
+        """Edit media information for selected tracks (batch edit support)."""
         from PySide6.QtWidgets import (
             QDialog,
             QVBoxLayout,
@@ -1091,6 +1091,8 @@ class LibraryView(QWidget):
             QLineEdit,
             QDialogButtonBox,
             QFormLayout,
+            QCheckBox,
+            QProgressBar,
         )
         from services import MetadataService
 
@@ -1098,21 +1100,29 @@ class LibraryView(QWidget):
         if not selected_items:
             return
 
-        track_id = None
+        # Get all selected track IDs
+        track_ids = []
         for item in selected_items:
             if item.column() == 0:
                 track_id = item.data(Qt.UserRole)
-                break
+                if track_id:
+                    track_ids.append(track_id)
 
-        if not track_id:
+        if not track_ids:
             return
 
-        track = self._db.get_track(track_id)
-        if not track:
+        # Get first track for initial values
+        first_track = self._db.get_track(track_ids[0])
+        if not first_track:
             return
+
+        is_batch_edit = len(track_ids) > 1
 
         dialog = QDialog(self)
-        dialog.setWindowTitle(t("edit_media_info_title"))
+        if is_batch_edit:
+            dialog.setWindowTitle(f"{t('edit_media_info_title')} ({len(track_ids)} {t('tracks')})")
+        else:
+            dialog.setWindowTitle(t("edit_media_info_title"))
         dialog.setMinimumWidth(450)
         dialog.setStyleSheet("""
             QDialog {
@@ -1134,6 +1144,25 @@ class LibraryView(QWidget):
             QLineEdit:focus {
                 border: 1px solid #1db954;
             }
+            QCheckBox {
+                color: #ffffff;
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #1db954;
+                border: 2px solid #1db954;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #181818;
+                border: 2px solid #404040;
+                border-radius: 3px;
+            }
             QPushButton {
                 background-color: #1db954;
                 color: #000000;
@@ -1152,31 +1181,77 @@ class LibraryView(QWidget):
             QPushButton[role="cancel"]:hover {
                 background-color: #505050;
             }
+            QPushButton:disabled {
+                background-color: #404040;
+                color: #808080;
+            }
         """)
 
         layout = QVBoxLayout(dialog)
+
+        # Info label for batch edit
+        if is_batch_edit:
+            info_label = QLabel(f"{t('batch_edit_info')}: {len(track_ids)} {t('tracks')}")
+            info_label.setStyleSheet("color: #1db954; font-size: 14px; padding: 10px; background-color: #1a1a1a; border-radius: 4px;")
+            layout.addWidget(info_label)
 
         form_layout = QFormLayout()
         form_layout.setSpacing(10)
         form_layout.setLabelAlignment(Qt.AlignRight)
 
-        title_input = QLineEdit(track.title or "")
-        title_input.setPlaceholderText(t("enter_title"))
-        artist_input = QLineEdit(track.artist or "")
+        # Only show title field for single track edit
+        title_input = None
+        if not is_batch_edit:
+            title_input = QLineEdit(first_track.title or "")
+            title_input.setPlaceholderText(t("enter_title"))
+            form_layout.addRow(t("title") + ":", title_input)
+
+        artist_input = QLineEdit(first_track.artist or "")
         artist_input.setPlaceholderText(t("enter_artist"))
-        album_input = QLineEdit(track.album or "")
+        album_input = QLineEdit(first_track.album or "")
         album_input.setPlaceholderText(t("enter_album"))
 
-        path_label = QLabel(track.path)
-        path_label.setStyleSheet("color: #808080; font-size: 11px;")
-        path_label.setWordWrap(True)
+        # For batch edit, add checkboxes to control which fields to update
+        if is_batch_edit:
+            update_artist_cb = QCheckBox(t("update_artist"))
+            update_artist_cb.setChecked(True)
+            update_album_cb = QCheckBox(t("update_album"))
+            update_album_cb.setChecked(True)
 
-        form_layout.addRow(t("title") + ":", title_input)
-        form_layout.addRow(t("artist") + ":", artist_input)
-        form_layout.addRow(t("album") + ":", album_input)
-        form_layout.addRow(t("file") + ":", path_label)
+            form_layout.addRow(t("artist") + ":", artist_input)
+            form_layout.addRow("", update_artist_cb)
+            form_layout.addRow(t("album") + ":", album_input)
+            form_layout.addRow("", update_album_cb)
+        else:
+            form_layout.addRow(t("artist") + ":", artist_input)
+            form_layout.addRow(t("album") + ":", album_input)
+
+            # Show file path for single track
+            path_label = QLabel(first_track.path)
+            path_label.setStyleSheet("color: #808080; font-size: 11px;")
+            path_label.setWordWrap(True)
+            form_layout.addRow(t("file") + ":", path_label)
 
         layout.addLayout(form_layout)
+
+        # Progress bar for batch edit
+        progress_bar = None
+        if is_batch_edit:
+            progress_bar = QProgressBar()
+            progress_bar.setVisible(False)
+            progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 2px solid #404040;
+                    border-radius: 5px;
+                    text-align: center;
+                    color: #ffffff;
+                }
+                QProgressBar::chunk {
+                    background-color: #1db954;
+                    border-radius: 3px;
+                }
+            """)
+            layout.addWidget(progress_bar)
 
         buttons = QDialogButtonBox()
         ok_button = QPushButton(t("save"))
@@ -1190,24 +1265,80 @@ class LibraryView(QWidget):
         layout.addWidget(buttons)
 
         def save_changes():
-            new_title = title_input.text().strip() or track.title
-            new_artist = artist_input.text().strip() or track.artist
-            new_album = album_input.text().strip() or track.album
+            if is_batch_edit:
+                # Batch edit mode
+                new_artist = artist_input.text().strip()
+                new_album = album_input.text().strip()
 
-            success = MetadataService.save_metadata(
-                track.path, title=new_title, artist=new_artist, album=new_album
-            )
+                if not update_artist_cb.isChecked() and not update_album_cb.isChecked():
+                    QMessageBox.warning(self, t("warning"), t("select_fields_to_update"))
+                    return
 
-            if success:
-                self._db.update_track(
-                    track_id, title=new_title, artist=new_artist, album=new_album
-                )
-                QMessageBox.information(self, t("success"), t("media_saved"))
-                self.refresh()
+                if not new_artist and not new_album:
+                    QMessageBox.warning(self, t("warning"), t("enter_artist_or_album"))
+                    return
+
+                # Show progress
+                if progress_bar:
+                    progress_bar.setVisible(True)
+                    progress_bar.setMaximum(len(track_ids))
+                    ok_button.setEnabled(False)
+                    ok_button.setText(t("saving") + "...")
+
+                success_count = 0
+                for i, track_id in enumerate(track_ids):
+                    track = self._db.get_track(track_id)
+                    if not track:
+                        continue
+
+                    # Determine values to save
+                    save_artist = new_artist if (update_artist_cb.isChecked() and new_artist) else track.artist
+                    save_album = new_album if (update_album_cb.isChecked() and new_album) else track.album
+
+                    # Save to file
+                    success = MetadataService.save_metadata(
+                        track.path, title=track.title, artist=save_artist, album=save_album
+                    )
+
+                    if success:
+                        self._db.update_track(
+                            track_id, title=track.title, artist=save_artist, album=save_album
+                        )
+                        success_count += 1
+
+                    # Update progress
+                    if progress_bar:
+                        progress_bar.setValue(i + 1)
+
+                if success_count > 0:
+                    QMessageBox.information(
+                        self, t("success"), f"{t('batch_save_success')}: {success_count}/{len(track_ids)}"
+                    )
+                    self.refresh()
+                else:
+                    QMessageBox.warning(self, "Error", t("media_save_failed"))
+
+                dialog.accept()
             else:
-                QMessageBox.warning(self, "Error", t("media_save_failed"))
+                # Single track edit mode
+                new_title = title_input.text().strip() or first_track.title
+                new_artist = artist_input.text().strip() or first_track.artist
+                new_album = album_input.text().strip() or first_track.album
 
-            dialog.accept()
+                success = MetadataService.save_metadata(
+                    first_track.path, title=new_title, artist=new_artist, album=new_album
+                )
+
+                if success:
+                    self._db.update_track(
+                        track_ids[0], title=new_title, artist=new_artist, album=new_album
+                    )
+                    QMessageBox.information(self, t("success"), t("media_saved"))
+                    self.refresh()
+                else:
+                    QMessageBox.warning(self, "Error", t("media_save_failed"))
+
+                dialog.accept()
 
         ok_button.clicked.connect(save_changes)
         cancel_button.clicked.connect(dialog.reject)

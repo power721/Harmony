@@ -91,5 +91,12 @@
     "clear_queue_confirm": "Are you sure you want to clear the entire queue?",
     "remove_from_queue": "Remove from Queue",
     "tracks_in_queue": "tracks in queue",
-    "tip_right_click": "💡 Tip: Right-click on tracks in the library to add them to the queue"
+    "tip_right_click": "💡 Tip: Right-click on tracks in the library to add them to the queue",
+    "batch_edit_info": "Batch edit",
+    "update_artist": "Update artist",
+    "update_album": "Update album",
+    "select_fields_to_update": "Please select at least one field to update",
+    "enter_artist_or_album": "Please enter artist or album name",
+    "saving": "Saving",
+    "batch_save_success": "Successfully updated"
 }

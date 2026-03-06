@@ -245,6 +245,15 @@ class PlayerEngine(QObject):
         """
         return self._player.position()
 
+    def duration(self) -> int:
+        """
+        Get current track duration.
+
+        Returns:
+            Duration in milliseconds
+        """
+        return self._player.duration()
+
     def set_volume(self, volume: int):
         """
         Set volume.

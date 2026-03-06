@@ -10,6 +10,7 @@ from mutagen.flac import FLAC
 from mutagen.oggvorbis import OggVorbis
 from mutagen.mp4 import MP4
 from mutagen.id3 import ID3NoHeaderError
+from mutagen.wave import WAVE
 
 
 class MetadataService:
@@ -79,6 +80,9 @@ class MetadataService:
             elif suffix in {".m4a", ".mp4"}:
                 audio = MP4(file_path)
                 metadata.update(cls._parse_mp4(audio))
+            elif suffix == ".wav":
+                audio = WAVE(file_path)
+                metadata.update(cls._parse_wav(audio))
             else:
                 # Fallback to mutagen.File
                 audio = mutagen.File(file_path)
@@ -200,6 +204,38 @@ class MetadataService:
         return metadata
 
     @classmethod
+    def _parse_wav(cls, audio: WAVE) -> Dict[str, Any]:
+        """Parse metadata from WAV file."""
+        metadata = {"duration": audio.info.length}
+
+        # WAV files can have ID3 tags
+        try:
+            if audio.tags:
+                # Title
+                if "TIT2" in audio.tags:
+                    metadata["title"] = str(audio.tags["TIT2"])
+
+                # Artist
+                if "TPE1" in audio.tags:
+                    metadata["artist"] = str(audio.tags["TPE1"])
+
+                # Album
+                if "TALB" in audio.tags:
+                    metadata["album"] = str(audio.tags["TALB"])
+
+                # Extract cover art from APIC frame
+                if "APIC:" in audio.tags:
+                    for key in audio.tags:
+                        if key.startswith("APIC"):
+                            apic = audio.tags[key]
+                            metadata["cover"] = apic.data
+                            break
+        except (ID3NoHeaderError, AttributeError):
+            pass
+
+        return metadata
+
+    @classmethod
     def save_cover(cls, file_path: str, output_path: str) -> bool:
         """
         Extract and save cover art from an audio file.
@@ -260,6 +296,9 @@ class MetadataService:
             elif suffix in {".m4a", ".mp4"}:
                 audio = MP4(file_path)
                 cls._save_mp4_metadata(audio, title, artist, album)
+            elif suffix == ".wav":
+                audio = WAVE(file_path)
+                cls._save_wav_metadata(audio, title, artist, album)
             else:
                 audio = mutagen.File(file_path)
                 if audio is not None:
@@ -332,6 +371,25 @@ class MetadataService:
                 audio["\xa9alb"] = [album]
         except Exception as e:
             print(f"Error saving MP4 metadata: {e}")
+
+    @classmethod
+    def _save_wav_metadata(cls, audio: WAVE, title: str, artist: str, album: str):
+        """Save metadata to WAV file using ID3 tags."""
+        try:
+            if audio.tags is None:
+                from mutagen.id3 import ID3
+                audio.add_tags()
+
+            from mutagen.id3 import TIT2, TPE1, TALB
+
+            if title is not None:
+                audio.tags["TIT2"] = TIT2(encoding=3, text=title)
+            if artist is not None:
+                audio.tags["TPE1"] = TPE1(encoding=3, text=artist)
+            if album is not None:
+                audio.tags["TALB"] = TALB(encoding=3, text=album)
+        except Exception as e:
+            print(f"Error saving WAV metadata: {e}")
 
     @classmethod
     def _save_generic_metadata(cls, audio, title: str, artist: str, album: str):
