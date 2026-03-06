@@ -1,6 +1,7 @@
 """
 Library view widget for browsing the music library.
 """
+
 import shutil
 
 from PySide6.QtWidgets import (
@@ -53,7 +54,11 @@ class LibraryView(QWidget):
         self._current_sub_view = "all"  # all, artists, albums (for library view)
         self._current_playing_track_id = None  # Track currently playing
         self._current_playing_row = -1  # Row of currently playing track
-        self._view_search_texts = {"all": "", "favorites": "", "history": ""}  # 保存每个视图的搜索文本
+        self._view_search_texts = {
+            "all": "",
+            "favorites": "",
+            "history": "",
+        }  # 保存每个视图的搜索文本
 
         self._setup_ui()
         self._setup_connections()
@@ -710,8 +715,7 @@ class LibraryView(QWidget):
         """Filter a list of tracks by search query."""
         query_lower = query.lower()
         return [
-            track for track in tracks
-            if self._track_matches_query(track, query_lower)
+            track for track in tracks if self._track_matches_query(track, query_lower)
         ]
 
     def _track_matches_query(self, track: Track, query: str) -> bool:
@@ -719,16 +723,16 @@ class LibraryView(QWidget):
         query_lower = query.lower() if isinstance(query, str) else query
 
         return (
-            (track.title and query_lower in track.title.lower()) or
-            (track.artist and query_lower in track.artist.lower()) or
-            (track.album and query_lower in track.album.lower())
+            (track.title and query_lower in track.title.lower())
+            or (track.artist and query_lower in track.artist.lower())
+            or (track.album and query_lower in track.album.lower())
         )
 
     def _format_file_size(self, size_bytes: int) -> str:
         """Format file size in human-readable format."""
-        for unit in ['B', 'KB', 'MB', 'GB']:
+        for unit in ["B", "KB", "MB", "GB"]:
             if size_bytes < 1024.0:
-                if unit == 'B':
+                if unit == "B":
                     return f"{size_bytes} {unit}"
                 else:
                     return f"{size_bytes:.1f} {unit}"
@@ -761,6 +765,7 @@ class LibraryView(QWidget):
 
         # Use QTimer to delay restoration until after table is fully updated
         from PySide6.QtCore import QTimer
+
         QTimer.singleShot(50, restore_selection)
 
     def _on_search(self, query: str):
@@ -784,7 +789,9 @@ class LibraryView(QWidget):
             # 在收藏的 tracks 中搜索
             all_favorites = self._db.get_favorites()
             tracks = self._filter_tracks_by_query(all_favorites, query)
-            status_text = f'{len(tracks)} {t("results_for")} "{query}" {t("in_favorites")}'
+            status_text = (
+                f'{len(tracks)} {t("results_for")} "{query}" {t("in_favorites")}'
+            )
 
         elif self._current_view == "history":
             # 在历史记录中搜索
@@ -794,7 +801,9 @@ class LibraryView(QWidget):
                 track = self._db.get_track(entry.track_id)
                 if track and self._track_matches_query(track, query):
                     tracks.append(track)
-            status_text = f'{len(tracks)} {t("results_for")} "{query}" {t("in_history")}'
+            status_text = (
+                f'{len(tracks)} {t("results_for")} "{query}" {t("in_history")}'
+            )
         else:
             tracks = []
             status_text = f'0 {t("results_for")} "{query}"'
@@ -1014,6 +1023,12 @@ class LibraryView(QWidget):
         open_location_action = menu.addAction(t("open_file_location"))
         open_location_action.triggered.connect(lambda: self._open_file_location())
 
+        menu.addSeparator()
+
+        # Remove from library action
+        remove_action = menu.addAction(t("remove_from_library"))
+        remove_action.triggered.connect(lambda: self._remove_from_library())
+
         menu.exec_(self._tracks_table.mapToGlobal(pos))
 
     def _add_selected_to_queue(self):
@@ -1075,6 +1090,7 @@ class LibraryView(QWidget):
 
         if added_count > 0 and removed_count == 0:
             from utils import format_count_message
+
             message = format_count_message("added_x_tracks_to_favorites", added_count)
             QMessageBox.information(
                 self,
@@ -1083,14 +1099,19 @@ class LibraryView(QWidget):
             )
         elif removed_count > 0 and added_count == 0:
             from utils import format_count_message
-            message = format_count_message("removed_x_tracks_from_favorites", removed_count)
+
+            message = format_count_message(
+                "removed_x_tracks_from_favorites", removed_count
+            )
             QMessageBox.information(
                 self,
                 t("removed_from_favorites"),
                 message,
             )
         else:
-            message = t("added_x_removed_y").format(added=added_count, removed=removed_count)
+            message = t("added_x_removed_y").format(
+                added=added_count, removed=removed_count
+            )
             QMessageBox.information(
                 self,
                 t("updated_favorites"),
@@ -1299,7 +1320,9 @@ class LibraryView(QWidget):
 
         dialog = QDialog(self)
         if is_batch_edit:
-            dialog.setWindowTitle(f"{t('edit_media_info_title')} ({len(track_ids)} {t('tracks')})")
+            dialog.setWindowTitle(
+                f"{t('edit_media_info_title')} ({len(track_ids)} {t('tracks')})"
+            )
         else:
             dialog.setWindowTitle(t("edit_media_info_title"))
         dialog.setMinimumWidth(450)
@@ -1370,8 +1393,12 @@ class LibraryView(QWidget):
 
         # Info label for batch edit
         if is_batch_edit:
-            info_label = QLabel(f"{t('batch_edit_info')}: {len(track_ids)} {t('tracks')}")
-            info_label.setStyleSheet("color: #1db954; font-size: 14px; padding: 10px; background-color: #1a1a1a; border-radius: 4px;")
+            info_label = QLabel(
+                f"{t('batch_edit_info')}: {len(track_ids)} {t('tracks')}"
+            )
+            info_label.setStyleSheet(
+                "color: #1db954; font-size: 14px; padding: 10px; background-color: #1a1a1a; border-radius: 4px;"
+            )
             layout.addWidget(info_label)
 
         form_layout = QFormLayout()
@@ -1407,6 +1434,7 @@ class LibraryView(QWidget):
 
             # Show file information for single track
             from pathlib import Path
+
             try:
                 track_file = Path(first_track.path)
                 file_size = track_file.stat().st_size
@@ -1414,34 +1442,35 @@ class LibraryView(QWidget):
 
                 # Get audio codec info using mutagen
                 import mutagen
+
                 audio_info = mutagen.File(first_track.path)
                 media_info = []
 
-                if audio_info and hasattr(audio_info, 'info'):
+                if audio_info and hasattr(audio_info, "info"):
                     info = audio_info.info
                     # Bitrate
-                    if hasattr(info, 'bitrate') and info.bitrate:
+                    if hasattr(info, "bitrate") and info.bitrate:
                         media_info.append(f"{info.bitrate // 1000} kbps")
 
                     # Sample rate
-                    if hasattr(info, 'sample_rate') and info.sample_rate:
+                    if hasattr(info, "sample_rate") and info.sample_rate:
                         media_info.append(f"{info.sample_rate // 1000} kHz")
 
                     # Length/Duration
-                    if hasattr(info, 'length') and info.length:
+                    if hasattr(info, "length") and info.length:
                         minutes = int(info.length // 60)
                         seconds = int(info.length % 60)
                         media_info.append(f"{minutes}:{seconds:02d}")
 
                 # Format (codec)
                 if audio_info:
-                    mime_type = audio_info.mime if hasattr(audio_info, 'mime') else []
+                    mime_type = audio_info.mime if hasattr(audio_info, "mime") else []
                     if mime_type:
-                        format_str = mime_type[0].split('/')[-1].upper()
+                        format_str = mime_type[0].split("/")[-1].upper()
                         media_info.append(format_str)
                     else:
                         # Try to get format from type
-                        if hasattr(audio_info, 'type'):
+                        if hasattr(audio_info, "type"):
                             media_info.append(audio_info.type)
 
                 # Create info text
@@ -1513,7 +1542,9 @@ class LibraryView(QWidget):
                 new_album = album_input.text().strip()
 
                 if not update_artist_cb.isChecked() and not update_album_cb.isChecked():
-                    QMessageBox.warning(self, t("warning"), t("select_fields_to_update"))
+                    QMessageBox.warning(
+                        self, t("warning"), t("select_fields_to_update")
+                    )
                     return
 
                 if not new_artist and not new_album:
@@ -1534,17 +1565,31 @@ class LibraryView(QWidget):
                         continue
 
                     # Determine values to save
-                    save_artist = new_artist if (update_artist_cb.isChecked() and new_artist) else track.artist
-                    save_album = new_album if (update_album_cb.isChecked() and new_album) else track.album
+                    save_artist = (
+                        new_artist
+                        if (update_artist_cb.isChecked() and new_artist)
+                        else track.artist
+                    )
+                    save_album = (
+                        new_album
+                        if (update_album_cb.isChecked() and new_album)
+                        else track.album
+                    )
 
                     # Save to file
                     success = MetadataService.save_metadata(
-                        track.path, title=track.title, artist=save_artist, album=save_album
+                        track.path,
+                        title=track.title,
+                        artist=save_artist,
+                        album=save_album,
                     )
 
                     if success:
                         self._db.update_track(
-                            track_id, title=track.title, artist=save_artist, album=save_album
+                            track_id,
+                            title=track.title,
+                            artist=save_artist,
+                            album=save_album,
                         )
                         success_count += 1
 
@@ -1554,7 +1599,9 @@ class LibraryView(QWidget):
 
                 if success_count > 0:
                     QMessageBox.information(
-                        self, t("success"), f"{t('batch_save_success')}: {success_count}/{len(track_ids)}"
+                        self,
+                        t("success"),
+                        f"{t('batch_save_success')}: {success_count}/{len(track_ids)}",
                     )
                     # Save the track IDs to restore selection after refresh
                     self._track_ids_to_restore = track_ids
@@ -1572,12 +1619,18 @@ class LibraryView(QWidget):
                 new_album = album_input.text().strip() or first_track.album
 
                 success = MetadataService.save_metadata(
-                    first_track.path, title=new_title, artist=new_artist, album=new_album
+                    first_track.path,
+                    title=new_title,
+                    artist=new_artist,
+                    album=new_album,
                 )
 
                 if success:
                     self._db.update_track(
-                        track_ids[0], title=new_title, artist=new_artist, album=new_album
+                        track_ids[0],
+                        title=new_title,
+                        artist=new_artist,
+                        album=new_album,
                     )
                     QMessageBox.information(self, t("success"), t("media_saved"))
                     # Save the track ID to restore selection after refresh
@@ -1623,6 +1676,7 @@ class LibraryView(QWidget):
         file_path = Path(track.path)
         if not file_path.exists():
             from PySide6.QtWidgets import QMessageBox
+
             QMessageBox.warning(self, "Error", t("file_not_found"))
             return
 
@@ -1655,3 +1709,50 @@ class LibraryView(QWidget):
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _remove_from_library(self):
+        """Remove selected tracks from library (does not delete files)."""
+        selected_items = self._tracks_table.selectedItems()
+        if not selected_items:
+            return
+
+        track_ids = []
+        for item in selected_items:
+            if item.column() == 0:
+                track_id = item.data(Qt.UserRole)
+                if track_id:
+                    track_ids.append(track_id)
+
+        if not track_ids:
+            return
+
+        from utils import format_count_message
+
+        count = len(track_ids)
+        confirm_message = format_count_message("remove_from_library_confirm", count)
+
+        reply = QMessageBox.question(
+            self,
+            t("remove_from_library"),
+            confirm_message,
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        removed_count = 0
+        for track_id in track_ids:
+            if self._db.remove_track(track_id):
+                removed_count += 1
+
+        if removed_count > 0:
+            success_message = format_count_message(
+                "remove_from_library_success", removed_count
+            )
+            QMessageBox.information(
+                self,
+                t("remove_from_library"),
+                success_message,
+            )
+            self.refresh()

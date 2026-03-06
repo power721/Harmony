@@ -448,6 +448,16 @@ class DatabaseManager:
 
         return cursor.rowcount > 0
 
+    def remove_track(self, track_id: int) -> bool:
+        """Remove a track from the library (does not delete the file)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
+        conn.commit()
+
+        return cursor.rowcount > 0
+
     # Play history operations
 
     def add_play_history(self, track_id: int) -> int:
