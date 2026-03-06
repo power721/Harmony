@@ -620,6 +620,7 @@ class MainWindow(QMainWindow):
                     self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("lyrics_found_parse_failed")}<br><br>{t("ensure_lrc_valid")}</div>')
                 )
             else:
+                # No lyrics file exists, show no lyrics message
                 self._lyrics_view.setHtml(
                     self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>')
                 )
@@ -880,9 +881,15 @@ class MainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             if LyricsService.delete_lyrics(track.path):
+                # Clear lyrics immediately and reset state
+                self._current_lyrics = []
+                self._current_lyric_line = None
+                title = track.title or ""
+                artist = track.artist or ""
+                self._lyrics_view.setHtml(
+                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>')
+                )
                 QMessageBox.information(self, t("success"), t("lyrics_deleted"))
-                # Refresh lyrics display
-                self._refresh_lyrics()
             else:
                 QMessageBox.warning(self, "Error", t("lyrics_delete_failed"))
 
@@ -1029,7 +1036,7 @@ class MainWindow(QMainWindow):
             }
 
             .container {
-                padding: 20vh 20px;
+                padding: 16vh 20px;
                 line-height: 2.4;
                 font-size: 16px;
                 color: #666666;
