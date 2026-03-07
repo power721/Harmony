@@ -98,7 +98,7 @@ class MetadataService:
 
         # Default artist if none found
         if not metadata["artist"]:
-            metadata["artist"] = "Unknown Artist"
+            metadata["artist"] = ""
 
         return metadata
 
