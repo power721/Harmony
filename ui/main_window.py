@@ -588,6 +588,8 @@ class MainWindow(QMainWindow):
 
     def _play_track(self, track_id: int):
         """Play a track."""
+        # Clear cloud playback state when playing local tracks
+        self._config.clear_cloud_playback_state()
         self._player.play_track(track_id)
 
     def _play_cloud_track(self, temp_path: str):
@@ -1274,6 +1276,51 @@ class MainWindow(QMainWindow):
 
     def _restore_playback_state(self):
         """Restore previous playback state."""
+        # First check for cloud playback state
+        cloud_state = self._config.get_cloud_playback_state()
+
+        if cloud_state and cloud_state.get('account_id'):
+            # Restore cloud playback state
+            account_id = cloud_state.get('account_id')
+            file_path = cloud_state.get('file_path')
+            file_fid = cloud_state.get('file_fid')
+
+            # Check if it was playing when closed
+            was_playing = self._config.get_cloud_was_playing()
+            print(f"[DEBUG] Restoring cloud playback, was_playing: {was_playing}")
+
+            def restore_cloud_state():
+                # Switch to cloud drive view
+                self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
+
+                # Update sidebar selection - set cloud button as checked
+                if hasattr(self, '_nav_cloud'):
+                    self._nav_cloud.setChecked(True)
+                if hasattr(self, '_nav_library'):
+                    self._nav_library.setChecked(False)
+                if hasattr(self, '_nav_playlists'):
+                    self._nav_playlists.setChecked(False)
+                if hasattr(self, '_nav_queue'):
+                    self._nav_queue.setChecked(False)
+                if hasattr(self, '_nav_favorites'):
+                    self._nav_favorites.setChecked(False)
+                if hasattr(self, '_nav_history'):
+                    self._nav_history.setChecked(False)
+
+                # Restore cloud drive view state
+                self._cloud_drive_view.restore_playback_state(
+                    account_id=account_id,
+                    file_path=file_path,
+                    file_fid=file_fid,
+                    auto_play=was_playing
+                )
+
+            # Use QTimer to restore after UI is fully loaded
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(200, restore_cloud_state)
+            return
+
+        # If no cloud state, restore local track playback state
         current_track_id = self._settings.value("current_track_id", 0, type=int)
         playback_position = self._settings.value("playback_position", 0, type=int)
         was_playing = self._settings.value("was_playing", False, type=bool)
@@ -1310,6 +1357,18 @@ class MainWindow(QMainWindow):
 
         # Save volume
         self._settings.setValue("volume", self._player.engine.volume)
+
+        # Save whether cloud was playing
+        cloud_state = self._config.get_cloud_playback_state()
+        if cloud_state and cloud_state.get('account_id'):
+            # Check if we're currently playing cloud files
+            is_playing_cloud = (
+                hasattr(self, '_cloud_playlist_manager') and
+                self._cloud_playlist_manager is not None and
+                self._player.engine.state == PlayerState.PLAYING
+            )
+            self._config.set_cloud_was_playing(is_playing_cloud)
+            print(f"[DEBUG] Saving cloud was_playing: {is_playing_cloud}")
 
         # Save playback state
         if self._player.current_track_id:
@@ -1354,6 +1413,9 @@ class CloudPlaylistManager:
         first_file = cloud_files[start_index]
         self._downloaded_files[first_file.file_id] = first_file_path
 
+        # Save playback state to config
+        self._save_playback_state(first_file)
+
         # Build playlist dict with first file
         playlist = []
         for i, cloud_file in enumerate(cloud_files):
@@ -1376,6 +1438,20 @@ class CloudPlaylistManager:
         # Load into player and start playing FIRST (before connecting signal)
         self._player_engine.load_playlist(playlist)
         self._player_engine.play_at(start_index)
+
+    def _save_playback_state(self, cloud_file):
+        """Save current cloud playback state to config."""
+        if hasattr(self._cloud_view, '_config_manager') and self._cloud_view._config_manager:
+            if hasattr(self._cloud_view, '_current_account') and self._cloud_view._current_account:
+                # Get current folder path
+                folder_path = self._cloud_view._current_parent_id
+
+                # Save state
+                self._cloud_view._config_manager.set_cloud_playback_state(
+                    account_id=self._cloud_view._current_account.id,
+                    file_path=folder_path,
+                    file_fid=cloud_file.file_id
+                )
 
         # Connect signal AFTER playback has started (prevents immediate trigger)
         try:

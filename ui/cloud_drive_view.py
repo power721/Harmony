@@ -997,6 +997,93 @@ class CloudDriveView(QWidget):
                 if empty_label:
                     empty_label.setText(t("add_cloud_account"))
 
+    def restore_playback_state(self, account_id: int, file_path: str, file_fid: str, auto_play: bool = False):
+        """
+        Restore previous cloud playback state.
+
+        Args:
+            account_id: Account ID to select
+            file_path: Parent folder ID to load
+            file_fid: File ID to highlight (optional)
+            auto_play: Whether to auto-play the file (default: False)
+        """
+        # Store file_fid and auto_play for later use
+        self._restore_file_fid = file_fid
+        self._restore_auto_play = auto_play
+
+        # Select the account
+        accounts = self._db.get_cloud_accounts()
+        target_account = None
+
+        for account in accounts:
+            if account.id == account_id:
+                target_account = account
+                break
+
+        if not target_account:
+            print(f"[DEBUG] Account {account_id} not found for state restoration")
+            return False
+
+        # Set current account
+        self._current_account = target_account
+        self._current_parent_id = file_path
+
+        # Update UI to show selected account
+        for i in range(self._account_list.count()):
+            item = self._account_list.item(i)
+            account = item.data(Qt.UserRole)
+            if account.id == account_id:
+                self._account_list.setCurrentItem(item)
+                break
+
+        # Update account title
+        self._account_title.setText(target_account.account_name)
+
+        # Load files for the folder
+        self._load_files()
+
+        # If file_fid is provided, try to select/highlight and optionally play the file
+        if file_fid and hasattr(self, '_file_table'):
+            # Use QTimer to wait for table to populate, then select/play the file
+            QTimer.singleShot(500, lambda: self._select_and_play_file_by_fid(file_fid, auto_play))
+
+        return True
+
+    def _select_and_play_file_by_fid(self, file_fid: str, auto_play: bool = False):
+        """Select and optionally play a file in the table by its file ID."""
+        if not hasattr(self, '_file_table'):
+            return
+
+        for row in range(self._file_table.rowCount()):
+            item = self._file_table.item(row, 0)
+            if item and item.data(Qt.UserRole):
+                cloud_file = item.data(Qt.UserRole)
+                if hasattr(cloud_file, 'file_id') and cloud_file.file_id == file_fid:
+                    # Select the file
+                    self._file_table.selectRow(row)
+                    self._file_table.scrollToItem(item)
+
+                    # Auto-play the file if requested and it's an audio file
+                    if auto_play and cloud_file.file_type == 'audio':
+                        print(f"[DEBUG] Auto-playing restored cloud file: {cloud_file.name}")
+                        # Use a small delay to ensure UI is ready
+                        QTimer.singleShot(300, lambda: self._play_audio_file(cloud_file))
+                    break
+
+    def _select_file_by_fid(self, file_fid: str):
+        """Select a file in the table by its file ID (without playing)."""
+        if not hasattr(self, '_file_table'):
+            return
+
+        for row in range(self._file_table.rowCount()):
+            item = self._file_table.item(row, 0)
+            if item and item.data(Qt.UserRole):
+                cloud_file = item.data(Qt.UserRole)
+                if hasattr(cloud_file, 'file_id') and cloud_file.file_id == file_fid:
+                    self._file_table.selectRow(row)
+                    self._file_table.scrollToItem(item)
+                    break
+
 
 class CloudFileDownloadThread(QThread):
     """Thread for downloading cloud files."""

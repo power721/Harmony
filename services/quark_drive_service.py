@@ -162,7 +162,7 @@ class QuarkDriveService:
                 'uc_param_str': '',
                 'pdir_fid': parent_id,
                 '_page': '1',
-                '_size': '100',
+                '_size': '2000',
                 '_fetch_total': 'true',
                 '_fetch_sub_dirs': '1',
                 '_sort': 'file_type:asc,updated_at:desc'

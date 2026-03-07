@@ -124,3 +124,50 @@ class ConfigManager:
             dir_path: Path to cloud download directory
         """
         self.set("cloud_download_dir", dir_path)
+
+    def get_cloud_playback_state(self) -> dict:
+        """
+        Get the saved cloud playback state.
+
+        Returns:
+            Dict with keys: account_id, file_path, file_fid, or empty dict if not set
+        """
+        return self.get("cloud_playback_state", {})
+
+    def set_cloud_playback_state(self, account_id: int, file_path: str, file_fid: str):
+        """
+        Set the cloud playback state.
+
+        Args:
+            account_id: Cloud account ID
+            file_path: Full path of the file in cloud drive
+            file_fid: File ID in cloud drive
+        """
+        state = {
+            "account_id": account_id,
+            "file_path": file_path,
+            "file_fid": file_fid
+        }
+        self.set("cloud_playback_state", state)
+
+    def clear_cloud_playback_state(self):
+        """Clear the saved cloud playback state."""
+        self.set("cloud_playback_state", {})
+
+    def get_cloud_was_playing(self) -> bool:
+        """
+        Get whether cloud was playing when app closed.
+
+        Returns:
+            True if cloud was playing, False otherwise
+        """
+        return self.get("cloud_was_playing", False)
+
+    def set_cloud_was_playing(self, was_playing: bool):
+        """
+        Set whether cloud was playing.
+
+        Args:
+            was_playing: True if cloud was playing, False otherwise
+        """
+        self.set("cloud_was_playing", was_playing)
