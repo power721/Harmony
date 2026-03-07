@@ -998,20 +998,213 @@ class CloudDriveView(QWidget):
 
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for downloaded cloud file."""
+        from PySide6.QtWidgets import (
+            QDialog,
+            QVBoxLayout,
+            QHBoxLayout,
+            QLabel,
+            QLineEdit,
+            QDialogButtonBox,
+            QPushButton,
+            QFormLayout,
+            QMessageBox,
+        )
+        from services import MetadataService
+        from pathlib import Path
+
         if not file.local_path:
+            QMessageBox.warning(self, "Error", "File not downloaded")
             return
 
-        # Import the media info editor from LibraryView
-        # For now, show a simple message
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(
-            self,
-            t("edit_media_info"),
-            f"File: {file.name}\n\nThis will open the media info editor for the downloaded file.\n\nFeature coming soon!"
-        )
+        # Extract current metadata from file
+        current_metadata = MetadataService.extract_metadata(file.local_path)
 
-        # TODO: Implement full media info editing
-        # This should open the same editor as LibraryView but for the local file
+        # Create dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{t('edit_media_info_title')} - {file.name}")
+        dialog.setMinimumWidth(450)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+            }
+            QLineEdit {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #e0e0e0;
+            }
+            QPushButton[role="cancel"]:hover {
+                background-color: #505050;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignRight)
+
+        # Title field
+        title_input = QLineEdit(current_metadata.get("title") or file.name)
+        title_input.setPlaceholderText(t("enter_title"))
+        form_layout.addRow(t("title") + ":", title_input)
+
+        # Artist field
+        artist_input = QLineEdit(current_metadata.get("artist") or "")
+        artist_input.setPlaceholderText(t("enter_artist"))
+        form_layout.addRow(t("artist") + ":", artist_input)
+
+        # Album field
+        album_input = QLineEdit(current_metadata.get("album") or "")
+        album_input.setPlaceholderText(t("enter_album"))
+        form_layout.addRow(t("album") + ":", album_input)
+
+        # Show file information
+        try:
+            track_file = Path(file.local_path)
+            file_size = track_file.stat().st_size
+            file_size_str = self._format_file_size(file_size)
+
+            # Get audio codec info using mutagen
+            import mutagen
+
+            audio_info = mutagen.File(file.local_path)
+            media_info = []
+
+            if audio_info and hasattr(audio_info, "info"):
+                info = audio_info.info
+                # Bitrate
+                if hasattr(info, "bitrate") and info.bitrate:
+                    media_info.append(f"{info.bitrate // 1000} kbps")
+
+                # Sample rate
+                if hasattr(info, "sample_rate") and info.sample_rate:
+                    media_info.append(f"{info.sample_rate // 1000} kHz")
+
+                # Length/Duration
+                if hasattr(info, "length") and info.length:
+                    minutes = int(info.length // 60)
+                    seconds = int(info.length % 60)
+                    media_info.append(f"{minutes}:{seconds:02d}")
+
+            # Format (codec)
+            if audio_info:
+                mime_type = audio_info.mime if hasattr(audio_info, "mime") else []
+                if mime_type:
+                    format_str = mime_type[0].split("/")[-1].upper()
+                    media_info.append(format_str)
+                else:
+                    # Try to get format from type
+                    if hasattr(audio_info, "type"):
+                        media_info.append(audio_info.type)
+
+            # Create info text
+            file_info_text = f"{file_size_str}"
+            if media_info:
+                file_info_text += f" | {' | '.join(media_info)}"
+
+            info_label = QLabel(file_info_text)
+            info_label.setStyleSheet("color: #808080; font-size: 11px;")
+
+            # File path
+            path_label = QLabel(file.local_path)
+            path_label.setStyleSheet("color: #606060; font-size: 10px;")
+            path_label.setWordWrap(True)
+
+            # Add both labels in a vertical layout
+            info_container = QWidget()
+            info_layout = QVBoxLayout(info_container)
+            info_layout.setContentsMargins(0, 0, 0, 0)
+            info_layout.setSpacing(2)
+            info_layout.addWidget(info_label)
+            info_layout.addWidget(path_label)
+
+            form_layout.addRow(t("file") + ":", info_container)
+
+        except Exception as e:
+            # Fallback to just show path if there's an error
+            path_label = QLabel(file.local_path)
+            path_label.setStyleSheet("color: #808080; font-size: 11px;")
+            path_label.setWordWrap(True)
+            form_layout.addRow(t("file") + ":", path_label)
+
+        layout.addLayout(form_layout)
+
+        # Buttons
+        buttons = QDialogButtonBox()
+        ok_button = QPushButton(t("save"))
+        cancel_button = QPushButton(t("cancel"))
+        cancel_button.setProperty("role", "cancel")
+
+        buttons.addButton(ok_button, QDialogButtonBox.AcceptRole)
+        buttons.addButton(cancel_button, QDialogButtonBox.RejectRole)
+
+        layout.addWidget(buttons)
+
+        def save_changes():
+            new_title = title_input.text().strip() or file.name
+            new_artist = artist_input.text().strip()
+            new_album = album_input.text().strip()
+
+            # Save to file
+            success = MetadataService.save_metadata(
+                file.local_path,
+                title=new_title,
+                artist=new_artist,
+                album=new_album,
+            )
+
+            if success:
+                # Update database cache (update cloud file name if title changed)
+                if new_title != file.name:
+                    # Update the file display name in database
+                    self._db.cache_cloud_files(self._current_account.id, [file])
+
+                QMessageBox.information(self, t("success"), t("media_saved"))
+
+                # Refresh the file list to show updated metadata
+                self._load_files()
+            else:
+                QMessageBox.warning(self, "Error", t("media_save_failed"))
+
+            dialog.accept()
+
+        ok_button.clicked.connect(save_changes)
+        cancel_button.clicked.connect(dialog.reject)
+
+        dialog.exec_()
+
+    def _format_file_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        for unit in ["B", "KB", "MB", "GB"]:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
 
     def _open_file_location(self, file: CloudFile):
         """Open the file location in system file manager."""
