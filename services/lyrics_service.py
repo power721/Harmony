@@ -1,11 +1,14 @@
 """
 Lyrics service for fetching and parsing lyrics.
 """
+import re
 from pathlib import Path
 from typing import Optional, List, Tuple
 import requests
+import base64
+import zlib
+import xml.etree.ElementTree as ET
 
-from utils import parse_lrc
 from utils.lrc_parser import LyricLine
 
 
@@ -112,7 +115,7 @@ class LyricsService:
         # Try multiple online sources
         sources = [
             cls._fetch_from_netease,
-            cls._fetch_from_qq_music,
+            cls._fetch_from_kugou_music,
         ]
 
         for source in sources:
@@ -193,15 +196,68 @@ class LyricsService:
         return ""
 
     @classmethod
-    def _fetch_from_qq_music(cls, title: str, artist: str) -> str:
-        """
-        Fetch lyrics from QQ Music.
+    def _fetch_from_kugou_music(cls, title: str, artist: str) -> str:
+        try:
+            keyword = f"{title} {artist}"
+            print(f'search lyric from kugou: {keyword}')
 
-        Note: QQ Music API is more complex, this is a simplified version.
-        """
-        # QQ Music requires more complex authentication
-        # This is a placeholder for future implementation
-        return None
+            search_url = "https://lyrics.kugou.com/search"
+            download_url = "https://lyrics.kugou.com/download"
+
+            headers = {
+                "User-Agent": "Mozilla/5.0"
+            }
+
+            # 1 搜索歌词
+            params = {
+                "keyword": keyword,
+                "page": 1,
+                "pagesize": 10
+            }
+
+            r = requests.get(search_url, params=params, headers=headers, timeout=10)
+            data = r.json()
+
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return ""
+
+            # 2 选第一条
+            item = candidates[0]
+
+            lyric_id = item["id"]
+            accesskey = item["accesskey"]
+
+            # 3 下载歌词
+            params = {
+                "id": lyric_id,
+                "accesskey": accesskey,
+                "fmt": "krc",
+                "charset": "utf8"
+            }
+
+            r = requests.get(download_url, params=params, headers=headers, timeout=10)
+            data = r.json()
+
+            content = data.get("content")
+            if not content:
+                return ""
+
+            # 4 base64解码
+            krc = base64.b64decode(content)
+
+            # 5 去掉 KRC 头
+            if krc[:4] == b'krc1':
+                krc = krc[4:]
+
+            # 6 zlib 解压
+            lyric = zlib.decompress(krc)
+
+            print('get lyrics from kugou')
+            return lyric.decode("utf-8", errors="ignore")
+
+        except Exception:
+            return ""
 
     @classmethod
     def search_lyrics(cls, query: str) -> List[str]:
