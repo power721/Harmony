@@ -14,3 +14,5 @@ pymediainfo==6.1.0
 # Beautiful Soup for lyrics scraping
 beautifulsoup4==4.12.2
 lxml==5.1.0
+
+qrcode[pil]==8.2

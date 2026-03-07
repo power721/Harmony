@@ -29,6 +29,7 @@ from ui.playlist_view import PlaylistView
 from ui.player_controls import PlayerControls
 from ui.mini_player import MiniPlayer
 from ui.queue_view import QueueView
+from ui.cloud_drive_view import CloudDriveView
 from utils.global_hotkeys import GlobalHotkeys, setup_media_key_handler
 from utils import t, set_language
 
@@ -108,10 +109,12 @@ class MainWindow(QMainWindow):
         self._stacked_widget = QStackedWidget()
 
         self._library_view = LibraryView(self._db, self._player)
+        self._cloud_drive_view = CloudDriveView(self._db, self._player)
         self._playlist_view = PlaylistView(self._db, self._player)
         self._queue_view = QueueView(self._player, self._db)
 
         self._stacked_widget.addWidget(self._library_view)
+        self._stacked_widget.addWidget(self._cloud_drive_view)
         self._stacked_widget.addWidget(self._playlist_view)
         self._stacked_widget.addWidget(self._queue_view)
 
@@ -213,6 +216,7 @@ class MainWindow(QMainWindow):
         # Create navigation buttons with emoji font
         nav_buttons = [
             ("_nav_library", "🎼 " + t("library")),
+            ("_nav_cloud", "☁️ " + t("cloud_drive")),
             ("_nav_playlists", "📋 " + t("playlists")),
             ("_nav_queue", "🎶 " + t("queue")),
             ("_nav_favorites", "⭐ " + t("favorites")),
@@ -307,6 +311,7 @@ class MainWindow(QMainWindow):
         self._lyrics_view.customContextMenuRequested.connect(
             self._show_lyrics_context_menu
         )
+        self._lyrics_view.setHtml(self._build_html(""))
         self._lyrics_view.setFocusPolicy(Qt.NoFocus)  # Prevent stealing focus
 
         layout.addWidget(self._lyrics_view, 1)  # Give it stretch to fill space
@@ -317,8 +322,9 @@ class MainWindow(QMainWindow):
         """Setup signal connections."""
         # Navigation
         self._nav_library.clicked.connect(lambda: self._show_page(0))
-        self._nav_playlists.clicked.connect(lambda: self._show_page(1))
-        self._nav_queue.clicked.connect(lambda: self._show_page(2))
+        self._nav_cloud.clicked.connect(lambda: self._show_page(1))
+        self._nav_playlists.clicked.connect(lambda: self._show_page(2))
+        self._nav_queue.clicked.connect(lambda: self._show_page(3))
         self._nav_favorites.clicked.connect(self._show_favorites)
         self._nav_history.clicked.connect(self._show_history)
 
@@ -334,6 +340,8 @@ class MainWindow(QMainWindow):
         self._library_view.add_to_queue.connect(self._add_to_queue)
         self._playlist_view.track_double_clicked.connect(self._play_track)
         self._queue_view.play_track.connect(self._play_track)
+        self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
+        self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
 
         # lyrics
         self.lyricsHtmlReady.connect(self._lyrics_view.setHtml)
@@ -447,8 +455,9 @@ class MainWindow(QMainWindow):
         """Show a page in the stacked widget."""
         # Update nav button states
         self._nav_library.setChecked(index == 0)
-        self._nav_playlists.setChecked(index == 1)
-        self._nav_queue.setChecked(index == 2)
+        self._nav_cloud.setChecked(index == 1)
+        self._nav_playlists.setChecked(index == 2)
+        self._nav_queue.setChecked(index == 3)
         self._nav_favorites.setChecked(False)
         self._nav_history.setChecked(False)
 
@@ -456,8 +465,8 @@ class MainWindow(QMainWindow):
         self._stacked_widget.setCurrentIndex(index)
 
         # Auto-select first playlist when showing playlists
-        if index == 1:
-            playlist_view = self._stacked_widget.widget(1)
+        if index == 2:  # Playlists is now at index 2
+            playlist_view = self._stacked_widget.widget(2)
             if playlist_view and playlist_view._playlist_list.count() > 0:
                 if playlist_view._current_playlist_id is None:
                     playlist_view._playlist_list.setCurrentRow(0)
@@ -556,6 +565,7 @@ class MainWindow(QMainWindow):
 
         # Update sidebar
         self._nav_library.setText("🎼 " + t("library"))
+        self._nav_cloud.setText("☁️ " + t("cloud_drive"))
         self._nav_playlists.setText("📋 " + t("playlists"))
         self._nav_queue.setText("🎶 " + t("queue"))
         self._nav_favorites.setText("⭐ " + t("favorites"))
@@ -568,12 +578,46 @@ class MainWindow(QMainWindow):
 
         # Refresh views
         self._library_view.refresh()
+        self._cloud_drive_view.refresh_ui()  # Refresh cloud drive view
         self._playlist_view._refresh_playlists()
         self._queue_view.refresh_queue()
 
     def _play_track(self, track_id: int):
         """Play a track."""
         self._player.play_track(track_id)
+
+    def _play_cloud_track(self, temp_path: str):
+        """Play track from cloud (temp file)."""
+        # Create track dict for cloud file
+        track = {
+            'path': temp_path,
+            'title': 'Cloud Track',
+            'artist': 'Cloud',
+            'album': 'Cloud'
+        }
+
+        # Load directly into player engine (bypass controller which expects playlist_id)
+        self._player.engine.load_playlist([track])
+        self._player.engine.play()
+
+    def _play_cloud_playlist(self, temp_path: str, index: int, cloud_files):
+        """Play multiple cloud files as a playlist."""
+        from database.models import CloudFile
+
+        print(f"[DEBUG] Playing cloud playlist: {len(cloud_files)} files, starting at index {index}")
+
+        # Create a cloud playlist manager if needed
+        if not hasattr(self, '_cloud_playlist_manager'):
+            self._cloud_playlist_manager = CloudPlaylistManager(
+                self._cloud_drive_view,
+                self._player.engine,
+                self._db
+            )
+
+        # Load the playlist
+        self._cloud_playlist_manager.load_playlist(cloud_files, index, temp_path)
+
+
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
@@ -1286,3 +1330,157 @@ class MainWindow(QMainWindow):
         self._db.close()
 
         event.accept()
+
+
+class CloudPlaylistManager:
+    """Manages playback of cloud files with on-demand downloading."""
+
+    def __init__(self, cloud_drive_view, player_engine, db_manager):
+        self._cloud_view = cloud_drive_view
+        self._player_engine = player_engine
+        self._db = db_manager
+        self._cloud_files = []
+        self._current_index = 0
+        self._downloaded_files = {}  # Maps cloud_file_id to temp_path
+
+    def load_playlist(self, cloud_files, start_index, first_file_path):
+        """Load cloud file playlist and start playback."""
+        self._cloud_files = cloud_files
+        self._current_index = start_index
+
+        # Store first file path
+        first_file = cloud_files[start_index]
+        self._downloaded_files[first_file.file_id] = first_file_path
+
+        # Build playlist dict with first file
+        playlist = []
+        for i, cloud_file in enumerate(cloud_files):
+            if i == start_index:
+                playlist.append({
+                    'path': first_file_path,
+                    'title': cloud_file.name,
+                    'artist': 'Cloud',
+                    'album': 'Cloud'
+                })
+            else:
+                # Placeholder paths for other files
+                playlist.append({
+                    'path': '',  # Will be downloaded on demand
+                    'title': cloud_file.name,
+                    'artist': 'Cloud',
+                    'album': 'Cloud'
+                })
+
+        # Load into player and start playing FIRST (before connecting signal)
+        self._player_engine.load_playlist(playlist)
+        self._player_engine.play_at(start_index)
+
+        # Connect signal AFTER playback has started (prevents immediate trigger)
+        try:
+            self._player_engine.current_track_changed.disconnect(
+                self.on_track_changed
+            )
+        except (TypeError, RuntimeError):
+            pass  # Signal wasn't connected, which is fine
+        self._player_engine.current_track_changed.connect(
+            self.on_track_changed
+        )
+
+        print(f"[DEBUG] Cloud playlist loaded and playing, signal connected for future track changes")
+
+    def on_track_changed(self, track_dict):
+        """Handle track change to download files on demand."""
+        if not track_dict:
+            return
+
+        # Only trigger download if path is empty AND we have cloud files
+        if not track_dict.get('path') and self._cloud_files:
+            current_index = self._player_engine.current_index
+            print(f"[DEBUG] Track changed to index {current_index} with empty path, checking if download needed")
+
+            # Check if this file needs downloading
+            if 0 <= current_index < len(self._cloud_files):
+                cloud_file = self._cloud_files[current_index]
+
+                # Check if already downloaded
+                if cloud_file.file_id not in self._downloaded_files:
+                    print(f"[DEBUG] File at index {current_index} not downloaded yet, starting download")
+                    self._download_and_play(current_index)
+                else:
+                    print(f"[DEBUG] File at index {current_index} already downloaded, updating path")
+                    temp_path = self._downloaded_files[cloud_file.file_id]
+                    self._update_track_path(current_index, temp_path)
+
+    def _download_and_play(self, index: int):
+        """Download cloud file and update player."""
+        if index >= len(self._cloud_files):
+            return
+
+        cloud_file = self._cloud_files[index]
+
+        # Check if already downloaded
+        if cloud_file.file_id in self._downloaded_files:
+            temp_path = self._downloaded_files[cloud_file.file_id]
+            self._update_track_path(index, temp_path)
+            return
+
+        # Get current account
+        account = self._cloud_view._current_account
+        if not account:
+            print(f"[DEBUG] No account for downloading cloud file")
+            return
+
+        print(f"[DEBUG] Downloading cloud file on demand: {cloud_file.name}")
+
+        # Download in background thread
+        from ui.cloud_drive_view import CloudFileDownloadThread
+        download_thread = CloudFileDownloadThread(
+            account.access_token,
+            cloud_file,
+            index,
+            self._cloud_files,
+            self._cloud_view
+        )
+        download_thread.finished.connect(lambda path: self._on_file_downloaded(index, path))
+        download_thread.token_updated.connect(self._cloud_view._on_token_updated)
+        download_thread.start()
+
+    def _on_file_downloaded(self, index: int, temp_path: str):
+        """Handle completed file download."""
+        if temp_path:
+            # Store path
+            if index < len(self._cloud_files):
+                cloud_file = self._cloud_files[index]
+                self._downloaded_files[cloud_file.file_id] = temp_path
+
+            # Update player if this is the current track
+            if index == self._player_engine.current_index:
+                self._update_track_path(index, temp_path)
+
+    def _update_track_path(self, index: int, temp_path: str):
+        """Update track path in player and reload."""
+        playlist = self._player_engine.playlist
+        if 0 <= index < len(playlist):
+            playlist[index]['path'] = temp_path
+
+            # Reload and play if this is current track
+            if index == self._player_engine.current_index:
+                # Temporarily disconnect signal to prevent loop
+                try:
+                    self._player_engine.current_track_changed.disconnect(
+                        self.on_track_changed
+                    )
+                except (TypeError, RuntimeError):
+                    pass  # Signal might not be connected
+
+                try:
+                    # Reload the track
+                    from PySide6.QtCore import QUrl
+                    url = QUrl.fromLocalFile(temp_path)
+                    self._player_engine._player.setSource(url)
+                    self._player_engine.current_track_changed.emit(playlist[index])
+                finally:
+                    # Reconnect signal
+                    self._player_engine.current_track_changed.connect(
+                        self.on_track_changed
+                    )

@@ -84,3 +84,45 @@ class Favorite:
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
+
+
+@dataclass
+class CloudAccount:
+    """Represents a cloud storage account (Quark, OneDrive, etc.)"""
+    id: Optional[int] = None
+    provider: str = ""  # "quark", "onedrive", etc.
+    account_name: str = ""  # User-defined name
+    account_email: str = ""  # From provider
+    access_token: str = ""  # Cookie or OAuth token
+    refresh_token: str = ""  # For token refresh
+    token_expires_at: Optional[datetime] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()
+        if self.updated_at is None:
+            self.updated_at = datetime.now()
+
+
+@dataclass
+class CloudFile:
+    """Cached metadata for cloud drive files"""
+    id: Optional[int] = None
+    account_id: int = 0
+    file_id: str = ""  # Provider's file identifier
+    parent_id: str = ""  # Parent folder ID (empty for root)
+    name: str = ""
+    file_type: str = ""  # "folder", "audio", "other"
+    size: Optional[int] = None
+    mime_type: Optional[str] = None
+    duration: Optional[float] = None  # For audio files
+    metadata: Optional[str] = None  # JSON for provider-specific data
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()

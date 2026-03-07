@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
-from .models import Track, Playlist, PlaylistItem, PlayHistory, Favorite
+from .models import Track, Playlist, PlaylistItem, PlayHistory, Favorite, CloudAccount, CloudFile
 
 
 class DatabaseManager:
@@ -111,6 +111,55 @@ class DatabaseManager:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_play_history_played_at
             ON play_history(played_at DESC)
+        """)
+
+        # Create cloud_accounts table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cloud_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                account_name TEXT,
+                account_email TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                token_expires_at TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Create cloud_files table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cloud_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                file_id TEXT NOT NULL,
+                parent_id TEXT DEFAULT '',
+                name TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                size INTEGER,
+                mime_type TEXT,
+                duration REAL,
+                metadata TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Create indexes for cloud tables
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cloud_accounts_provider
+            ON cloud_accounts(provider)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cloud_files_account
+            ON cloud_files(account_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_cloud_files_parent
+            ON cloud_files(parent_id)
         """)
 
         conn.commit()
@@ -618,3 +667,224 @@ class DatabaseManager:
         if hasattr(self.local, "conn"):
             self.local.conn.close()
             delattr(self.local, "conn")
+
+    # Cloud account operations
+
+    def create_cloud_account(self, provider: str, account_name: str,
+                            account_email: str, access_token: str,
+                            refresh_token: str = "") -> int:
+        """Create a new cloud account."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO cloud_accounts
+            (provider, account_name, account_email, access_token, refresh_token)
+            VALUES (?, ?, ?, ?, ?)
+        """,
+            (provider, account_name, account_email, access_token, refresh_token)
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+    def get_cloud_accounts(self, provider: str = None) -> List[CloudAccount]:
+        """Get all cloud accounts, optionally filtered by provider."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if provider:
+            cursor.execute(
+                """
+                SELECT * FROM cloud_accounts
+                WHERE provider = ? AND is_active = 1
+                ORDER BY created_at DESC
+            """,
+                (provider,)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM cloud_accounts
+                WHERE is_active = 1
+                ORDER BY created_at DESC
+            """
+            )
+
+        rows = cursor.fetchall()
+
+        return [
+            CloudAccount(
+                id=row["id"],
+                provider=row["provider"],
+                account_name=row["account_name"],
+                account_email=row["account_email"],
+                access_token=row["access_token"],
+                refresh_token=row["refresh_token"],
+                token_expires_at=datetime.fromisoformat(row["token_expires_at"]) if row["token_expires_at"] else None,
+                is_active=bool(row["is_active"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+            for row in rows
+        ]
+
+    def get_cloud_account(self, account_id: int) -> Optional[CloudAccount]:
+        """Get a cloud account by ID."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM cloud_accounts WHERE id = ?", (account_id,))
+        row = cursor.fetchone()
+
+        if row:
+            return CloudAccount(
+                id=row["id"],
+                provider=row["provider"],
+                account_name=row["account_name"],
+                account_email=row["account_email"],
+                access_token=row["access_token"],
+                refresh_token=row["refresh_token"],
+                token_expires_at=datetime.fromisoformat(row["token_expires_at"]) if row["token_expires_at"] else None,
+                is_active=bool(row["is_active"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+        return None
+
+    def update_cloud_account_token(self, account_id: int, access_token: str,
+                                  refresh_token: str = None) -> bool:
+        """Update account tokens."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if refresh_token is not None:
+            cursor.execute(
+                """
+                UPDATE cloud_accounts
+                SET access_token = ?, refresh_token = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """,
+                (access_token, refresh_token, account_id)
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE cloud_accounts
+                SET access_token = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """,
+                (access_token, account_id)
+            )
+
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_cloud_account(self, account_id: int) -> bool:
+        """Delete a cloud account (sets is_active to False)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE cloud_accounts
+            SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """,
+            (account_id,)
+        )
+
+        conn.commit()
+        return cursor.rowcount > 0
+
+    # Cloud file operations
+
+    def cache_cloud_files(self, account_id: int, files: List[CloudFile]) -> bool:
+        """Cache cloud file metadata (replace existing files for account)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Delete old cache
+        cursor.execute("DELETE FROM cloud_files WHERE account_id = ?", (account_id,))
+
+        # Insert new files
+        for file in files:
+            cursor.execute(
+                """
+                INSERT INTO cloud_files
+                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (account_id, file.file_id, file.parent_id, file.name,
+                 file.file_type, file.size, file.mime_type, file.duration, file.metadata)
+            )
+
+        conn.commit()
+        return True
+
+    def get_cloud_files(self, account_id: int, parent_id: str = "") -> List[CloudFile]:
+        """Get cached files for an account and parent folder."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files
+            WHERE account_id = ? AND parent_id = ?
+            ORDER BY file_type DESC, name ASC
+        """,
+            (account_id, parent_id)
+        )
+
+        rows = cursor.fetchall()
+
+        return [
+            CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+            for row in rows
+        ]
+
+    def get_cloud_file(self, file_id: str, account_id: int) -> Optional[CloudFile]:
+        """Get a cloud file by ID and account."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files
+            WHERE file_id = ? AND account_id = ?
+        """,
+            (file_id, account_id)
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            return CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+        return None

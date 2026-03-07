@@ -1,6 +1,6 @@
 # Database module
 from .manager import DatabaseManager
-from .models import Track, Playlist, PlaylistItem, PlayHistory, Favorite
+from .models import Track, Playlist, PlaylistItem, PlayHistory, Favorite, CloudAccount, CloudFile
 
 __all__ = [
     'DatabaseManager',
@@ -9,4 +9,6 @@ __all__ = [
     'PlaylistItem',
     'PlayHistory',
     'Favorite',
+    'CloudAccount',
+    'CloudFile',
 ]

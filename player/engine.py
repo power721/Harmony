@@ -57,6 +57,7 @@ class PlayerEngine(QObject):
         self._playlist: List[dict] = []  # List of track dictionaries
         self._current_index: int = -1
         self._play_mode: PlayMode = PlayMode.SEQUENTIAL
+        self._temp_files: List[str] = []  # Track temporary files for cleanup
 
         # Connect signals
         self._player.positionChanged.connect(self._on_position_changed)
@@ -120,6 +121,17 @@ class PlayerEngine(QObject):
         self._playlist.clear()
         self._current_index = -1
         self.stop()
+
+    def cleanup_temp_files(self):
+        """Clean up temporary files from cloud playback."""
+        import os
+        for temp_file in self._temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception as e:
+                print(f"Failed to delete temp file: {e}")
+        self._temp_files.clear()
 
     def add_track(self, track: dict):
         """
@@ -279,7 +291,20 @@ class PlayerEngine(QObject):
         """Load a track for playback."""
         if 0 <= index < len(self._playlist):
             track = self._playlist[index]
+
+            # Skip loading if path is empty (for cloud files not yet downloaded)
+            if not track.get('path'):
+                print(f"[DEBUG] Skipping load for track with empty path at index {index}")
+                self.current_track_changed.emit(track)
+                return
+
             url = QUrl.fromLocalFile(track['path'])
+
+            # Track temp files for cleanup
+            if track['path'].startswith('/tmp/') or '/tmp/' in track['path']:
+                if track['path'] not in self._temp_files:
+                    self._temp_files.append(track['path'])
+
             self._player.setSource(url)
             self.current_track_changed.emit(track)
 
