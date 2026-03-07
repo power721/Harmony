@@ -153,6 +153,22 @@ class DatabaseManager:
         except:
             pass
 
+        # Add cloud_file_id column to tracks table for downloaded cloud files
+        try:
+            cursor.execute(
+                "ALTER TABLE tracks ADD COLUMN cloud_file_id TEXT"
+            )
+        except:
+            pass
+
+        # Add local_path column to cloud_files table for downloaded files
+        try:
+            cursor.execute(
+                "ALTER TABLE cloud_files ADD COLUMN local_path TEXT"
+            )
+        except:
+            pass
+
         # Create cloud_files table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cloud_files (
@@ -268,14 +284,15 @@ class DatabaseManager:
         return None
 
     def get_all_tracks(self) -> List[Track]:
-        """Get all tracks from the database."""
+        """Get all tracks from the database, including downloaded cloud files."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # Get local tracks
         cursor.execute("SELECT * FROM tracks ORDER BY artist, album, title")
         rows = cursor.fetchall()
 
-        return [
+        tracks = [
             Track(
                 id=row["id"],
                 path=row["path"],
@@ -288,6 +305,25 @@ class DatabaseManager:
             )
             for row in rows
         ]
+
+        # Get downloaded cloud files and convert to virtual tracks
+        # Use negative IDs to distinguish from real tracks
+        cloud_files = self.get_all_downloaded_cloud_files()
+        for i, cloud_file in enumerate(cloud_files):
+            # Create a virtual track from cloud file
+            virtual_track = Track(
+                id=-(1000000 + i),  # Negative ID to indicate cloud file
+                path=cloud_file.local_path,
+                title=cloud_file.name,
+                artist="☁️ Cloud File",  # Mark as cloud file
+                album="",
+                duration=cloud_file.duration or 0.0,
+                cover_path=None,
+                created_at=cloud_file.created_at,
+            )
+            tracks.append(virtual_track)
+
+        return tracks
 
     def search_tracks(self, query: str) -> List[Track]:
         """Search tracks by title, artist, or album."""
@@ -838,6 +874,91 @@ class DatabaseManager:
         conn.commit()
         return cursor.rowcount > 0
 
+    def update_cloud_file_local_path(
+        self, file_id: str, account_id: int, local_path: str
+    ) -> bool:
+        """Update the local path for a downloaded cloud file."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE cloud_files
+            SET local_path = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE file_id = ? AND account_id = ?
+        """,
+            (local_path, file_id, account_id),
+        )
+
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def get_cloud_file_by_local_path(self, local_path: str) -> Optional[CloudFile]:
+        """Get a cloud file by its local path."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files WHERE local_path = ?
+        """,
+            (local_path,),
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            return CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+        return None
+
+    def get_all_downloaded_cloud_files(self) -> List[CloudFile]:
+        """Get all cloud files that have been downloaded (have local_path)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files
+            WHERE local_path IS NOT NULL AND local_path != ''
+            ORDER BY name ASC
+        """
+        )
+
+        rows = cursor.fetchall()
+
+        return [
+            CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+            for row in rows
+        ]
+
     def delete_cloud_account(self, account_id: int) -> bool:
         """Delete a cloud account (sets is_active to False)."""
         conn = self._get_connection()
@@ -862,16 +983,25 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # First, get all existing local_paths for this account
+        cursor.execute(
+            "SELECT file_id, local_path FROM cloud_files WHERE account_id = ? AND local_path IS NOT NULL",
+            (account_id,)
+        )
+        existing_paths = {row["file_id"]: row["local_path"] for row in cursor.fetchall()}
+
         # Delete old cache
         cursor.execute("DELETE FROM cloud_files WHERE account_id = ?", (account_id,))
 
-        # Insert new files
+        # Insert new files, preserving local_path if it existed
         for file in files:
+            local_path = existing_paths.get(file.file_id)  # Get existing local_path
+
             cursor.execute(
                 """
                 INSERT INTO cloud_files
-                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     account_id,
@@ -883,6 +1013,7 @@ class DatabaseManager:
                     file.mime_type,
                     file.duration,
                     file.metadata,
+                    local_path,
                 ),
             )
 
@@ -917,6 +1048,7 @@ class DatabaseManager:
                 mime_type=row["mime_type"],
                 duration=row["duration"],
                 metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
                 created_at=datetime.fromisoformat(row["created_at"]),
                 updated_at=datetime.fromisoformat(row["updated_at"]),
             )
@@ -950,6 +1082,7 @@ class DatabaseManager:
                 mime_type=row["mime_type"],
                 duration=row["duration"],
                 metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
                 created_at=datetime.fromisoformat(row["created_at"]),
                 updated_at=datetime.fromisoformat(row["updated_at"]),
             )

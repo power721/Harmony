@@ -478,6 +478,9 @@ class CloudDriveView(QWidget):
         # Cache files in database
         self._db.cache_cloud_files(self._current_account.id, files)
 
+        # Reload files from database to get local_path information
+        files = self._db.get_cloud_files(self._current_account.id, self._current_parent_id)
+
         # Save audio files for playlist playback
         self._current_audio_files = [f for f in files if f.file_type == "audio"]
 
@@ -663,6 +666,17 @@ class CloudDriveView(QWidget):
 
         if temp_path and os.path.exists(temp_path):
             self._status_label.setText(f"{t('using_cached_file')} - {file_name}")
+
+            # Save local path to database
+            if file_index < len(audio_files):
+                cloud_file = audio_files[file_index]
+                if self._current_account:
+                    self._db.update_cloud_file_local_path(
+                        cloud_file.file_id,
+                        self._current_account.id,
+                        temp_path
+                    )
+
             # Emit signal with playlist info
             self.play_cloud_files.emit(temp_path, file_index, audio_files)
         else:
@@ -692,6 +706,17 @@ class CloudDriveView(QWidget):
                 size_mb = file_size / (1024 * 1024)
 
                 self._status_label.setText(f"{t('download_complete')}: {file_name} ({size_mb:.1f} MB)")
+
+                # Save local path to database
+                if file_index < len(audio_files):
+                    cloud_file = audio_files[file_index]
+                    if self._current_account:
+                        self._db.update_cloud_file_local_path(
+                            cloud_file.file_id,
+                            self._current_account.id,
+                            temp_path
+                        )
+
                 # Emit signal with playlist info
                 self.play_cloud_files.emit(temp_path, file_index, audio_files)
             else:
@@ -711,6 +736,9 @@ class CloudDriveView(QWidget):
         if not file or file.file_type != "audio":
             return
 
+        # Check if file has been downloaded
+        has_local_path = file.local_path
+
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -727,6 +755,9 @@ class CloudDriveView(QWidget):
             QMenu::item:selected {
                 background-color: #1db954;
                 color: #000000;
+            }
+            QMenu::item:disabled {
+                color: #808080;
             }
         """)
 
@@ -751,6 +782,24 @@ class CloudDriveView(QWidget):
 
         queue_action = menu.addAction(t("add_to_queue"))
         queue_action.triggered.connect(lambda: self._add_to_queue(file))
+
+        menu.addSeparator()
+
+        # Edit media info action - only available if file is downloaded
+        edit_action = menu.addAction(t("edit_media_info"))
+        if has_local_path:
+            edit_action.triggered.connect(lambda: self._edit_media_info(file))
+        else:
+            edit_action.setEnabled(False)
+            edit_action.setText(f"{t('edit_media_info')} ({t('download_first')})")
+
+        # Open file location action - only available if file is downloaded
+        open_action = menu.addAction(t("open_file_location"))
+        if has_local_path:
+            open_action.triggered.connect(lambda: self._open_file_location(file))
+        else:
+            open_action.setEnabled(False)
+            open_action.setText(f"{t('open_file_location')} ({t('download_first')})")
 
         menu.exec_(QCursor.pos())
 
@@ -946,6 +995,69 @@ class CloudDriveView(QWidget):
         """Add file to play queue."""
         # TODO: Implement queue addition
         pass
+
+    def _edit_media_info(self, file: CloudFile):
+        """Edit media info for downloaded cloud file."""
+        if not file.local_path:
+            return
+
+        # Import the media info editor from LibraryView
+        # For now, show a simple message
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self,
+            t("edit_media_info"),
+            f"File: {file.name}\n\nThis will open the media info editor for the downloaded file.\n\nFeature coming soon!"
+        )
+
+        # TODO: Implement full media info editing
+        # This should open the same editor as LibraryView but for the local file
+
+    def _open_file_location(self, file: CloudFile):
+        """Open the file location in system file manager."""
+        if not file.local_path:
+            return
+
+        import platform
+        import subprocess
+        import shutil
+        from pathlib import Path
+        from PySide6.QtWidgets import QMessageBox
+
+        file_path = Path(file.local_path)
+        if not file_path.exists():
+            QMessageBox.warning(self, "Error", t("file_not_found"))
+            return
+
+        try:
+            system = platform.system()
+
+            if system == "Windows":
+                subprocess.Popen(["explorer", "/select," + str(file_path)])
+
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-R", str(file_path)])
+
+            else:
+                # Linux
+                # Try to select file in supported file managers
+                file_managers = {
+                    "nautilus": ["nautilus", "--select", str(file_path)],
+                    "dolphin": ["dolphin", "--select", str(file_path)],
+                    "caja": ["caja", "--select", str(file_path)],
+                    "nemo": ["nemo", str(file_path)],
+                }
+
+                for fm, cmd in file_managers.items():
+                    if shutil.which(fm):
+                        subprocess.Popen(cmd)
+                        return
+
+                # fallback - open directory only
+                subprocess.Popen(["xdg-open", str(file_path.parent)])
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to open file location: {e}")
 
     def _change_download_dir(self):
         """Change the cloud download directory."""

@@ -130,6 +130,7 @@ class CloudFile:
     mime_type: Optional[str] = None
     duration: Optional[float] = None  # For audio files
     metadata: Optional[str] = None  # JSON for provider-specific data
+    local_path: Optional[str] = None  # Downloaded local file path
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
