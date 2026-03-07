@@ -27,7 +27,7 @@ from player import PlayerController
 from player.engine import PlayerState
 from services import LyricsService
 from ui.library_view import LibraryView
-from ui.lyrics_widget import LyricsWidget
+from ui.lyrics_widget_pro import LyricsWidget
 from ui.playlist_view import PlaylistView
 from ui.player_controls import PlayerControls
 from ui.mini_player import MiniPlayer
@@ -640,7 +640,7 @@ class MainWindow(QMainWindow):
                 # Select in queue view (if it exists in queue)
                 self._queue_view._select_track_by_id(track_id)
 
-        self._lyrics_view.set_lyrics([])
+        self._lyrics_view.set_lyrics("")
         if not track_dict:
             return
 
@@ -663,7 +663,7 @@ class MainWindow(QMainWindow):
             lrc_alt = lyrics_dir / f"{track_path.stem}.lrc"
 
             if lrc_path.exists() or lrc_alt.exists():
-                self._lyrics_view.set_lyrics(None)
+                self._lyrics_view.set_lyrics("")
 
     def _download_lyrics(self):
         """Download lyrics for current track."""
@@ -679,7 +679,7 @@ class MainWindow(QMainWindow):
             self._lyrics_thread.quit()
             self._lyrics_thread.wait()
 
-        self._lyrics_view.set_lyrics([])
+        self._lyrics_view.set_lyrics("")
 
         from PySide6.QtCore import QObject
 
@@ -731,9 +731,9 @@ class MainWindow(QMainWindow):
     def _on_lyrics_download_error(self, error_type: str):
         """Handle lyrics download error."""
         if error_type == "parse_failed":
-            self._lyrics_view.set_lyrics(None)
+            self._lyrics_view.set_lyrics("")
         else:  # not_found
-            self._lyrics_view.set_lyrics([])
+            self._lyrics_view.set_lyrics("")
 
     def _show_lyrics_context_menu(self, pos):
         """Show context menu for lyrics panel."""
@@ -930,7 +930,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Save lyrics
-            if LyricsService.save_lyrics(track.path, parsed_lyrics):
+            if LyricsService.save_lyrics(track.path, content):
                 QMessageBox.information(dialog, t("success"), t("lyrics_saved"))
                 # Refresh lyrics display
                 self._refresh_lyrics()
@@ -973,7 +973,7 @@ class MainWindow(QMainWindow):
             if LyricsService.delete_lyrics(track.path):
                 # Clear lyrics immediately and reset state
                 self._current_lyric_line = None
-                self._lyrics_view.set_lyrics([])
+                self._lyrics_view.set_lyrics("")
                 QMessageBox.information(self, t("success"), t("lyrics_deleted"))
             else:
                 QMessageBox.warning(self, "Error", t("lyrics_delete_failed"))

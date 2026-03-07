@@ -4,7 +4,8 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QModelIndex,
     QSize,
-    QPropertyAnimation
+    QPropertyAnimation,
+    Signal
 )
 from PySide6.QtGui import (
     QPainter,
@@ -30,9 +31,7 @@ class LyricsModel(QAbstractListModel):
     ERROR = 2
 
     def __init__(self):
-
         super().__init__()
-
         self._lyrics = []
         self._state = self.EMPTY
 
@@ -52,7 +51,6 @@ class LyricsModel(QAbstractListModel):
             self._state = self.NORMAL
             self._lyrics = lyrics
 
-            # GPU缓存
             for l in self._lyrics:
                 l.static_text = QStaticText(l.text)
                 l.static_text.prepare()
@@ -106,20 +104,25 @@ class LyricsDelegate(QStyledItemDelegate):
         super().__init__()
 
         self.active_row = -1
+        self.progress = 0
 
         self.font_normal = QFont("Microsoft YaHei", 12)
-        self.font_active = QFont("Microsoft YaHei", 15)
+        self.font_active = QFont("Microsoft YaHei", 16)
         self.font_active.setBold(True)
 
         self.font_hint = QFont("Microsoft YaHei", 13)
 
-        self.color_normal = QColor("#888888")
+        self.color_normal = QColor("#777777")
         self.color_active = QColor("#ffffff")
         self.color_hint = QColor("#555555")
 
-    def set_active_row(self, row):
+        self.karaoke_color = QColor("#1db954")
 
+    def set_active_row(self, row):
         self.active_row = row
+
+    def set_progress(self, p):
+        self.progress = p
 
     def paint(self, painter, option, index):
 
@@ -127,7 +130,6 @@ class LyricsDelegate(QStyledItemDelegate):
 
         rect = option.rect
         model = index.model()
-
         text = index.data(Qt.DisplayRole)
 
         if model._state != model.NORMAL:
@@ -157,11 +159,41 @@ class LyricsDelegate(QStyledItemDelegate):
             painter.setFont(self.font_normal)
             painter.setPen(self.color_normal)
 
-        painter.drawText(
-            rect.adjusted(30, 0, -30, 0),
-            Qt.AlignCenter | Qt.TextWordWrap,
-            line.text
-        )
+        draw_rect = rect.adjusted(30, 0, -30, 0)
+
+        # 普通歌词
+        if not line.words:
+
+            painter.drawText(
+                draw_rect,
+                Qt.AlignCenter | Qt.TextWordWrap,
+                line.text
+            )
+
+        else:
+            # 逐字歌词
+
+            fm = QFontMetrics(painter.font())
+
+            x = draw_rect.left()
+            y = draw_rect.center().y() + fm.ascent() / 2
+
+            current_time = self.progress
+
+            for start, dur, word in line.words:
+
+                if current_time >= start + dur:
+                    painter.setPen(self.karaoke_color)
+
+                elif current_time >= start:
+                    painter.setPen(self.karaoke_color)
+
+                else:
+                    painter.setPen(self.color_active)
+
+                painter.drawText(x, y, word)
+
+                x += fm.horizontalAdvance(word)
 
         painter.restore()
 
@@ -185,7 +217,7 @@ class LyricsDelegate(QStyledItemDelegate):
             text
         )
 
-        return QSize(0, rect.height() + 16)
+        return QSize(0, rect.height() + 18)
 
 
 # =========================
@@ -193,6 +225,8 @@ class LyricsDelegate(QStyledItemDelegate):
 # =========================
 
 class LyricsWidget(QListView):
+
+    seekRequested = Signal(float)
 
     def __init__(self):
 
@@ -206,11 +240,9 @@ class LyricsWidget(QListView):
         """)
 
         self.setVerticalScrollMode(QListView.ScrollPerPixel)
-
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.setSelectionMode(QListView.NoSelection)
-
         self.setFocusPolicy(Qt.NoFocus)
 
         self.setSpacing(10)
@@ -225,7 +257,6 @@ class LyricsWidget(QListView):
         self._times = []
         self._current = -1
 
-        # 平滑滚动
         self.anim = QPropertyAnimation(
             self.verticalScrollBar(),
             b"value"
@@ -264,16 +295,20 @@ class LyricsWidget(QListView):
 
         idx = self._find_index(seconds)
 
-        if idx == self._current:
-            return
+        if idx != self._current:
 
-        self._current = idx
+            self._current = idx
+            self.delegate_.set_active_row(idx)
 
-        self.delegate_.set_active_row(idx)
+            self._smooth_scroll(idx)
+
+        line = self._lyrics[idx]
+
+        progress = seconds - line.time
+
+        self.delegate_.set_progress(progress)
 
         self.viewport().update()
-
-        self._smooth_scroll(idx)
 
     # =========================
     # 二分查找
@@ -316,6 +351,22 @@ class LyricsWidget(QListView):
         self.anim.setEndValue(scroll)
 
         self.anim.start()
+
+    # =========================
+    # 点击跳转播放
+    # =========================
+
+    def mousePressEvent(self, event):
+
+        index = self.indexAt(event.pos())
+
+        if index.isValid():
+
+            time = index.data(Qt.UserRole)
+
+            self.seekRequested.emit(time)
+
+        super().mousePressEvent(event)
 
     # =========================
     # 渐隐遮罩

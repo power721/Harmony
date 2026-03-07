@@ -39,7 +39,7 @@ class LyricsService:
         return False
 
     @classmethod
-    def get_lyrics(cls, track_path: str, title: str, artist: str) -> Optional[List[LyricLine]]:
+    def get_lyrics(cls, track_path: str, title: str, artist: str) -> str:
         """
         Get lyrics for a track, prioritizing local .lrc files.
 
@@ -60,10 +60,10 @@ class LyricsService:
         if cls.ENABLE_ONLINE:
             return cls._get_online_lyrics(title, artist)
 
-        return []
+        return ""
 
     @classmethod
-    def _get_local_lyrics(cls, track_path: str) -> Optional[List[LyricLine]]:
+    def _get_local_lyrics(cls, track_path: str) -> str:
         """
         Load lyrics from a local .lrc file.
 
@@ -84,17 +84,17 @@ class LyricsService:
                 try:
                     with open(lrc_path, 'r', encoding=encoding) as f:
                         content = f.read()
-                    return parse_lrc(content)
+                    return content
                 except (UnicodeDecodeError, UnicodeError):
                     continue
                 except Exception as e:
                     print(f"Error loading local lyrics: {e}")
                     break
 
-        return []
+        return ""
 
     @classmethod
-    def _get_online_lyrics(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
+    def _get_online_lyrics(cls, title: str, artist: str) -> str:
         """
         Fetch lyrics from online sources.
 
@@ -120,10 +120,10 @@ class LyricsService:
                 print(f"Error fetching lyrics from {source.__name__}: {e}")
                 continue
 
-        return None
+        return ""
 
     @classmethod
-    def _fetch_from_netease(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
+    def _fetch_from_netease(cls, title: str, artist: str) -> str:
         """
         Fetch lyrics from NetEase Cloud Music.
 
@@ -146,12 +146,12 @@ class LyricsService:
             )
 
             if response.status_code != 200:
-                return None
+                return ""
 
             data = response.json()
 
             if data.get('code') != 200 or not data.get('result', {}).get('songs'):
-                return None
+                return ""
 
             # Get first song's lyrics
             song_id = data['result']['songs'][0]['id']
@@ -164,30 +164,30 @@ class LyricsService:
             )
 
             if lyrics_response.status_code != 200:
-                return None
+                return ""
 
             lyrics_data = lyrics_response.json()
 
             if lyrics_data.get('code') != 200:
-                return None
+                return ""
 
             # Extract LRC content
-            lrc_content = None
+            lrc_content = ""
             if 'lrc' in lyrics_data:
                 lrc_content = lyrics_data['lrc'].get('lyric')
             elif 'lyric' in lyrics_data:
                 lrc_content = lyrics_data['lyric']
 
             if lrc_content:
-                return parse_lrc(lrc_content)
+                return lrc_content
 
         except Exception as e:
             print(f"NetEase lyrics fetch error: {e}")
 
-        return None
+        return ""
 
     @classmethod
-    def _fetch_from_qq_music(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
+    def _fetch_from_qq_music(cls, title: str, artist: str) -> str:
         """
         Fetch lyrics from QQ Music.
 
@@ -213,7 +213,7 @@ class LyricsService:
         return []
 
     @classmethod
-    def save_lyrics(cls, track_path: str, lyrics: List[LyricLine]) -> bool:
+    def save_lyrics(cls, track_path: str, lyrics: str) -> bool:
         """
         Save lyrics to a local .lrc file.
 
@@ -228,20 +228,8 @@ class LyricsService:
             track_file = Path(track_path)
             lrc_path = track_file.with_suffix('.lrc')
 
-            # Format lyrics as LRC
-            lrc_lines = []
-            for line in lyrics:
-                time = line.time
-                text = line.text
-                minutes = int(time // 60)
-                seconds = int(time % 60)
-                milliseconds = int((time % 1) * 100)
-                lrc_lines.append(f"[{minutes:02d}:{seconds:02d}.{milliseconds:02d}]{text}")
-
-            lrc_content = '\n'.join(lrc_lines)
-
             with open(lrc_path, 'w', encoding='utf-8') as f:
-                f.write(lrc_content)
+                f.write(lyrics)
 
             return True
 
@@ -264,17 +252,8 @@ class LyricsService:
             track_file = Path(track_path)
             lrc_path = track_file.with_suffix('.lrc')
 
-            # Try main location
             if lrc_path.exists():
                 lrc_path.unlink()
-                return True
-
-            # Try alternative location
-            lyrics_dir = track_file.parent / 'lyrics'
-            alt_lrc_path = lyrics_dir / f"{track_file.stem}.lrc"
-
-            if alt_lrc_path.exists():
-                alt_lrc_path.unlink()
                 return True
 
             return False
@@ -300,29 +279,7 @@ class LyricsService:
         if lrc_path.exists():
             return True
 
-        # Try alternative location
-        lyrics_dir = track_file.parent / 'lyrics'
-        alt_lrc_path = lyrics_dir / f"{track_file.stem}.lrc"
-
-        return alt_lrc_path.exists()
-
-    @classmethod
-    def get_unsynchronized_lyrics(cls, track_path: str, title: str, artist: str) -> Optional[str]:
-        """
-        Get plain text (unsynchronized) lyrics.
-
-        Args:
-            track_path: Path to the audio file
-            title: Track title
-            artist: Track artist
-
-        Returns:
-            Plain text lyrics, or None
-        """
-        synced = cls.get_lyrics(track_path, title, artist)
-        if synced:
-            return '\n'.join(line.text for line in synced)
-        return None
+        return False
 
 
 class LyricsProvider:
