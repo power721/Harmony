@@ -54,7 +54,7 @@ class LrcParser:
 
 class LyricsWidget(QWidget):
 
-    seekRequested = Signal(float)
+    seekRequested = Signal(int)
 
     def __init__(self, parent=None):
 
@@ -72,7 +72,7 @@ class LyricsWidget(QWidget):
 
         self.state = "no_lyrics"
 
-        self.margin_x = 80
+        self.margin_x = 40
 
         self.font_normal = QFont("Microsoft YaHei", 15)
         self.font_current = QFont("Microsoft YaHei", 18, QFont.Bold)
@@ -217,13 +217,6 @@ class LyricsWidget(QWidget):
 
     def _draw_progress_text(self, p, text, y, progress):
 
-        rect = QRectF(
-            self.margin_x,
-            y - self.line_height / 2,
-            self.width() - self.margin_x * 2,
-            self.line_height
-        )
-
         metrics = QFontMetrics(self.font_current)
 
         text_width = metrics.horizontalAdvance(text)
@@ -257,7 +250,7 @@ class LyricsWidget(QWidget):
 
         p.drawText(
             rect,
-            Qt.AlignHCenter | Qt.AlignVCenter | Qt.TextWordWrap,
+            Qt.AlignHCenter | Qt.AlignVCenter,
             text
         )
 
@@ -300,5 +293,5 @@ class LyricsWidget(QWidget):
     def mousePressEvent(self, e):
 
         if self.hover_index >= 0:
-            t = self.lines[self.hover_index].start
-            self.seekRequested.emit(t)
+            t = self.lines[self.hover_index].start * 1000
+            self.seekRequested.emit(int(t))

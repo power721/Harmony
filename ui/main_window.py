@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         self._nav_queue.clicked.connect(lambda: self._show_page(3))
         self._nav_favorites.clicked.connect(self._show_favorites)
         self._nav_history.clicked.connect(self._show_history)
+        self._lyrics_view.seekRequested.connect(self._player.engine.seek)
 
         # Add music
         self._add_music_btn.clicked.connect(self._add_music)
