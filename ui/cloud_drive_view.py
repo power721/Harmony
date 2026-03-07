@@ -39,10 +39,11 @@ class CloudDriveView(QWidget):
         str, int, list
     )  # Signal for playing multiple cloud files (temp_path, index, cloud_files)
 
-    def __init__(self, db_manager, player, parent=None):
+    def __init__(self, db_manager, player, config_manager=None, parent=None):
         super().__init__(parent)
         self._db = db_manager
         self._player = player
+        self._config_manager = config_manager
         self._current_account: Optional[CloudAccount] = None
         self._current_parent_id = "0"  # Root folder
         self._navigation_history = []  # For back navigation
@@ -601,7 +602,38 @@ class CloudDriveView(QWidget):
         except StopIteration:
             file_index = 0
 
-        self._status_label.setText(f"{t('downloading')} {file.name}...")
+        # Check if file already exists locally
+        from pathlib import Path
+        from utils.helpers import sanitize_filename
+
+        if self._config_manager:
+            download_dir = Path(self._config_manager.get_cloud_download_dir())
+        else:
+            download_dir = Path("data/cloud_downloads")
+
+        safe_filename = sanitize_filename(file.name)
+        local_file_path = download_dir / safe_filename
+
+        # Check file status
+        if local_file_path.exists() and file.size:
+            actual_size = local_file_path.stat().st_size
+            size_diff = abs(actual_size - file.size)
+            tolerance = file.size * 0.01  # 1% tolerance
+
+            if size_diff > tolerance:
+                # File size mismatch
+                size_mb = file.size / (1024 * 1024)
+                self._status_label.setText(f"{t('file_size_mismatch')}: {file.name} ({size_mb:.1f} MB)")
+            else:
+                # File exists and size matches
+                self._status_label.setText(f"{t('using_cached_file')}: {file.name}")
+        else:
+            # File doesn't exist or no size info
+            size_info = ""
+            if file.size:
+                size_mb = file.size / (1024 * 1024)
+                size_info = f" ({size_mb:.1f} MB)"
+            self._status_label.setText(f"{t('downloading')} {file.name}{size_info}...")
 
         # Create download thread with context info
         download_thread = CloudFileDownloadThread(
@@ -609,15 +641,33 @@ class CloudDriveView(QWidget):
             file,
             file_index,
             self._current_audio_files,
+            self._config_manager,
             self,
         )
         download_thread.finished.connect(
             lambda path: self._on_file_downloaded(
-                path, file_index, self._current_audio_files
+                path, file_index, self._current_audio_files, file.name
+            )
+        )
+        download_thread.file_exists.connect(
+            lambda path: self._on_file_exists(
+                path, file_index, self._current_audio_files, file.name
             )
         )
         download_thread.token_updated.connect(self._on_token_updated)
         download_thread.start()
+
+    def _on_file_exists(self, temp_path: str, file_index: int, audio_files: list, file_name: str):
+        """Handle when file already exists locally."""
+        import os
+
+        if temp_path and os.path.exists(temp_path):
+            self._status_label.setText(f"{t('using_cached_file')} - {file_name}")
+            # Emit signal with playlist info
+            self.play_cloud_files.emit(temp_path, file_index, audio_files)
+        else:
+            print(f"[DEBUG] ERROR: Existing file not found: {temp_path}")
+            self._status_label.setText(t("download_failed"))
 
     def _on_token_updated(self, updated_token: str):
         """Handle updated access token from API calls."""
@@ -625,26 +675,30 @@ class CloudDriveView(QWidget):
             self._db.update_cloud_account_token(self._current_account.id, updated_token)
             self._current_account.access_token = updated_token
 
-    def _on_file_downloaded(self, temp_path: str, file_index: int, audio_files: list):
+    def _on_file_downloaded(self, temp_path: str, file_index: int, audio_files: list, file_name: str = None):
         """Handle completed file download."""
         if temp_path:
             import os
 
             if os.path.exists(temp_path):
-                # Get file name from audio_files list
-                if file_index < len(audio_files):
+                # Get file name from parameter or audio_files list
+                if not file_name and file_index < len(audio_files):
                     file_name = audio_files[file_index].name
-                    self._status_label.setText(f"{t('playing')} {file_name}")
-                else:
-                    self._status_label.setText(t("playing"))
+                elif not file_name:
+                    file_name = "Unknown"
 
+                # Get file size for display
+                file_size = os.path.getsize(temp_path)
+                size_mb = file_size / (1024 * 1024)
+
+                self._status_label.setText(f"{t('download_complete')}: {file_name} ({size_mb:.1f} MB)")
                 # Emit signal with playlist info
                 self.play_cloud_files.emit(temp_path, file_index, audio_files)
             else:
-                print(f"[DEBUG] ERROR: Temp file does not exist: {temp_path}")
+                print(f"[DEBUG] ERROR: Downloaded file does not exist: {temp_path}")
                 self._status_label.setText(t("download_failed"))
         else:
-            print(f"[DEBUG] ERROR: Download returned empty temp path")
+            print(f"[DEBUG] ERROR: Download returned empty path")
             self._status_label.setText(t("download_failed"))
 
     def _show_context_menu(self, pos):
@@ -678,6 +732,20 @@ class CloudDriveView(QWidget):
 
         play_action = menu.addAction(t("play"))
         play_action.triggered.connect(lambda: self._play_audio_file(file))
+
+        menu.addSeparator()
+
+        # Add file info action
+        info_text = f"ℹ️ {t('file_info')}"
+        if file.size:
+            size_mb = file.size / (1024 * 1024)
+            info_text += f" ({size_mb:.1f} MB)"
+        if file.duration:
+            from utils import format_duration
+            info_text += f" - {format_duration(file.duration)}"
+
+        info_action = menu.addAction(info_text)
+        info_action.setEnabled(False)  # Just for display, not clickable
 
         menu.addSeparator()
 
@@ -718,6 +786,12 @@ class CloudDriveView(QWidget):
         # Add account info action
         info_action = menu.addAction("ℹ️ " + t("get_account_info"))
         info_action.triggered.connect(lambda: self._get_account_info(account))
+
+        menu.addSeparator()
+
+        # Add change download directory action
+        change_dir_action = menu.addAction("📁 " + t("change_download_dir"))
+        change_dir_action.triggered.connect(lambda: self._change_download_dir())
 
         menu.addSeparator()
 
@@ -873,6 +947,26 @@ class CloudDriveView(QWidget):
         # TODO: Implement queue addition
         pass
 
+    def _change_download_dir(self):
+        """Change the cloud download directory."""
+        if not self._config_manager:
+            return
+
+        current_dir = self._config_manager.get_cloud_download_dir()
+
+        # Open directory selection dialog
+        from PySide6.QtWidgets import QFileDialog
+
+        new_dir = QFileDialog.getExistingDirectory(
+            self,
+            t("select_download_dir"),
+            current_dir,
+        )
+
+        if new_dir:
+            self._config_manager.set_cloud_download_dir(new_dir)
+            self._status_label.setText(f"{t('cloud_download_dir')}: {new_dir}")
+
     def refresh_ui(self):
         """Refresh UI texts after language change."""
         # Update account list title
@@ -907,8 +1001,9 @@ class CloudDriveView(QWidget):
 class CloudFileDownloadThread(QThread):
     """Thread for downloading cloud files."""
 
-    finished = Signal(str)  # Emits temp file path
+    finished = Signal(str)  # Emits local file path
     token_updated = Signal(str)  # Emits updated access token
+    file_exists = Signal(str)  # Emits local file path when file already exists
 
     def __init__(
         self,
@@ -916,6 +1011,7 @@ class CloudFileDownloadThread(QThread):
         file: CloudFile,
         file_index: int = 0,
         audio_files: list = None,
+        config_manager=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -923,12 +1019,56 @@ class CloudFileDownloadThread(QThread):
         self._file = file
         self._file_index = file_index
         self._audio_files = audio_files or []
+        self._config_manager = config_manager
         print(
             f"[DEBUG] CloudFileDownloadThread created for file: {file.name} (ID: {file.file_id}), index: {file_index}"
         )
 
     def run(self):
         """Download file in background thread."""
+        import os
+        from pathlib import Path
+
+        # Get download directory from config
+        if self._config_manager:
+            download_dir = self._config_manager.get_cloud_download_dir()
+        else:
+            download_dir = "data/cloud_downloads"
+
+        # Create download directory if it doesn't exist
+        download_path = Path(download_dir)
+        download_path.mkdir(parents=True, exist_ok=True)
+
+        # Use original filename
+        from utils.helpers import sanitize_filename
+        safe_filename = sanitize_filename(self._file.name)
+        local_file_path = download_path / safe_filename
+
+        # Check if file already exists and has correct size
+        if local_file_path.exists():
+            file_size = local_file_path.stat().st_size
+            expected_size = self._file.size if self._file.size else 0
+
+            # If we have expected size, verify it matches
+            if expected_size > 0:
+                # Allow 1% tolerance for file size differences (metadata, etc.)
+                size_diff = abs(file_size - expected_size)
+                tolerance = expected_size * 0.01  # 1% tolerance
+
+                if size_diff <= tolerance:
+                    # File size matches, use existing file
+                    print(f"[DEBUG] File already exists with correct size: {local_file_path} ({file_size} bytes)")
+                    self.file_exists.emit(str(local_file_path))
+                    return
+                else:
+                    # File size mismatch, need to re-download
+                    print(f"[DEBUG] File exists but size mismatch: expected ~{expected_size}, got {file_size}. Will re-download.")
+            else:
+                # No size info available, use existing file
+                print(f"[DEBUG] File exists (no size verification): {local_file_path} ({file_size} bytes)")
+                self.file_exists.emit(str(local_file_path))
+                return
+
         # Get download URL
         result = QuarkDriveService.get_download_url(
             self._access_token, self._file.file_id
@@ -945,20 +1085,52 @@ class CloudFileDownloadThread(QThread):
             self.token_updated.emit(updated_token)
 
         if url:
-            # Download to temp file
-            import tempfile
+            # If file exists and size mismatch, delete it first
+            if local_file_path.exists():
+                expected_size = self._file.size if self._file.size else 0
+                if expected_size > 0:
+                    actual_size = local_file_path.stat().st_size
+                    size_diff = abs(actual_size - expected_size)
+                    tolerance = expected_size * 0.01
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-                temp_path = f.name
+                    if size_diff > tolerance:
+                        print(f"[DEBUG] Deleting old file with wrong size: {local_file_path}")
+                        local_file_path.unlink()
 
+            # Download to persistent location
             success = QuarkDriveService.download_file(
-                url, temp_path, self._access_token
+                url, str(local_file_path), self._access_token
             )
 
             if success:
-                self.finished.emit(temp_path)
-                return
+                # Verify downloaded file size
+                if local_file_path.exists():
+                    downloaded_size = local_file_path.stat().st_size
+                    expected_size = self._file.size if self._file.size else 0
+
+                    if expected_size > 0:
+                        size_diff = abs(downloaded_size - expected_size)
+                        tolerance = expected_size * 0.01  # 1% tolerance
+
+                        if size_diff <= tolerance:
+                            print(f"[DEBUG] File downloaded and verified: {local_file_path} ({downloaded_size} bytes)")
+                            self.finished.emit(str(local_file_path))
+                            return
+                        else:
+                            print(f"[DEBUG] Downloaded file size mismatch: expected ~{expected_size}, got {downloaded_size}")
+                            # Delete incomplete file
+                            local_file_path.unlink()
+                            self.finished.emit("")
+                    else:
+                        # No size info, assume download was successful
+                        print(f"[DEBUG] File downloaded (no size verification): {local_file_path} ({downloaded_size} bytes)")
+                        self.finished.emit(str(local_file_path))
+                        return
+                else:
+                    print(f"[DEBUG] Download succeeded but file not found: {local_file_path}")
+                    self.finished.emit("")
             else:
+                print(f"[DEBUG] Download failed for file: {self._file.name}")
                 self.finished.emit("")
         else:
             print(f"[DEBUG] Failed to get download URL for file: {self._file.name}")

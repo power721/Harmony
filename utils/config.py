@@ -106,3 +106,21 @@ class ConfigManager:
             volume: Volume level (0-100)
         """
         self.set("volume", volume)
+
+    def get_cloud_download_dir(self) -> str:
+        """
+        Get the cloud drive download directory.
+
+        Returns:
+            Path to cloud download directory (default: ./data/cloud_downloads)
+        """
+        return self.get("cloud_download_dir", "data/cloud_downloads")
+
+    def set_cloud_download_dir(self, dir_path: str):
+        """
+        Set the cloud drive download directory.
+
+        Args:
+            dir_path: Path to cloud download directory
+        """
+        self.set("cloud_download_dir", dir_path)

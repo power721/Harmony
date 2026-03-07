@@ -32,6 +32,7 @@ from ui.queue_view import QueueView
 from ui.cloud_drive_view import CloudDriveView
 from utils.global_hotkeys import GlobalHotkeys, setup_media_key_handler
 from utils import t, set_language
+from utils.config import ConfigManager
 
 
 class MainWindow(QMainWindow):
@@ -57,6 +58,9 @@ class MainWindow(QMainWindow):
 
         # Initialize player controller
         self._player = PlayerController(self._db)
+
+        # Initialize config manager
+        self._config = ConfigManager()
 
         # Mini player (hidden by default)
         self._mini_player: Optional[MiniPlayer] = None
@@ -109,7 +113,7 @@ class MainWindow(QMainWindow):
         self._stacked_widget = QStackedWidget()
 
         self._library_view = LibraryView(self._db, self._player)
-        self._cloud_drive_view = CloudDriveView(self._db, self._player)
+        self._cloud_drive_view = CloudDriveView(self._db, self._player, self._config)
         self._playlist_view = PlaylistView(self._db, self._player)
         self._queue_view = QueueView(self._player, self._db)
 

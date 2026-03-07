@@ -168,5 +168,15 @@
     "vip_expires": "VIP过期时间",
     "storage_used": "网盘容量",
     "failed_to_get_account_info": "获取账户信息失败",
-    "loading": "正在加载"
+    "loading": "正在加载",
+    "cloud_download_dir": "网盘下载目录",
+    "change_download_dir": "更改下载目录",
+    "select_download_dir": "选择下载目录",
+    "file_already_exists": "文件已存在",
+    "using_cached_file": "使用已缓存文件",
+    "file_size_mismatch": "文件大小不匹配，正在重新下载",
+    "deleting_old_file": "删除旧文件，重新下载中",
+    "download_complete": "下载完成",
+    "verifying_file": "正在验证文件",
+    "file_info": "文件信息"
 }

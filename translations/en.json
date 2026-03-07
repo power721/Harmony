@@ -168,5 +168,15 @@
     "vip_expires": "VIP Expires",
     "storage_used": "Storage Used",
     "failed_to_get_account_info": "Failed to get account information",
-    "loading": "Loading"
+    "loading": "Loading",
+    "cloud_download_dir": "Cloud Download Directory",
+    "change_download_dir": "Change Download Directory",
+    "select_download_dir": "Select Download Directory",
+    "file_already_exists": "File already exists",
+    "using_cached_file": "Using cached file",
+    "file_size_mismatch": "File size mismatch, re-downloading",
+    "deleting_old_file": "Deleting old file, re-downloading",
+    "download_complete": "Download complete",
+    "verifying_file": "Verifying file",
+    "file_info": "File Info"
 }
