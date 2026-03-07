@@ -679,6 +679,31 @@ class CloudDriveView(QWidget):
 
             # Emit signal with playlist info
             self.play_cloud_files.emit(temp_path, file_index, audio_files)
+
+            # Update current audio files list with local path
+            if file_index < len(self._current_audio_files):
+                # Update the CloudFile object in current list
+                for i, f in enumerate(self._current_audio_files):
+                    if f.file_id == self._current_audio_files[file_index].file_id:
+                        # Create updated CloudFile with local_path
+                        from database.models import CloudFile as CloudFileModel
+                        updated_file = CloudFileModel(
+                            id=f.id,
+                            account_id=f.account_id,
+                            file_id=f.file_id,
+                            parent_id=f.parent_id,
+                            name=f.name,
+                            file_type=f.file_type,
+                            size=f.size,
+                            mime_type=f.mime_type,
+                            duration=f.duration,
+                            metadata=f.metadata,
+                            local_path=temp_path,
+                            created_at=f.created_at,
+                            updated_at=f.updated_at
+                        )
+                        self._current_audio_files[i] = updated_file
+                        break
         else:
             print(f"[DEBUG] ERROR: Existing file not found: {temp_path}")
             self._status_label.setText(t("download_failed"))
@@ -719,6 +744,31 @@ class CloudDriveView(QWidget):
 
                 # Emit signal with playlist info
                 self.play_cloud_files.emit(temp_path, file_index, audio_files)
+
+                # Update current audio files list with local path
+                if file_index < len(self._current_audio_files):
+                    # Update the CloudFile object in current list
+                    for i, f in enumerate(self._current_audio_files):
+                        if f.file_id == self._current_audio_files[file_index].file_id:
+                            # Create updated CloudFile with local_path
+                            from database.models import CloudFile as CloudFileModel
+                            updated_file = CloudFileModel(
+                                id=f.id,
+                                account_id=f.account_id,
+                                file_id=f.file_id,
+                                parent_id=f.parent_id,
+                                name=f.name,
+                                file_type=f.file_type,
+                                size=f.size,
+                                mime_type=f.mime_type,
+                                duration=f.duration,
+                                metadata=f.metadata,
+                                local_path=temp_path,
+                                created_at=f.created_at,
+                                updated_at=f.updated_at
+                            )
+                            self._current_audio_files[i] = updated_file
+                            break
             else:
                 print(f"[DEBUG] ERROR: Downloaded file does not exist: {temp_path}")
                 self._status_label.setText(t("download_failed"))

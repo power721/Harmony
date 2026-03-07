@@ -1,7 +1,6 @@
 """
 Helper utility functions for the music player.
 """
-import re
 from typing import List, Tuple, Optional
 
 
@@ -38,38 +37,6 @@ def format_time(seconds: float) -> str:
         Formatted time string
     """
     return format_duration(seconds)
-
-
-def parse_lrc(lrc_content: str) -> List[Tuple[float, str]]:
-    """
-    Parse LRC format lyrics content.
-
-    LRC format example:
-    [00:12.50]Line one
-    [00:15.30]Line two
-
-    Args:
-        lrc_content: LRC formatted string
-
-    Returns:
-        List of tuples (time_in_seconds, lyric_line)
-    """
-    lyrics = []
-    lrc_pattern = re.compile(r'\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)')
-
-    for line in lrc_content.split('\n'):
-        match = lrc_pattern.match(line.strip())
-        if match:
-            minutes = int(match.group(1))
-            seconds = int(match.group(2))
-            milliseconds = int(match.group(3).ljust(3, '0')[:3])
-            text = match.group(4).strip()
-
-            if text:  # Only add non-empty lyrics
-                time = minutes * 60 + seconds + milliseconds / 1000.0
-                lyrics.append((time, text))
-
-    return sorted(lyrics, key=lambda x: x[0])
 
 
 def find_lyric_line(lyrics: List[Tuple[float, str]], current_time: float) -> Optional[int]:

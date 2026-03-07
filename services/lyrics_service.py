@@ -4,10 +4,9 @@ Lyrics service for fetching and parsing lyrics.
 from pathlib import Path
 from typing import Optional, List, Tuple
 import requests
-from bs4 import BeautifulSoup
-import re
 
 from utils import parse_lrc
+from utils.lrc_parser import LyricLine
 
 
 class LyricsService:
@@ -40,7 +39,7 @@ class LyricsService:
         return False
 
     @classmethod
-    def get_lyrics(cls, track_path: str, title: str, artist: str) -> Optional[List[Tuple[float, str]]]:
+    def get_lyrics(cls, track_path: str, title: str, artist: str) -> Optional[List[LyricLine]]:
         """
         Get lyrics for a track, prioritizing local .lrc files.
 
@@ -61,10 +60,10 @@ class LyricsService:
         if cls.ENABLE_ONLINE:
             return cls._get_online_lyrics(title, artist)
 
-        return None
+        return []
 
     @classmethod
-    def _get_local_lyrics(cls, track_path: str) -> Optional[List[Tuple[float, str]]]:
+    def _get_local_lyrics(cls, track_path: str) -> Optional[List[LyricLine]]:
         """
         Load lyrics from a local .lrc file.
 
@@ -76,11 +75,6 @@ class LyricsService:
         """
         track_file = Path(track_path)
         lrc_path = track_file.with_suffix('.lrc')
-
-        if not lrc_path.exists():
-            # Try alternative naming (same directory with lyrics subfolder)
-            lyrics_dir = track_file.parent / 'lyrics'
-            lrc_path = lyrics_dir / f"{track_file.stem}.lrc"
 
         if lrc_path.exists():
             # Try multiple encodings to support different file sources
@@ -97,10 +91,10 @@ class LyricsService:
                     print(f"Error loading local lyrics: {e}")
                     break
 
-        return None
+        return []
 
     @classmethod
-    def _get_online_lyrics(cls, title: str, artist: str) -> Optional[List[Tuple[float, str]]]:
+    def _get_online_lyrics(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
         """
         Fetch lyrics from online sources.
 
@@ -129,7 +123,7 @@ class LyricsService:
         return None
 
     @classmethod
-    def _fetch_from_netease(cls, title: str, artist: str) -> Optional[List[Tuple[float, str]]]:
+    def _fetch_from_netease(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
         """
         Fetch lyrics from NetEase Cloud Music.
 
@@ -193,7 +187,7 @@ class LyricsService:
         return None
 
     @classmethod
-    def _fetch_from_qq_music(cls, title: str, artist: str) -> Optional[List[Tuple[float, str]]]:
+    def _fetch_from_qq_music(cls, title: str, artist: str) -> Optional[List[LyricLine]]:
         """
         Fetch lyrics from QQ Music.
 
@@ -219,7 +213,7 @@ class LyricsService:
         return []
 
     @classmethod
-    def save_lyrics(cls, track_path: str, lyrics: List[Tuple[float, str]]) -> bool:
+    def save_lyrics(cls, track_path: str, lyrics: List[LyricLine]) -> bool:
         """
         Save lyrics to a local .lrc file.
 
@@ -236,7 +230,9 @@ class LyricsService:
 
             # Format lyrics as LRC
             lrc_lines = []
-            for time, text in lyrics:
+            for line in lyrics:
+                time = line.time
+                text = line.text
                 minutes = int(time // 60)
                 seconds = int(time % 60)
                 milliseconds = int((time % 1) * 100)
@@ -325,7 +321,7 @@ class LyricsService:
         """
         synced = cls.get_lyrics(track_path, title, artist)
         if synced:
-            return '\n'.join(text for _, text in synced)
+            return '\n'.join(line.text for line in synced)
         return None
 
 
@@ -336,6 +332,6 @@ class LyricsProvider:
         """Search for lyrics. Override in subclasses."""
         raise NotImplementedError
 
-    def get_lyrics(self, song_id: str) -> Optional[List[Tuple[float, str]]]:
+    def get_lyrics(self, song_id: str) -> Optional[List[LyricLine]]:
         """Get lyrics by song ID. Override in subclasses."""
         raise NotImplementedError

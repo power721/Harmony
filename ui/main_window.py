@@ -1,6 +1,8 @@
 """
 Main application window for the music player.
 """
+import re
+
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -25,6 +27,7 @@ from player import PlayerController
 from player.engine import PlayerState
 from services import LyricsService
 from ui.library_view import LibraryView
+from ui.lyrics_widget import LyricsWidget
 from ui.playlist_view import PlaylistView
 from ui.player_controls import PlayerControls
 from ui.mini_player import MiniPlayer
@@ -71,6 +74,7 @@ class MainWindow(QMainWindow):
         # Lyrics download thread (to prevent multiple downloads)
         self._lyrics_thread: Optional[QThread] = None
         self._lyrics_worker = None
+        self._current_index = -1
 
         # Setup UI
         self._setup_ui()
@@ -309,13 +313,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(title_layout)
 
         # Lyrics text browser (has built-in scrolling)
-        self._lyrics_view = QWebEngineView()
+        self._lyrics_view = LyricsWidget()
         self._lyrics_view.setObjectName("lyricsContent")
         self._lyrics_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self._lyrics_view.customContextMenuRequested.connect(
             self._show_lyrics_context_menu
         )
-        self._lyrics_view.setHtml(self._build_html(""))
         self._lyrics_view.setFocusPolicy(Qt.NoFocus)  # Prevent stealing focus
 
         layout.addWidget(self._lyrics_view, 1)  # Give it stretch to fill space
@@ -348,7 +351,7 @@ class MainWindow(QMainWindow):
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
 
         # lyrics
-        self.lyricsHtmlReady.connect(self._lyrics_view.setHtml)
+        # self.lyricsHtmlReady.connect(self._lyrics_view.setHtml)
 
     def _setup_system_tray(self):
         """Setup system tray icon."""
@@ -637,10 +640,8 @@ class MainWindow(QMainWindow):
                 # Select in queue view (if it exists in queue)
                 self._queue_view._select_track_by_id(track_id)
 
+        self._lyrics_view.set_lyrics([])
         if not track_dict:
-            self._lyrics_view.setHtml(
-                self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("not_playing")}</div>')
-            )
             return
 
         # Load lyrics (fast, local only)
@@ -648,16 +649,10 @@ class MainWindow(QMainWindow):
         artist = track_dict.get("artist", "")
         path = track_dict.get("path", "")
 
-        # Show loading message
-        self._lyrics_view.setHtml(
-            self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}</div>')
-        )
-        self._current_lyrics = []
-
         # Try to load lyrics
         lyrics = LyricsService.get_lyrics(path, title, artist)
         if lyrics:
-            self._load_lyrics(lyrics)
+            self._lyrics_view.set_lyrics(lyrics)
         else:
             # Check if .lrc file exists nearby
             from pathlib import Path
@@ -668,14 +663,7 @@ class MainWindow(QMainWindow):
             lrc_alt = lyrics_dir / f"{track_path.stem}.lrc"
 
             if lrc_path.exists() or lrc_alt.exists():
-                self._lyrics_view.setHtml(
-                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>{t("lyrics_found_parse_failed")}<br><br>{t("ensure_lrc_valid")}</div>')
-                )
-            else:
-                # No lyrics file exists, show no lyrics message
-                self._lyrics_view.setHtml(
-                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>')
-                )
+                self._lyrics_view.set_lyrics(None)
 
     def _download_lyrics(self):
         """Download lyrics for current track."""
@@ -691,9 +679,7 @@ class MainWindow(QMainWindow):
             self._lyrics_thread.quit()
             self._lyrics_thread.wait()
 
-        self._lyrics_view.setHtml(
-            self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">⏳<br><br>{t("searching_lyrics")}</div>')
-        )
+        self._lyrics_view.set_lyrics([])
 
         from PySide6.QtCore import QObject
 
@@ -740,17 +726,14 @@ class MainWindow(QMainWindow):
 
     def _on_lyrics_download_success(self, lyrics):
         """Handle successful lyrics download."""
-        self._current_lyrics = lyrics
-        html = self._build_lyrics_html(lyrics)
-        self._lyrics_view.setHtml(html)
+        self._lyrics_view.set_lyrics(lyrics)
 
     def _on_lyrics_download_error(self, error_type: str):
         """Handle lyrics download error."""
         if error_type == "parse_failed":
-            html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_downloaded_parsing_failed")}</div>')
+            self._lyrics_view.set_lyrics(None)
         else:  # not_found
-            html = self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">❌<br><br>{t("lyrics_not_found")}</div>')
-        self._lyrics_view.setHtml(html)
+            self._lyrics_view.set_lyrics([])
 
     def _show_lyrics_context_menu(self, pos):
         """Show context menu for lyrics panel."""
@@ -912,23 +895,6 @@ class MainWindow(QMainWindow):
                     print(f"Error reading {lrc_path}: {e}")
                     break
 
-        # Try alternative location
-        if not lyrics_content:
-            lyrics_dir = track_file.parent / 'lyrics'
-            alt_lrc_path = lyrics_dir / f"{track_file.stem}.lrc"
-            if alt_lrc_path.exists():
-                for encoding in encodings:
-                    try:
-                        with open(alt_lrc_path, 'r', encoding=encoding) as f:
-                            lyrics_content = f.read()
-                        print(f"Loaded lyrics from {alt_lrc_path} with {encoding} encoding")
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-                    except Exception as e:
-                        print(f"Error reading {alt_lrc_path}: {e}")
-                        break
-
         # Load lyrics into editor if found
         if lyrics_content and lyrics_content.strip():
             text_edit.setPlainText(lyrics_content)
@@ -1006,13 +972,8 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             if LyricsService.delete_lyrics(track.path):
                 # Clear lyrics immediately and reset state
-                self._current_lyrics = []
                 self._current_lyric_line = None
-                title = track.title or ""
-                artist = track.artist or ""
-                self._lyrics_view.setHtml(
-                    self._build_html(f'<div style="color: #b3b3b3; text-align: center; padding: 40px;">🎵<br><br>♪ {title} ♪<br><br>by {artist}<br><br>---<br><br>{t("no_lyrics")}<br><br>{t("click_download")}</div>')
-                )
+                self._lyrics_view.set_lyrics([])
                 QMessageBox.information(self, t("success"), t("lyrics_deleted"))
             else:
                 QMessageBox.warning(self, "Error", t("lyrics_delete_failed"))
@@ -1078,144 +1039,14 @@ class MainWindow(QMainWindow):
         # Show notification
         count = len(track_ids)
         self._status_bar = self.statusBar()
-        if not self._status_bar:
-            self._status_bar = self.statusBar()
         s = "s" if count > 1 else ""
         msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
         self._status_bar.showMessage(msg, 3000)
 
-    def _load_lyrics(self, lyrics):
-        """
-        lyrics: List[(time_in_seconds, text)]
-        """
-        self._current_lyrics = lyrics
-        self._current_index = -1
+    def _on_position_changed(self, position_ms):
+        seconds = position_ms / 1000
 
-        html = self._build_lyrics_html(lyrics)
-        self._lyrics_view.setHtml(html)
-
-    def _on_position_changed(self, position_ms: int):
-        if not self._current_lyrics:
-            return
-
-        seconds = position_ms / 1000.0
-        index = self._find_line(seconds)
-
-        if index != -1 and index != self._current_index:
-            self._highlight_line(index)
-            self._current_index = index
-
-    def _find_line(self, seconds: float):
-        """
-        Binary search could be used here if lyrics are large.
-        """
-        for i in range(len(self._current_lyrics) - 1):
-            if self._current_lyrics[i][0] <= seconds < self._current_lyrics[i + 1][0]:
-                return i
-
-        if self._current_lyrics and seconds >= self._current_lyrics[-1][0]:
-            return len(self._current_lyrics) - 1
-
-        return -1
-
-    def _highlight_line(self, index: int):
-        prev = self._current_index
-
-        js = f"""
-        if ({prev} >= 0) {{
-            var prevEl = document.getElementById("line{prev}");
-            if (prevEl) prevEl.classList.remove("active");
-        }}
-
-        var el = document.getElementById("line{index}");
-        if (el) {{
-            el.classList.add("active");
-            el.scrollIntoView({{
-                behavior: "smooth",
-                block: "center"
-            }});
-        }}
-        """
-
-        self._lyrics_view.page().runJavaScript(js)
-
-    def _build_lyrics_html(self, lyrics):
-        html = ""
-        for i, (_, text) in enumerate(lyrics):
-            html += f'<div id="line{i}" class="line">{text}</div>'
-        return self._build_html(html)
-
-    def _build_html(self, content):
-        html = """
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-            html, body {
-                background: #000000;
-                margin: 0;
-                padding: 0;
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                overflow-y: auto;
-            }
-
-            .container {
-                padding: 16vh 20px;
-                line-height: 2.4;
-                font-size: 16px;
-                color: #666666;
-                text-align: center;
-                scroll-behavior: smooth;
-            }
-
-            .line {
-                margin: 10px 0;
-                padding: 12px;
-                border-radius: 10px;
-                transition: all 0.25s ease;
-                opacity: 0.4;
-            }
-
-            .line.active {
-                color: #1db954;
-                font-size: 22px;
-                font-weight: bold;
-                background-color: rgba(29,185,84,0.12);
-                opacity: 1;
-                transform: scale(1.10);
-            }
-
-            /* 上下渐隐遮罩 */
-            body {
-                mask-image: linear-gradient(
-                    to bottom,
-                    transparent,
-                    black 15%,
-                    black 85%,
-                    transparent
-                );
-            }
-
-            /* 滚动条隐藏（更干净） */
-            ::-webkit-scrollbar {
-                display: none;
-            }
-
-        </style>
-        </head>
-        <body>
-        <div class="container">
-        """
-
-        html += content
-
-        html += """
-        </div>
-        </body>
-        </html>
-        """
-
-        return html
+        self._lyrics_view.update_position(seconds)
 
     def _toggle_play_pause(self):
         """Toggle play/pause."""
@@ -1392,7 +1223,6 @@ class MainWindow(QMainWindow):
 
         event.accept()
 
-
 class CloudPlaylistManager:
     """Manages playback of cloud files with on-demand downloading."""
 
@@ -1401,11 +1231,14 @@ class CloudPlaylistManager:
         self._player_engine = player_engine
         self._db = db_manager
         self._cloud_files = []
+        self._download_threads = []
         self._current_index = 0
         self._downloaded_files = {}  # Maps cloud_file_id to temp_path
 
     def load_playlist(self, cloud_files, start_index, first_file_path):
         """Load cloud file playlist and start playback."""
+        from PySide6.QtCore import QTimer
+
         self._cloud_files = cloud_files
         self._current_index = start_index
 
@@ -1435,9 +1268,12 @@ class CloudPlaylistManager:
                     'album': 'Cloud'
                 })
 
-        # Load into player and start playing FIRST (before connecting signal)
+        # Load into player and start playing FIRST
         self._player_engine.load_playlist(playlist)
         self._player_engine.play_at(start_index)
+
+        # Connect signal AFTER playback has started using QTimer to ensure main thread
+        QTimer.singleShot(0, self._connect_track_changed_signal)
 
     def _save_playback_state(self, cloud_file):
         """Save current cloud playback state to config."""
@@ -1453,13 +1289,17 @@ class CloudPlaylistManager:
                     file_fid=cloud_file.file_id
                 )
 
-        # Connect signal AFTER playback has started (prevents immediate trigger)
+    def _connect_track_changed_signal(self):
+        """Connect track changed signal in main thread."""
+        # Disconnect first to avoid duplicates
         try:
             self._player_engine.current_track_changed.disconnect(
                 self.on_track_changed
             )
         except (TypeError, RuntimeError):
             pass  # Signal wasn't connected, which is fine
+
+        # Connect in main thread
         self._player_engine.current_track_changed.connect(
             self.on_track_changed
         )
@@ -1511,6 +1351,7 @@ class CloudPlaylistManager:
             self._cloud_files,
             self._cloud_view
         )
+        self._download_threads.append(download_thread)
         download_thread.finished.connect(lambda path: self._on_file_downloaded(index, path))
         download_thread.token_updated.connect(self._cloud_view._on_token_updated)
         download_thread.start()
@@ -1524,8 +1365,8 @@ class CloudPlaylistManager:
                 self._downloaded_files[cloud_file.file_id] = temp_path
 
             # Update player if this is the current track
-            if index == self._player_engine.current_index:
-                self._update_track_path(index, temp_path)
+            # This method is called in main thread via Qt signal/slot mechanism
+            self._update_track_path(index, temp_path)
 
     def _update_track_path(self, index: int, temp_path: str):
         """Update track path in player and reload."""
