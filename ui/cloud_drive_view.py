@@ -425,17 +425,15 @@ class CloudDriveView(QWidget):
                     can_go_back = len(self._fid_path) > 0
                     self._back_btn.setEnabled(can_go_back)
 
-                    # Store last playing state for later restoration
+                    # Store last playing state for later restoration (but don't auto-restore)
                     self._last_playing_fid = account.last_playing_fid
                     self._last_position = account.last_position
 
                     # Load files for the restored folder
                     self._update_file_view()
 
-                    # Try to restore playback after files are loaded
-                    if account.last_playing_fid:
-                        # Use QTimer to defer playback until files are loaded
-                        QTimer.singleShot(1000, self._restore_playback)
+                    # NOTE: Playback restoration is handled by MainWindow._restore_playback_state()
+                    # Do not auto-restore here to avoid conflicts
 
     def _populate_account_list(self, accounts: List[CloudAccount]):
         """Populate the account list widget."""
@@ -803,8 +801,13 @@ class CloudDriveView(QWidget):
         except Exception as e:
             logger.error(f"Error saving playback position: {e}", exc_info=True)
 
-    def _play_audio_file(self, file: CloudFile):
-        """Play an audio file from cloud."""
+    def _play_audio_file(self, file: CloudFile, start_position: float = None):
+        """Play an audio file from cloud.
+
+        Args:
+            file: CloudFile to play
+            start_position: Optional position to start from (in seconds). If None, uses saved position.
+        """
         # Track the currently playing file
         self._current_playing_file_id = file.file_id
 
@@ -823,19 +826,24 @@ class CloudDriveView(QWidget):
                 fid_path_str
             )
 
-            # Save playing state (start from beginning or saved position)
-            start_position = 0.0
-            if self._last_playing_fid == file.file_id:
+            # Determine start position
+            if start_position is not None:
+                # Use provided start_position (from restore)
+                actual_start_position = start_position
+            elif self._last_playing_fid == file.file_id:
                 # This is the same file that was playing before
-                start_position = self._last_position
-                if start_position > 0:
-                    self._status_label.setText(
-                        f"🎵 恢复播放: {file.name} (从 {int(start_position // 60)}:{int(start_position % 60):02d} 开始)")
+                actual_start_position = self._last_position
+            else:
+                actual_start_position = 0.0
+
+            if actual_start_position > 0:
+                self._status_label.setText(
+                    f"🎵 恢复播放: {file.name} (从 {int(actual_start_position // 60)}:{int(actual_start_position % 60):02d} 开始)")
 
             self._db.update_cloud_account_playing_state(
                 self._current_account.id,
                 playing_fid=file.file_id,
-                position=start_position
+                position=actual_start_position
             )
 
             # Start the position save timer
@@ -879,7 +887,7 @@ class CloudDriveView(QWidget):
                 self._status_label.setText(f"{t('file_size_mismatch')}: {file.name} ({size_mb:.1f} MB)")
             else:
                 # File exists and size matches
-                if start_position == 0:
+                if actual_start_position == 0:
                     self._status_label.setText(f"{t('using_cached_file')}: {file.name}")
                 # else: already set message above about resuming
 
@@ -902,12 +910,12 @@ class CloudDriveView(QWidget):
         )
         download_thread.finished.connect(
             lambda path: self._on_file_downloaded(
-                path, file_index, self._current_audio_files, file.name, start_position
+                path, file_index, self._current_audio_files, file.name, actual_start_position
             )
         )
         download_thread.file_exists.connect(
             lambda path: self._on_file_exists(
-                path, file_index, self._current_audio_files, file.name, start_position
+                path, file_index, self._current_audio_files, file.name, actual_start_position
             )
         )
         download_thread.token_updated.connect(self._on_token_updated)
@@ -1617,7 +1625,7 @@ class CloudDriveView(QWidget):
                 if empty_label:
                     empty_label.setText(t("add_cloud_account"))
 
-    def restore_playback_state(self, account_id: int, file_path: str, file_fid: str, auto_play: bool = False):
+    def restore_playback_state(self, account_id: int, file_path: str, file_fid: str, auto_play: bool = False, start_position: float = 0.0):
         """
         Restore previous cloud playback state.
 
@@ -1626,10 +1634,12 @@ class CloudDriveView(QWidget):
             file_path: Parent folder ID to load
             file_fid: File ID to highlight (optional)
             auto_play: Whether to auto-play the file (default: False)
+            start_position: Position to start playback from (in seconds, default: 0.0)
         """
-        # Store file_fid and auto_play for later use
+        # Store file_fid, auto_play and start_position for later use
         self._restore_file_fid = file_fid
         self._restore_auto_play = auto_play
+        self._restore_start_position = start_position
 
         # Select the account
         accounts = self._db.get_cloud_accounts()
@@ -1681,13 +1691,22 @@ class CloudDriveView(QWidget):
             # Capture variables to avoid late binding issues
             captured_fid = file_fid
             captured_auto_play = auto_play
+            print(f"[DEBUG] restore_playback_state: file_fid={file_fid}, auto_play={auto_play}")
             QTimer.singleShot(500, lambda: self._select_and_play_file_by_fid(captured_fid, captured_auto_play))
+        elif file_fid:
+            print(f"[DEBUG] restore_playback_state: file_fid={file_fid}, but _file_table not ready")
+            # Wait for table to be ready
+            captured_fid = file_fid
+            captured_auto_play = auto_play
+            QTimer.singleShot(1000, lambda: self._select_and_play_file_by_fid(captured_fid, captured_auto_play))
 
         return True
 
     def _select_and_play_file_by_fid(self, file_fid: str, auto_play: bool = False):
         """Select and optionally play a file in the table by its file ID."""
+        print(f"[DEBUG] _select_and_play_file_by_fid: file_fid={file_fid}, auto_play={auto_play}")
         if not hasattr(self, '_file_table'):
+            print("[DEBUG] _file_table not found")
             return
 
         for row in range(self._file_table.rowCount()):
@@ -1698,13 +1717,16 @@ class CloudDriveView(QWidget):
                     # Select the file
                     self._file_table.selectRow(row)
                     self._file_table.scrollToItem(item)
+                    print(f"[DEBUG] Found file: {cloud_file.name}, file_type={cloud_file.file_type}")
 
                     # Auto-play the file if requested and it's an audio file
                     if auto_play and cloud_file.file_type == 'audio':
                         # Use a small delay to ensure UI is ready
-                        # Capture cloud_file in a closure to avoid late binding
+                        # Capture cloud_file and start_position in a closure to avoid late binding
                         captured_file = cloud_file
-                        QTimer.singleShot(300, lambda f=captured_file: self._play_audio_file(f))
+                        captured_position = getattr(self, '_restore_start_position', 0.0)
+                        print(f"[DEBUG] Restoring with start_position: {captured_position}s")
+                        QTimer.singleShot(300, lambda f=captured_file, p=captured_position: self._play_audio_file(f, start_position=p))
                     break
 
     def _select_file_by_fid(self, file_fid: str):

@@ -608,10 +608,7 @@ class MainWindow(QMainWindow):
         self._config.set_playback_source("local")
         self._config.clear_cloud_account_id()
 
-        # Stop current playback first
-        self._player.engine.stop()
-
-        # Disconnect cloud playlist manager signals if exists
+        # Disconnect cloud playlist manager signals FIRST to prevent callbacks
         if hasattr(self, '_cloud_playlist_manager') and self._cloud_playlist_manager:
             try:
                 self._player.engine.current_track_changed.disconnect(
@@ -620,6 +617,9 @@ class MainWindow(QMainWindow):
             except (TypeError, RuntimeError):
                 pass
             self._cloud_playlist_manager = None
+
+        # Stop current playback after disconnecting signals
+        self._player.engine.stop()
 
         self._player.play_track(track_id)
 
@@ -1236,10 +1236,12 @@ class MainWindow(QMainWindow):
 
         # Check playback source
         source = self._config.get_playback_source()
+        print(f"[DEBUG] Playback source: {source}")
 
         if source == "cloud":
             # Restore cloud playback state
             account_id = self._config.get_cloud_account_id()
+            print(f"[DEBUG] Cloud account_id: {account_id}")
             if account_id:
                 account = self._db.get_cloud_account(account_id)
                 if account:
@@ -1277,22 +1279,27 @@ class MainWindow(QMainWindow):
                             account_id=account_id,
                             file_path=parent_id,
                             file_fid=account.last_playing_fid,
-                            auto_play=was_playing
+                            auto_play=was_playing,
+                            start_position=account.last_position or 0.0
                         )
 
                     QTimer.singleShot(200, restore_cloud_state)
                     return
+                else:
+                    print(f"[DEBUG] Cloud account {account_id} not found, falling back to local")
 
         # Restore local track playback state
         current_track_id = self._config.get_current_track_id()
         playback_position = self._config.get_playback_position()
         was_playing = self._config.get_was_playing()
+        print(f"[DEBUG] Local restore: track_id={current_track_id}, position={playback_position}, was_playing={was_playing}")
 
-        if current_track_id > 0:
+        if current_track_id and current_track_id > 0:
             def restore_later():
                 track = self._db.get_track(current_track_id)
                 if track:
                     try:
+                        print(f"[DEBUG] Restoring local track: {current_track_id}")
                         self._player.play_track(current_track_id)
 
                         if playback_position > 0:
@@ -1311,18 +1318,17 @@ class MainWindow(QMainWindow):
         if hasattr(self._cloud_drive_view, '_position_save_timer'):
             self._cloud_drive_view._position_save_timer.stop()
 
-        # Stop playback
-        self._player.engine.stop()
-
         # Save window settings using QSettings (Qt native format)
         self._settings.setValue("geometry", self.saveGeometry())
         self._settings.setValue("splitter", self._splitter.saveState())
 
-        # Check if playing cloud files
+        # Check if playing cloud files BEFORE stopping
         is_playing_cloud = (
             hasattr(self, '_cloud_playlist_manager') and
             self._cloud_playlist_manager is not None
         )
+        is_playing = self._player.engine.state == PlayerState.PLAYING
+        current_position = self._player.engine.position()
 
         try:
             if is_playing_cloud:
@@ -1330,15 +1336,34 @@ class MainWindow(QMainWindow):
                 account_id = self._config.get_cloud_account_id()
                 if account_id:
                     self._config.set_playback_source("cloud")
-                    self._config.set_was_playing(self._player.engine.state == PlayerState.PLAYING)
+                    self._config.set_was_playing(is_playing)
+                    # Clear local track info when playing cloud
+                    self._config.set_current_track_id(0)
+                    self._config.set_playback_position(0)
+
+                    # Save playback position to cloud_accounts table
+                    # Get current playing file from cloud playlist manager
+                    if hasattr(self._cloud_playlist_manager, '_cloud_files'):
+                        current_index = self._player.engine.current_index
+                        cloud_files = self._cloud_playlist_manager._cloud_files
+                        if 0 <= current_index < len(cloud_files):
+                            current_file = cloud_files[current_index]
+                            position_seconds = current_position / 1000.0
+                            self._db.update_cloud_account_playing_state(
+                                account_id=account_id,
+                                playing_fid=current_file.file_id,
+                                position=position_seconds
+                            )
             elif self._player.current_track_id:
                 # Save local playback state
                 self._config.set_playback_source("local")
                 self._config.set_current_track_id(self._player.current_track_id)
-                self._config.set_playback_position(self._player.engine.position())
-                self._config.set_was_playing(self._player.engine.state == PlayerState.PLAYING)
+                self._config.set_playback_position(current_position)
+                self._config.set_was_playing(is_playing)
+                # Clear cloud info when playing local
+                self._config.clear_cloud_account_id()
             else:
-                # No track playing - could be cloud playback paused
+                # No track playing
                 source = self._config.get_playback_source()
                 if source == "cloud":
                     self._config.set_was_playing(False)
@@ -1347,8 +1372,12 @@ class MainWindow(QMainWindow):
                     self._config.set_current_track_id(0)
                     self._config.set_playback_position(0)
                     self._config.set_was_playing(False)
+                    self._config.clear_cloud_account_id()
         except Exception as e:
             print(f"Error saving playback state: {e}")
+
+        # Stop playback AFTER saving state
+        self._player.engine.stop()
 
         # Close database
         self._db.close()
