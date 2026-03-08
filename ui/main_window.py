@@ -1315,10 +1315,6 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close."""
-        # Stop any running timers first
-        if hasattr(self._cloud_drive_view, '_position_save_timer'):
-            self._cloud_drive_view._position_save_timer.stop()
-
         # Save window settings using QSettings (Qt native format)
         self._settings.setValue("geometry", self.saveGeometry())
         self._settings.setValue("splitter", self._splitter.saveState())
@@ -1598,11 +1594,12 @@ class CloudPlaylistManager:
                     from PySide6.QtCore import QUrl
                     url = QUrl.fromLocalFile(temp_path)
                     self._player_engine._player.setSource(url)
-                    self._player_engine.current_track_changed.emit(playlist[index])
+                    self._player_engine._player.play()  # Start playback after setting source
                 finally:
                     # Reconnect signal
                     self._player_engine.current_track_changed.connect(
                         self.on_track_changed
                     )
-                    # Manually trigger lyrics loading with updated metadata
-                    self.on_track_changed(playlist[index])
+
+                # Emit signal after reconnecting so MainWindow._on_track_changed handles lyrics
+                self._player_engine.current_track_changed.emit(playlist[index])

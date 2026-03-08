@@ -63,9 +63,6 @@ class CloudDriveView(QWidget):
         self._last_playing_fid = ""  # Last playing file ID from database
         self._last_position = 0.0  # Last playback position from database
         self._fid_path = []  # List of folder IDs in current path (e.g., ["0", "fid1", "fid2"])
-        self._position_save_timer = QTimer(self)  # Timer for saving playback position
-        self._position_save_timer.timeout.connect(self._save_playback_position)
-        self._position_save_timer.setInterval(5000)  # Save every 5 seconds
         self._current_playing_file_id = ""  # Currently playing file ID
 
         self._setup_ui()
@@ -845,9 +842,6 @@ class CloudDriveView(QWidget):
                 playing_fid=file.file_id,
                 position=actual_start_position
             )
-
-            # Start the position save timer
-            self._position_save_timer.start()
 
         # Find index of this file in current folder's audio list
         try:
