@@ -1552,8 +1552,24 @@ class CloudPlaylistManager:
         )
         self._download_threads.append(download_thread)
         download_thread.finished.connect(lambda path: self._on_file_downloaded(index, path))
+        download_thread.file_exists.connect(lambda path: self._on_file_exists(index, path))
         download_thread.token_updated.connect(self._cloud_view._on_token_updated)
         download_thread.start()
+
+    def _on_file_exists(self, index: int, temp_path: str):
+        """Handle when file already exists locally."""
+        if temp_path:
+            # Store path
+            if index < len(self._cloud_files):
+                cloud_file = self._cloud_files[index]
+                self._downloaded_files[cloud_file.file_id] = temp_path
+
+                # Update status label to show using cached file
+                if hasattr(self._cloud_view, '_status_label'):
+                    self._cloud_view._status_label.setText(f"{t('using_cached_file')} - {cloud_file.name}")
+
+            # Update player if this is the current track
+            self._update_track_path(index, temp_path)
 
     def _on_file_downloaded(self, index: int, temp_path: str):
         """Handle completed file download."""
@@ -1562,6 +1578,13 @@ class CloudPlaylistManager:
             if index < len(self._cloud_files):
                 cloud_file = self._cloud_files[index]
                 self._downloaded_files[cloud_file.file_id] = temp_path
+
+                # Update status label to show download complete
+                if hasattr(self._cloud_view, '_status_label'):
+                    import os
+                    file_size = os.path.getsize(temp_path)
+                    size_mb = file_size / (1024 * 1024)
+                    self._cloud_view._status_label.setText(f"{t('download_complete')}: {cloud_file.name} ({size_mb:.1f} MB)")
 
             # Update player if this is the current track
             # This method is called in main thread via Qt signal/slot mechanism
@@ -1572,15 +1595,47 @@ class CloudPlaylistManager:
         playlist = self._player_engine.playlist
         if 0 <= index < len(playlist):
             playlist[index]['path'] = temp_path
-            metadata = MetadataService.extract_metadata(temp_path)
-            if metadata:
-                track_title = metadata.get("title", "")
-                track_artist = metadata.get("artist", "")
-                playlist[index]['title'] = track_title
-                playlist[index]['artist'] = track_artist
 
             # Reload and play if this is current track
             if index == self._player_engine.current_index:
+                # Load metadata asynchronously
+                from PySide6.QtCore import QThread, Signal, QObject
+
+                class MetadataWorker(QObject):
+                    finished = Signal(str, str)
+
+                    def __init__(self, path):
+                        super().__init__()
+                        self._path = path
+
+                    def run(self):
+                        metadata = MetadataService.extract_metadata(self._path)
+                        if metadata:
+                            self.finished.emit(
+                                metadata.get("title", ""),
+                                metadata.get("artist", "")
+                            )
+                        else:
+                            self.finished.emit("", "")
+
+                def on_metadata_ready(title, artist):
+                    if index < len(playlist):
+                        if title:
+                            playlist[index]['title'] = title
+                        if artist:
+                            playlist[index]['artist'] = artist
+
+                # Start metadata extraction in background
+                self._metadata_thread = QThread()
+                self._metadata_worker = MetadataWorker(temp_path)
+                self._metadata_worker.moveToThread(self._metadata_thread)
+                self._metadata_thread.started.connect(self._metadata_worker.run)
+                self._metadata_worker.finished.connect(on_metadata_ready)
+                self._metadata_worker.finished.connect(self._metadata_thread.quit)
+                self._metadata_worker.finished.connect(self._metadata_worker.deleteLater)
+                self._metadata_thread.finished.connect(self._metadata_thread.deleteLater)
+                self._metadata_thread.start()
+
                 # Temporarily disconnect signal to prevent loop
                 try:
                     self._player_engine.current_track_changed.disconnect(
@@ -1594,7 +1649,7 @@ class CloudPlaylistManager:
                     from PySide6.QtCore import QUrl
                     url = QUrl.fromLocalFile(temp_path)
                     self._player_engine._player.setSource(url)
-                    self._player_engine._player.play()  # Start playback after setting source
+                    self._player_engine._player.play()
                 finally:
                     # Reconnect signal
                     self._player_engine.current_track_changed.connect(
