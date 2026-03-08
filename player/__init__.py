@@ -2,6 +2,8 @@
 from .engine import PlayerEngine, PlayMode, PlayerState
 from .controller import PlayerController
 from .equalizer import EqualizerWidget, EqualizerPreset
+from .playlist_item import PlaylistItem, CloudProvider
+from .playback_manager import PlaybackManager
 
 __all__ = [
     'PlayerEngine',
@@ -9,5 +11,8 @@ __all__ = [
     'PlayMode',
     'PlayerState',
     'EqualizerWidget',
-    'EqualizerPreset'
+    'EqualizerPreset',
+    'PlaylistItem',
+    'CloudProvider',
+    'PlaybackManager',
 ]
