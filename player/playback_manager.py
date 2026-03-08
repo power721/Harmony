@@ -229,6 +229,63 @@ class PlaybackManager(QObject):
         self._engine.load_playlist_items(items)
         self._engine.play()
 
+    def load_playlist(self, playlist_id: int):
+        """
+        Load a playlist from the database.
+
+        Args:
+            playlist_id: Playlist ID
+        """
+        from pathlib import Path
+
+        logger.debug(f"[PlaybackManager] Loading playlist: {playlist_id}")
+
+        self._set_source("local")
+
+        tracks = self._db.get_playlist_tracks(playlist_id)
+        items = []
+
+        for track in tracks:
+            if track.id and track.id > 0 and Path(track.path).exists():
+                items.append(PlaylistItem.from_track(track))
+
+        self._engine.load_playlist_items(items)
+
+        # Save state
+        self._config.set_playback_source("local")
+
+    def play_playlist_track(self, playlist_id: int, track_id: int):
+        """
+        Play a specific track from a playlist.
+
+        Args:
+            playlist_id: Playlist ID
+            track_id: Track ID to play
+        """
+        from pathlib import Path
+
+        logger.debug(f"[PlaybackManager] Playing track {track_id} from playlist {playlist_id}")
+
+        self._set_source("local")
+
+        tracks = self._db.get_playlist_tracks(playlist_id)
+        items = []
+        start_index = 0
+
+        for i, track in enumerate(tracks):
+            if track.id and track.id > 0 and Path(track.path).exists():
+                item = PlaylistItem.from_track(track)
+                if track.id == track_id:
+                    start_index = len(items)
+                items.append(item)
+
+        self._engine.load_playlist_items(items)
+        self._engine.play_at(start_index)
+
+        # Save state
+        self._config.set_current_track_id(track_id)
+        self._config.set_playback_source("local")
+
     # ===== Cloud Playback =====
 
     def play_cloud_track(

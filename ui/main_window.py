@@ -163,6 +163,9 @@ class MainWindow(QMainWindow):
                     db.add_favorite(track_id)
                     return True
 
+            def load_playlist(self, playlist_id):
+                return playback.load_playlist(playlist_id)
+
         self._player = PlayerProxy()
 
         # Event bus for signals
@@ -456,7 +459,7 @@ class MainWindow(QMainWindow):
         # View connections
         self._library_view.track_double_clicked.connect(self._play_track)
         self._library_view.add_to_queue.connect(self._add_to_queue)
-        self._playlist_view.track_double_clicked.connect(self._play_track)
+        self._playlist_view.playlist_track_double_clicked.connect(self._play_playlist_track)
         self._queue_view.play_track.connect(self._play_track)
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
@@ -698,9 +701,14 @@ class MainWindow(QMainWindow):
         self._queue_view.refresh_queue()
 
     def _play_track(self, track_id: int):
-        """Play a local track."""
+        """Play a local track from library (loads entire library as playlist)."""
         logger.debug(f"[MainWindow] _play_track: {track_id}")
         self._playback.play_local_track(track_id)
+
+    def _play_playlist_track(self, playlist_id: int, track_id: int):
+        """Play a track from a specific playlist."""
+        logger.debug(f"[MainWindow] _play_playlist_track: playlist={playlist_id}, track={track_id}")
+        self._playback.play_playlist_track(playlist_id, track_id)
 
     def _play_cloud_track(self, temp_path: str):
         """Play track from cloud (temp file) - backward compatible."""
