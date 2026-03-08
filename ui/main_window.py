@@ -658,6 +658,11 @@ class MainWindow(QMainWindow):
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[MainWindow] _on_track_changed called: track_dict={track_dict}")
+
         # Reset lyric line tracking
         self._current_lyric_line = None
 
@@ -672,6 +677,7 @@ class MainWindow(QMainWindow):
 
         self._lyrics_view.set_lyrics(t("no_lyrics"))
         if not track_dict:
+            logger.debug("[MainWindow] _on_track_changed: track_dict is None, returning")
             return
 
         # Load lyrics (fast, local only)
@@ -679,12 +685,19 @@ class MainWindow(QMainWindow):
         artist = track_dict.get("artist", "")
         path = track_dict.get("path", "")
 
+        logger.debug(f"[MainWindow] _on_track_changed: title={title}, artist={artist}, path={path}")
+
         # Skip loading lyrics for cloud files (empty path)
         if not path or path.strip() in ('', '.', '/'):
+            logger.debug("[MainWindow] _on_track_changed: Empty path, skipping lyrics load")
             return
 
         # Try to load lyrics
+        logger.debug(f"[MainWindow] _on_track_changed: Loading lyrics...")
+        lyrics_start = time.time()
         lyrics = LyricsService.get_lyrics(path, title, artist)
+        logger.debug(f"[MainWindow] _on_track_changed: LyricsService.get_lyrics took: {time.time() - lyrics_start:.3f}s")
+
         if lyrics:
             self._lyrics_view.set_lyrics(lyrics)
         else:
@@ -700,6 +713,8 @@ class MainWindow(QMainWindow):
 
             if lrc_path.exists() or lrc_alt.exists():
                 self._lyrics_view.set_lyrics(t("lyrics_found_parse_failed") + "\n" + t("ensure_lrc_valid"))
+
+        logger.debug(f"[MainWindow] _on_track_changed took: {time.time() - start_time:.3f}s")
 
     def _download_lyrics(self):
         """Download lyrics for current track."""
@@ -1398,10 +1413,16 @@ class CloudPlaylistManager:
         self._download_threads = []
         self._current_index = 0
         self._downloaded_files = {}  # Maps cloud_file_id to temp_path
+        logger.debug("[CloudPlaylistManager] __init__ called")
 
     def load_playlist(self, cloud_files, start_index, first_file_path, start_position: float = 0.0):
         """Load cloud file playlist and start playback."""
         from PySide6.QtCore import QTimer
+        import time
+
+        logger.debug(f"[CloudPlaylistManager] load_playlist called: start_index={start_index}, "
+                    f"files_count={len(cloud_files)}, start_position={start_position}")
+        start_time = time.time()
 
         self._cloud_files = cloud_files
         self._current_index = start_index
@@ -1415,7 +1436,12 @@ class CloudPlaylistManager:
         first_title = first_file.name
         first_artist = ""
         first_album = ""
+
+        metadata_start = time.time()
+        logger.debug(f"[CloudPlaylistManager] Extracting metadata from: {first_file_path}")
         metadata = MetadataService.extract_metadata(first_file_path)
+        logger.debug(f"[CloudPlaylistManager] Metadata extraction took: {time.time() - metadata_start:.3f}s")
+
         if metadata:
             if metadata.get("title"):
                 first_title = metadata.get("title")
@@ -1447,7 +1473,10 @@ class CloudPlaylistManager:
                 })
 
         # Load into player and start playing
+        logger.debug(f"[CloudPlaylistManager] Loading playlist into player, playlist size: {len(playlist)}")
         self._player_engine.load_playlist(playlist)
+
+        logger.debug(f"[CloudPlaylistManager] Total load_playlist time: {time.time() - start_time:.3f}s")
 
         # Use play_at_with_position to seek before playing if start_position is set
         if start_position > 0:
@@ -1505,41 +1534,70 @@ class CloudPlaylistManager:
 
     def on_track_changed(self, track_dict):
         """Handle track change to download files on demand."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[CloudPlaylistManager] on_track_changed called: track_dict={track_dict}")
+
         if not track_dict:
+            logger.debug("[CloudPlaylistManager] on_track_changed: track_dict is None, returning")
             return
+
+        current_index = self._player_engine.current_index
+        logger.debug(f"[CloudPlaylistManager] current_index={current_index}, path={track_dict.get('path')}")
 
         # Only trigger download if path is empty AND we have cloud files
         if not track_dict.get('path') and self._cloud_files:
-            current_index = self._player_engine.current_index
+            logger.debug(f"[CloudPlaylistManager] Path is empty, need to download. current_index={current_index}")
 
             # Check if this file needs downloading
             if 0 <= current_index < len(self._cloud_files):
                 cloud_file = self._cloud_files[current_index]
+                logger.debug(f"[CloudPlaylistManager] Cloud file: {cloud_file.name}, file_id={cloud_file.file_id}")
 
                 # Check if already downloaded
                 if cloud_file.file_id not in self._downloaded_files:
+                    logger.debug(f"[CloudPlaylistManager] File not downloaded, calling _download_and_play")
                     self._download_and_play(current_index)
                 else:
                     temp_path = self._downloaded_files[cloud_file.file_id]
+                    logger.debug(f"[CloudPlaylistManager] File already downloaded: {temp_path}")
                     self._update_track_path(current_index, temp_path)
+            else:
+                logger.debug(f"[CloudPlaylistManager] Invalid index: {current_index}")
+        else:
+            logger.debug(f"[CloudPlaylistManager] Path exists or no cloud files, skipping download")
+
+        logger.debug(f"[CloudPlaylistManager] on_track_changed took: {time.time() - start_time:.3f}s")
 
     def _download_and_play(self, index: int):
         """Download cloud file and update player."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[CloudPlaylistManager] _download_and_play called: index={index}")
+
         if index >= len(self._cloud_files):
+            logger.debug(f"[CloudPlaylistManager] Index out of range: {index} >= {len(self._cloud_files)}")
             return
 
         cloud_file = self._cloud_files[index]
+        logger.debug(f"[CloudPlaylistManager] Cloud file to download: {cloud_file.name}")
 
         # Check if already downloaded
         if cloud_file.file_id in self._downloaded_files:
             temp_path = self._downloaded_files[cloud_file.file_id]
+            logger.debug(f"[CloudPlaylistManager] File already in cache: {temp_path}")
             self._update_track_path(index, temp_path)
             return
 
         # Get current account
         account = self._cloud_view._current_account
         if not account:
+            logger.error("[CloudPlaylistManager] No current account available")
             return
+
+        logger.debug(f"[CloudPlaylistManager] Starting download thread for: {cloud_file.name}")
 
         # Download in background thread
         from ui.cloud_drive_view import CloudFileDownloadThread
@@ -1555,6 +1613,8 @@ class CloudPlaylistManager:
         download_thread.file_exists.connect(lambda path: self._on_file_exists(index, path))
         download_thread.token_updated.connect(self._cloud_view._on_token_updated)
         download_thread.start()
+
+        logger.debug(f"[CloudPlaylistManager] _download_and_play took: {time.time() - start_time:.3f}s")
 
     def _on_file_exists(self, index: int, temp_path: str):
         """Handle when file already exists locally."""
@@ -1573,6 +1633,11 @@ class CloudPlaylistManager:
 
     def _on_file_downloaded(self, index: int, temp_path: str):
         """Handle completed file download."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[CloudPlaylistManager] _on_file_downloaded called: index={index}, temp_path={temp_path}")
+
         if temp_path:
             # Store path
             if index < len(self._cloud_files):
@@ -1592,51 +1657,36 @@ class CloudPlaylistManager:
 
     def _update_track_path(self, index: int, temp_path: str):
         """Update track path in player and reload."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[CloudPlaylistManager] _update_track_path called: index={index}, temp_path={temp_path}")
+
         playlist = self._player_engine.playlist
         if 0 <= index < len(playlist):
             playlist[index]['path'] = temp_path
+            logger.debug(f"[CloudPlaylistManager] Updated playlist[{index}]['path'] = {temp_path}")
 
             # Reload and play if this is current track
             if index == self._player_engine.current_index:
-                # Load metadata asynchronously
-                from PySide6.QtCore import QThread, Signal, QObject
+                logger.debug(f"[CloudPlaylistManager] This is current track, reloading...")
 
-                class MetadataWorker(QObject):
-                    finished = Signal(str, str)
-
-                    def __init__(self, path):
-                        super().__init__()
-                        self._path = path
-
-                    def run(self):
-                        metadata = MetadataService.extract_metadata(self._path)
-                        if metadata:
-                            self.finished.emit(
-                                metadata.get("title", ""),
-                                metadata.get("artist", "")
-                            )
-                        else:
-                            self.finished.emit("", "")
-
-                def on_metadata_ready(title, artist):
-                    if index < len(playlist):
-                        if title:
-                            playlist[index]['title'] = title
-                        if artist:
-                            playlist[index]['artist'] = artist
-
-                # Start metadata extraction in background
-                self._metadata_thread = QThread()
-                self._metadata_worker = MetadataWorker(temp_path)
-                self._metadata_worker.moveToThread(self._metadata_thread)
-                self._metadata_thread.started.connect(self._metadata_worker.run)
-                self._metadata_worker.finished.connect(on_metadata_ready)
-                self._metadata_worker.finished.connect(self._metadata_thread.quit)
-                self._metadata_worker.finished.connect(self._metadata_worker.deleteLater)
-                self._metadata_thread.finished.connect(self._metadata_thread.deleteLater)
-                self._metadata_thread.start()
+                # Extract metadata synchronously (usually fast)
+                try:
+                    metadata_start = time.time()
+                    logger.debug(f"[CloudPlaylistManager] Extracting metadata from: {temp_path}")
+                    metadata = MetadataService.extract_metadata(temp_path)
+                    logger.debug(f"[CloudPlaylistManager] Metadata extraction took: {time.time() - metadata_start:.3f}s")
+                    if metadata:
+                        if metadata.get("title"):
+                            playlist[index]['title'] = metadata["title"]
+                        if metadata.get("artist"):
+                            playlist[index]['artist'] = metadata["artist"]
+                except Exception as e:
+                    logger.error(f"[CloudPlaylistManager] Metadata extraction error: {e}")
 
                 # Temporarily disconnect signal to prevent loop
+                logger.debug("[CloudPlaylistManager] Temporarily disconnecting on_track_changed signal")
                 try:
                     self._player_engine.current_track_changed.disconnect(
                         self.on_track_changed
@@ -1646,15 +1696,24 @@ class CloudPlaylistManager:
 
                 try:
                     # Reload the track
+                    logger.debug(f"[CloudPlaylistManager] Setting player source: {temp_path}")
                     from PySide6.QtCore import QUrl
                     url = QUrl.fromLocalFile(temp_path)
                     self._player_engine._player.setSource(url)
+                    logger.debug("[CloudPlaylistManager] Calling player.play()")
                     self._player_engine._player.play()
+                    logger.debug("[CloudPlaylistManager] player.play() returned")
+                except Exception as e:
+                    logger.error(f"[CloudPlaylistManager] Error setting player source: {e}")
                 finally:
                     # Reconnect signal
+                    logger.debug("[CloudPlaylistManager] Reconnecting on_track_changed signal")
                     self._player_engine.current_track_changed.connect(
                         self.on_track_changed
                     )
 
                 # Emit signal after reconnecting so MainWindow._on_track_changed handles lyrics
+                logger.debug("[CloudPlaylistManager] Emitting current_track_changed signal")
                 self._player_engine.current_track_changed.emit(playlist[index])
+
+                logger.debug(f"[CloudPlaylistManager] _update_track_path took: {time.time() - start_time:.3f}s")

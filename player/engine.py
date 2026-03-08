@@ -230,32 +230,61 @@ class PlayerEngine(QObject):
 
     def play_next(self):
         """Play the next track."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[PlayerEngine] play_next called: current_index={self._current_index}, playlist_size={len(self._playlist)}")
+
         if not self._playlist:
+            logger.debug("[PlayerEngine] play_next: No playlist, returning")
             return
 
         if self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP):
             import random
             self._current_index = random.randint(0, len(self._playlist) - 1)
+            logger.debug(f"[PlayerEngine] play_next: Random mode, new index={self._current_index}")
         else:
             self._current_index += 1
+            logger.debug(f"[PlayerEngine] play_next: Sequential mode, new index={self._current_index}")
 
         if self._current_index >= len(self._playlist):
             if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
                 self._current_index = 0
+                logger.debug(f"[PlayerEngine] play_next: Playlist loop, reset to index 0")
             else:
                 self._current_index = len(self._playlist) - 1
+                logger.debug(f"[PlayerEngine] play_next: End of playlist, stopping")
                 self.stop()
                 return
 
+        current_track = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+        logger.debug(f"[PlayerEngine] play_next: Loading track at index {self._current_index}, path={current_track.get('path') if current_track else None}")
+
         self._load_track(self._current_index)
-        self._player.play()
+
+        # Only call play() if the track has a valid path
+        # For cloud files with empty paths, playback will be triggered after download completes
+        if current_track and current_track.get('path'):
+            logger.debug(f"[PlayerEngine] play_next: Calling play()")
+            self._player.play()
+        else:
+            logger.debug(f"[PlayerEngine] play_next: Path is empty, skipping play() - waiting for download")
+
+        logger.debug(f"[PlayerEngine] play_next took: {time.time() - start_time:.3f}s")
 
     def play_previous(self):
         """Play the previous track."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[PlayerEngine] play_previous called: current_index={self._current_index}")
+
         if not self._playlist:
+            logger.debug("[PlayerEngine] play_previous: No playlist, returning")
             return
 
         if self._player.position() > 3000:  # If more than 3 seconds played, restart track
+            logger.debug("[PlayerEngine] play_previous: Position > 3000ms, restarting track")
             self._player.setPosition(0)
         else:
             self._current_index -= 1
@@ -265,8 +294,20 @@ class PlayerEngine(QObject):
                 else:
                     self._current_index = 0
 
+            current_track = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+            logger.debug(f"[PlayerEngine] play_previous: Loading track at index {self._current_index}, path={current_track.get('path') if current_track else None}")
+
             self._load_track(self._current_index)
-            self._player.play()
+
+            # Only call play() if the track has a valid path
+            # For cloud files with empty paths, playback will be triggered after download completes
+            if current_track and current_track.get('path'):
+                logger.debug("[PlayerEngine] play_previous: Calling play()")
+                self._player.play()
+            else:
+                logger.debug("[PlayerEngine] play_previous: Path is empty, skipping play() - waiting for download")
+
+        logger.debug(f"[PlayerEngine] play_previous took: {time.time() - start_time:.3f}s")
 
     def seek(self, position_ms: int):
         """
@@ -318,19 +359,32 @@ class PlayerEngine(QObject):
 
     def _load_track(self, index: int):
         """Load a track for playback."""
+        import time
+        start_time = time.time()
+
+        logger.debug(f"[PlayerEngine] _load_track called: index={index}")
+
         if 0 <= index < len(self._playlist):
             track = self._playlist[index]
+            logger.debug(f"[PlayerEngine] _load_track: track={track}")
 
             # Skip loading if path is empty (for cloud files not yet downloaded)
             if not track.get('path'):
+                logger.debug(f"[PlayerEngine] _load_track: Path is empty, emitting current_track_changed signal")
                 self.current_track_changed.emit(track)
+                logger.debug(f"[PlayerEngine] _load_track took: {time.time() - start_time:.3f}s (empty path)")
                 return
 
             url = QUrl.fromLocalFile(track['path'])
 
-            print(f'Loading track from {url}')
+            logger.debug(f'[PlayerEngine] Loading track from {url}')
             self._player.setSource(url)
+            logger.debug(f"[PlayerEngine] _load_track: setSource done, emitting current_track_changed")
             self.current_track_changed.emit(track)
+
+            logger.debug(f"[PlayerEngine] _load_track took: {time.time() - start_time:.3f}s")
+        else:
+            logger.debug(f"[PlayerEngine] _load_track: Invalid index {index}")
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""
@@ -351,24 +405,34 @@ class PlayerEngine(QObject):
 
     def _on_media_status_changed(self, status):
         """Handle media status change."""
+        import time
+
+        logger.debug(f"[PlayerEngine] _on_media_status_changed: status={status}")
+
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
+            logger.debug("[PlayerEngine] Media loaded, checking pending seek")
             # Media is loaded and ready - now we can seek if needed
             if self._pending_seek > 0:
+                logger.debug(f"[PlayerEngine] Pending seek: {self._pending_seek}ms")
                 self._player.setPosition(self._pending_seek)
                 self._pending_seek = 0
                 if self._pending_play:
                     self._pending_play = False
+                    logger.debug("[PlayerEngine] Calling play() after seek")
                     self._player.play()
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
+            logger.debug("[PlayerEngine] EndOfMedia reached")
             self.track_finished.emit()
 
             # Auto-play next based on mode
             if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
                 # Track loop modes
+                logger.debug("[PlayerEngine] Track loop mode, seeking to 0 and playing")
                 self.seek(0)
                 self.play()
             elif self._play_mode in (PlayMode.SEQUENTIAL, PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM, PlayMode.RANDOM_LOOP):
                 # Modes that advance to next track
+                logger.debug(f"[PlayerEngine] Calling play_next, mode={self._play_mode}")
                 self.play_next()
 
     def _on_error(self, error, error_string):
