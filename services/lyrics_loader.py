@@ -94,12 +94,15 @@ class LyricsDownloadWorker(QThread):
     Signals:
         lyrics_downloaded: Emitted when lyrics are downloaded and saved (path, lyrics)
         download_failed: Emitted when download fails (error_message)
+        search_results_ready: Emitted when search results are ready (list of dicts)
     """
 
     lyrics_downloaded = Signal(str, str)  # path, lyrics
     download_failed = Signal(str)  # error message
+    search_results_ready = Signal(list)  # list of search results
 
-    def __init__(self, track_path: str, title: str, artist: str, parent=None):
+    def __init__(self, track_path: str, title: str, artist: str, parent=None,
+                 song_id: str = None, source: str = None, accesskey: str = None):
         """
         Initialize the worker.
 
@@ -108,27 +111,86 @@ class LyricsDownloadWorker(QThread):
             title: Track title
             artist: Track artist
             parent: Optional parent QObject
+            song_id: If provided, download specific song's lyrics
+            source: Source name ('netease' or 'kugou')
+            accesskey: Access key for Kugou
         """
         super().__init__(parent)
         self._path = track_path
         self._title = title
         self._artist = artist
+        self._song_id = song_id
+        self._source = source
+        self._accesskey = accesskey
 
     def run(self):
         """Download lyrics in background."""
         try:
-            success = LyricsService.download_and_save_lyrics(
-                self._path, self._title, self._artist
-            )
-            if success:
-                # Read the saved lyrics
-                lyrics = LyricsService._get_local_lyrics(self._path)
+            if self._song_id and self._source:
+                # Download specific song's lyrics
+                lyrics = LyricsService.download_lyrics_by_id(
+                    self._song_id, self._source, self._accesskey
+                )
                 if lyrics:
+                    # Save to local file
+                    LyricsService.save_lyrics(self._path, lyrics)
                     self.lyrics_downloaded.emit(self._path, lyrics)
                 else:
-                    self.download_failed.emit("Failed to read saved lyrics")
+                    self.download_failed.emit("Failed to download lyrics for selected song")
             else:
-                self.download_failed.emit("No lyrics found online")
+                # Auto download (first result)
+                success = LyricsService.download_and_save_lyrics(
+                    self._path, self._title, self._artist
+                )
+                if success:
+                    # Read the saved lyrics
+                    lyrics = LyricsService._get_local_lyrics(self._path)
+                    if lyrics:
+                        self.lyrics_downloaded.emit(self._path, lyrics)
+                    else:
+                        self.download_failed.emit("Failed to read saved lyrics")
+                else:
+                    self.download_failed.emit("No lyrics found online")
         except Exception as e:
             logger.error(f"[LyricsDownloadWorker] Error: {e}")
             self.download_failed.emit(str(e))
+
+
+class LyricsSearchWorker(QThread):
+    """
+    Worker for searching songs online.
+
+    Signals:
+        search_results_ready: Emitted when search results are ready (list of dicts)
+        search_failed: Emitted when search fails (error_message)
+    """
+
+    search_results_ready = Signal(list)  # list of search results
+    search_failed = Signal(str)  # error message
+
+    def __init__(self, title: str, artist: str, limit: int = 10, parent=None):
+        """
+        Initialize the worker.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            limit: Maximum number of results
+            parent: Optional parent QObject
+        """
+        super().__init__(parent)
+        self._title = title
+        self._artist = artist
+        self._limit = limit
+
+    def run(self):
+        """Search songs in background."""
+        try:
+            results = LyricsService.search_songs(self._title, self._artist, self._limit)
+            if results:
+                self.search_results_ready.emit(results)
+            else:
+                self.search_failed.emit("No songs found")
+        except Exception as e:
+            logger.error(f"[LyricsSearchWorker] Error: {e}")
+            self.search_failed.emit(str(e))

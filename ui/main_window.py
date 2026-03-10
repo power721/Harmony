@@ -187,6 +187,10 @@ class MainWindow(QMainWindow):
         self._lyrics_thread: Optional[QThread] = None
         # Lyrics download thread (for downloading from online)
         self._lyrics_download_thread: Optional[QThread] = None
+        self._lyrics_search_thread: Optional[QThread] = None
+        self._lyrics_download_path: str = ""
+        self._lyrics_download_title: str = ""
+        self._lyrics_download_artist: str = ""
         self._current_index = -1
 
         # Cloud account for current playback
@@ -850,8 +854,8 @@ class MainWindow(QMainWindow):
             self._lyrics_view.set_lyrics(t("no_lyrics"))
 
     def _download_lyrics(self):
-        """Download lyrics for current track."""
-        from services.lyrics_loader import LyricsDownloadWorker
+        """Download lyrics for current track - shows search dialog for user to select."""
+        from services.lyrics_loader import LyricsSearchWorker, LyricsDownloadWorker
 
         # Get current track
         current_item = self._playback.current_track
@@ -866,23 +870,163 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("error"), t("cloud_lyrics_download_not_supported"))
             return
 
+        # Store track info for later use
+        self._lyrics_download_path = track_path
+        self._lyrics_download_title = track_title
+        self._lyrics_download_artist = track_artist
+
+        # Clean up existing search thread if any
+        if hasattr(self, '_lyrics_search_thread') and self._lyrics_search_thread and isValid(self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
+            self._lyrics_search_thread.quit()
+            self._lyrics_search_thread.wait(100)
+
+        # Don't clear current lyrics, just start searching in background
+        # The lyrics view will be updated when search completes and user selects a song
+
+        # Create search worker
+        self._lyrics_search_thread = LyricsSearchWorker(track_title, track_artist, limit=10)
+        self._lyrics_search_thread.search_results_ready.connect(self._on_lyrics_search_results)
+        self._lyrics_search_thread.search_failed.connect(self._on_lyrics_search_failed)
+        self._lyrics_search_thread.finished.connect(self._lyrics_search_thread.deleteLater)
+        self._lyrics_search_thread.start()
+
+    def _on_lyrics_search_results(self, results: list):
+        """Handle lyrics search results - show selection dialog."""
+        from PySide6.QtWidgets import (
+            QDialog,
+            QVBoxLayout,
+            QHBoxLayout,
+            QListWidget,
+            QListWidgetItem,
+            QPushButton,
+            QLabel,
+        )
+
+        if not results:
+            self._lyrics_view.set_lyrics(t("no_lyrics_found"))
+            return
+
+        # Create selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("select_song"))
+        dialog.setMinimumWidth(600)
+        dialog.setMinimumHeight(500)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+            }
+            QListWidget {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: 1px solid #404040;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #303030;
+            }
+            QListWidget::item:selected {
+                background-color: #1db954;
+                color: #000000;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #e0e0e0;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+
+        # Info label
+        info_label = QLabel(f"{t('search_results_for')}: {self._lyrics_download_title} - {self._lyrics_download_artist}")
+        layout.addWidget(info_label)
+
+        # Song list
+        song_list = QListWidget()
+        for result in results:
+            item_text = f"{result['title']} - {result['artist']}"
+            if result.get('album'):
+                item_text += f" ({result['album']})"
+            item_text += f" [{result['source']}]"
+
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, result)
+            song_list.addItem(item)
+
+        song_list.itemDoubleClicked.connect(dialog.accept)
+        layout.addWidget(song_list)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        download_btn = QPushButton(t("download"))
+        download_btn.clicked.connect(dialog.accept)
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(download_btn)
+        layout.addLayout(button_layout)
+
+        # Show dialog
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        # Get selected song
+        current_item = song_list.currentItem()
+        if not current_item:
+            return
+
+        selected_song = current_item.data(Qt.UserRole)
+
+        # Download lyrics for selected song
+        self._download_lyrics_for_song(selected_song)
+
+    def _download_lyrics_for_song(self, song_info: dict):
+        """Download lyrics for a specific song."""
+        from services.lyrics_loader import LyricsDownloadWorker
+
         # Clean up existing download thread if any
-        if self._lyrics_download_thread and self._lyrics_download_thread.isRunning():
+        if self._lyrics_download_thread and isValid(self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
             self._lyrics_download_thread.quit()
             self._lyrics_download_thread.wait(100)
 
         self._lyrics_view.set_lyrics(t("downloading") + "...")
 
-        # Create download worker (LyricsDownloadWorker extends QThread)
-        self._lyrics_download_thread = LyricsDownloadWorker(track_path, track_title, track_artist)
+        # Create download worker with specific song info
+        self._lyrics_download_thread = LyricsDownloadWorker(
+            self._lyrics_download_path,
+            self._lyrics_download_title,
+            self._lyrics_download_artist,
+            song_id=song_info['id'],
+            source=song_info['source'],
+            accesskey=song_info.get('accesskey')
+        )
 
-        # Connect signals
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
         self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
         self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
-
-        # Start download
         self._lyrics_download_thread.start()
+
+    def _on_lyrics_search_failed(self, error: str):
+        """Handle lyrics search failure."""
+        self._lyrics_view.set_lyrics(t("no_lyrics_found"))
 
     def _on_lyrics_downloaded(self, path: str, lyrics: str):
         """Handle lyrics download success."""
@@ -1541,12 +1685,19 @@ class MainWindow(QMainWindow):
                     self._lyrics_thread.terminate()
                     self._lyrics_thread.wait()
 
-        if self._lyrics_download_thread and self._lyrics_download_thread.isRunning():
+        if self._lyrics_download_thread and isValid(self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
             self._lyrics_download_thread.requestInterruption()
             self._lyrics_download_thread.quit()
             if not self._lyrics_download_thread.wait(1000):
                 self._lyrics_download_thread.terminate()
                 self._lyrics_download_thread.wait()
+
+        if self._lyrics_search_thread and isValid(self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
+            self._lyrics_search_thread.requestInterruption()
+            self._lyrics_search_thread.quit()
+            if not self._lyrics_search_thread.wait(1000):
+                self._lyrics_search_thread.terminate()
+                self._lyrics_search_thread.wait()
 
         # Close database
         self._db.close()
