@@ -89,7 +89,7 @@
     "language": "语言",
     "equalizer": "均衡器",
     "mini_player": "迷你播放器",
-    "refresh": "🔄 刷新",
+    "refresh": "刷新",
     "download_lyrics": "⬇ 下载歌词",
     "lyrics_found_parse_failed": "找到歌词文件但无法解析",
     "ensure_lrc_valid": "请确保 .lrc 文件格式正确",
@@ -188,5 +188,8 @@
     "searching": "搜索中",
     "select_song": "选择歌曲",
     "search_results_for": "搜索结果",
-    "no_lyrics_found": "未找到歌词"
+    "no_lyrics_found": "未找到歌词",
+    "added_tracks_to_playlist": "已添加 {count} 首歌曲到「{name}」",
+    "all_tracks_duplicate": "所有 {count} 首歌曲已在「{name}」中",
+    "added_skipped_duplicates": "已添加 {added} 首，跳过 {duplicates} 首重复歌曲"
 }

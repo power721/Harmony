@@ -89,7 +89,7 @@
     "language": "Language",
     "equalizer": "Equalizer",
     "mini_player": "Mini Player",
-    "refresh": "🔄 Refresh",
+    "refresh": "Refresh",
     "download_lyrics": "⬇ Download Lyrics",
     "lyrics_found_parse_failed": "Lyrics file found but could not be parsed.",
     "ensure_lrc_valid": "Make sure the .lrc file is valid.",
@@ -188,5 +188,8 @@
     "searching": "Searching",
     "select_song": "Select Song",
     "search_results_for": "Search results for",
-    "no_lyrics_found": "No lyrics found"
+    "no_lyrics_found": "No lyrics found",
+    "added_tracks_to_playlist": "Added {count} track(s) to \"{name}\"",
+    "all_tracks_duplicate": "All {count} track(s) already in \"{name}\"",
+    "added_skipped_duplicates": "Added {added}, skipped {duplicates} duplicate(s)"
 }
