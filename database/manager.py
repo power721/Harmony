@@ -295,8 +295,8 @@ class DatabaseManager:
         cursor.execute(
             """
             INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, duration, cover_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 track.path,
@@ -306,6 +306,7 @@ class DatabaseManager:
                 track.duration,
                 track.cover_path,
                 track.created_at or datetime.now(),
+                track.cloud_file_id,
             ),
         )
 
@@ -330,6 +331,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
         return None
 
@@ -351,6 +353,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
         return None
 
@@ -372,6 +375,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
         return None
 
@@ -394,6 +398,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
             for row in rows
         ]

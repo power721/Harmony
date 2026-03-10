@@ -577,6 +577,9 @@ class PlaybackManager(QObject):
         """
         logger.debug(f"[PlaybackManager] Download completed: {file_id}")
 
+        # Extract metadata and save to database
+        self._save_cloud_track_to_library(file_id, local_path)
+
         # Update playlist items
         items = self._engine.playlist_items
         for i, item in enumerate(items):
@@ -588,6 +591,54 @@ class PlaybackManager(QObject):
                 if i == self._engine.current_index:
                     self._engine.play_after_download(i, local_path)
                 break
+
+    def _save_cloud_track_to_library(self, file_id: str, local_path: str):
+        """
+        Save downloaded cloud track to library with metadata.
+
+        Args:
+            file_id: Cloud file ID
+            local_path: Local path of downloaded file
+        """
+        from services.metadata_service import MetadataService
+        from database.models import Track
+        from pathlib import Path
+
+        # Check if already in database
+        existing = self._db.get_track_by_cloud_file_id(file_id)
+        if existing:
+            logger.debug(f"[PlaybackManager] Track already in library: {existing.id}")
+            return
+
+        # Check if already exists by path
+        existing_by_path = self._db.get_track_by_path(local_path)
+        if existing_by_path:
+            # Update cloud_file_id
+            conn = self._db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE tracks SET cloud_file_id = ? WHERE id = ?",
+                (file_id, existing_by_path.id)
+            )
+            conn.commit()
+            logger.debug(f"[PlaybackManager] Updated cloud_file_id for track: {existing_by_path.id}")
+            return
+
+        # Extract metadata from file
+        metadata = MetadataService.extract_metadata(local_path)
+
+        # Create track record
+        track = Track(
+            path=local_path,
+            title=metadata.get("title", Path(local_path).stem),
+            artist=metadata.get("artist", ""),
+            album=metadata.get("album", ""),
+            duration=metadata.get("duration", 0),
+            cloud_file_id=file_id,
+        )
+
+        track_id = self._db.add_track(track)
+        logger.debug(f"[PlaybackManager] Saved cloud track to library: {track_id}, title={track.title}, artist={track.artist}")
 
     # ===== Queue Persistence =====
 

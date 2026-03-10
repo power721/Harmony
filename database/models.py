@@ -19,6 +19,7 @@ class Track:
     duration: float = 0.0
     cover_path: Optional[str] = None
     created_at: Optional[datetime] = None
+    cloud_file_id: Optional[str] = None  # Cloud file ID if downloaded from cloud
 
     def __post_init__(self):
         if self.created_at is None:
