@@ -32,7 +32,8 @@ from utils import format_duration, t
 class PlaylistView(QWidget):
     """Playlist view for managing playlists."""
 
-    track_double_clicked = Signal(int)  # Signal when track is double-clicked
+    track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)
+    playlist_track_double_clicked = Signal(int, int)  # Signal when playlist track is double-clicked (playlist_id, track_id)
 
     def __init__(
         self, db_manager: DatabaseManager, player: PlayerController, parent=None
@@ -106,6 +107,7 @@ class PlaylistView(QWidget):
         # Playlist list
         self._playlist_list = QListWidget()
         self._playlist_list.setObjectName("playlistList")
+        self._playlist_list.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self._playlist_list)
 
         return widget
@@ -466,8 +468,9 @@ class PlaylistView(QWidget):
         title_item = self._tracks_table.item(row, 0)
         if title_item:
             track_id = title_item.data(Qt.UserRole)
-            if track_id:
-                self.track_double_clicked.emit(track_id)
+            if track_id and self._current_playlist_id:
+                # Emit playlist-specific signal
+                self.playlist_track_double_clicked.emit(self._current_playlist_id, track_id)
 
     def _show_context_menu(self, pos):
         """Show context menu for tracks."""

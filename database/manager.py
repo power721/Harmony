@@ -16,6 +16,7 @@ from .models import (
     Favorite,
     CloudAccount,
     CloudFile,
+    PlayQueueItem,
 )
 
 
@@ -241,6 +242,37 @@ class DatabaseManager:
             )
         """)
 
+        # Create play_queue table for persistent playback queue
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS play_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                position INTEGER NOT NULL,
+                source_type TEXT NOT NULL,
+                cloud_type TEXT,
+                track_id INTEGER,
+                cloud_file_id TEXT,
+                cloud_account_id INTEGER,
+                local_path TEXT,
+                title TEXT,
+                artist TEXT,
+                album TEXT,
+                duration REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Migration: add cloud_type column if not exists
+        try:
+            cursor.execute("ALTER TABLE play_queue ADD COLUMN cloud_type TEXT")
+        except:
+            pass
+
+        # Create index for play_queue position
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_queue_position
+            ON play_queue(position)
+        """)
+
         conn.commit()
 
         # Migration: add unique constraint if not exists
@@ -263,8 +295,8 @@ class DatabaseManager:
         cursor.execute(
             """
             INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, duration, cover_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 track.path,
@@ -274,6 +306,7 @@ class DatabaseManager:
                 track.duration,
                 track.cover_path,
                 track.created_at or datetime.now(),
+                track.cloud_file_id,
             ),
         )
 
@@ -298,6 +331,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
         return None
 
@@ -319,6 +353,29 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
+            )
+        return None
+
+    def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
+        """Get a track by cloud file ID."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
+        row = cursor.fetchone()
+
+        if row:
+            return Track(
+                id=row["id"],
+                path=row["path"],
+                title=row["title"],
+                artist=row["artist"],
+                album=row["album"],
+                duration=row["duration"],
+                cover_path=row["cover_path"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
         return None
 
@@ -341,6 +398,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
             )
             for row in rows
         ]
@@ -1198,6 +1256,39 @@ class DatabaseManager:
             )
         return None
 
+    def get_cloud_file_by_file_id(self, file_id: str) -> Optional[CloudFile]:
+        """Get a cloud file by file_id only."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files
+            WHERE file_id = ?
+        """,
+            (file_id,),
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            return CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+        return None
+
     # Settings operations
 
     def get_setting(self, key: str, default=None):
@@ -1306,3 +1397,121 @@ class DatabaseManager:
         conn.commit()
 
         return cursor.rowcount > 0
+
+    # Play queue operations
+
+    def save_play_queue(self, items: List["PlayQueueItem"]) -> bool:
+        """
+        Save the play queue to the database.
+        Replaces any existing queue.
+
+        Args:
+            items: List of PlayQueueItem objects
+
+        Returns:
+            True if successful
+        """
+        from player.playlist_item import PlaylistItem
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Clear existing queue
+        cursor.execute("DELETE FROM play_queue")
+
+        # Insert new items
+        for position, item in enumerate(items):
+            cursor.execute(
+                """
+                INSERT INTO play_queue
+                (position, source_type, cloud_type, track_id, cloud_file_id, cloud_account_id,
+                 local_path, title, artist, album, duration, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    position,
+                    item.source_type,
+                    item.cloud_type,
+                    item.track_id,
+                    item.cloud_file_id,
+                    item.cloud_account_id,
+                    item.local_path,
+                    item.title,
+                    item.artist,
+                    item.album,
+                    item.duration,
+                    item.created_at or datetime.now(),
+                ),
+            )
+
+        conn.commit()
+        return True
+
+    def load_play_queue(self) -> List[PlayQueueItem]:
+        """
+        Load the play queue from the database.
+
+        Returns:
+            List of PlayQueueItem objects in order
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM play_queue ORDER BY position ASC
+            """
+        )
+
+        rows = cursor.fetchall()
+
+        return [
+            PlayQueueItem(
+                id=row["id"],
+                position=row["position"],
+                source_type=row["source_type"],
+                cloud_type=row["cloud_type"] if "cloud_type" in row.keys() else "",
+                track_id=row["track_id"],
+                cloud_file_id=row["cloud_file_id"],
+                cloud_account_id=row["cloud_account_id"],
+                local_path=row["local_path"] or "",
+                title=row["title"] or "",
+                artist=row["artist"] or "",
+                album=row["album"] or "",
+                duration=row["duration"] or 0.0,
+                created_at=datetime.fromisoformat(row["created_at"])
+                if row["created_at"]
+                else None,
+            )
+            for row in rows
+        ]
+
+    def clear_play_queue(self) -> bool:
+        """
+        Clear the play queue.
+
+        Returns:
+            True if successful
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM play_queue")
+        conn.commit()
+
+        return True
+
+    def get_play_queue_count(self) -> int:
+        """
+        Get the number of items in the play queue.
+
+        Returns:
+            Number of items
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) as count FROM play_queue")
+        row = cursor.fetchone()
+
+        return row["count"] if row else 0

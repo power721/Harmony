@@ -19,6 +19,7 @@ class Track:
     duration: float = 0.0
     cover_path: Optional[str] = None
     created_at: Optional[datetime] = None
+    cloud_file_id: Optional[str] = None  # Cloud file ID if downloaded from cloud
 
     def __post_init__(self):
         if self.created_at is None:
@@ -136,6 +137,29 @@ class CloudFile:
     local_path: Optional[str] = None  # Downloaded local file path
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()
+
+
+@dataclass
+class PlayQueueItem:
+    """Represents an item in the persistent play queue."""
+
+    id: Optional[int] = None
+    position: int = 0  # Order in the queue (determines playback order)
+    source_type: str = "local"  # "local" or "cloud"
+    cloud_type: str = ""  # Cloud provider type: "quark", "onedrive", etc. (for source_type=cloud)
+    track_id: Optional[int] = None  # Local track ID (source_type=local)
+    cloud_file_id: Optional[str] = None  # Cloud file ID (source_type=cloud)
+    cloud_account_id: Optional[int] = None  # Cloud account ID
+    local_path: str = ""  # Local file path (for cloud files: cached path)
+    title: str = ""
+    artist: str = ""
+    album: str = ""
+    duration: float = 0.0
+    created_at: Optional[datetime] = None
 
     def __post_init__(self):
         if self.created_at is None:

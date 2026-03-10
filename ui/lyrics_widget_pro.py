@@ -121,6 +121,14 @@ class LyricsWidget(QWidget):
         if not self.lines:
             return
 
+        # Handle reset to beginning (e.g., track loop)
+        # When position jumps back significantly, reset to first line
+        if seconds < self.lines[0].start and self.current_index > 0:
+            self.current_index = 0
+            self.scroll_y = 0
+            self.target_scroll = 0
+            return
+
         for i in range(len(self.lines) - 1):
 
             if self.lines[i].start <= seconds < self.lines[i + 1].start:

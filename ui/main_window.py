@@ -48,6 +48,8 @@ from ui.cloud_drive_view import CloudDriveView
 from utils.global_hotkeys import GlobalHotkeys, setup_media_key_handler
 from utils import t, set_language
 from utils.config import ConfigManager
+from utils.event_bus import EventBus
+from player import PlaybackManager, PlaylistItem, CloudProvider
 
 
 class MainWindow(QMainWindow):
@@ -74,8 +76,106 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Initialize player controller
-        self._player = PlayerController(self._db, self._config)
+        # Initialize playback manager (replaces PlayerController + CloudPlaylistManager)
+        self._playback = PlaybackManager(self._db, self._config)
+
+        # Keep reference to engine for backward compatibility
+        # Use closures to capture self for methods that need access to db
+        db = self._db
+        playback = self._playback
+
+        class PlayerProxy:
+            """Proxy class for backward compatibility with components expecting old PlayerController interface."""
+
+            @property
+            def engine(self):
+                return playback.engine
+
+            @property
+            def current_source(self):
+                return playback.current_source
+
+            @property
+            def current_track(self):
+                return playback.current_track
+
+            @property
+            def state(self):
+                return playback.state
+
+            @property
+            def volume(self):
+                return playback.volume
+
+            @property
+            def play_mode(self):
+                return playback.play_mode
+
+            @property
+            def current_track_id(self):
+                item = playback.current_track
+                return item.track_id if item and item.is_local else None
+
+            def play_track(self, track_id):
+                return playback.play_local_track(track_id)
+
+            def play(self):
+                return playback.play()
+
+            def pause(self):
+                return playback.pause()
+
+            def stop(self):
+                return playback.stop()
+
+            def play_next(self):
+                return playback.play_next()
+
+            def play_previous(self):
+                return playback.play_previous()
+
+            def seek(self, pos):
+                return playback.seek(pos)
+
+            def set_volume(self, vol):
+                return playback.set_volume(vol)
+
+            def set_play_mode(self, mode):
+                return playback.set_play_mode(mode)
+
+            def is_favorite(self, track_id=None):
+                if track_id is None:
+                    track_id = self.current_track_id
+                if track_id:
+                    return db.is_favorite(track_id)
+                return False
+
+            def toggle_favorite(self, track_id=None):
+                if track_id is None:
+                    track_id = self.current_track_id
+                if not track_id:
+                    return False
+
+                if db.is_favorite(track_id):
+                    db.remove_favorite(track_id)
+                    return False
+                else:
+                    db.add_favorite(track_id)
+                    return True
+
+            def load_playlist(self, playlist_id):
+                return playback.load_playlist(playlist_id)
+
+            def save_queue(self):
+                return playback.save_queue()
+
+            def restore_queue(self):
+                return playback.restore_queue()
+
+        self._player = PlayerProxy()
+
+        # Event bus for signals
+        self._event_bus = EventBus.instance()
 
         # Mini player (hidden by default)
         self._mini_player: Optional[MiniPlayer] = None
@@ -83,10 +183,18 @@ class MainWindow(QMainWindow):
         # Lyrics sync
         self._current_lyric_line: Optional[int] = None
 
-        # Lyrics download thread (to prevent multiple downloads)
+        # Lyrics loading thread (for async loading)
         self._lyrics_thread: Optional[QThread] = None
-        self._lyrics_worker = None
+        # Lyrics download thread (for downloading from online)
+        self._lyrics_download_thread: Optional[QThread] = None
+        self._lyrics_search_thread: Optional[QThread] = None
+        self._lyrics_download_path: str = ""
+        self._lyrics_download_title: str = ""
+        self._lyrics_download_artist: str = ""
         self._current_index = -1
+
+        # Cloud account for current playback
+        self._current_cloud_account = None
 
         # Setup UI
         self._setup_ui()
@@ -258,7 +366,8 @@ class MainWindow(QMainWindow):
             setattr(self, attr_name, btn)
             layout.addWidget(btn)
 
-        # Set library as checked
+        # Navigation buttons will be set correctly during restore
+        # Default to library view initially
         self._nav_library.setChecked(True)
 
         layout.addStretch()
@@ -346,25 +455,25 @@ class MainWindow(QMainWindow):
         self._nav_queue.clicked.connect(lambda: self._show_page(3))
         self._nav_favorites.clicked.connect(self._show_favorites)
         self._nav_history.clicked.connect(self._show_history)
-        self._lyrics_view.seekRequested.connect(self._player.engine.seek)
+        self._lyrics_view.seekRequested.connect(self._playback.seek)
 
         # Add music
         self._add_music_btn.clicked.connect(self._add_music)
 
-        # Player connections
-        self._player.engine.current_track_changed.connect(self._on_track_changed)
-        self._player.engine.position_changed.connect(self._on_position_changed)
+        # Player connections - use EventBus for centralized signal handling
+        self._event_bus.track_changed.connect(self._on_track_changed)
+        self._event_bus.position_changed.connect(self._on_position_changed)
+
+        # Cloud download events
+        self._event_bus.download_completed.connect(self._on_cloud_download_completed)
 
         # View connections
         self._library_view.track_double_clicked.connect(self._play_track)
         self._library_view.add_to_queue.connect(self._add_to_queue)
-        self._playlist_view.track_double_clicked.connect(self._play_track)
+        self._playlist_view.playlist_track_double_clicked.connect(self._play_playlist_track)
         self._queue_view.play_track.connect(self._play_track)
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
-
-        # lyrics
-        # self.lyricsHtmlReady.connect(self._lyrics_view.setHtml)
 
     def _setup_system_tray(self):
         """Setup system tray icon."""
@@ -507,6 +616,7 @@ class MainWindow(QMainWindow):
 
         # Update nav button states
         self._nav_library.setChecked(False)
+        self._nav_cloud.setChecked(False)
         self._nav_playlists.setChecked(False)
         self._nav_queue.setChecked(False)
         self._nav_favorites.setChecked(True)
@@ -524,6 +634,7 @@ class MainWindow(QMainWindow):
 
         # Update nav button states
         self._nav_library.setChecked(False)
+        self._nav_cloud.setChecked(False)
         self._nav_playlists.setChecked(False)
         self._nav_queue.setChecked(False)
         self._nav_favorites.setChecked(False)
@@ -603,201 +714,327 @@ class MainWindow(QMainWindow):
         self._queue_view.refresh_queue()
 
     def _play_track(self, track_id: int):
-        """Play a track."""
-        # Set playback source to local when playing local tracks
-        self._config.set_playback_source("local")
-        self._config.clear_cloud_account_id()
+        """Play a local track from library (loads entire library as playlist)."""
+        logger.debug(f"[MainWindow] _play_track: {track_id}")
+        self._playback.play_local_track(track_id)
 
-        # Disconnect cloud playlist manager signals FIRST to prevent callbacks
-        if hasattr(self, '_cloud_playlist_manager') and self._cloud_playlist_manager:
-            try:
-                self._player.engine.current_track_changed.disconnect(
-                    self._cloud_playlist_manager.on_track_changed
-                )
-            except (TypeError, RuntimeError):
-                pass
-            self._cloud_playlist_manager = None
-
-        # Stop current playback after disconnecting signals
-        self._player.engine.stop()
-
-        self._player.play_track(track_id)
+    def _play_playlist_track(self, playlist_id: int, track_id: int):
+        """Play a track from a specific playlist."""
+        logger.debug(f"[MainWindow] _play_playlist_track: playlist={playlist_id}, track={track_id}")
+        self._playback.play_playlist_track(playlist_id, track_id)
 
     def _play_cloud_track(self, temp_path: str):
-        """Play track from cloud (temp file)."""
-        # Create track dict for cloud file
-        track = {
-            'path': temp_path,
-            'title': 'Cloud Track',
-            'artist': 'Cloud',
-            'album': 'Cloud'
-        }
-
-        # Load directly into player engine (bypass controller which expects playlist_id)
-        self._player.engine.load_playlist([track])
-        self._player.engine.play()
+        """Play track from cloud (temp file) - backward compatible."""
+        logger.debug(f"[MainWindow] _play_cloud_track: {temp_path}")
+        # Create a simple playlist item for single track
+        item = PlaylistItem(
+            source_type=CloudProvider.QUARK,
+            local_path=temp_path,
+            title='Cloud Track',
+            needs_download=False
+        )
+        self._playback.engine.load_playlist_items([item])
+        self._playback.engine.play()
 
     def _play_cloud_playlist(self, temp_path: str, index: int, cloud_files, start_position: float = 0.0):
         """Play multiple cloud files as a playlist."""
-        from PySide6.QtCore import QTimer
-        from database.models import CloudFile
+        from database.models import CloudAccount
 
-        # Create a cloud playlist manager if needed
-        if not hasattr(self, '_cloud_playlist_manager') or self._cloud_playlist_manager is None:
-            self._cloud_playlist_manager = CloudPlaylistManager(
-                self._cloud_drive_view,
-                self._player.engine,
-                self._db,
-                self._config
-            )
+        logger.debug(f"[MainWindow] _play_cloud_playlist: index={index}, files={len(cloud_files)}")
 
-        # Load the playlist with start position
-        self._cloud_playlist_manager.load_playlist(cloud_files, index, temp_path, start_position)
+        # Get current cloud account from CloudDriveView
+        account = self._cloud_drive_view._current_account
+        if not account:
+            logger.error("[MainWindow] No cloud account available")
+            return
 
+        self._current_cloud_account = account
 
+        # Use PlaybackManager for cloud playback
+        self._playback.play_cloud_playlist(cloud_files, index, account, start_position)
 
-    def _on_track_changed(self, track_dict: dict):
-        """Handle track change."""
+        # If first file is already downloaded, update it
+        if temp_path and index < len(cloud_files):
+            self._playback.on_download_completed(cloud_files[index].file_id, temp_path)
+
+    def _on_cloud_download_completed(self, file_id: str, local_path: str):
+        """Handle cloud file download completion."""
+        logger.debug(f"[MainWindow] _on_cloud_download_completed: {file_id}")
+        # Forward to playback manager
+        self._playback.on_download_completed(file_id, local_path)
+
+    def _on_track_changed(self, track_item):
+        """Handle track change.
+
+        Args:
+            track_item: Can be PlaylistItem or dict (for backward compatibility)
+        """
         import time
         start_time = time.time()
 
-        logger.debug(f"[MainWindow] _on_track_changed called: track_dict={track_dict}")
+        logger.debug(f"[MainWindow] _on_track_changed called: {track_item}")
 
         # Reset lyric line tracking
         self._current_lyric_line = None
 
+        # Convert to dict for backward compatibility
+        if isinstance(track_item, PlaylistItem):
+            track_dict = track_item.to_dict()
+            track_id = track_item.track_id
+            title = track_item.title
+            artist = track_item.artist
+            path = track_item.local_path
+            is_cloud = track_item.is_cloud
+        else:
+            track_dict = track_item
+            track_id = track_dict.get("id") if track_dict else None
+            title = track_dict.get("title", "") if track_dict else ""
+            artist = track_dict.get("artist", "") if track_dict else ""
+            path = track_dict.get("path", "") if track_dict else ""
+            is_cloud = not track_id or track_id < 0
+
         # Sync selection in both library and queue views
-        if track_dict:
-            track_id = track_dict.get("id")
-            if track_id:
-                # Select in library view
-                self._library_view._select_track_by_id(track_id)
-                # Select in queue view (if it exists in queue)
-                self._queue_view._select_track_by_id(track_id)
+        if track_id and track_id > 0:
+            # Select in library view
+            self._library_view._select_track_by_id(track_id)
+            # Select in queue view (if it exists in queue)
+            self._queue_view._select_track_by_id(track_id)
 
         self._lyrics_view.set_lyrics(t("no_lyrics"))
         if not track_dict:
             logger.debug("[MainWindow] _on_track_changed: track_dict is None, returning")
             return
 
-        # Load lyrics (fast, local only)
-        title = track_dict.get("title", "")
-        artist = track_dict.get("artist", "")
-        path = track_dict.get("path", "")
-
         logger.debug(f"[MainWindow] _on_track_changed: title={title}, artist={artist}, path={path}")
 
-        # Skip loading lyrics for cloud files (empty path)
+        # Skip loading lyrics for cloud files without local path
         if not path or path.strip() in ('', '.', '/'):
             logger.debug("[MainWindow] _on_track_changed: Empty path, skipping lyrics load")
             return
 
-        # Try to load lyrics
-        logger.debug(f"[MainWindow] _on_track_changed: Loading lyrics...")
-        lyrics_start = time.time()
-        lyrics = LyricsService.get_lyrics(path, title, artist)
-        logger.debug(f"[MainWindow] _on_track_changed: LyricsService.get_lyrics took: {time.time() - lyrics_start:.3f}s")
-
-        if lyrics:
-            self._lyrics_view.set_lyrics(lyrics)
-        else:
-            # Check if .lrc file exists nearby
-            from pathlib import Path
-            if not path:
-                return
-
-            track_path = Path(path)
-            lrc_path = track_path.with_suffix(".lrc")
-            lyrics_dir = track_path.parent / "lyrics"
-            lrc_alt = lyrics_dir / f"{track_path.stem}.lrc"
-
-            if lrc_path.exists() or lrc_alt.exists():
-                self._lyrics_view.set_lyrics(t("lyrics_found_parse_failed") + "\n" + t("ensure_lrc_valid"))
+        # Load lyrics asynchronously using LyricsLoader
+        self._load_lyrics_async(path, title, artist)
 
         logger.debug(f"[MainWindow] _on_track_changed took: {time.time() - start_time:.3f}s")
 
+    def _load_lyrics_async(self, path: str, title: str, artist: str):
+        """Load lyrics asynchronously."""
+        from services.lyrics_loader import LyricsLoader
+
+        # Cancel previous lyrics loading if any
+        if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
+            self._lyrics_thread.requestInterruption()
+            self._lyrics_thread.quit()
+            if not self._lyrics_thread.wait(500):  # Wait up to 500ms
+                self._lyrics_thread.terminate()  # Force terminate if not responding
+                self._lyrics_thread.wait()
+
+        # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
+        self._lyrics_thread = LyricsLoader(path, title, artist)
+
+        # Connect signals
+        self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
+        self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
+
+        # Start loading
+        self._lyrics_thread.start()
+
+    def _on_lyrics_thread_finished(self):
+        """Handle lyrics thread finished."""
+        sender = self.sender()
+        if sender and sender == self._lyrics_thread:
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
+
+    def _on_lyrics_ready(self, lyrics: str):
+        """Handle lyrics loaded asynchronously."""
+        if lyrics:
+            self._lyrics_view.set_lyrics(lyrics)
+        else:
+            self._lyrics_view.set_lyrics(t("no_lyrics"))
+
     def _download_lyrics(self):
-        """Download lyrics for current track."""
-        # Check if we're playing a track
-        current_track = self._player.engine.current_track
-        if not current_track:
+        """Download lyrics for current track - shows search dialog for user to select."""
+        from services.lyrics_loader import LyricsSearchWorker, LyricsDownloadWorker
+
+        # Get current track
+        current_item = self._playback.current_track
+        if not current_item:
             return
 
-        # Check if this is a cloud file (no id or empty id)
-        is_cloud_file = not current_track.get("id")
+        track_path = current_item.local_path
+        track_title = current_item.title
+        track_artist = current_item.artist
 
-        if is_cloud_file:
-            # For cloud files, use the current track info directly
-            track_path = current_track.get("path", "")
-            track_title = current_track.get("title", "")
-            track_artist = current_track.get("artist", "")
+        if not track_path:
+            QMessageBox.warning(self, t("error"), t("cloud_lyrics_download_not_supported"))
+            return
 
-            if not track_path:
-                # Cannot download lyrics for cloud files without local path
-                QMessageBox.warning(self, t("error"), t("cloud_lyrics_download_not_supported"))
-                return
-        else:
-            # For local files, get from database
-            if not self._player.current_track_id:
-                return
+        # Store track info for later use
+        self._lyrics_download_path = track_path
+        self._lyrics_download_title = track_title
+        self._lyrics_download_artist = track_artist
 
-            track = self._db.get_track(self._player.current_track_id)
-            if not track:
-                return
+        # Clean up existing search thread if any
+        if hasattr(self, '_lyrics_search_thread') and self._lyrics_search_thread and isValid(self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
+            self._lyrics_search_thread.quit()
+            self._lyrics_search_thread.wait(100)
 
-            track_path = track.path
-            track_title = track.title
-            track_artist = track.artist
+        # Don't clear current lyrics, just start searching in background
+        # The lyrics view will be updated when search completes and user selects a song
 
-        # Clean up existing thread if any
-        if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
-            self._lyrics_thread.quit()
-            self._lyrics_thread.wait()
+        # Create search worker
+        self._lyrics_search_thread = LyricsSearchWorker(track_title, track_artist, limit=10)
+        self._lyrics_search_thread.search_results_ready.connect(self._on_lyrics_search_results)
+        self._lyrics_search_thread.search_failed.connect(self._on_lyrics_search_failed)
+        self._lyrics_search_thread.finished.connect(self._lyrics_search_thread.deleteLater)
+        self._lyrics_search_thread.start()
 
+    def _on_lyrics_search_results(self, results: list):
+        """Handle lyrics search results - show selection dialog."""
+        from PySide6.QtWidgets import (
+            QDialog,
+            QVBoxLayout,
+            QHBoxLayout,
+            QListWidget,
+            QListWidgetItem,
+            QPushButton,
+            QLabel,
+        )
+
+        if not results:
+            self._lyrics_view.set_lyrics(t("no_lyrics_found"))
+            return
+
+        # Create selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("select_song"))
+        dialog.setMinimumWidth(600)
+        dialog.setMinimumHeight(500)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+            }
+            QListWidget {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: 1px solid #404040;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #303030;
+            }
+            QListWidget::item:selected {
+                background-color: #1db954;
+                color: #000000;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #e0e0e0;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+
+        # Info label
+        info_label = QLabel(f"{t('search_results_for')}: {self._lyrics_download_title} - {self._lyrics_download_artist}")
+        layout.addWidget(info_label)
+
+        # Song list
+        song_list = QListWidget()
+        for result in results:
+            item_text = f"{result['title']} - {result['artist']}"
+            if result.get('album'):
+                item_text += f" ({result['album']})"
+            item_text += f" [{result['source']}]"
+
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, result)
+            song_list.addItem(item)
+
+        song_list.itemDoubleClicked.connect(dialog.accept)
+        layout.addWidget(song_list)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        download_btn = QPushButton(t("download"))
+        download_btn.clicked.connect(dialog.accept)
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(download_btn)
+        layout.addLayout(button_layout)
+
+        # Show dialog
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        # Get selected song
+        current_item = song_list.currentItem()
+        if not current_item:
+            return
+
+        selected_song = current_item.data(Qt.UserRole)
+
+        # Download lyrics for selected song
+        self._download_lyrics_for_song(selected_song)
+
+    def _download_lyrics_for_song(self, song_info: dict):
+        """Download lyrics for a specific song."""
+        from services.lyrics_loader import LyricsDownloadWorker
+
+        # Clean up existing download thread if any
+        if self._lyrics_download_thread and isValid(self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
+            self._lyrics_download_thread.quit()
+            self._lyrics_download_thread.wait(100)
+
+        self._lyrics_view.set_lyrics(t("downloading") + "...")
+
+        # Create download worker with specific song info
+        self._lyrics_download_thread = LyricsDownloadWorker(
+            self._lyrics_download_path,
+            self._lyrics_download_title,
+            self._lyrics_download_artist,
+            song_id=song_info['id'],
+            source=song_info['source'],
+            accesskey=song_info.get('accesskey')
+        )
+
+        self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
+        self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
+        self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
+        self._lyrics_download_thread.start()
+
+    def _on_lyrics_search_failed(self, error: str):
+        """Handle lyrics search failure."""
+        self._lyrics_view.set_lyrics(t("no_lyrics_found"))
+
+    def _on_lyrics_downloaded(self, path: str, lyrics: str):
+        """Handle lyrics download success."""
+        self._lyrics_view.set_lyrics(lyrics)
+
+    def _on_lyrics_download_failed(self, error: str):
+        """Handle lyrics download failure."""
         self._lyrics_view.set_lyrics(t("no_lyrics"))
-
-        from PySide6.QtCore import QObject
-
-        class LyricsDownloadWorker(QObject):
-            finished = Signal(bool)
-            lyrics_ready = Signal(str)
-            error_ready = Signal(str)
-
-            def __init__(self, track_path, title, artist):
-                super().__init__()
-                self._track_path = track_path
-                self._title = title
-                self._artist = artist
-
-            def run(self):
-                success = LyricsService.download_and_save_lyrics(
-                    self._track_path, self._title, self._artist
-                )
-
-                if success:
-                    lyrics = LyricsService.get_lyrics(self._track_path, self._title, self._artist)
-                    if lyrics:
-                        self.lyrics_ready.emit(lyrics)
-                    else:
-                        self.error_ready.emit("parse_failed")
-                else:
-                    self.error_ready.emit("not_found")
-
-                self.finished.emit(True)
-
-        # Create and start thread
-        self._lyrics_thread = QThread()
-        self._lyrics_worker = LyricsDownloadWorker(track_path, track_title, track_artist)
-        self._lyrics_worker.moveToThread(self._lyrics_thread)
-
-        self._lyrics_thread.started.connect(self._lyrics_worker.run)
-        self._lyrics_worker.lyrics_ready.connect(self._on_lyrics_download_success)
-        self._lyrics_worker.error_ready.connect(self._on_lyrics_download_error)
-        self._lyrics_worker.finished.connect(self._lyrics_thread.quit)
-        self._lyrics_worker.finished.connect(self._lyrics_worker.deleteLater)
-        self._lyrics_thread.finished.connect(self._lyrics_thread.deleteLater)
-
-        self._lyrics_thread.start()
 
     def _on_lyrics_download_success(self, lyrics):
         """Handle successful lyrics download."""
@@ -1184,16 +1421,16 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(msg, 3000)
 
     def _on_position_changed(self, position_ms):
+        """Handle playback position change."""
         seconds = position_ms / 1000
-
         self._lyrics_view.update_position(seconds)
 
     def _toggle_play_pause(self):
         """Toggle play/pause."""
-        if self._player.engine.state == PlayerState.PLAYING:
-            self._player.engine.pause()
+        if self._playback.state == PlayerState.PLAYING:
+            self._playback.pause()
         else:
-            self._player.engine.play()
+            self._playback.play()
 
     def _on_tray_activated(self, reason):
         """Handle system tray activation."""
@@ -1249,6 +1486,44 @@ class MainWindow(QMainWindow):
         """Restore previous playback state."""
         from PySide6.QtCore import QTimer
 
+        # Try to restore saved queue first
+        if self._player.restore_queue():
+            print(f"[DEBUG] Restored play queue from database")
+
+            # Check if we should auto-play
+            was_playing = self._config.get_was_playing()
+            playback_position = self._config.get_playback_position()
+            source = self._config.get_playback_source()
+
+            # Update navigation buttons immediately based on source
+            if source == "cloud":
+                if hasattr(self, '_nav_cloud'):
+                    self._nav_cloud.setChecked(True)
+                if hasattr(self, '_nav_library'):
+                    self._nav_library.setChecked(False)
+
+            def restore_queue_state():
+                current_item = self._player.current_track
+                if current_item:
+                    # Restore position if valid
+                    if playback_position > 0:
+                        self._player.engine.seek(playback_position)
+
+                    # Auto-play if was playing
+                    if was_playing:
+                        print(f"[DEBUG] Auto-playing restored track")
+                        QTimer.singleShot(300, self._player.play)
+
+                    # If cloud source, update cloud view
+                    if source == "cloud" and current_item.cloud_account_id:
+                        account = self._db.get_cloud_account(current_item.cloud_account_id)
+                        if account:
+                            self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
+
+            QTimer.singleShot(200, restore_queue_state)
+            return
+
+        # Fall back to legacy restore logic
         # Check playback source
         source = self._config.get_playback_source()
         print(f"[DEBUG] Playback source: {source}")
@@ -1335,12 +1610,29 @@ class MainWindow(QMainWindow):
         self._settings.setValue("splitter", self._splitter.saveState())
 
         # Check if playing cloud files BEFORE stopping
-        is_playing_cloud = (
-            hasattr(self, '_cloud_playlist_manager') and
-            self._cloud_playlist_manager is not None
-        )
-        is_playing = self._player.engine.state == PlayerState.PLAYING
+        is_playing_cloud = self._player.current_source == "cloud"
+        is_playing = self._player.state == PlayerState.PLAYING
         current_position = self._player.engine.position()
+        current_index = self._player.engine.current_index
+        current_volume = self._player.volume
+
+        print(f"[DEBUG] closeEvent: index={current_index}, playing={is_playing}, position={current_position}, volume={current_volume}")
+
+        # Save volume
+        self._config.set_volume(current_volume)
+
+        # Save play queue
+        try:
+            self._player.save_queue()
+        except Exception as e:
+            logger.error(f"Error saving play queue: {e}")
+
+        # Save playback position for queue restoration
+        if current_position > 0:
+            self._config.set_playback_position(current_position)
+
+        # Save was_playing state
+        self._config.set_was_playing(is_playing)
 
         try:
             if is_playing_cloud:
@@ -1348,372 +1640,66 @@ class MainWindow(QMainWindow):
                 account_id = self._config.get_cloud_account_id()
                 if account_id:
                     self._config.set_playback_source("cloud")
-                    self._config.set_was_playing(is_playing)
                     # Clear local track info when playing cloud
                     self._config.set_current_track_id(0)
-                    self._config.set_playback_position(0)
 
                     # Save playback position to cloud_accounts table
-                    # Get current playing file from cloud playlist manager
-                    if hasattr(self._cloud_playlist_manager, '_cloud_files'):
-                        current_index = self._player.engine.current_index
-                        cloud_files = self._cloud_playlist_manager._cloud_files
-                        if 0 <= current_index < len(cloud_files):
-                            current_file = cloud_files[current_index]
-                            position_seconds = current_position / 1000.0
-                            # Get local path if available
-                            local_path = getattr(current_file, 'local_path', '') or ''
-                            if not local_path and hasattr(self._cloud_playlist_manager, '_downloaded_files'):
-                                local_path = self._cloud_playlist_manager._downloaded_files.get(current_file.file_id, '')
-                            self._db.update_cloud_account_playing_state(
-                                account_id=account_id,
-                                playing_fid=current_file.file_id,
-                                position=position_seconds,
-                                local_path=local_path
-                            )
-            elif self._player.current_track_id:
+                    current_item = self._player.current_track
+                    if current_item and current_item.cloud_file_id:
+                        position_seconds = current_position / 1000.0
+                        self._db.update_cloud_account_playing_state(
+                            account_id=account_id,
+                            playing_fid=current_item.cloud_file_id,
+                            position=position_seconds,
+                            local_path=current_item.local_path or ''
+                        )
+            elif self._player.current_track:
                 # Save local playback state
-                self._config.set_playback_source("local")
-                self._config.set_current_track_id(self._player.current_track_id)
-                self._config.set_playback_position(current_position)
-                self._config.set_was_playing(is_playing)
-                # Clear cloud info when playing local
-                self._config.clear_cloud_account_id()
+                current_item = self._player.current_track
+                if current_item.is_local and current_item.track_id:
+                    self._config.set_playback_source("local")
+                    self._config.set_current_track_id(current_item.track_id)
+                    # Clear cloud info when playing local
+                    self._config.clear_cloud_account_id()
             else:
                 # No track playing
                 source = self._config.get_playback_source()
-                if source == "cloud":
-                    self._config.set_was_playing(False)
-                else:
+                if source != "cloud":
                     self._config.set_playback_source("local")
                     self._config.set_current_track_id(0)
                     self._config.set_playback_position(0)
                     self._config.set_was_playing(False)
                     self._config.clear_cloud_account_id()
         except Exception as e:
-            print(f"Error saving playback state: {e}")
+            logger.error(f"Error saving playback state: {e}")
 
         # Stop playback AFTER saving state
         self._player.engine.stop()
+
+        # Clean up lyrics threads
+        if self._lyrics_thread:
+            if isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                self._lyrics_thread.quit()
+                if not self._lyrics_thread.wait(1000):
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait()
+
+        if self._lyrics_download_thread and isValid(self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
+            self._lyrics_download_thread.requestInterruption()
+            self._lyrics_download_thread.quit()
+            if not self._lyrics_download_thread.wait(1000):
+                self._lyrics_download_thread.terminate()
+                self._lyrics_download_thread.wait()
+
+        if self._lyrics_search_thread and isValid(self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
+            self._lyrics_search_thread.requestInterruption()
+            self._lyrics_search_thread.quit()
+            if not self._lyrics_search_thread.wait(1000):
+                self._lyrics_search_thread.terminate()
+                self._lyrics_search_thread.wait()
 
         # Close database
         self._db.close()
 
         event.accept()
-
-class CloudPlaylistManager:
-    """Manages playback of cloud files with on-demand downloading."""
-
-    def __init__(self, cloud_drive_view, player_engine, db_manager, config_manager):
-        self._cloud_view = cloud_drive_view
-        self._player_engine = player_engine
-        self._db = db_manager
-        self._config_manager = config_manager
-        self._cloud_files = []
-        self._download_threads = []
-        self._current_index = 0
-        self._downloaded_files = {}  # Maps cloud_file_id to temp_path
-        logger.debug("[CloudPlaylistManager] __init__ called")
-
-    def load_playlist(self, cloud_files, start_index, first_file_path, start_position: float = 0.0):
-        """Load cloud file playlist and start playback."""
-        from PySide6.QtCore import QTimer
-        import time
-
-        logger.debug(f"[CloudPlaylistManager] load_playlist called: start_index={start_index}, "
-                    f"files_count={len(cloud_files)}, start_position={start_position}")
-        start_time = time.time()
-
-        self._cloud_files = cloud_files
-        self._current_index = start_index
-        self._start_position = start_position  # Save for later seek
-
-        # Store first file path
-        first_file = cloud_files[start_index]
-        self._downloaded_files[first_file.file_id] = first_file_path
-
-        # Extract metadata from first file
-        first_title = first_file.name
-        first_artist = ""
-        first_album = ""
-
-        metadata_start = time.time()
-        logger.debug(f"[CloudPlaylistManager] Extracting metadata from: {first_file_path}")
-        metadata = MetadataService.extract_metadata(first_file_path)
-        logger.debug(f"[CloudPlaylistManager] Metadata extraction took: {time.time() - metadata_start:.3f}s")
-
-        if metadata:
-            if metadata.get("title"):
-                first_title = metadata.get("title")
-            if metadata.get("artist"):
-                first_artist = metadata.get("artist")
-            if metadata.get("album"):
-                first_album = metadata.get("album")
-
-        # Save playback state to config
-        self._save_playback_state(first_file)
-
-        # Build playlist dict with first file
-        playlist = []
-        for i, cloud_file in enumerate(cloud_files):
-            if i == start_index:
-                playlist.append({
-                    'path': first_file_path,
-                    'title': first_title,
-                    'artist': first_artist,
-                    'album': first_album
-                })
-            else:
-                # Placeholder paths for other files
-                playlist.append({
-                    'path': '',  # Will be downloaded on demand
-                    'title': cloud_file.name,
-                    'artist': '',
-                    'album': ''
-                })
-
-        # Load into player and start playing
-        logger.debug(f"[CloudPlaylistManager] Loading playlist into player, playlist size: {len(playlist)}")
-        self._player_engine.load_playlist(playlist)
-
-        logger.debug(f"[CloudPlaylistManager] Total load_playlist time: {time.time() - start_time:.3f}s")
-
-        # Use play_at_with_position to seek before playing if start_position is set
-        if start_position > 0:
-            position_ms = int(start_position * 1000)
-            self._player_engine.play_at_with_position(start_index, position_ms)
-        else:
-            self._player_engine.play_at(start_index)
-
-        # Connect signal AFTER playback has started using QTimer to ensure main thread
-        QTimer.singleShot(0, self._connect_track_changed_signal)
-
-    def _save_playback_state(self, cloud_file):
-        """Save current cloud playback state to config and database."""
-        if hasattr(self._cloud_view, '_config_manager') and self._cloud_view._config_manager:
-            if hasattr(self._cloud_view, '_current_account') and self._cloud_view._current_account:
-                account_id = self._cloud_view._current_account.id
-
-                # Save cloud account ID to settings
-                self._cloud_view._config_manager.set_cloud_account_id(account_id)
-                self._cloud_view._config_manager.set_playback_source("cloud")
-
-                # Save playing file and position to cloud_accounts table
-                if hasattr(self._cloud_view, '_db'):
-                    self._cloud_view._db.update_cloud_account_playing_state(
-                        account_id=account_id,
-                        playing_fid=cloud_file.file_id,
-                        position=0.0
-                    )
-
-    def _connect_track_changed_signal(self):
-        """Connect track changed signal in main thread."""
-        # Disconnect first to avoid duplicates
-        try:
-            self._player_engine.current_track_changed.disconnect(
-                self.on_track_changed
-            )
-        except (TypeError, RuntimeError):
-            pass  # Signal wasn't connected, which is fine
-
-        # Connect in main thread
-        self._player_engine.current_track_changed.connect(
-            self.on_track_changed
-        )
-
-    def _seek_to_start_position(self):
-        """Seek to the saved start position after playback begins."""
-        if hasattr(self, '_start_position') and self._start_position > 0:
-            try:
-                # Convert seconds to milliseconds
-                position_ms = int(self._start_position * 1000)
-                self._player_engine.seek(position_ms)
-                print(f"Seeking to {self._start_position:.2f}s ({position_ms}ms)")
-            except Exception as e:
-                logger.error(f"Error seeking to position: {e}", exc_info=True)
-
-    def on_track_changed(self, track_dict):
-        """Handle track change to download files on demand."""
-        import time
-        start_time = time.time()
-
-        logger.debug(f"[CloudPlaylistManager] on_track_changed called: track_dict={track_dict}")
-
-        if not track_dict:
-            logger.debug("[CloudPlaylistManager] on_track_changed: track_dict is None, returning")
-            return
-
-        current_index = self._player_engine.current_index
-        logger.debug(f"[CloudPlaylistManager] current_index={current_index}, path={track_dict.get('path')}")
-
-        # Only trigger download if path is empty AND we have cloud files
-        if not track_dict.get('path') and self._cloud_files:
-            logger.debug(f"[CloudPlaylistManager] Path is empty, need to download. current_index={current_index}")
-
-            # Check if this file needs downloading
-            if 0 <= current_index < len(self._cloud_files):
-                cloud_file = self._cloud_files[current_index]
-                logger.debug(f"[CloudPlaylistManager] Cloud file: {cloud_file.name}, file_id={cloud_file.file_id}")
-
-                # Check if already downloaded
-                if cloud_file.file_id not in self._downloaded_files:
-                    logger.debug(f"[CloudPlaylistManager] File not downloaded, calling _download_and_play")
-                    self._download_and_play(current_index)
-                else:
-                    temp_path = self._downloaded_files[cloud_file.file_id]
-                    logger.debug(f"[CloudPlaylistManager] File already downloaded: {temp_path}")
-                    self._update_track_path(current_index, temp_path)
-            else:
-                logger.debug(f"[CloudPlaylistManager] Invalid index: {current_index}")
-        else:
-            logger.debug(f"[CloudPlaylistManager] Path exists or no cloud files, skipping download")
-
-        logger.debug(f"[CloudPlaylistManager] on_track_changed took: {time.time() - start_time:.3f}s")
-
-    def _download_and_play(self, index: int):
-        """Download cloud file and update player."""
-        import time
-        start_time = time.time()
-
-        logger.debug(f"[CloudPlaylistManager] _download_and_play called: index={index}")
-
-        if index >= len(self._cloud_files):
-            logger.debug(f"[CloudPlaylistManager] Index out of range: {index} >= {len(self._cloud_files)}")
-            return
-
-        cloud_file = self._cloud_files[index]
-        logger.debug(f"[CloudPlaylistManager] Cloud file to download: {cloud_file.name}")
-
-        # Check if already downloaded
-        if cloud_file.file_id in self._downloaded_files:
-            temp_path = self._downloaded_files[cloud_file.file_id]
-            logger.debug(f"[CloudPlaylistManager] File already in cache: {temp_path}")
-            self._update_track_path(index, temp_path)
-            return
-
-        # Get current account
-        account = self._cloud_view._current_account
-        if not account:
-            logger.error("[CloudPlaylistManager] No current account available")
-            return
-
-        logger.debug(f"[CloudPlaylistManager] Starting download thread for: {cloud_file.name}")
-
-        # Download in background thread
-        from ui.cloud_drive_view import CloudFileDownloadThread
-        download_thread = CloudFileDownloadThread(
-            account.access_token,
-            cloud_file,
-            index,
-            self._cloud_files,
-            self._config_manager
-        )
-        self._download_threads.append(download_thread)
-        download_thread.finished.connect(lambda path: self._on_file_downloaded(index, path))
-        download_thread.file_exists.connect(lambda path: self._on_file_exists(index, path))
-        download_thread.token_updated.connect(self._cloud_view._on_token_updated)
-        download_thread.start()
-
-        logger.debug(f"[CloudPlaylistManager] _download_and_play took: {time.time() - start_time:.3f}s")
-
-    def _on_file_exists(self, index: int, temp_path: str):
-        """Handle when file already exists locally."""
-        if temp_path:
-            # Store path
-            if index < len(self._cloud_files):
-                cloud_file = self._cloud_files[index]
-                self._downloaded_files[cloud_file.file_id] = temp_path
-
-                # Update status label to show using cached file
-                if hasattr(self._cloud_view, '_status_label'):
-                    self._cloud_view._status_label.setText(f"{t('using_cached_file')} - {cloud_file.name}")
-
-            # Update player if this is the current track
-            self._update_track_path(index, temp_path)
-
-    def _on_file_downloaded(self, index: int, temp_path: str):
-        """Handle completed file download."""
-        import time
-        start_time = time.time()
-
-        logger.debug(f"[CloudPlaylistManager] _on_file_downloaded called: index={index}, temp_path={temp_path}")
-
-        if temp_path:
-            # Store path
-            if index < len(self._cloud_files):
-                cloud_file = self._cloud_files[index]
-                self._downloaded_files[cloud_file.file_id] = temp_path
-
-                # Update status label to show download complete
-                if hasattr(self._cloud_view, '_status_label'):
-                    import os
-                    file_size = os.path.getsize(temp_path)
-                    size_mb = file_size / (1024 * 1024)
-                    self._cloud_view._status_label.setText(f"{t('download_complete')}: {cloud_file.name} ({size_mb:.1f} MB)")
-
-            # Update player if this is the current track
-            # This method is called in main thread via Qt signal/slot mechanism
-            self._update_track_path(index, temp_path)
-
-    def _update_track_path(self, index: int, temp_path: str):
-        """Update track path in player and reload."""
-        import time
-        start_time = time.time()
-
-        logger.debug(f"[CloudPlaylistManager] _update_track_path called: index={index}, temp_path={temp_path}")
-
-        playlist = self._player_engine.playlist
-        if 0 <= index < len(playlist):
-            playlist[index]['path'] = temp_path
-            logger.debug(f"[CloudPlaylistManager] Updated playlist[{index}]['path'] = {temp_path}")
-
-            # Reload and play if this is current track
-            if index == self._player_engine.current_index:
-                logger.debug(f"[CloudPlaylistManager] This is current track, reloading...")
-
-                # Extract metadata synchronously (usually fast)
-                try:
-                    metadata_start = time.time()
-                    logger.debug(f"[CloudPlaylistManager] Extracting metadata from: {temp_path}")
-                    metadata = MetadataService.extract_metadata(temp_path)
-                    logger.debug(f"[CloudPlaylistManager] Metadata extraction took: {time.time() - metadata_start:.3f}s")
-                    if metadata:
-                        if metadata.get("title"):
-                            playlist[index]['title'] = metadata["title"]
-                        if metadata.get("artist"):
-                            playlist[index]['artist'] = metadata["artist"]
-                except Exception as e:
-                    logger.error(f"[CloudPlaylistManager] Metadata extraction error: {e}")
-
-                # Temporarily disconnect signal to prevent loop
-                logger.debug("[CloudPlaylistManager] Temporarily disconnecting on_track_changed signal")
-                try:
-                    self._player_engine.current_track_changed.disconnect(
-                        self.on_track_changed
-                    )
-                except (TypeError, RuntimeError):
-                    pass  # Signal might not be connected
-
-                try:
-                    # Reload the track
-                    logger.debug(f"[CloudPlaylistManager] Setting player source: {temp_path}")
-                    from PySide6.QtCore import QUrl
-                    url = QUrl.fromLocalFile(temp_path)
-                    self._player_engine._player.setSource(url)
-                    logger.debug("[CloudPlaylistManager] Calling player.play()")
-                    self._player_engine._player.play()
-                    logger.debug("[CloudPlaylistManager] player.play() returned")
-                except Exception as e:
-                    logger.error(f"[CloudPlaylistManager] Error setting player source: {e}")
-                finally:
-                    # Reconnect signal
-                    logger.debug("[CloudPlaylistManager] Reconnecting on_track_changed signal")
-                    self._player_engine.current_track_changed.connect(
-                        self.on_track_changed
-                    )
-
-                # Emit signal after reconnecting so MainWindow._on_track_changed handles lyrics
-                logger.debug("[CloudPlaylistManager] Emitting current_track_changed signal")
-                self._player_engine.current_track_changed.emit(playlist[index])
-
-                logger.debug(f"[CloudPlaylistManager] _update_track_path took: {time.time() - start_time:.3f}s")

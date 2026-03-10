@@ -36,6 +36,192 @@ class LyricsService:
     ENABLE_ONLINE = True  # Changed to True for better UX
 
     @classmethod
+    def search_songs(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
+        """
+        Search for songs online and return a list of candidates.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            limit: Maximum number of results
+
+        Returns:
+            List of dicts with keys: 'id', 'title', 'artist', 'album', 'source'
+        """
+        results = []
+
+        # Try NetEase Cloud Music first
+        try:
+            netease_results = cls._search_from_netease(title, artist, limit)
+            results.extend(netease_results)
+        except Exception as e:
+            logger.error(f"Error searching from NetEase: {e}", exc_info=True)
+
+        # Try Kugou if not enough results
+        if len(results) < limit:
+            try:
+                kugou_results = cls._search_from_kugou(title, artist, limit - len(results))
+                results.extend(kugou_results)
+            except Exception as e:
+                logger.error(f"Error searching from Kugou: {e}", exc_info=True)
+
+        return results[:limit]
+
+    @classmethod
+    def _search_from_netease(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
+        """Search songs from NetEase Cloud Music."""
+        results = []
+
+        search_url = "https://music.163.com/api/search/get/web"
+        params = {
+            's': f'{artist} {title}',
+            'type': '1',
+            'limit': str(limit)
+        }
+
+        response = requests.get(
+            search_url,
+            params=params,
+            headers=cls.HEADERS,
+            timeout=5
+        )
+
+        if response.status_code != 200:
+            return results
+
+        data = response.json()
+
+        if data.get('code') != 200 or not data.get('result', {}).get('songs'):
+            return results
+
+        for song in data['result']['songs']:
+            results.append({
+                'id': str(song['id']),
+                'title': song.get('name', ''),
+                'artist': song['artists'][0]['name'] if song.get('artists') else '',
+                'album': song['album']['name'] if song.get('album') else '',
+                'source': 'netease'
+            })
+
+        return results
+
+    @classmethod
+    def _search_from_kugou(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
+        """Search songs from Kugou."""
+        results = []
+
+        keyword = f"{title} {artist}"
+        search_url = "https://lyrics.kugou.com/search"
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        params = {
+            "keyword": keyword,
+            "page": 1,
+            "pagesize": limit
+        }
+
+        r = requests.get(search_url, params=params, headers=headers, timeout=5)
+        data = r.json()
+
+        candidates = data.get("candidates", [])
+        for item in candidates:
+            results.append({
+                'id': str(item['id']),
+                'title': item.get('name', item.get('song', '')),
+                'artist': item.get('singer', ''),
+                'album': '',
+                'source': 'kugou',
+                'accesskey': item.get('accesskey', '')
+            })
+
+        return results
+
+    @classmethod
+    def download_lyrics_by_id(cls, song_id: str, source: str, accesskey: str = None) -> str:
+        """
+        Download lyrics by song ID from a specific source.
+
+        Args:
+            song_id: Song ID
+            source: Source name ('netease' or 'kugou')
+            accesskey: Access key for Kugou
+
+        Returns:
+            Lyrics content or empty string
+        """
+        if source == 'netease':
+            return cls._download_netease_lyrics(song_id)
+        elif source == 'kugou':
+            return cls._download_kugou_lyrics(song_id, accesskey)
+        return ""
+
+    @classmethod
+    def _download_netease_lyrics(cls, song_id: str) -> str:
+        """Download lyrics from NetEase by song ID."""
+        try:
+            lyrics_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
+            response = requests.get(
+                lyrics_url,
+                headers=cls.HEADERS,
+                timeout=5
+            )
+
+            if response.status_code != 200:
+                return ""
+
+            data = response.json()
+            if data.get('code') != 200:
+                return ""
+
+            lrc_content = ""
+            if 'lrc' in data:
+                lrc_content = data['lrc'].get('lyric', '')
+            elif 'lyric' in data:
+                lrc_content = data['lyric']
+
+            return lrc_content
+
+        except Exception as e:
+            logger.error(f"Error downloading NetEase lyrics: {e}", exc_info=True)
+            return ""
+
+    @classmethod
+    def _download_kugou_lyrics(cls, song_id: str, accesskey: str) -> str:
+        """Download lyrics from Kugou by song ID."""
+        try:
+            download_url = "https://lyrics.kugou.com/download"
+            headers = {"User-Agent": "Mozilla/5.0"}
+
+            params = {
+                "id": song_id,
+                "accesskey": accesskey,
+                "fmt": "krc",
+                "charset": "utf8"
+            }
+
+            r = requests.get(download_url, params=params, headers=headers, timeout=10)
+            data = r.json()
+
+            content = data.get("content")
+            if not content:
+                return ""
+
+            # base64 decode
+            krc = base64.b64decode(content)
+
+            # Remove KRC header
+            if krc[:4] == b'krc1':
+                krc = krc[4:]
+
+            # zlib decompress
+            lyric = zlib.decompress(krc)
+            return lyric.decode("utf-8", errors="ignore")
+
+        except Exception as e:
+            logger.error(f"Error downloading Kugou lyrics: {e}", exc_info=True)
+            return ""
+
+    @classmethod
     def download_and_save_lyrics(cls, track_path: str, title: str, artist: str) -> bool:
         """
         Download lyrics and save to local .lrc file.

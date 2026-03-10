@@ -5,8 +5,10 @@ import logging
 
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtCore import QUrl, QObject, Signal, QTimer
-from typing import Optional, List
+from typing import Optional, List, Union
 from enum import Enum
+
+from .playlist_item import PlaylistItem, CloudProvider
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -46,16 +48,18 @@ class PlayerEngine(QObject):
         current_track_changed: Emitted when current track changes
         volume_changed: Emitted when volume changes (volume 0-100)
         track_finished: Emitted when current track finishes playing
+        track_needs_download: Emitted when a cloud track needs to be downloaded
     """
 
     position_changed = Signal(int)
     duration_changed = Signal(int)
     state_changed = Signal(PlayerState)
-    current_track_changed = Signal(object)
+    current_track_changed = Signal(object)  # PlaylistItem or dict (backward compat)
     volume_changed = Signal(int)
     track_finished = Signal()
     error_occurred = Signal(str)
     play_mode_changed = Signal(PlayMode)  # Emitted when play mode changes
+    track_needs_download = Signal(object)  # Emitted when cloud track needs download (PlaylistItem)
 
     def __init__(self, parent=None):
         """Initialize the player engine."""
@@ -65,7 +69,8 @@ class PlayerEngine(QObject):
         self._audio_output = QAudioOutput()
         self._player.setAudioOutput(self._audio_output)
 
-        self._playlist: List[dict] = []  # List of track dictionaries
+        self._playlist: List[PlaylistItem] = []  # Current playlist (may be shuffled)
+        self._original_playlist: List[PlaylistItem] = []  # Original order for restoration
         self._current_index: int = -1
         self._play_mode: PlayMode = PlayMode.SEQUENTIAL
         self._temp_files: List[str] = []  # Track temporary files for cleanup
@@ -84,7 +89,12 @@ class PlayerEngine(QObject):
 
     @property
     def playlist(self) -> List[dict]:
-        """Get the current playlist."""
+        """Get the current playlist as list of dicts (backward compatibility)."""
+        return [item.to_dict() for item in self._playlist]
+
+    @property
+    def playlist_items(self) -> List[PlaylistItem]:
+        """Get the current playlist as PlaylistItem objects."""
         return self._playlist.copy()
 
     @property
@@ -94,7 +104,14 @@ class PlayerEngine(QObject):
 
     @property
     def current_track(self) -> Optional[dict]:
-        """Get the current track."""
+        """Get the current track as dict (backward compatibility)."""
+        if 0 <= self._current_index < len(self._playlist):
+            return self._playlist[self._current_index].to_dict()
+        return None
+
+    @property
+    def current_playlist_item(self) -> Optional[PlaylistItem]:
+        """Get the current track as PlaylistItem."""
         if 0 <= self._current_index < len(self._playlist):
             return self._playlist[self._current_index]
         return None
@@ -119,19 +136,37 @@ class PlayerEngine(QObject):
         """Get the current volume (0-100)."""
         return int(self._audio_output.volume() * 100)
 
-    def load_playlist(self, tracks: List[dict]):
+    def load_playlist(self, tracks: Union[List[dict], List[PlaylistItem]]):
         """
         Load a playlist.
 
         Args:
-            tracks: List of track dictionaries with at least 'path' key
+            tracks: List of track dictionaries or PlaylistItem objects
         """
-        self._playlist = tracks.copy()
+        self._playlist = []
+        for track in tracks:
+            if isinstance(track, PlaylistItem):
+                self._playlist.append(track)
+            else:
+                self._playlist.append(PlaylistItem.from_dict(track))
+        self._original_playlist = self._playlist.copy()  # Save original order
+        self._current_index = -1
+
+    def load_playlist_items(self, items: List[PlaylistItem]):
+        """
+        Load a playlist from PlaylistItem objects.
+
+        Args:
+            items: List of PlaylistItem objects
+        """
+        self._playlist = items.copy()
+        self._original_playlist = items.copy()  # Save original order
         self._current_index = -1
 
     def clear_playlist(self):
         """Clear the playlist."""
         self._playlist.clear()
+        self._original_playlist.clear()
         self._current_index = -1
         self.stop()
 
@@ -146,25 +181,29 @@ class PlayerEngine(QObject):
                 logger.error(f"Failed to delete temp file {temp_file}: {e}", exc_info=True)
         self._temp_files.clear()
 
-    def add_track(self, track: dict):
+    def add_track(self, track: Union[dict, PlaylistItem]):
         """
         Add a track to the playlist.
 
         Args:
-            track: Track dictionary
+            track: Track dictionary or PlaylistItem
         """
-        self._playlist.append(track)
+        if isinstance(track, PlaylistItem):
+            self._playlist.append(track)
+        else:
+            self._playlist.append(PlaylistItem.from_dict(track))
 
-    def insert_track(self, index: int, track: dict):
+    def insert_track(self, index: int, track: Union[dict, PlaylistItem]):
         """
         Insert a track at a specific position.
 
         Args:
             index: Position to insert at
-            track: Track dictionary
+            track: Track dictionary or PlaylistItem
         """
         if 0 <= index <= len(self._playlist):
-            self._playlist.insert(index, track)
+            item = track if isinstance(track, PlaylistItem) else PlaylistItem.from_dict(track)
+            self._playlist.insert(index, item)
             if self._current_index >= index:
                 self._current_index += 1
 
@@ -183,6 +222,20 @@ class PlayerEngine(QObject):
             elif self._current_index > index:
                 self._current_index -= 1
 
+    def update_track_path(self, index: int, local_path: str):
+        """
+        Update the local path for a track (after download completes).
+
+        Args:
+            index: Index of track to update
+            local_path: New local path
+        """
+        if 0 <= index < len(self._playlist):
+            item = self._playlist[index]
+            item.local_path = local_path
+            item.needs_download = False
+            logger.debug(f"[PlayerEngine] Updated track {index} path: {local_path}")
+
     def play(self):
         """Start or resume playback."""
         if self._current_index < 0 and self._playlist:
@@ -190,6 +243,12 @@ class PlayerEngine(QObject):
             self._load_track(self._current_index)
 
         if self._current_index >= 0:
+            # Check if current track needs download
+            item = self._playlist[self._current_index]
+            if item.needs_download or not item.local_path:
+                logger.debug(f"[PlayerEngine] play: Track needs download")
+                self.track_needs_download.emit(item)
+                return
             self._player.play()
 
     def pause(self):
@@ -209,6 +268,15 @@ class PlayerEngine(QObject):
         """
         if 0 <= index < len(self._playlist):
             self._current_index = index
+            item = self._playlist[index]
+
+            # Check if track needs download
+            if item.needs_download or not item.local_path:
+                logger.debug(f"[PlayerEngine] play_at: Track {index} needs download")
+                self.current_track_changed.emit(item.to_dict())
+                self.track_needs_download.emit(item)
+                return
+
             self._load_track(index)
             self._player.play()
 
@@ -223,32 +291,90 @@ class PlayerEngine(QObject):
         """
         if 0 <= index < len(self._playlist):
             self._current_index = index
+            item = self._playlist[index]
+
+            # Save pending seek for use after download
             self._pending_seek = position_ms
             self._pending_play = True
+
+            # Check if track needs download
+            if item.needs_download or not item.local_path:
+                logger.debug(f"[PlayerEngine] play_at_with_position: Track {index} needs download, pending_seek={position_ms}")
+                self.current_track_changed.emit(item.to_dict())
+                self.track_needs_download.emit(item)
+                return
+
             self._load_track(index)
             # Don't call play() here - will play after media is loaded and seeked
+
+    def play_after_download(self, index: int, local_path: str):
+        """
+        Play a track after download completes.
+
+        Args:
+            index: Index of track
+            local_path: Downloaded local path
+        """
+        if 0 <= index < len(self._playlist):
+            self.update_track_path(index, local_path)
+            item = self._playlist[index]
+
+            # Extract metadata if needed (for cloud files)
+            if item.needs_metadata and local_path:
+                from services.metadata_service import MetadataService
+                metadata = MetadataService.extract_metadata(local_path)
+                if metadata:
+                    if metadata.get("title"):
+                        item.title = metadata["title"]
+                    if metadata.get("artist"):
+                        item.artist = metadata["artist"]
+                    if metadata.get("album"):
+                        item.album = metadata["album"]
+                    item.needs_metadata = False
+                    logger.debug(f"[PlayerEngine] Extracted metadata: title={item.title}, artist={item.artist}")
+
+            # Only play if this is the current track
+            if index == self._current_index:
+                url = QUrl.fromLocalFile(local_path)
+                self._player.setSource(url)
+
+                # Use pending seek if available
+                if self._pending_seek and self._pending_seek > 0:
+                    logger.debug(f"[PlayerEngine] play_after_download: using pending_seek={self._pending_seek}")
+                    # Will seek after media is loaded
+                    self._pending_play = True
+                else:
+                    self._player.play()
+
+                self.current_track_changed.emit(item.to_dict())
 
     def play_next(self):
         """Play the next track."""
         import time
         start_time = time.time()
 
-        logger.debug(f"[PlayerEngine] play_next called: current_index={self._current_index}, playlist_size={len(self._playlist)}")
+        logger.debug(f"[PlayerEngine] play_next called: current_index={self._current_index}, playlist_size={len(self._playlist)}, mode={self._play_mode}")
 
         if not self._playlist:
             logger.debug("[PlayerEngine] play_next: No playlist, returning")
             return
 
-        if self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP):
-            import random
-            self._current_index = random.randint(0, len(self._playlist) - 1)
-            logger.debug(f"[PlayerEngine] play_next: Random mode, new index={self._current_index}")
-        else:
-            self._current_index += 1
-            logger.debug(f"[PlayerEngine] play_next: Sequential mode, new index={self._current_index}")
+        # Handle loop one mode - stay on current track
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            logger.debug("[PlayerEngine] play_next: Loop one mode, staying on current track")
+            # Just restart playback
+            self._player.setPosition(0)
+            self._player.play()
+            return
+
+        # Move to next track
+        self._current_index += 1
 
         if self._current_index >= len(self._playlist):
             if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                # Reshuffle for random loop mode
+                if self._play_mode == PlayMode.RANDOM_LOOP:
+                    self._shuffle_playlist()
                 self._current_index = 0
                 logger.debug(f"[PlayerEngine] play_next: Playlist loop, reset to index 0")
             else:
@@ -257,18 +383,18 @@ class PlayerEngine(QObject):
                 self.stop()
                 return
 
-        current_track = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
-        logger.debug(f"[PlayerEngine] play_next: Loading track at index {self._current_index}, path={current_track.get('path') if current_track else None}")
+        item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+        logger.debug(f"[PlayerEngine] play_next: Loading track at index {self._current_index}, path={item.local_path if item else None}")
 
         self._load_track(self._current_index)
 
-        # Only call play() if the track has a valid path
-        # For cloud files with empty paths, playback will be triggered after download completes
-        if current_track and current_track.get('path'):
+        # Check if track needs download
+        if item and (item.needs_download or not item.local_path):
+            logger.debug(f"[PlayerEngine] play_next: Track needs download")
+            self.track_needs_download.emit(item)
+        elif item and item.local_path:
             logger.debug(f"[PlayerEngine] play_next: Calling play()")
             self._player.play()
-        else:
-            logger.debug(f"[PlayerEngine] play_next: Path is empty, skipping play() - waiting for download")
 
         logger.debug(f"[PlayerEngine] play_next took: {time.time() - start_time:.3f}s")
 
@@ -277,10 +403,16 @@ class PlayerEngine(QObject):
         import time
         start_time = time.time()
 
-        logger.debug(f"[PlayerEngine] play_previous called: current_index={self._current_index}")
+        logger.debug(f"[PlayerEngine] play_previous called: current_index={self._current_index}, mode={self._play_mode}")
 
         if not self._playlist:
             logger.debug("[PlayerEngine] play_previous: No playlist, returning")
+            return
+
+        # Handle loop one mode - stay on current track
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            logger.debug("[PlayerEngine] play_previous: Loop one mode, staying on current track")
+            self._player.setPosition(0)
             return
 
         if self._player.position() > 3000:  # If more than 3 seconds played, restart track
@@ -294,18 +426,18 @@ class PlayerEngine(QObject):
                 else:
                     self._current_index = 0
 
-            current_track = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
-            logger.debug(f"[PlayerEngine] play_previous: Loading track at index {self._current_index}, path={current_track.get('path') if current_track else None}")
+            item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+            logger.debug(f"[PlayerEngine] play_previous: Loading track at index {self._current_index}, path={item.local_path if item else None}")
 
             self._load_track(self._current_index)
 
-            # Only call play() if the track has a valid path
-            # For cloud files with empty paths, playback will be triggered after download completes
-            if current_track and current_track.get('path'):
+            # Check if track needs download
+            if item and (item.needs_download or not item.local_path):
+                logger.debug("[PlayerEngine] play_previous: Track needs download")
+                self.track_needs_download.emit(item)
+            elif item and item.local_path:
                 logger.debug("[PlayerEngine] play_previous: Calling play()")
                 self._player.play()
-            else:
-                logger.debug("[PlayerEngine] play_previous: Path is empty, skipping play() - waiting for download")
 
         logger.debug(f"[PlayerEngine] play_previous took: {time.time() - start_time:.3f}s")
 
@@ -351,11 +483,112 @@ class PlayerEngine(QObject):
         """
         Set the playback mode.
 
+        When switching to/from shuffle mode, the playlist is shuffled/restored:
+        - Sequential/Loop -> Shuffle: Shuffle queue, current song at front
+        - Shuffle -> Sequential/Loop: Restore original order
+
         Args:
             mode: PlayMode to set
         """
+        old_mode = self._play_mode
+        old_is_shuffle = old_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
+        new_is_shuffle = mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
+
+        # Handle shuffle mode transition
+        if new_is_shuffle and not old_is_shuffle:
+            # Entering shuffle mode - shuffle the queue
+            self._shuffle_playlist()
+        elif not new_is_shuffle and old_is_shuffle:
+            # Exiting shuffle mode - restore original order
+            self._restore_playlist_order()
+
         self._play_mode = mode
         self.play_mode_changed.emit(mode)
+        logger.debug(f"[PlayerEngine] Play mode changed: {old_mode} -> {mode}")
+
+    def _shuffle_playlist(self):
+        """Shuffle the playlist with current track at front."""
+        if not self._playlist:
+            return
+
+        # Get current item before shuffling (if any)
+        current_item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+
+        # Shuffle the playlist
+        import random
+        self._playlist = self._original_playlist.copy()
+        random.shuffle(self._playlist)
+
+        # Move current item to front if there's one playing
+        if current_item:
+            try:
+                idx = self._playlist.index(current_item)
+                self._playlist.pop(idx)
+                self._playlist.insert(0, current_item)
+            except ValueError:
+                pass
+
+        self._current_index = 0
+        logger.debug(f"[PlayerEngine] Playlist shuffled, current item at index 0")
+
+    def _restore_playlist_order(self):
+        """Restore the playlist to original order."""
+        if not self._original_playlist:
+            return
+
+        # Get current item before restoring
+        current_item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+
+        # Restore original order
+        self._playlist = self._original_playlist.copy()
+
+        # Find current item in restored playlist
+        if current_item:
+            for i, item in enumerate(self._playlist):
+                # Match by track_id for local, or cloud_file_id for cloud
+                if item.track_id and current_item.track_id and item.track_id == current_item.track_id:
+                    self._current_index = i
+                    break
+                elif item.cloud_file_id and current_item.cloud_file_id and item.cloud_file_id == current_item.cloud_file_id:
+                    self._current_index = i
+                    break
+            else:
+                self._current_index = 0
+
+        logger.debug(f"[PlayerEngine] Playlist restored to original order, current_index={self._current_index}")
+
+    def shuffle_and_play(self, item_to_play: PlaylistItem = None):
+        """
+        Shuffle the playlist and optionally set a specific item as current.
+
+        This is used when a new song is played while in shuffle mode.
+
+        Args:
+            item_to_play: Optional item to place at front of shuffled queue
+        """
+        if not self._original_playlist:
+            return
+
+        import random
+        self._playlist = self._original_playlist.copy()
+        random.shuffle(self._playlist)
+
+        if item_to_play:
+            try:
+                idx = self._playlist.index(item_to_play)
+                self._playlist.pop(idx)
+                self._playlist.insert(0, item_to_play)
+                self._current_index = 0
+            except ValueError:
+                self._current_index = 0
+        else:
+            self._current_index = 0
+
+        logger.debug(f"[PlayerEngine] Playlist shuffled for new playback, current_index={self._current_index}")
+
+    def is_shuffle_mode(self) -> bool:
+        """Check if currently in shuffle mode."""
+        return self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
 
     def _load_track(self, index: int):
         """Load a track for playback."""
@@ -365,22 +598,22 @@ class PlayerEngine(QObject):
         logger.debug(f"[PlayerEngine] _load_track called: index={index}")
 
         if 0 <= index < len(self._playlist):
-            track = self._playlist[index]
-            logger.debug(f"[PlayerEngine] _load_track: track={track}")
+            item = self._playlist[index]
+            logger.debug(f"[PlayerEngine] _load_track: item={item}")
 
             # Skip loading if path is empty (for cloud files not yet downloaded)
-            if not track.get('path'):
-                logger.debug(f"[PlayerEngine] _load_track: Path is empty, emitting current_track_changed signal")
-                self.current_track_changed.emit(track)
+            if not item.local_path or item.needs_download:
+                logger.debug(f"[PlayerEngine] _load_track: Path is empty or needs download, emitting current_track_changed signal")
+                self.current_track_changed.emit(item.to_dict())
                 logger.debug(f"[PlayerEngine] _load_track took: {time.time() - start_time:.3f}s (empty path)")
                 return
 
-            url = QUrl.fromLocalFile(track['path'])
+            url = QUrl.fromLocalFile(item.local_path)
 
             logger.debug(f'[PlayerEngine] Loading track from {url}')
             self._player.setSource(url)
             logger.debug(f"[PlayerEngine] _load_track: setSource done, emitting current_track_changed")
-            self.current_track_changed.emit(track)
+            self.current_track_changed.emit(item.to_dict())
 
             logger.debug(f"[PlayerEngine] _load_track took: {time.time() - start_time:.3f}s")
         else:

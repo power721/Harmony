@@ -147,9 +147,8 @@ class GlobalHotkeys(QObject):
 
     def _new_playlist(self):
         """Create new playlist."""
-        # This would trigger the new playlist action
-        # Implementation depends on UI structure
-        pass
+        if hasattr(self._window, '_playlist_view'):
+            self._window._playlist_view._create_playlist()
 
 
 def setup_media_key_handler(player: PlayerController):

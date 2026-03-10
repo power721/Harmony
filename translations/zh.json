@@ -184,5 +184,9 @@
     "cloud_lyrics_edit_not_supported": "不支持编辑网盘文件的歌词。",
     "cloud_lyrics_delete_not_supported": "不支持删除网盘文件的歌词。",
     "cloud_lyrics_location_not_supported": "不支持打开网盘文件的歌词位置。",
-    "cloud_lyrics_download_not_supported": "不支持下载网盘文件的歌词。"
+    "cloud_lyrics_download_not_supported": "不支持下载网盘文件的歌词。",
+    "searching": "搜索中",
+    "select_song": "选择歌曲",
+    "search_results_for": "搜索结果",
+    "no_lyrics_found": "未找到歌词"
 }

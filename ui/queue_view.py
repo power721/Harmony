@@ -193,12 +193,18 @@ class QueueView(QWidget):
         )
         self._player.engine.state_changed.connect(self._on_player_state_changed)
 
+        # Track playlist size to detect playlist changes
+        self._last_playlist_size = 0
+
     def _initialize_view(self):
         """Initialize the queue view with current content and indicators."""
         # Get current playlist from engine
         playlist = self._player.engine.playlist
         current_index = self._player.engine.current_index
         is_playing = self._player.engine.state == PlayerState.PLAYING
+
+        # Update last known playlist size
+        self._last_playlist_size = len(playlist)
 
         # Save current selection
         selected_items = self._queue_list.selectedItems()
@@ -366,7 +372,13 @@ class QueueView(QWidget):
 
     def _on_current_track_changed(self, track_dict):
         """Handle current track change."""
-        self._update_current_track_indicator()
+        # Check if playlist size changed (indicates new playlist loaded)
+        current_size = len(self._player.engine.playlist)
+        if current_size != self._last_playlist_size:
+            self._last_playlist_size = current_size
+            self._refresh_queue()
+        else:
+            self._update_current_track_indicator()
 
         # Scroll to current track with delay to ensure UI is updated
         from PySide6.QtCore import QTimer

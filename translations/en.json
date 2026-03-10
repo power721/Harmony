@@ -184,5 +184,9 @@
     "cloud_lyrics_edit_not_supported": "Editing lyrics for cloud files is not supported.",
     "cloud_lyrics_delete_not_supported": "Deleting lyrics for cloud files is not supported.",
     "cloud_lyrics_location_not_supported": "Opening lyrics location for cloud files is not supported.",
-    "cloud_lyrics_download_not_supported": "Downloading lyrics for cloud files is not supported."
+    "cloud_lyrics_download_not_supported": "Downloading lyrics for cloud files is not supported.",
+    "searching": "Searching",
+    "select_song": "Select Song",
+    "search_results_for": "Search results for",
+    "no_lyrics_found": "No lyrics found"
 }
