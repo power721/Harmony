@@ -69,7 +69,8 @@ class PlayerEngine(QObject):
         self._audio_output = QAudioOutput()
         self._player.setAudioOutput(self._audio_output)
 
-        self._playlist: List[PlaylistItem] = []  # List of PlaylistItem objects
+        self._playlist: List[PlaylistItem] = []  # Current playlist (may be shuffled)
+        self._original_playlist: List[PlaylistItem] = []  # Original order for restoration
         self._current_index: int = -1
         self._play_mode: PlayMode = PlayMode.SEQUENTIAL
         self._temp_files: List[str] = []  # Track temporary files for cleanup
@@ -148,6 +149,7 @@ class PlayerEngine(QObject):
                 self._playlist.append(track)
             else:
                 self._playlist.append(PlaylistItem.from_dict(track))
+        self._original_playlist = self._playlist.copy()  # Save original order
         self._current_index = -1
 
     def load_playlist_items(self, items: List[PlaylistItem]):
@@ -158,11 +160,13 @@ class PlayerEngine(QObject):
             items: List of PlaylistItem objects
         """
         self._playlist = items.copy()
+        self._original_playlist = items.copy()  # Save original order
         self._current_index = -1
 
     def clear_playlist(self):
         """Clear the playlist."""
         self._playlist.clear()
+        self._original_playlist.clear()
         self._current_index = -1
         self.stop()
 
@@ -349,22 +353,28 @@ class PlayerEngine(QObject):
         import time
         start_time = time.time()
 
-        logger.debug(f"[PlayerEngine] play_next called: current_index={self._current_index}, playlist_size={len(self._playlist)}")
+        logger.debug(f"[PlayerEngine] play_next called: current_index={self._current_index}, playlist_size={len(self._playlist)}, mode={self._play_mode}")
 
         if not self._playlist:
             logger.debug("[PlayerEngine] play_next: No playlist, returning")
             return
 
-        if self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP):
-            import random
-            self._current_index = random.randint(0, len(self._playlist) - 1)
-            logger.debug(f"[PlayerEngine] play_next: Random mode, new index={self._current_index}")
-        else:
-            self._current_index += 1
-            logger.debug(f"[PlayerEngine] play_next: Sequential mode, new index={self._current_index}")
+        # Handle loop one mode - stay on current track
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            logger.debug("[PlayerEngine] play_next: Loop one mode, staying on current track")
+            # Just restart playback
+            self._player.setPosition(0)
+            self._player.play()
+            return
+
+        # Move to next track
+        self._current_index += 1
 
         if self._current_index >= len(self._playlist):
             if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                # Reshuffle for random loop mode
+                if self._play_mode == PlayMode.RANDOM_LOOP:
+                    self._shuffle_playlist()
                 self._current_index = 0
                 logger.debug(f"[PlayerEngine] play_next: Playlist loop, reset to index 0")
             else:
@@ -393,10 +403,16 @@ class PlayerEngine(QObject):
         import time
         start_time = time.time()
 
-        logger.debug(f"[PlayerEngine] play_previous called: current_index={self._current_index}")
+        logger.debug(f"[PlayerEngine] play_previous called: current_index={self._current_index}, mode={self._play_mode}")
 
         if not self._playlist:
             logger.debug("[PlayerEngine] play_previous: No playlist, returning")
+            return
+
+        # Handle loop one mode - stay on current track
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            logger.debug("[PlayerEngine] play_previous: Loop one mode, staying on current track")
+            self._player.setPosition(0)
             return
 
         if self._player.position() > 3000:  # If more than 3 seconds played, restart track
@@ -467,11 +483,112 @@ class PlayerEngine(QObject):
         """
         Set the playback mode.
 
+        When switching to/from shuffle mode, the playlist is shuffled/restored:
+        - Sequential/Loop -> Shuffle: Shuffle queue, current song at front
+        - Shuffle -> Sequential/Loop: Restore original order
+
         Args:
             mode: PlayMode to set
         """
+        old_mode = self._play_mode
+        old_is_shuffle = old_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
+        new_is_shuffle = mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
+
+        # Handle shuffle mode transition
+        if new_is_shuffle and not old_is_shuffle:
+            # Entering shuffle mode - shuffle the queue
+            self._shuffle_playlist()
+        elif not new_is_shuffle and old_is_shuffle:
+            # Exiting shuffle mode - restore original order
+            self._restore_playlist_order()
+
         self._play_mode = mode
         self.play_mode_changed.emit(mode)
+        logger.debug(f"[PlayerEngine] Play mode changed: {old_mode} -> {mode}")
+
+    def _shuffle_playlist(self):
+        """Shuffle the playlist with current track at front."""
+        if not self._playlist:
+            return
+
+        # Get current item before shuffling (if any)
+        current_item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+
+        # Shuffle the playlist
+        import random
+        self._playlist = self._original_playlist.copy()
+        random.shuffle(self._playlist)
+
+        # Move current item to front if there's one playing
+        if current_item:
+            try:
+                idx = self._playlist.index(current_item)
+                self._playlist.pop(idx)
+                self._playlist.insert(0, current_item)
+            except ValueError:
+                pass
+
+        self._current_index = 0
+        logger.debug(f"[PlayerEngine] Playlist shuffled, current item at index 0")
+
+    def _restore_playlist_order(self):
+        """Restore the playlist to original order."""
+        if not self._original_playlist:
+            return
+
+        # Get current item before restoring
+        current_item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+
+        # Restore original order
+        self._playlist = self._original_playlist.copy()
+
+        # Find current item in restored playlist
+        if current_item:
+            for i, item in enumerate(self._playlist):
+                # Match by track_id for local, or cloud_file_id for cloud
+                if item.track_id and current_item.track_id and item.track_id == current_item.track_id:
+                    self._current_index = i
+                    break
+                elif item.cloud_file_id and current_item.cloud_file_id and item.cloud_file_id == current_item.cloud_file_id:
+                    self._current_index = i
+                    break
+            else:
+                self._current_index = 0
+
+        logger.debug(f"[PlayerEngine] Playlist restored to original order, current_index={self._current_index}")
+
+    def shuffle_and_play(self, item_to_play: PlaylistItem = None):
+        """
+        Shuffle the playlist and optionally set a specific item as current.
+
+        This is used when a new song is played while in shuffle mode.
+
+        Args:
+            item_to_play: Optional item to place at front of shuffled queue
+        """
+        if not self._original_playlist:
+            return
+
+        import random
+        self._playlist = self._original_playlist.copy()
+        random.shuffle(self._playlist)
+
+        if item_to_play:
+            try:
+                idx = self._playlist.index(item_to_play)
+                self._playlist.pop(idx)
+                self._playlist.insert(0, item_to_play)
+                self._current_index = 0
+            except ValueError:
+                self._current_index = 0
+        else:
+            self._current_index = 0
+
+        logger.debug(f"[PlayerEngine] Playlist shuffled for new playback, current_index={self._current_index}")
+
+    def is_shuffle_mode(self) -> bool:
+        """Check if currently in shuffle mode."""
+        return self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
 
     def _load_track(self, index: int):
         """Load a track for playback."""

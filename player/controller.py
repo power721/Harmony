@@ -140,6 +140,15 @@ class PlayerController:
                 track_dicts.append(t_dict)
 
         self._engine.load_playlist(track_dicts)
+
+        # If in shuffle mode, shuffle the playlist with the target track at front
+        if self._engine.is_shuffle_mode():
+            items = self._engine.playlist_items
+            if 0 <= start_index < len(items):
+                self._engine.shuffle_and_play(items[start_index])
+                self._engine.play_at(0)
+                return True
+
         self._engine.play_at(start_index)
 
         return True
@@ -167,8 +176,19 @@ class PlayerController:
                 }
                 self._engine.add_track(track_dict)
 
-        if self._engine.playlist and start_index > 0:
-            self._engine.play_at(min(start_index, len(self._engine.playlist) - 1))
+        if self._engine.playlist:
+            # If in shuffle mode, shuffle the playlist with the target track at front
+            if self._engine.is_shuffle_mode() and start_index >= 0:
+                items = self._engine.playlist_items
+                if start_index < len(items):
+                    self._engine.shuffle_and_play(items[start_index])
+                    self._engine.play_at(0)
+                    return
+
+            if start_index > 0:
+                self._engine.play_at(min(start_index, len(self._engine.playlist) - 1))
+            else:
+                self._engine.play_at(0)
 
     def load_playlist(self, playlist_id: int):
         """
@@ -194,6 +214,11 @@ class PlayerController:
                 )
 
         self._engine.load_playlist(track_dicts)
+
+        # If in shuffle mode, shuffle and start from first
+        if self._engine.is_shuffle_mode() and track_dicts:
+            self._engine.shuffle_and_play()
+            self._engine.play_at(0)
 
     # ===== Cloud playback methods =====
 

@@ -204,7 +204,13 @@ class PlaybackManager(QObject):
                 items.append(item)
 
         self._engine.load_playlist_items(items)
-        self._engine.play_at(start_index)
+
+        # If in shuffle mode, shuffle the playlist with the target track at front
+        if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
+            self._engine.shuffle_and_play(items[start_index])
+            self._engine.play_at(0)
+        else:
+            self._engine.play_at(start_index)
 
         # Save queue and state
         self.save_queue()
@@ -227,7 +233,13 @@ class PlaybackManager(QObject):
                 items.append(PlaylistItem.from_track(t))
 
         self._engine.load_playlist_items(items)
-        self._engine.play()
+
+        # If in shuffle mode, shuffle the playlist
+        if self._engine.is_shuffle_mode() and items:
+            self._engine.shuffle_and_play()
+            self._engine.play_at(0)
+        else:
+            self._engine.play()
 
     def load_playlist(self, playlist_id: int):
         """
@@ -250,6 +262,10 @@ class PlaybackManager(QObject):
                 items.append(PlaylistItem.from_track(track))
 
         self._engine.load_playlist_items(items)
+
+        # If in shuffle mode, shuffle the playlist
+        if self._engine.is_shuffle_mode() and items:
+            self._engine.shuffle_and_play()
 
         # Save state
         self._config.set_playback_source("local")
@@ -280,7 +296,13 @@ class PlaybackManager(QObject):
                 items.append(item)
 
         self._engine.load_playlist_items(items)
-        self._engine.play_at(start_index)
+
+        # If in shuffle mode, shuffle the playlist with the target track at front
+        if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
+            self._engine.shuffle_and_play(items[start_index])
+            self._engine.play_at(0)
+        else:
+            self._engine.play_at(start_index)
 
         # Save queue and state
         self.save_queue()
@@ -325,6 +347,13 @@ class PlaybackManager(QObject):
         self._engine.load_playlist_items(items)
         self._engine.play_at(start_index)
 
+        # If in shuffle mode, shuffle the playlist with the target track at front
+        if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
+            self._engine.shuffle_and_play(items[start_index])
+            self._engine.play_at(0)
+        else:
+            self._engine.play_at(start_index)
+
         # Save state
         self._config.set_playback_source("cloud")
         self._config.set_cloud_account_id(account.id)
@@ -360,6 +389,11 @@ class PlaybackManager(QObject):
             items.append(item)
 
         self._engine.load_playlist_items(items)
+
+        # If in shuffle mode, shuffle the playlist with the target track at front
+        if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
+            self._engine.shuffle_and_play(items[start_index])
+            start_index = 0
 
         # Start playback
         if start_position > 0:
