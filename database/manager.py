@@ -1251,6 +1251,39 @@ class DatabaseManager:
             )
         return None
 
+    def get_cloud_file_by_file_id(self, file_id: str) -> Optional[CloudFile]:
+        """Get a cloud file by file_id only."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM cloud_files
+            WHERE file_id = ?
+        """,
+            (file_id,),
+        )
+
+        row = cursor.fetchone()
+
+        if row:
+            return CloudFile(
+                id=row["id"],
+                account_id=row["account_id"],
+                file_id=row["file_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                file_type=row["file_type"],
+                size=row["size"],
+                mime_type=row["mime_type"],
+                duration=row["duration"],
+                metadata=row["metadata"],
+                local_path=row["local_path"] if "local_path" in row.keys() else None,
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+        return None
+
     # Settings operations
 
     def get_setting(self, key: str, default=None):

@@ -40,6 +40,7 @@ from database.models import CloudAccount, CloudFile
 from services.quark_drive_service import QuarkDriveService
 from ui.cloud_login_dialog import CloudLoginDialog
 from utils import t, format_duration
+from utils.event_bus import EventBus
 
 
 class CloudDriveView(QWidget):
@@ -67,6 +68,11 @@ class CloudDriveView(QWidget):
 
         self._setup_ui()
         self._load_accounts()
+
+        # Connect to EventBus for download completion (for auto-play next track)
+        self._event_bus = EventBus.instance()
+        self._event_bus.download_started.connect(self._on_event_bus_download_started)
+        self._event_bus.download_completed.connect(self._on_event_bus_download_completed)
 
     def _setup_ui(self):
         """Setup UI components"""
@@ -1042,6 +1048,54 @@ class CloudDriveView(QWidget):
                 self._status_label.setText(t("download_failed"))
         else:
             self._status_label.setText(t("download_failed"))
+
+    def _on_event_bus_download_started(self, file_id: str):
+        """Handle download start from EventBus (for auto-play next track).
+
+        This is called when a cloud file download starts during auto-play,
+        which uses CloudDownloadService instead of CloudDriveView's own download thread.
+        """
+        logger.debug(f"[CloudDriveView] _on_event_bus_download_started: {file_id}")
+
+        # Only update status if this file is in our current audio files list
+        file_name = None
+        file_size = None
+        for f in self._current_audio_files:
+            if f.file_id == file_id:
+                file_name = f.name
+                file_size = f.size
+                break
+
+        if file_name:
+            size_info = ""
+            if file_size:
+                size_mb = file_size / (1024 * 1024)
+                size_info = f" ({size_mb:.1f} MB)"
+            self._status_label.setText(f"{t('downloading')} {file_name}{size_info}...")
+            logger.debug(f"[CloudDriveView] Updated status for auto-play download start: {file_name}")
+
+    def _on_event_bus_download_completed(self, file_id: str, local_path: str):
+        """Handle download completion from EventBus (for auto-play next track).
+
+        This is called when a cloud file download completes during auto-play,
+        which uses CloudDownloadService instead of CloudDriveView's own download thread.
+        """
+        import os
+
+        logger.debug(f"[CloudDriveView] _on_event_bus_download_completed: {file_id}")
+
+        # Only update status if this file is in our current audio files list
+        file_name = None
+        for f in self._current_audio_files:
+            if f.file_id == file_id:
+                file_name = f.name
+                break
+
+        if file_name and local_path and os.path.exists(local_path):
+            file_size = os.path.getsize(local_path)
+            size_mb = file_size / (1024 * 1024)
+            self._status_label.setText(f"{t('download_complete')}: {file_name} ({size_mb:.1f} MB)")
+            logger.debug(f"[CloudDriveView] Updated status for auto-play download: {file_name}")
 
     def _show_context_menu(self, pos):
         """Show context menu for file."""

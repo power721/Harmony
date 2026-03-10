@@ -385,6 +385,7 @@ class PlayerControls(QWidget):
         self._player.engine.position_changed.connect(self._on_position_changed)
         self._player.engine.duration_changed.connect(self._on_duration_changed)
         self._player.engine.current_track_changed.connect(self._on_track_changed)
+        self._player.engine.play_mode_changed.connect(self._on_play_mode_changed)
 
         # Sync button states with current player mode
         self._sync_button_states()
@@ -615,6 +616,10 @@ class PlayerControls(QWidget):
             self._repeat_btn.setText("🔁")
             self._repeat_btn.setChecked(False)
             self._update_button_style(self._repeat_btn, active=False)
+
+    def _on_play_mode_changed(self, mode: PlayMode):
+        """Handle play mode change - sync button states."""
+        self._sync_button_states()
 
     def _on_state_changed(self, state: PlayerState):
         """Handle player state change."""

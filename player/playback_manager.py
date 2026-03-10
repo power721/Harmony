@@ -99,9 +99,7 @@ class PlaybackManager(QObject):
         self._engine.state_changed.connect(self._on_state_changed)
         self._engine.position_changed.connect(self._event_bus.position_changed.emit)
         self._engine.duration_changed.connect(self._event_bus.duration_changed.emit)
-        self._engine.play_mode_changed.connect(
-            lambda mode: self._event_bus.play_mode_changed.emit(mode.value)
-        )
+        self._engine.play_mode_changed.connect(self._on_play_mode_changed)
         self._engine.volume_changed.connect(self._event_bus.volume_changed.emit)
         self._engine.track_finished.connect(self._event_bus.track_finished.emit)
         self._engine.track_needs_download.connect(self._on_track_needs_download)
@@ -406,8 +404,17 @@ class PlaybackManager(QObject):
         self._engine.set_volume(volume)
 
     def set_play_mode(self, mode: PlayMode):
-        """Set play mode."""
+        """Set play mode and persist to config."""
         self._engine.set_play_mode(mode)
+        # Config saving is handled by _on_play_mode_changed signal handler
+
+    def _on_play_mode_changed(self, mode: PlayMode):
+        """Handle play mode change - save to config and emit to EventBus."""
+        # Save to config
+        self._config.set_play_mode(mode.value)
+        logger.debug(f"[PlaybackManager] Saved play mode: {mode}")
+        # Emit to EventBus
+        self._event_bus.play_mode_changed.emit(mode.value)
 
     # ===== Internal Methods =====
 
@@ -485,12 +492,21 @@ class PlaybackManager(QObject):
     def _on_track_needs_download(self, item: PlaylistItem):
         """Handle track that needs download."""
         logger.debug(f"[PlaybackManager] Track needs download: {item.cloud_file_id}")
+        logger.debug(f"[PlaybackManager] _cloud_account: {self._cloud_account}")
+        logger.debug(f"[PlaybackManager] _cloud_files count: {len(self._cloud_files)}")
 
         from services.cloud_download_service import CloudDownloadService
 
         if not self._cloud_account:
             logger.error("[PlaybackManager] No cloud account for download")
-            return
+            # Try to restore cloud account from database
+            if item.cloud_account_id:
+                self._cloud_account = self._db.get_cloud_account(item.cloud_account_id)
+                logger.debug(f"[PlaybackManager] Restored cloud account: {self._cloud_account}")
+                if not self._cloud_account:
+                    return
+            else:
+                return
 
         # Start download
         service = CloudDownloadService.instance()
@@ -503,7 +519,18 @@ class PlaybackManager(QObject):
                 cloud_file = cf
                 break
 
+        if not cloud_file:
+            logger.warning(f"[PlaybackManager] CloudFile not found in _cloud_files, trying to find in database")
+            # Try to find in database
+            cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+            if cloud_file:
+                logger.debug(f"[PlaybackManager] Found CloudFile in database: {cloud_file.name}")
+            else:
+                logger.error(f"[PlaybackManager] CloudFile not found: {item.cloud_file_id}")
+                return
+
         if cloud_file:
+            logger.debug(f"[PlaybackManager] Starting download for: {cloud_file.name}")
             service.download_file(cloud_file, self._cloud_account)
 
     def on_download_completed(self, file_id: str, local_path: str):
