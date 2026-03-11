@@ -60,6 +60,7 @@ class PlayerEngine(QObject):
     error_occurred = Signal(str)
     play_mode_changed = Signal(PlayMode)  # Emitted when play mode changes
     track_needs_download = Signal(object)  # Emitted when cloud track needs download (PlaylistItem)
+    playlist_changed = Signal()  # Emitted when playlist is modified (add/remove/reorder)
 
     def __init__(self, parent=None):
         """Initialize the player engine."""
@@ -151,6 +152,7 @@ class PlayerEngine(QObject):
                 self._playlist.append(PlaylistItem.from_dict(track))
         self._original_playlist = self._playlist.copy()  # Save original order
         self._current_index = -1
+        self.playlist_changed.emit()
 
     def load_playlist_items(self, items: List[PlaylistItem]):
         """
@@ -162,6 +164,7 @@ class PlayerEngine(QObject):
         self._playlist = items.copy()
         self._original_playlist = items.copy()  # Save original order
         self._current_index = -1
+        self.playlist_changed.emit()
 
     def clear_playlist(self):
         """Clear the playlist."""
@@ -169,6 +172,7 @@ class PlayerEngine(QObject):
         self._original_playlist.clear()
         self._current_index = -1
         self.stop()
+        self.playlist_changed.emit()
 
     def cleanup_temp_files(self):
         """Clean up temporary files from cloud playback."""
@@ -192,6 +196,7 @@ class PlayerEngine(QObject):
             self._playlist.append(track)
         else:
             self._playlist.append(PlaylistItem.from_dict(track))
+        self.playlist_changed.emit()
 
     def insert_track(self, index: int, track: Union[dict, PlaylistItem]):
         """
@@ -206,6 +211,7 @@ class PlayerEngine(QObject):
             self._playlist.insert(index, item)
             if self._current_index >= index:
                 self._current_index += 1
+            self.playlist_changed.emit()
 
     def remove_track(self, index: int):
         """
@@ -221,6 +227,7 @@ class PlayerEngine(QObject):
                 self._current_index = -1
             elif self._current_index > index:
                 self._current_index -= 1
+            self.playlist_changed.emit()
 
     def update_track_path(self, index: int, local_path: str):
         """

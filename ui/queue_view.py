@@ -192,6 +192,7 @@ class QueueView(QWidget):
             self._on_current_track_changed
         )
         self._player.engine.state_changed.connect(self._on_player_state_changed)
+        self._player.engine.playlist_changed.connect(self._refresh_queue)
 
         # Track playlist size to detect playlist changes
         self._last_playlist_size = 0
@@ -463,9 +464,32 @@ class QueueView(QWidget):
             [self._queue_list.row(item) for item in selected_items], reverse=True
         )
 
+        # Block list widget signals during removal to prevent feedback
+        self._queue_list.blockSignals(True)
+
         # Remove from engine playlist
         for row in rows_to_remove:
             self._player.engine.remove_track(row)
+
+        # Unblock signals
+        self._queue_list.blockSignals(False)
+
+        # Refresh the queue display (will be called automatically by playlist_changed signal,
+        # but we also call it here to ensure immediate update)
+        self._refresh_queue()
+
+    def _play_selected(self):
+        """Play the selected track."""
+        selected_items = self._queue_list.selectedItems()
+        if not selected_items:
+            return
+
+        # Play the first selected track
+        item = selected_items[0]
+        track = item.data(Qt.UserRole)
+        if track:
+            row = self._queue_list.row(item)
+            self._player.engine.play_at(row)
 
     def _toggle_favorite_selected(self):
         """Toggle favorite status for selected tracks."""
@@ -539,16 +563,14 @@ class QueueView(QWidget):
             }
         """)
 
-        remove_action = menu.addAction(t("remove_from_queue"))
-        remove_action.triggered.connect(self._remove_selected)
-
-        favorite_action = menu.addAction(t("add_to_favorites"))
-        favorite_action.triggered.connect(lambda: self._toggle_favorite_selected())
+        # Play action
+        play_action = menu.addAction(t("play"))
+        play_action.triggered.connect(self._play_selected)
 
         menu.addSeparator()
 
-        edit_action = menu.addAction(t("edit_media_info"))
-        edit_action.triggered.connect(lambda: self._edit_media_info())
+        remove_action = menu.addAction(t("remove_from_queue"))
+        remove_action.triggered.connect(self._remove_selected)
 
         menu.exec_(self._queue_list.mapToGlobal(pos))
 
