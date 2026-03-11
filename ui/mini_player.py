@@ -10,12 +10,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QSlider,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QTimer, QThread
+from PySide6.QtGui import QPixmap, QPainter, QColor, QKeySequence, QShortcut
 
 from player import PlayerController
-from player.engine import PlayerState
+from player.engine import PlayerState, PlayMode
 from utils import format_time, t
+import threading
 
 
 class MiniPlayer(QWidget):
@@ -30,6 +31,7 @@ class MiniPlayer(QWidget):
     """
 
     closed = Signal()  # Signal when mini player is closed
+    _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
 
     def __init__(self, player: PlayerController, parent=None):
         """
@@ -43,6 +45,7 @@ class MiniPlayer(QWidget):
         self._player = player
         self._is_dragging = False
         self._drag_position = None
+        self._is_seeking = False  # Track if user is seeking
 
         self._setup_ui()
         self._setup_connections()
@@ -217,16 +220,24 @@ class MiniPlayer(QWidget):
         self._close_btn.clicked.connect(self.close)
 
         self._play_pause_btn.clicked.connect(self._toggle_play_pause)
-        self._prev_btn.clicked.connect(self._player.engine.play_previous)
+        self._prev_btn.clicked.connect(self._play_previous)  # Custom handler
         self._next_btn.clicked.connect(self._player.engine.play_next)
 
-        self._progress_slider.sliderReleased.connect(self._on_seek)
+        # Progress slider signals
+        self._progress_slider.sliderPressed.connect(self._on_seek_start)
+        self._progress_slider.sliderReleased.connect(self._on_seek_end)
 
         # Engine connections
         self._player.engine.state_changed.connect(self._on_state_changed)
         self._player.engine.position_changed.connect(self._on_position_changed)
         self._player.engine.duration_changed.connect(self._on_duration_changed)
         self._player.engine.current_track_changed.connect(self._on_track_changed)
+
+        # Setup keyboard shortcuts for mini player
+        self._setup_shortcuts()
+
+        # Connect cover loaded signal
+        self._cover_loaded.connect(self._show_cover)
 
         # Initialize with current track info
         self._initialize_current_track()
@@ -238,14 +249,73 @@ class MiniPlayer(QWidget):
         else:
             self._player.engine.play()
 
-    def _on_seek(self):
-        """Handle seek."""
+    def _setup_shortcuts(self):
+        """Setup keyboard shortcuts for mini player."""
+        # Space - Play/Pause
+        QShortcut(QKeySequence(Qt.Key_Space), self, self._toggle_play_pause)
+
+        # Ctrl/Cmd + Left - Previous track
+        QShortcut(QKeySequence("Ctrl+Left"), self, self._play_previous)
+
+        # Ctrl/Cmd + Right - Next track
+        QShortcut(QKeySequence("Ctrl+Right"), self, self._player.engine.play_next)
+
+        # Ctrl/Cmd + Up - Volume up
+        QShortcut(QKeySequence("Ctrl+Up"), self, self._volume_up)
+
+        # Ctrl/Cmd + Down - Volume down
+        QShortcut(QKeySequence("Ctrl+Down"), self, self._volume_down)
+
+        # Ctrl/Cmd + M - Toggle mini mode (close mini player)
+        QShortcut(QKeySequence("Ctrl+M"), self, self.close)
+
+    def _volume_up(self):
+        """Increase volume."""
+        current_volume = self._player.engine.volume
+        new_volume = min(100, current_volume + 5)
+        self._player.engine.set_volume(new_volume)
+
+    def _volume_down(self):
+        """Decrease volume."""
+        current_volume = self._player.engine.volume
+        new_volume = max(0, current_volume - 5)
+        self._player.engine.set_volume(new_volume)
+
+    def _play_previous(self):
+        """Play previous track - always switches to previous song in mini player."""
+        current_index = self._player.engine.current_index
+        playlist_size = len(self._player.engine.playlist_items)
+
+        if playlist_size == 0:
+            return
+
+        # Always go to previous track (ignore the 3-second rule)
+        new_index = current_index - 1
+
+        # Handle wraparound based on play mode
+        play_mode = self._player.engine.play_mode
+        if new_index < 0:
+            if play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                new_index = playlist_size - 1
+            else:
+                new_index = 0  # Stay at first track
+
+        # Play the track
+        self._player.engine.play_at(new_index)
+
+    def _on_seek_start(self):
+        """Handle seek start (slider pressed)."""
+        self._is_seeking = True
+
+    def _on_seek_end(self):
+        """Handle seek end (slider released)."""
         if hasattr(self, "_current_duration"):
             # Calculate position in milliseconds
             position_ms = int(
                 (self._progress_slider.value() / 1000) * self._current_duration * 1000
             )
             self._player.engine.seek(position_ms)
+        self._is_seeking = False
 
     def _initialize_current_track(self):
         """Initialize with current track info if playing."""
@@ -281,8 +351,11 @@ class MiniPlayer(QWidget):
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""
         if hasattr(self, "_current_duration") and self._current_duration > 0:
-            value = int((position_ms / (self._current_duration * 1000)) * 1000)
-            self._progress_slider.setValue(value)
+            # Don't update slider while user is dragging it
+            if not self._is_seeking:
+                value = int((position_ms / (self._current_duration * 1000)) * 1000)
+                self._progress_slider.setValue(value)
+            # Always update time display
             self._current_time.setText(format_time(position_ms / 1000))
 
     def _on_duration_changed(self, duration_ms: int):
@@ -293,42 +366,50 @@ class MiniPlayer(QWidget):
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
         if track_dict:
+            # Update UI immediately
             self._title_label.setText(track_dict.get("title", t("unknown")))
             self._artist_label.setText(track_dict.get("artist", ""))
 
-            # Load cover
-            self._load_cover(track_dict)
+            # Load cover asynchronously to avoid blocking
+            self._load_cover_async(track_dict)
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")
             self._cover_label.clear()
 
-    def _load_cover(self, track_dict: dict):
-        """Load cover art."""
-        from PySide6.QtGui import QPixmap
-        from services import CoverService
-        from pathlib import Path
+    def _load_cover_async(self, track_dict: dict):
+        """Load cover art in background thread."""
+        def load_cover():
+            from services import CoverService
+            from pathlib import Path
 
-        # First check if cover_path is already saved in database
-        cover_path = track_dict.get("cover_path")
-        if cover_path and Path(cover_path).exists():
-            pixmap = QPixmap(cover_path)
-            if not pixmap.isNull():
-                scaled = pixmap.scaled(
-                    50, 50, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
-                )
-                self._cover_label.setPixmap(scaled)
-                return
+            # First check if cover_path is already saved in database
+            cover_path = track_dict.get("cover_path")
+            if cover_path and Path(cover_path).exists():
+                return cover_path
 
-        # Fall back to extracting from file
-        path = track_dict.get("path", "")
-        title = track_dict.get("title", "")
-        artist = track_dict.get("artist", "")
-        album = track_dict.get("album", "")
+            # Fall back to extracting from file
+            path = track_dict.get("path", "")
+            title = track_dict.get("title", "")
+            artist = track_dict.get("artist", "")
+            album = track_dict.get("album", "")
 
-        cover_path = CoverService.get_cover(path, title, artist, album)
+            return CoverService.get_cover(path, title, artist, album)
 
+        def worker():
+            cover_path = load_cover()
+            # Use signal for thread-safe UI update
+            self._cover_loaded.emit(cover_path or "")
+
+        # Run in thread
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
+        thread.start()
+
+    def _show_cover(self, cover_path: str):
+        """Show cover art (called via signal from background thread)."""
         if cover_path:
+            from PySide6.QtGui import QPixmap
             pixmap = QPixmap(cover_path)
             if not pixmap.isNull():
                 scaled = pixmap.scaled(
