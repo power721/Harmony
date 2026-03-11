@@ -194,5 +194,7 @@
     "added_tracks_to_playlist": "Added {count} track(s) to \"{name}\"",
     "all_tracks_duplicate": "All {count} track(s) already in \"{name}\"",
     "added_skipped_duplicates": "Added {added}, skipped {duplicates} duplicate(s)",
-    "download_first": "Download first"
+    "download_first": "Download first",
+    "download_cover": "Download cover art",
+    "download_cover_tooltip": "Automatically download album cover from web and save to database"
 }

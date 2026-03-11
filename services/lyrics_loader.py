@@ -104,7 +104,8 @@ class LyricsDownloadWorker(QThread):
     cover_downloaded = Signal(str)  # cover path
 
     def __init__(self, track_path: str, title: str, artist: str, parent=None,
-                 song_id: str = None, source: str = None, accesskey: str = None):
+                 song_id: str = None, source: str = None, accesskey: str = None,
+                 download_cover: bool = True):
         """
         Initialize the worker.
 
@@ -116,6 +117,7 @@ class LyricsDownloadWorker(QThread):
             song_id: If provided, download specific song's lyrics
             source: Source name ('netease' or 'kugou')
             accesskey: Access key for Kugou
+            download_cover: Whether to download cover art (default: True)
         """
         super().__init__(parent)
         self._path = track_path
@@ -124,6 +126,7 @@ class LyricsDownloadWorker(QThread):
         self._song_id = song_id
         self._source = source
         self._accesskey = accesskey
+        self._should_download_cover = download_cover
 
     def run(self):
         """Download lyrics in background."""
@@ -138,8 +141,8 @@ class LyricsDownloadWorker(QThread):
                     LyricsService.save_lyrics(self._path, lyrics)
                     self.lyrics_downloaded.emit(self._path, lyrics)
 
-                    # Try to download cover for NetEase songs
-                    if self._source == 'netease':
+                    # Try to download cover for NetEase songs if enabled
+                    if self._should_download_cover and self._source == 'netease':
                         self._download_cover(self._song_id, self._source)
                 else:
                     self.download_failed.emit("Failed to download lyrics for selected song")

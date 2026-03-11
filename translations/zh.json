@@ -194,5 +194,7 @@
     "added_tracks_to_playlist": "已添加 {count} 首歌曲到「{name}」",
     "all_tracks_duplicate": "所有 {count} 首歌曲已在「{name}」中",
     "added_skipped_duplicates": "已添加 {added} 首，跳过 {duplicates} 首重复歌曲",
-    "download_first": "先下载"
+    "download_first": "先下载",
+    "download_cover": "同时下载封面",
+    "download_cover_tooltip": "自动从网络下载歌曲封面并保存到数据库"
 }

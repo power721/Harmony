@@ -1102,6 +1102,7 @@ class MainWindow(QMainWindow):
             QListWidgetItem,
             QPushButton,
             QLabel,
+            QCheckBox,
         )
 
         if not results:
@@ -1151,6 +1152,22 @@ class MainWindow(QMainWindow):
                 background-color: #404040;
                 color: #e0e0e0;
             }
+            QCheckBox {
+                color: #e0e0e0;
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border-radius: 3px;
+                border: 2px solid #404040;
+                background-color: #1a1a1a;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #1db954;
+                border-color: #1db954;
+            }
         """)
 
         layout = QVBoxLayout(dialog)
@@ -1173,6 +1190,12 @@ class MainWindow(QMainWindow):
 
         song_list.itemDoubleClicked.connect(dialog.accept)
         layout.addWidget(song_list)
+
+        # Checkbox for downloading cover
+        download_cover_checkbox = QCheckBox(t("download_cover"))
+        download_cover_checkbox.setChecked(True)  # Default to checked
+        download_cover_checkbox.setToolTip(t("download_cover_tooltip"))
+        layout.addWidget(download_cover_checkbox)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -1197,11 +1220,16 @@ class MainWindow(QMainWindow):
 
         selected_song = current_item.data(Qt.UserRole)
 
-        # Download lyrics for selected song
-        self._download_lyrics_for_song(selected_song)
+        # Pass the checkbox state to download function
+        self._download_lyrics_for_song(selected_song, download_cover_checkbox.isChecked())
 
-    def _download_lyrics_for_song(self, song_info: dict):
-        """Download lyrics for a specific song."""
+    def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
+        """Download lyrics for a specific song.
+
+        Args:
+            song_info: Dictionary with song information (id, title, artist, source, etc.)
+            download_cover: Whether to download cover art (default: True)
+        """
         from services.lyrics_loader import LyricsDownloadWorker
 
         # Clean up existing download thread if any
@@ -1218,12 +1246,17 @@ class MainWindow(QMainWindow):
             self._lyrics_download_artist,
             song_id=song_info['id'],
             source=song_info['source'],
-            accesskey=song_info.get('accesskey')
+            accesskey=song_info.get('accesskey'),
+            download_cover=download_cover
         )
 
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
         self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
-        self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
+
+        # Only connect cover_downloaded if download_cover is True
+        if download_cover:
+            self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
+
         self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
         self._lyrics_download_thread.start()
 
