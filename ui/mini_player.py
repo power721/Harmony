@@ -46,6 +46,7 @@ class MiniPlayer(QWidget):
         self._is_dragging = False
         self._drag_position = None
         self._is_seeking = False  # Track if user is seeking
+        self._current_track_title = ""  # Current track title for window title
 
         self._setup_ui()
         self._setup_connections()
@@ -345,8 +346,13 @@ class MiniPlayer(QWidget):
         """Handle player state change."""
         if state == PlayerState.PLAYING:
             self._play_pause_btn.setText("⏸")
+            # Update window title to show current track
+            if self._current_track_title:
+                self.setWindowTitle(self._current_track_title)
         else:
             self._play_pause_btn.setText("▶️")
+            # Paused or stopped - show original app title
+            self.setWindowTitle(t("app_title"))
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""
@@ -367,14 +373,27 @@ class MiniPlayer(QWidget):
         """Handle track change."""
         if track_dict:
             # Update UI immediately
-            self._title_label.setText(track_dict.get("title", t("unknown")))
-            self._artist_label.setText(track_dict.get("artist", ""))
+            title = track_dict.get("title", t("unknown"))
+            artist = track_dict.get("artist", "")
+            self._title_label.setText(title)
+            self._artist_label.setText(artist)
+
+            # Save current track title and update window title if playing
+            if artist:
+                self._current_track_title = f"{title} - {artist}"
+            else:
+                self._current_track_title = title
+
+            if self._player.engine.state == PlayerState.PLAYING:
+                self.setWindowTitle(self._current_track_title)
 
             # Load cover asynchronously to avoid blocking
             self._load_cover_async(track_dict)
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")
+            self._current_track_title = ""
+            self.setWindowTitle(t("app_title"))
             self._cover_label.clear()
 
     def _load_cover_async(self, track_dict: dict):
