@@ -156,11 +156,14 @@ class MainWindow(QMainWindow):
                 if not track_id:
                     return False
 
+                bus = EventBus.instance()
                 if db.is_favorite(track_id):
                     db.remove_favorite(track_id)
+                    bus.emit_favorite_change(track_id, False)
                     return False
                 else:
                     db.add_favorite(track_id)
+                    bus.emit_favorite_change(track_id, True)
                     return True
 
             def load_playlist(self, playlist_id):
@@ -657,20 +660,121 @@ class MainWindow(QMainWindow):
 
     def _scan_music_folder(self, folder: str):
         """Scan a music folder and add tracks."""
-        from threading import Thread
+        from pathlib import Path
+        from PySide6.QtCore import QThread, Signal, QObject
+        from services import MetadataService
+        from database.models import Track
+        from datetime import datetime
 
-        def scan():
+        logger.info(f"[MainWindow] Scanning music folder: {folder}")
+
+        # Create worker class for scanning
+        class ScanWorker(QObject):
+            progress = Signal(int, str)  # value, filename
+            finished = Signal(int, int)  # added, skipped
+
+            def __init__(self, folder_path, db):
+                super().__init__()
+                self.folder_path = folder_path
+                self.db = db
+                self._cancelled = False
+
+            def cancel(self):
+                self._cancelled = True
+
+            def run(self):
+                folder_path = Path(self.folder_path)
+                supported_formats = MetadataService.SUPPORTED_FORMATS
+
+                # Find all audio files
+                audio_files = []
+                for ext in supported_formats:
+                    audio_files.extend(folder_path.rglob(f"*{ext}"))
+
+                total_files = len(audio_files)
+
+                if total_files == 0:
+                    self.finished.emit(0, 0)
+                    return
+
+                added_count = 0
+                skipped_count = 0
+
+                for i, audio_file in enumerate(audio_files):
+                    if self._cancelled:
+                        break
+
+                    # Emit progress
+                    self.progress.emit(int((i / total_files) * 100), audio_file.name)
+
+                    try:
+                        # Check if track already exists
+                        existing = self.db.get_track_by_path(str(audio_file))
+                        if existing:
+                            skipped_count += 1
+                            continue
+
+                        # Extract metadata
+                        metadata = MetadataService.extract_metadata(str(audio_file))
+
+                        # Create track object
+                        track = Track(
+                            path=str(audio_file),
+                            title=metadata.get("title", audio_file.stem),
+                            artist=metadata.get("artist", ""),
+                            album=metadata.get("album", ""),
+                            duration=metadata.get("duration", 0.0),
+                            cover_path=None,
+                            created_at=datetime.now(),
+                        )
+
+                        # Add to database
+                        self.db.add_track(track)
+                        added_count += 1
+
+                    except Exception as e:
+                        logger.error(f"Error adding track {audio_file}: {e}")
+                        skipped_count += 1
+
+                self.finished.emit(added_count, skipped_count)
+
+        # Create progress dialog
+        from PySide6.QtWidgets import QProgressDialog
+        progress = QProgressDialog(t("scanning"), t("cancel"), 0, 100, self)
+        progress.setWindowTitle(t("scanning"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+
+        # Create worker and thread
+        self._scan_worker = ScanWorker(folder, self._db)
+        self._scan_thread = QThread()
+        self._scan_worker.moveToThread(self._scan_thread)
+
+        # Connect signals
+        def on_progress(value, filename):
+            if not progress.wasCanceled():
+                progress.setValue(value)
+                progress.setLabelText(f"{t('scanning')}: {filename}")
+
+        def on_finished(added, skipped):
+            progress.close()
+            logger.info(f"[MainWindow] Scan complete: {added} added, {skipped} skipped")
             self._library_view.refresh()
+            self._scan_thread.quit()
+            self._scan_thread.wait()
 
-        # Run in thread to avoid blocking UI
-        thread = Thread(target=scan)
-        thread.start()
+        def on_cancel():
+            self._scan_worker.cancel()
 
-        QMessageBox.information(
-            self,
-            t("scanning"),
-            t("added_music"),
-        )
+        self._scan_worker.progress.connect(on_progress)
+        self._scan_worker.finished.connect(on_finished)
+        progress.canceled.connect(on_cancel)
+        self._scan_thread.started.connect(self._scan_worker.run)
+
+        # Start thread
+        self._scan_thread.start()
 
     def _toggle_language(self):
         """Toggle between English and Chinese."""

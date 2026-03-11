@@ -56,6 +56,7 @@ class DatabaseManager:
                 album TEXT,
                 duration REAL DEFAULT 0,
                 cover_path TEXT,
+                cloud_file_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -135,70 +136,15 @@ class DatabaseManager:
                 is_active BOOLEAN DEFAULT 1,
                 last_folder_id TEXT DEFAULT '0',
                 last_folder_path TEXT DEFAULT '/',
+                last_parent_folder_id TEXT DEFAULT '0',
+                last_fid_path TEXT DEFAULT '0',
+                last_playing_fid TEXT DEFAULT '',
+                last_position REAL DEFAULT 0.0,
+                last_playing_local_path TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
-        # Add columns for existing databases (migration)
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_folder_id TEXT DEFAULT '0'"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_folder_path TEXT DEFAULT '/'"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_parent_folder_id TEXT DEFAULT '0'"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_fid_path TEXT DEFAULT '0'"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_playing_fid TEXT DEFAULT ''"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_position REAL DEFAULT 0.0"
-            )
-        except:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_accounts ADD COLUMN last_playing_local_path TEXT DEFAULT ''"
-            )
-        except:
-            pass
-
-        # Add cloud_file_id column to tracks table for downloaded cloud files
-        try:
-            cursor.execute(
-                "ALTER TABLE tracks ADD COLUMN cloud_file_id TEXT"
-            )
-        except:
-            pass
-
-        # Add local_path column to cloud_files table for downloaded files
-        try:
-            cursor.execute(
-                "ALTER TABLE cloud_files ADD COLUMN local_path TEXT"
-            )
-        except:
-            pass
 
         # Create cloud_files table
         cursor.execute("""
@@ -213,6 +159,7 @@ class DatabaseManager:
                 mime_type TEXT,
                 duration REAL,
                 metadata TEXT,
+                local_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
@@ -261,12 +208,6 @@ class DatabaseManager:
             )
         """)
 
-        # Migration: add cloud_type column if not exists
-        try:
-            cursor.execute("ALTER TABLE play_queue ADD COLUMN cloud_type TEXT")
-        except:
-            pass
-
         # Create index for play_queue position
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_play_queue_position
@@ -274,16 +215,6 @@ class DatabaseManager:
         """)
 
         conn.commit()
-
-        # Migration: add unique constraint if not exists
-        try:
-            cursor.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_items_track
-                ON playlist_items(playlist_id, track_id)
-            """)
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
 
     # Track operations
 

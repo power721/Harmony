@@ -68,8 +68,6 @@ class PlayerControls(QWidget):
             track_id = current_track.get("id")
             if track_id:
                 is_fav = self._player.is_favorite(track_id)
-                self._favorite_btn.setChecked(is_fav)
-                self._favorite_btn.setText("☆")
                 self._update_favorite_button_style(is_fav)
 
     def _setup_ui(self):
@@ -509,8 +507,6 @@ class PlayerControls(QWidget):
         # Only update if this is the current track
         current_track = self._player.engine.current_track
         if current_track and current_track.get("id") == track_id:
-            self._favorite_btn.setChecked(is_favorite)
-            self._favorite_btn.setText("☆")
             self._update_favorite_button_style(is_favorite)
 
     def _update_favorite_button_style(self, is_favorite: bool):
@@ -676,8 +672,6 @@ class PlayerControls(QWidget):
             track_id = track_dict.get("id")
             if track_id:
                 is_fav = self._player.is_favorite(track_id)
-                self._favorite_btn.setChecked(is_fav)
-                self._favorite_btn.setText("☆")
                 self._update_favorite_button_style(is_fav)
 
             # Clear cover immediately, load in background
@@ -689,8 +683,7 @@ class PlayerControls(QWidget):
             self._artist_label.setText("")
             self._cover_label.clear()
             # Reset favorite button style
-            self._favorite_btn.setChecked(False)
-            self._favorite_btn.setText("☆")
+            self._update_favorite_button_style(False)
             self._update_favorite_button_style(False)
 
     def _load_cover_art_async(self, track_dict: dict):
