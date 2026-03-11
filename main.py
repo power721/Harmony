@@ -5,7 +5,7 @@ A PySide6-based music player with a modern, Spotify-like interface.
 import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 
 from ui import MainWindow
 
@@ -21,6 +21,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName('Harmony')
     app.setOrganizationName('HarmonyPlayer')
+    app.setWindowIcon(QIcon("icon.png"))
 
     # Set default font
     font = QFont('Segoe UI', 10)
