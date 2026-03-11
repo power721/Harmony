@@ -249,7 +249,7 @@ class PlaylistItem:
 
         # Try to get cover_path from database for local tracks
         cover_path = None
-        if db and item.track_id and item.source_type == "local":
+        if db and item.track_id:
             try:
                 track = db.get_track(item.track_id)
                 if track:
