@@ -393,6 +393,7 @@ class PlayerControls(QWidget):
         # EventBus connections
         bus = EventBus.instance()
         bus.favorite_changed.connect(self._on_favorite_changed)
+        bus.metadata_updated.connect(self._on_metadata_updated)
 
         # Cover loaded signal (for thread-safe UI update)
         self._cover_loaded.connect(self._show_cover)
@@ -521,6 +522,19 @@ class PlayerControls(QWidget):
                 self._update_favorite_button_style(is_favorite)
             elif is_cloud and current_cloud_file_id and current_cloud_file_id == item_id:
                 self._update_favorite_button_style(is_favorite)
+
+    def _on_metadata_updated(self, track_id: int):
+        """Handle metadata update (e.g., cover path) from EventBus."""
+        # Only update if this is the current track
+        current_track = self._player.engine.current_track
+        if not current_track:
+            return
+
+        current_id = current_track.get("id")
+        if current_id and current_id == track_id:
+            # Reload cover for the current track
+            logger.info(f"[PlayerControls] Metadata updated for current track {track_id}, reloading cover")
+            QTimer.singleShot(100, lambda: self._load_cover_art_async(current_track))
 
     def _update_favorite_button_style(self, is_favorite: bool):
         """Update favorite button style based on favorite status."""

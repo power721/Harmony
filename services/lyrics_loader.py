@@ -95,11 +95,13 @@ class LyricsDownloadWorker(QThread):
         lyrics_downloaded: Emitted when lyrics are downloaded and saved (path, lyrics)
         download_failed: Emitted when download fails (error_message)
         search_results_ready: Emitted when search results are ready (list of dicts)
+        cover_downloaded: Emitted when cover is downloaded (cover_path)
     """
 
     lyrics_downloaded = Signal(str, str)  # path, lyrics
     download_failed = Signal(str)  # error message
     search_results_ready = Signal(list)  # list of search results
+    cover_downloaded = Signal(str)  # cover path
 
     def __init__(self, track_path: str, title: str, artist: str, parent=None,
                  song_id: str = None, source: str = None, accesskey: str = None):
@@ -135,6 +137,10 @@ class LyricsDownloadWorker(QThread):
                     # Save to local file
                     LyricsService.save_lyrics(self._path, lyrics)
                     self.lyrics_downloaded.emit(self._path, lyrics)
+
+                    # Try to download cover for NetEase songs
+                    if self._source == 'netease':
+                        self._download_cover(self._song_id, self._source)
                 else:
                     self.download_failed.emit("Failed to download lyrics for selected song")
             else:
@@ -154,6 +160,40 @@ class LyricsDownloadWorker(QThread):
         except Exception as e:
             logger.error(f"[LyricsDownloadWorker] Error: {e}")
             self.download_failed.emit(str(e))
+
+    def _download_cover(self, song_id: str, source: str):
+        """Download cover art for the song."""
+        try:
+            # Get cover URL
+            cover_url = LyricsService.get_song_cover_url(song_id, source)
+            if not cover_url:
+                logger.debug(f"[LyricsDownloadWorker] No cover URL found for song {song_id}")
+                return
+
+            # Download cover image
+            import requests
+            from pathlib import Path
+
+            response = requests.get(cover_url, headers=LyricsService.HEADERS, timeout=10)
+            if response.status_code != 200:
+                logger.debug(f"[LyricsDownloadWorker] Failed to download cover image: {response.status_code}")
+                return
+
+            cover_data = response.content
+            if not cover_data:
+                return
+
+            # Save cover to cache directory
+            from services.cover_service import CoverService
+            cache_key = CoverService._get_cache_key(self._artist, self._title)
+            cover_path = CoverService._save_cover_to_cache(cover_data, cache_key)
+
+            if cover_path:
+                logger.debug(f"[LyricsDownloadWorker] Cover saved to: {cover_path}")
+                self.cover_downloaded.emit(cover_path)
+
+        except Exception as e:
+            logger.error(f"[LyricsDownloadWorker] Error downloading cover: {e}", exc_info=True)
 
 
 class LyricsSearchWorker(QThread):

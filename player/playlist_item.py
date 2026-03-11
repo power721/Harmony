@@ -232,12 +232,13 @@ class PlaylistItem:
         )
 
     @classmethod
-    def from_play_queue_item(cls, item: "PlayQueueItem") -> "PlaylistItem":
+    def from_play_queue_item(cls, item: "PlayQueueItem", db=None) -> "PlaylistItem":
         """
         Create a PlaylistItem from a PlayQueueItem.
 
         Args:
             item: PlayQueueItem from database
+            db: Optional DatabaseManager instance to fetch cover_path for local tracks
 
         Returns:
             PlaylistItem instance
@@ -245,6 +246,16 @@ class PlaylistItem:
         source_type = CloudProvider.LOCAL
         if item.source_type == "cloud" and item.cloud_type:
             source_type = CloudProvider(item.cloud_type)
+
+        # Try to get cover_path from database for local tracks
+        cover_path = None
+        if db and item.track_id and item.source_type == "local":
+            try:
+                track = db.get_track(item.track_id)
+                if track:
+                    cover_path = track.cover_path
+            except Exception:
+                pass  # Ignore errors, cover_path will remain None
 
         return cls(
             source_type=source_type,
@@ -256,6 +267,7 @@ class PlaylistItem:
             artist=item.artist,
             album=item.album,
             duration=item.duration,
+            cover_path=cover_path,
             needs_download=bool(item.cloud_file_id and not item.local_path),
             needs_metadata=bool(item.cloud_file_id),  # Cloud files need metadata
         )

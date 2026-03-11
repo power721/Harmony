@@ -95,11 +95,20 @@ class LyricsService:
             return results
 
         for song in data['result']['songs']:
+            # Get album cover URL (300x300 size)
+            cover_url = None
+            if song.get('album') and song['album'].get('picUrl'):
+                cover_url = song['album']['picUrl']
+            elif song.get('album') and song['album'].get('pic'):
+                pic_str = str(song['album']['pic'])
+                cover_url = f"https://p1.music.126.net/{pic_str}/{pic_str}.jpg"
+
             results.append({
                 'id': str(song['id']),
                 'title': song.get('name', ''),
                 'artist': song['artists'][0]['name'] if song.get('artists') else '',
                 'album': song['album']['name'] if song.get('album') else '',
+                'cover_url': cover_url,
                 'source': 'netease'
             })
 
@@ -184,6 +193,52 @@ class LyricsService:
         except Exception as e:
             logger.error(f"Error downloading NetEase lyrics: {e}", exc_info=True)
             return ""
+
+    @classmethod
+    def get_song_cover_url(cls, song_id: str, source: str) -> Optional[str]:
+        """
+        Get cover URL for a song from online sources.
+
+        Args:
+            song_id: Song ID
+            source: Source name ('netease')
+
+        Returns:
+            Cover URL or None
+        """
+        if source == 'netease':
+            return cls._get_netease_song_cover(song_id)
+        return None
+
+    @classmethod
+    def _get_netease_song_cover(cls, song_id: str) -> Optional[str]:
+        """Get cover URL from NetEase by song ID."""
+        try:
+            # Use song detail API to get cover URL
+            detail_url = f"https://music.163.com/api/song/detail?ids=[{song_id}]"
+            response = requests.get(
+                detail_url,
+                headers=cls.HEADERS,
+                timeout=5
+            )
+
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            if data.get('code') != 200 or not data.get('songs'):
+                return None
+
+            # Get cover URL from songs[0].al.picUrl
+            song = data['songs'][0]
+            if song.get('album') and song['album'].get('picUrl'):
+                return song['album']['picUrl']
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting NetEase song cover: {e}", exc_info=True)
+            return None
 
     @classmethod
     def _download_kugou_lyrics(cls, song_id: str, accesskey: str) -> str:

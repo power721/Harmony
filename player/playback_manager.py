@@ -695,7 +695,7 @@ class PlaybackManager(QObject):
             return False
 
         # Convert to PlaylistItem list
-        items = [PlaylistItem.from_play_queue_item(item) for item in queue_items]
+        items = [PlaylistItem.from_play_queue_item(item, self._db) for item in queue_items]
 
         # Get saved index and play mode
         saved_index = self._config.get("queue_current_index", 0)

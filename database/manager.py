@@ -1,7 +1,7 @@
 """
 Database manager for the music player using SQLite.
 """
-
+import logging
 import sqlite3
 import threading
 from pathlib import Path
@@ -479,6 +479,28 @@ class DatabaseManager:
 
         conn.commit()
         return cursor.rowcount > 0
+
+    def update_track_cover_path(self, track_id: int, cover_path: str) -> bool:
+        """Update cover_path for a track."""
+        logger = logging.getLogger(__name__)
+        logger.info(f"[DatabaseManager] update_track_cover_path: track_id={track_id}, cover_path={cover_path}")
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tracks
+            SET cover_path = ?
+            WHERE id = ?
+        """,
+            (cover_path, track_id),
+        )
+
+        conn.commit()
+        affected = cursor.rowcount
+        logger.info(f"[DatabaseManager] Updated {affected} row(s)")
+        return affected > 0
 
     # Playlist operations
 

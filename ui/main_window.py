@@ -1219,6 +1219,7 @@ class MainWindow(QMainWindow):
 
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
         self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
+        self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
         self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
         self._lyrics_download_thread.start()
 
@@ -1229,6 +1230,53 @@ class MainWindow(QMainWindow):
     def _on_lyrics_downloaded(self, path: str, lyrics: str):
         """Handle lyrics download success."""
         self._lyrics_view.set_lyrics(lyrics)
+
+    def _on_cover_downloaded(self, cover_path: str):
+        """Handle cover download success - update database and UI."""
+        logger.info(f"[MainWindow] _on_cover_downloaded called with cover_path: {cover_path}")
+
+        if not cover_path:
+            logger.warning("[MainWindow] cover_path is empty, returning")
+            return
+
+        # Use the stored download path to find the track in database
+        track_path = self._lyrics_download_path
+        if not track_path:
+            logger.warning("[MainWindow] No track path stored, cannot find track in database")
+            return
+
+        logger.info(f"[MainWindow] Looking for track with path: {track_path}")
+
+        # Find track by path in database
+        track = self._db.get_track_by_path(track_path)
+        if not track:
+            logger.warning(f"[MainWindow] No track found in database with path: {track_path}")
+            return
+
+        track_id = track.id
+        logger.info(f"[MainWindow] Found track in database: id={track_id}, title={track.title}")
+
+        # Update cover_path in database
+        try:
+            logger.info(f"[MainWindow] Updating cover_path for track {track_id}: {cover_path}")
+            success = self._db.update_track_cover_path(track_id, cover_path)
+            logger.info(f"[MainWindow] Database update result: {success}")
+
+            if success:
+                # Update current track item's cover_path if it exists
+                current_item = self._playback.current_track
+                if current_item and current_item.track_id == track_id:
+                    current_item.cover_path = cover_path
+                    logger.info(f"[MainWindow] Updated current item's cover_path")
+
+                # Emit event to refresh UI
+                self._event_bus.metadata_updated.emit(track_id)
+                logger.info(f"[MainWindow] Emitted metadata_updated event for track {track_id}")
+            else:
+                logger.warning(f"[MainWindow] Database update returned False for track {track_id}")
+
+        except Exception as e:
+            logger.error(f"[MainWindow] Error updating cover path: {e}", exc_info=True)
 
     def _on_lyrics_download_failed(self, error: str):
         """Handle lyrics download failure."""
