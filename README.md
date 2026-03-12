@@ -60,7 +60,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/power0721/music-player.git
+git clone https://github.com/power721/music-player.git
 cd music-player
 
 # 安装依赖
