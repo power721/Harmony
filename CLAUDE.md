@@ -288,7 +288,7 @@ The queue supports:
 - local tracks
 - cloud tracks
 
-Queue is restored on startup but **does not auto‑play**.
+Queue is restored on startup.
 
 ---
 

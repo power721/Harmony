@@ -81,6 +81,7 @@
     "file": "文件",
     "save": "保存",
     "cancel": "取消",
+    "ok": "确定",
     "media_saved": "媒体信息保存成功",
     "media_save_failed": "保存媒体信息失败",
     "no_playlist_selected": "未选择播放列表",

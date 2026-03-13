@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QLineEdit,
-    QInputDialog,
+    QDialog,
+    QDialogButtonBox,
     QMessageBox,
     QSplitter,
     QLabel,
@@ -27,6 +28,92 @@ from typing import List, Optional
 from database import DatabaseManager, Track, Playlist
 from player import PlayerController
 from utils import format_duration, t
+
+
+class DarkInputDialog(QDialog):
+    """Custom input dialog with dark theme styling."""
+
+    def __init__(self, title: str, label: str, text: str = "", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(350)
+
+        # Apply dark theme styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QLineEdit {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px 20px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+            QDialogButtonBox {
+                button-layout: 2;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Label
+        label_widget = QLabel(label)
+        layout.addWidget(label_widget)
+
+        # Input field
+        self._input = QLineEdit()
+        self._input.setText(text)
+        self._input.selectAll()
+        layout.addWidget(self._input)
+
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        # Set button texts for internationalization
+        button_box.button(QDialogButtonBox.Ok).setText(t("ok"))
+        button_box.button(QDialogButtonBox.Cancel).setText(t("cancel"))
+        layout.addWidget(button_box)
+
+    def get_text(self) -> str:
+        """Get the input text."""
+        return self._input.text().strip()
+
+    @staticmethod
+    def getText(parent, title: str, label: str, text: str = "") -> tuple:
+        """
+        Static method to get text from user.
+        Returns (text, accepted) tuple similar to QInputDialog.getText.
+        """
+        dialog = DarkInputDialog(title, label, text, parent)
+        result = dialog.exec_()
+        return dialog.get_text(), result == QDialog.Accepted
 
 
 class PlaylistView(QWidget):
@@ -362,7 +449,7 @@ class PlaylistView(QWidget):
 
     def _create_playlist(self):
         """Create a new playlist."""
-        name, ok = QInputDialog.getText(
+        name, ok = DarkInputDialog.getText(
             self, t("create_playlist"), t("enter_playlist_name")
         )
 
@@ -405,18 +492,16 @@ class PlaylistView(QWidget):
         if not playlist:
             return
 
-        from PySide6.QtWidgets import QInputDialog
-
-        new_name, ok = QInputDialog.getText(
+        new_name, ok = DarkInputDialog.getText(
             self,
             t("rename_playlist"),
             t("enter_playlist_name"),
             text=playlist.name
         )
 
-        if ok and new_name.strip():
-            self._db.rename_playlist(self._current_playlist_id, new_name.strip())
-            self._playlist_title.setText(new_name.strip())
+        if ok and new_name:
+            self._db.rename_playlist(self._current_playlist_id, new_name)
+            self._playlist_title.setText(new_name)
             self._refresh_playlists()
 
     def _on_playlist_selected(self, item: QListWidgetItem):

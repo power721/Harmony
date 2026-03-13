@@ -40,7 +40,83 @@ class AISettingsDialog(QDialog):
     def _setup_ui(self):
         """Setup the dialog UI."""
         self.setWindowTitle(t("ai_settings"))
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(530)
+
+        # Apply dark theme styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QLineEdit {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 6px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QLineEdit:disabled {
+                background-color: #2a2a2a;
+                color: #606060;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+            QCheckBox {
+                color: #ffffff;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QGroupBox {
+                color: #ffffff;
+                border: 1px solid #3a3a3a;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #ffffff;
+            }
+            QTabWidget::pane {
+                border: 1px solid #3a3a3a;
+                background-color: #282828;
+            }
+            QTabBar::tab {
+                background-color: #2a2a2a;
+                color: #c0c0c0;
+                padding: 8px 16px;
+                border: 1px solid #3a3a3a;
+            }
+            QTabBar::tab:selected {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border-bottom-color: #3a3a3a;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #353535;
+            }
+        """)
 
         layout = QVBoxLayout()
         layout.setSpacing(15)
@@ -56,7 +132,7 @@ class AISettingsDialog(QDialog):
 
         # Enable AI checkbox
         self._enable_checkbox = QCheckBox(t("ai_enable"))
-        self._enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self._enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
         self._enable_checkbox.stateChanged.connect(self._on_enable_changed)
         ai_layout.addWidget(self._enable_checkbox)
 
@@ -98,7 +174,7 @@ class AISettingsDialog(QDialog):
 
         # Hint label
         hint_label = QLabel(t("ai_settings_hint"))
-        hint_label.setStyleSheet("color: #808080; font-size: 11px;")
+        hint_label.setStyleSheet("color: #a0a0a0; font-size: 11px;")
         hint_label.setWordWrap(True)
         settings_layout.addWidget(hint_label)
 
@@ -120,7 +196,7 @@ class AISettingsDialog(QDialog):
 
         # Enable AcoustID checkbox
         self._acoustid_enable_checkbox = QCheckBox(t("acoustid_enable"))
-        self._acoustid_enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self._acoustid_enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
         self._acoustid_enable_checkbox.stateChanged.connect(self._on_acoustid_enable_changed)
         acoustid_layout.addWidget(self._acoustid_enable_checkbox)
 
@@ -142,7 +218,7 @@ class AISettingsDialog(QDialog):
 
         # AcoustID hint label
         acoustid_hint_label = QLabel(t("acoustid_settings_hint"))
-        acoustid_hint_label.setStyleSheet("color: #808080; font-size: 11px;")
+        acoustid_hint_label.setStyleSheet("color: #a0a0a0; font-size: 11px;")
         acoustid_hint_label.setWordWrap(True)
         acoustid_settings_layout.addWidget(acoustid_hint_label)
 

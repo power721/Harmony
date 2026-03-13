@@ -81,6 +81,7 @@
     "file": "File",
     "save": "Save",
     "cancel": "Cancel",
+    "ok": "OK",
     "media_saved": "Media information saved successfully.",
     "media_save_failed": "Failed to save media information.",
     "no_playlist_selected": "No Playlist Selected",

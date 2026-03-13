@@ -41,6 +41,41 @@ class CloudLoginDialog(QDialog):
         self.setWindowTitle(t("cloud_drive") + " " + t("login"))
         self.setMinimumSize(400, 500)
 
+        # Apply dark theme styling
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+            QProgressBar {
+                background-color: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                text-align: center;
+                color: #ffffff;
+            }
+            QProgressBar::chunk {
+                background-color: #1db954;
+                border-radius: 3px;
+            }
+        """)
+
         layout = QVBoxLayout()
         layout.setSpacing(20)
         layout.setContentsMargins(30, 30, 30, 30)
@@ -63,7 +98,7 @@ class CloudLoginDialog(QDialog):
         # Status label
         self._status_label = QLabel(t("generating_qr"))
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #808080;")
+        self._status_label.setStyleSheet("color: #a0a0a0;")
         layout.addWidget(self._status_label)
 
         # Progress bar
