@@ -37,6 +37,7 @@ from player import PlayerController
 from player.engine import PlayerState
 from utils import t
 from utils.config import ConfigManager
+from utils.event_bus import EventBus
 
 
 class LibraryView(QWidget):
@@ -1225,15 +1226,20 @@ class LibraryView(QWidget):
 
         added_count = 0
         removed_count = 0
+        bus = EventBus.instance()
 
         # Process local tracks
         for track_id in track_ids:
             if self._db.is_favorite(track_id=track_id):
                 self._db.remove_favorite(track_id=track_id)
                 removed_count += 1
+                # Emit event for UI update
+                bus.emit_favorite_change(track_id, False, is_cloud=False)
             else:
                 self._db.add_favorite(track_id=track_id)
                 added_count += 1
+                # Emit event for UI update
+                bus.emit_favorite_change(track_id, True, is_cloud=False)
 
         # Process cloud files
         for cloud_file in cloud_files:
@@ -1243,9 +1249,13 @@ class LibraryView(QWidget):
                 if self._db.is_favorite(cloud_file_id=cloud_file_id):
                     self._db.remove_favorite(cloud_file_id=cloud_file_id)
                     removed_count += 1
+                    # Emit event for UI update
+                    bus.emit_favorite_change(cloud_file_id, False, is_cloud=True)
                 else:
                     self._db.add_favorite(cloud_file_id=cloud_file_id, cloud_account_id=cloud_account_id)
                     added_count += 1
+                    # Emit event for UI update
+                    bus.emit_favorite_change(cloud_file_id, True, is_cloud=True)
 
         total_count = added_count + removed_count
         if total_count == 0:
