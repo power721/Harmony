@@ -166,6 +166,7 @@ class CoverService:
             Path to downloaded cover, or None
         """
         sources = [
+            ("NetEase", self._fetch_from_netease),
             ("iTunes", self._fetch_from_itunes),
             ("MusicBrainz", self._fetch_from_musicbrainz),
             ("Last.fm", self._fetch_from_lastfm),
@@ -179,6 +180,82 @@ class CoverService:
             except Exception as e:
                 logger.warning(f"Error fetching cover from {source_name}: {e}")
                 continue
+
+        return None
+
+    def _fetch_from_netease(self, artist: str, album: str) -> Optional[bytes]:
+        """
+        Fetch cover from NetEase Cloud Music API.
+
+        Args:
+            artist: Artist name
+            album: Album name
+
+        Returns:
+            Cover image data, or None
+        """
+        try:
+            # Search for album/song
+            search_url = "https://music.163.com/api/search/get/web"
+            params = {
+                's': f'{artist} {album}',
+                'type': 10,  # 10 = album search
+                'limit': 1
+            }
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://music.163.com/'
+            }
+
+            response = self.http_client.get(
+                search_url,
+                params=params,
+                headers=headers,
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Check for album results
+                if data.get('code') == 200 and data.get('result', {}).get('albums'):
+                    album_info = data['result']['albums'][0]
+                    pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
+
+                    if pic_url:
+                        # Get high quality version
+                        if '?' not in pic_url:
+                            pic_url += '?param=500y500'
+                        cover_data = self.http_client.get_content(pic_url, timeout=5)
+                        if cover_data:
+                            return cover_data
+
+                # Fallback: try song search if album search failed
+                params['type'] = 1  # 1 = song search
+                response = self.http_client.get(
+                    search_url,
+                    params=params,
+                    headers=headers,
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('code') == 200 and data.get('result', {}).get('songs'):
+                        song_info = data['result']['songs'][0]
+                        # Try to get album cover from song
+                        album_info = song_info.get('album', {})
+                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
+
+                        if pic_url:
+                            if '?' not in pic_url:
+                                pic_url += '?param=500y500'
+                            cover_data = self.http_client.get_content(pic_url, timeout=5)
+                            if cover_data:
+                                return cover_data
+
+        except Exception as e:
+            logger.debug(f"NetEase fetch error: {e}")
 
         return None
 

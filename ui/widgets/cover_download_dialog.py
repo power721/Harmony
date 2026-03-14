@@ -37,7 +37,9 @@ class CoverDownloadThread(QThread):
         try:
             cover_data = None
 
-            if self.source == "iTunes":
+            if self.source == "NetEase":
+                cover_data = self.cover_service._fetch_from_netease(self.artist, self.album or self.title)
+            elif self.source == "iTunes":
                 cover_data = self.cover_service._fetch_from_itunes(self.artist, self.album or self.title)
             elif self.source == "MusicBrainz":
                 cover_data = self.cover_service._fetch_from_musicbrainz(self.artist, self.album or self.title)
@@ -233,7 +235,7 @@ class CoverDownloadDialog(QDialog):
         source_layout.addWidget(source_label)
 
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["iTunes", "MusicBrainz", "Last.fm"])
+        self.source_combo.addItems(["NetEase", "iTunes", "MusicBrainz", "Last.fm"])
         source_layout.addWidget(self.source_combo)
         source_layout.addStretch()
         layout.addLayout(source_layout)
