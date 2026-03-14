@@ -154,8 +154,8 @@ class Bootstrap:
                 cover_service=self.cover_service,
                 db_manager=self.db,
             )
-            # Initialize cache if needed
-            self._library_service.init_cache()
+            # Initialize albums/artists tables if needed
+            self._library_service.init_albums_artists()
         return self._library_service
 
     @property

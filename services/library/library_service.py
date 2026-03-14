@@ -38,21 +38,21 @@ class LibraryService:
         self._cover_service = cover_service
         self._db = db_manager
 
-    # ===== Cache Operations =====
+    # ===== Album/Artist Table Operations =====
 
-    def init_cache(self):
-        """Initialize album and artist cache if empty."""
+    def init_albums_artists(self):
+        """Initialize album and artist tables if empty."""
         if self._db:
-            if self._db.is_albums_cache_empty():
-                self._db.refresh_albums_cache()
-            if self._db.is_artists_cache_empty():
-                self._db.refresh_artists_cache()
+            if self._db.is_albums_empty():
+                self._db.refresh_albums()
+            if self._db.is_artists_empty():
+                self._db.refresh_artists()
 
-    def refresh_cache(self):
-        """Refresh album and artist cache."""
+    def refresh_albums_artists(self):
+        """Refresh album and artist tables."""
         if self._db:
-            self._db.refresh_albums_cache()
-            self._db.refresh_artists_cache()
+            self._db.refresh_albums()
+            self._db.refresh_artists()
 
     # ===== Track Operations =====
 
@@ -73,15 +73,60 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             self._event_bus.tracks_added.emit(1)
+            # Update albums and artists tables
+            if self._db:
+                self._db.update_albums_on_track_added(
+                    track.album, track.artist, track.cover_path, track.duration
+                )
+                self._db.update_artists_on_track_added(
+                    track.artist, track.album, track.cover_path
+                )
         return track_id
 
-    def update_track(self, track: Track) -> bool:
-        """Update an existing track."""
-        return self._track_repo.update(track)
+    def update_track(self, track: Track, old_track: Track = None) -> bool:
+        """
+        Update an existing track.
+
+        Args:
+            track: Track with updated data
+            old_track: Previous track data (optional, will be fetched if not provided)
+        """
+        # Get old track data if not provided
+        if old_track is None and track.id:
+            old_track = self._track_repo.get_by_id(track.id)
+
+        result = self._track_repo.update(track)
+
+        if result and self._db and old_track:
+            # Update albums and artists tables
+            self._db.update_albums_on_track_updated(
+                old_track.album, old_track.artist, old_track.duration,
+                track.album, track.artist, track.cover_path, track.duration
+            )
+            self._db.update_artists_on_track_updated(
+                old_track.artist, old_track.album,
+                track.artist, track.album, track.cover_path
+            )
+
+        return result
 
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the library."""
-        return self._track_repo.delete(track_id)
+        # Get track data before deletion
+        track = self._track_repo.get_by_id(track_id)
+
+        result = self._track_repo.delete(track_id)
+
+        if result and self._db and track:
+            # Update albums and artists tables
+            self._db.update_albums_on_track_deleted(
+                track.album, track.artist, track.duration
+            )
+            self._db.update_artists_on_track_deleted(
+                track.artist, track.album
+            )
+
+        return result
 
     # ===== Playlist Operations =====
 
@@ -154,8 +199,8 @@ class LibraryService:
 
         if added_count > 0:
             self._event_bus.tracks_added.emit(added_count)
-            # Refresh cache after adding tracks
-            self.refresh_cache()
+            # Refresh albums/artists after adding tracks
+            self.refresh_albums_artists()
 
         return added_count
 

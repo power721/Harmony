@@ -1,8 +1,10 @@
 """
 Albums view widget for browsing albums in a grid layout.
+Uses QListView + Model/Delegate for high-performance rendering.
 """
 
 import logging
+from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtWidgets import (
@@ -10,22 +12,25 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
-    QGridLayout,
+    QListView,
     QFrame,
     QLineEdit,
     QProgressBar,
+    QStyledItemDelegate,
+    QStyle,
+    QApplication,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QThread
-from PySide6.QtGui import QColor
+from PySide6.QtCore import (
+    Qt, Signal, QTimer, QThread,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen
 
 from domain.album import Album
-from domain.track import Track
 from services.library import LibraryService
 from services.metadata import CoverService
-from ui.widgets import AlbumCard
-from utils import format_count_message
 from system.event_bus import EventBus
+from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -43,24 +48,173 @@ class LoadAlbumsWorker(QThread):
         self.finished.emit(albums)
 
 
+class AlbumModel(QAbstractListModel):
+    """Model for album data."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._albums: List[Album] = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._albums)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._albums):
+            return None
+
+        album = self._albums[index.row()]
+
+        if role == Qt.DisplayRole:
+            return album.name
+        elif role == Qt.UserRole:
+            return album
+
+        return None
+
+    def set_albums(self, albums: List[Album]):
+        self.beginResetModel()
+        self._albums = albums
+        self.endResetModel()
+
+    def get_album(self, row: int) -> Optional[Album]:
+        if 0 <= row < len(self._albums):
+            return self._albums[row]
+        return None
+
+
+class AlbumDelegate(QStyledItemDelegate):
+    """Delegate for rendering album cards."""
+
+    # Card size constants
+    COVER_SIZE = 180
+    CARD_WIDTH = 180
+    CARD_HEIGHT = 240
+    BORDER_RADIUS = 8
+    SPACING = 20
+
+    clicked = Signal(object)  # Emits Album object
+    download_cover_requested = Signal(object)  # Emits Album object
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cover_cache = {}  # Cache for loaded covers
+        self._default_cover = self._create_default_cover()
+        self._hovered_index = -1
+
+    def _create_default_cover(self) -> QPixmap:
+        """Create default cover pixmap."""
+        pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+        pixmap.fill(QColor("#3d3d3d"))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QColor("#666666"))
+        font = QFont()
+        font.setPixelSize(60)
+        painter.setFont(font)
+        painter.drawText(
+            QRect(0, 0, self.COVER_SIZE, self.COVER_SIZE),
+            Qt.AlignCenter, "\u266B"
+        )
+        painter.end()
+        return pixmap
+
+    def _load_cover(self, cover_path: str) -> QPixmap:
+        """Load cover from path with caching."""
+        if not cover_path:
+            return self._default_cover
+
+        if cover_path in self._cover_cache:
+            return self._cover_cache[cover_path]
+
+        if Path(cover_path).exists():
+            try:
+                pixmap = QPixmap(cover_path)
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        self.COVER_SIZE, self.COVER_SIZE,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_cache[cover_path] = scaled
+                    return scaled
+            except Exception:
+                pass
+
+        return self._default_cover
+
+    def sizeHint(self, option, index):
+        return QSize(self.CARD_WIDTH, self.CARD_HEIGHT)
+
+    def paint(self, painter, option, index):
+        album = index.data(Qt.UserRole)
+        if not album:
+            return
+
+        rect = option.rect
+        is_hovered = option.state & QStyle.State_MouseOver
+
+        # Draw cover
+        cover = self._load_cover(album.cover_path)
+        cover_rect = QRect(
+            rect.x() + (rect.width() - self.COVER_SIZE) // 2,
+            rect.y(),
+            self.COVER_SIZE,
+            self.COVER_SIZE
+        )
+
+        # Draw border on hover
+        if is_hovered:
+            painter.setPen(QPen(QColor("#1db954"), 2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(cover_rect, self.BORDER_RADIUS, self.BORDER_RADIUS)
+
+        painter.drawPixmap(cover_rect, cover)
+
+        # Draw album name
+        painter.setPen(QColor("#ffffff"))
+        font = QFont()
+        font.setPixelSize(13)
+        font.setBold(True)
+        painter.setFont(font)
+
+        name_rect = QRect(
+            rect.x() + 4,
+            rect.y() + self.COVER_SIZE + 8,
+            rect.width() - 8,
+            36
+        )
+        painter.drawText(name_rect, Qt.AlignLeft | Qt.TextWordWrap, album.display_name)
+
+        # Draw artist name
+        painter.setPen(QColor("#b3b3b3"))
+        font.setBold(False)
+        font.setPixelSize(12)
+        painter.setFont(font)
+
+        artist_rect = QRect(
+            rect.x() + 4,
+            rect.y() + self.COVER_SIZE + 44,
+            rect.width() - 8,
+            20
+        )
+        painter.drawText(artist_rect, Qt.AlignLeft, album.display_artist)
+
+    def clear_cache(self):
+        """Clear cover cache."""
+        self._cover_cache.clear()
+
+
 class AlbumsView(QWidget):
     """
     Albums page displaying a scrollable grid of album cards.
-
-    Features:
-        - Responsive grid layout
-        - Search/filter functionality
-        - Click to view album tracks
-        - Lazy loading for better performance
+    Uses QListView with custom delegate for high performance.
     """
 
     album_clicked = Signal(object)  # Emits Album object
     play_album = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
 
-    # Grid settings
-    CARDS_PER_ROW = 5
-    CARD_SPACING = 20
     MARGIN = 20
 
     def __init__(
@@ -74,13 +228,11 @@ class AlbumsView(QWidget):
         self._cover_service = cover_service
         self._albums: List[Album] = []
         self._filtered_albums: List[Album] = []
-        self._cards: List[AlbumCard] = []
         self._data_loaded = False
         self._load_worker = None
 
         self._setup_ui()
         self._connect_signals()
-        # Don't load data here - use lazy loading
 
     def showEvent(self, event):
         """Load data when view is first shown."""
@@ -101,13 +253,16 @@ class AlbumsView(QWidget):
         header = self._create_header()
         layout.addWidget(header)
 
-        # Scroll area for grid
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
+        # List view
+        self._list_view = QListView()
+        self._list_view.setViewMode(QListView.IconMode)
+        self._list_view.setResizeMode(QListView.Adjust)
+        self._list_view.setMovement(QListView.Static)
+        self._list_view.setSelectionMode(QListView.SingleSelection)
+        self._list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._list_view.setVerticalScrollMode(QListView.ScrollPerPixel)
+        self._list_view.setStyleSheet("""
+            QListView {
                 background-color: #121212;
                 border: none;
             }
@@ -125,16 +280,19 @@ class AlbumsView(QWidget):
             }
         """)
 
-        # Grid container
-        self._grid_container = QWidget()
-        self._grid_container.setStyleSheet("background-color: #121212;")
-        self._grid_layout = QGridLayout(self._grid_container)
-        self._grid_layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-        self._grid_layout.setSpacing(self.CARD_SPACING)
-        self._grid_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        # Model and delegate
+        self._model = AlbumModel(self)
+        self._delegate = AlbumDelegate(self)
+        self._list_view.setModel(self._model)
+        self._list_view.setItemDelegate(self._delegate)
 
-        scroll_area.setWidget(self._grid_container)
-        layout.addWidget(scroll_area)
+        # Set grid size
+        self._list_view.setGridSize(QSize(
+            AlbumDelegate.CARD_WIDTH + AlbumDelegate.SPACING,
+            AlbumDelegate.CARD_HEIGHT + AlbumDelegate.SPACING
+        ))
+
+        layout.addWidget(self._list_view)
 
         # Loading indicator
         self._loading = self._create_loading_indicator()
@@ -156,7 +314,7 @@ class AlbumsView(QWidget):
         layout.setContentsMargins(20, 10, 20, 10)
 
         # Title
-        title_label = QLabel("Albums")
+        title_label = QLabel(t("albums"))
         title_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
@@ -179,7 +337,7 @@ class AlbumsView(QWidget):
 
         # Search box
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search albums...")
+        self._search_input.setPlaceholderText(t("search"))
         self._search_input.setFixedWidth(250)
         self._search_input.setStyleSheet("""
             QLineEdit {
@@ -220,7 +378,7 @@ class AlbumsView(QWidget):
         """)
         layout.addWidget(progress)
 
-        label = QLabel("Loading albums...")
+        label = QLabel(t("loading"))
         label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
         layout.addWidget(label)
 
@@ -229,6 +387,7 @@ class AlbumsView(QWidget):
     def _connect_signals(self):
         """Connect signals."""
         self._search_input.textChanged.connect(self._on_search_changed)
+        self._list_view.clicked.connect(self._on_album_clicked)
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
 
     def _load_albums(self):
@@ -237,9 +396,8 @@ class AlbumsView(QWidget):
             return
 
         self._loading.show()
-        self._grid_container.hide()
+        self._list_view.hide()
 
-        # Use background thread to load data
         self._load_worker = LoadAlbumsWorker(self._library)
         self._load_worker.finished.connect(self._on_albums_loaded)
         self._load_worker.start()
@@ -251,12 +409,11 @@ class AlbumsView(QWidget):
         self._data_loaded = True
 
         self._update_count_label()
-        self._render_grid()
+        self._model.set_albums(self._filtered_albums)
 
         self._loading.hide()
-        self._grid_container.show()
+        self._list_view.show()
 
-        # Clean up worker
         if self._load_worker:
             self._load_worker.deleteLater()
             self._load_worker = None
@@ -266,36 +423,9 @@ class AlbumsView(QWidget):
         total = len(self._albums)
         if self._search_input.text():
             showing = len(self._filtered_albums)
-            self._count_label.setText(f"{showing} of {total} albums")
+            self._count_label.setText(f"{showing}/{total} {t('albums')}")
         else:
-            self._count_label.setText(f"{total} albums")
-
-    def _render_grid(self):
-        """Render the album cards in a grid."""
-        # Clear existing cards
-        self._clear_grid()
-
-        # Calculate cards per row based on width
-        available_width = self.width() - (2 * self.MARGIN)
-        cards_per_row = max(1, available_width // (AlbumCard.CARD_WIDTH + self.CARD_SPACING))
-
-        # Add cards to grid
-        for i, album in enumerate(self._filtered_albums):
-            card = AlbumCard(album)
-            card.clicked.connect(self._on_album_clicked)
-            card.download_cover_requested.connect(self.download_cover_requested.emit)
-
-            row = i // cards_per_row
-            col = i % cards_per_row
-            self._grid_layout.addWidget(card, row, col, Qt.AlignTop | Qt.AlignLeft)
-            self._cards.append(card)
-
-    def _clear_grid(self):
-        """Clear all cards from the grid."""
-        for card in self._cards:
-            self._grid_layout.removeWidget(card)
-            card.deleteLater()
-        self._cards.clear()
+            self._count_label.setText(f"{total} {t('albums')}")
 
     def _on_search_changed(self, text: str):
         """Handle search text change."""
@@ -309,23 +439,20 @@ class AlbumsView(QWidget):
             self._filtered_albums = self._albums.copy()
 
         self._update_count_label()
-        self._render_grid()
+        self._model.set_albums(self._filtered_albums)
 
-    def _on_album_clicked(self, album: Album):
-        """Handle album card click."""
-        self.album_clicked.emit(album)
+    def _on_album_clicked(self, index: QModelIndex):
+        """Handle album click."""
+        album = index.data(Qt.UserRole)
+        if album:
+            self.album_clicked.emit(album)
 
     def _on_tracks_added(self, count: int):
         """Handle tracks added to library."""
-        # Reload albums
+        self._data_loaded = False
         self._load_albums()
-
-    def resizeEvent(self, event):
-        """Handle resize to reflow grid."""
-        super().resizeEvent(event)
-        if self._filtered_albums:
-            self._render_grid()
 
     def refresh(self):
         """Refresh the albums view."""
+        self._data_loaded = False
         self._load_albums()

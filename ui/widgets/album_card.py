@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QMenu,
 )
-from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QRect, QEasingCurve
+from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QRect, QEasingCurve, QTimer
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 
 from domain.album import Album
@@ -30,6 +30,7 @@ class AlbumCard(QWidget):
         - Album name and artist
         - Click signal for navigation
         - Right-click context menu for cover download
+        - Lazy cover loading for performance
     """
 
     clicked = Signal(object)  # Emits Album object
@@ -45,9 +46,12 @@ class AlbumCard(QWidget):
         super().__init__(parent)
         self._album = album
         self._is_hovering = False
+        self._cover_loaded = False
 
         self._setup_ui()
-        self._load_cover()
+        # Set default cover immediately, load actual cover lazily
+        self._set_default_cover()
+        QTimer.singleShot(10, self._load_cover)
 
     def _setup_ui(self):
         """Set up the card UI."""
@@ -153,7 +157,10 @@ class AlbumCard(QWidget):
         menu.exec_(self.mapToGlobal(pos))
 
     def _load_cover(self):
-        """Load album cover image."""
+        """Load album cover image lazily."""
+        if self._cover_loaded:
+            return
+
         cover_path = self._album.cover_path
 
         if cover_path and Path(cover_path).exists():
@@ -166,12 +173,10 @@ class AlbumCard(QWidget):
                         Qt.SmoothTransformation
                     )
                     self._cover_label.setPixmap(scaled)
+                    self._cover_loaded = True
                     return
             except Exception as e:
                 logger.debug(f"Error loading cover: {e}")
-
-        # Default cover
-        self._set_default_cover()
 
     def _set_default_cover(self):
         """Set default cover when no cover is available."""

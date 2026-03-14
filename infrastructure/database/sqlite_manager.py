@@ -488,9 +488,9 @@ class DatabaseManager:
                        END
                        """)
 
-        # Create albums cache table
+        # Create albums table
         cursor.execute("""
-                       CREATE TABLE IF NOT EXISTS albums_cache
+                       CREATE TABLE IF NOT EXISTS albums
                        (
                            id
                            INTEGER
@@ -523,9 +523,9 @@ class DatabaseManager:
                        )
                        """)
 
-        # Create artists cache table
+        # Create artists table
         cursor.execute("""
-                       CREATE TABLE IF NOT EXISTS artists_cache
+                       CREATE TABLE IF NOT EXISTS artists
                        (
                            id
                            INTEGER
@@ -683,6 +683,17 @@ class DatabaseManager:
                                SELECT id, COALESCE(title, ''), COALESCE(artist, ''), COALESCE(album, '')
                                FROM tracks
                                """)
+
+        # Migration 3: Drop old cache tables and rename to new tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='albums_cache'")
+        if cursor.fetchone():
+            cursor.execute("DROP TABLE albums_cache")
+            logger.info("[Database] Dropped old albums_cache table")
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='artists_cache'")
+        if cursor.fetchone():
+            cursor.execute("DROP TABLE artists_cache")
+            logger.info("[Database] Dropped old artists_cache table")
 
     # Track operations
 
@@ -2185,11 +2196,11 @@ class DatabaseManager:
 
         return row["count"] if row else 0
 
-    # Album cache operations
+    # Album operations
 
-    def refresh_albums_cache(self) -> bool:
+    def refresh_albums(self) -> bool:
         """
-        Refresh the albums cache from tracks table.
+        Refresh the albums table from tracks table.
 
         Returns:
             True if successful
@@ -2197,12 +2208,12 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Clear existing cache
-        cursor.execute("DELETE FROM albums_cache")
+        # Clear existing data
+        cursor.execute("DELETE FROM albums")
 
-        # Populate cache from tracks
+        # Populate from tracks
         cursor.execute("""
-            INSERT INTO albums_cache (name, artist, cover_path, song_count, total_duration)
+            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
             SELECT
                 album as name,
                 artist,
@@ -2217,9 +2228,9 @@ class DatabaseManager:
         conn.commit()
         return True
 
-    def get_albums_from_cache(self) -> List[dict]:
+    def get_albums_from_db(self) -> List[dict]:
         """
-        Get all albums from cache.
+        Get all albums from database.
 
         Returns:
             List of album dictionaries
@@ -2229,26 +2240,26 @@ class DatabaseManager:
 
         cursor.execute("""
             SELECT name, artist, cover_path, song_count, total_duration
-            FROM albums_cache
+            FROM albums
             ORDER BY song_count DESC
         """)
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    def is_albums_cache_empty(self) -> bool:
-        """Check if albums cache is empty."""
+    def is_albums_empty(self) -> bool:
+        """Check if albums table is empty."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM albums_cache")
+        cursor.execute("SELECT COUNT(*) as count FROM albums")
         row = cursor.fetchone()
         return row["count"] == 0 if row else True
 
-    # Artist cache operations
+    # Artist operations
 
-    def refresh_artists_cache(self) -> bool:
+    def refresh_artists(self) -> bool:
         """
-        Refresh the artists cache from tracks table.
+        Refresh the artists table from tracks table.
 
         Returns:
             True if successful
@@ -2256,12 +2267,12 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Clear existing cache
-        cursor.execute("DELETE FROM artists_cache")
+        # Clear existing data
+        cursor.execute("DELETE FROM artists")
 
-        # Populate cache from tracks
+        # Populate from tracks
         cursor.execute("""
-            INSERT INTO artists_cache (name, cover_path, song_count, album_count)
+            INSERT INTO artists (name, cover_path, song_count, album_count)
             SELECT
                 artist as name,
                 (SELECT cover_path FROM tracks t2
@@ -2277,9 +2288,9 @@ class DatabaseManager:
         conn.commit()
         return True
 
-    def get_artists_from_cache(self) -> List[dict]:
+    def get_artists_from_db(self) -> List[dict]:
         """
-        Get all artists from cache.
+        Get all artists from database.
 
         Returns:
             List of artist dictionaries
@@ -2289,17 +2300,286 @@ class DatabaseManager:
 
         cursor.execute("""
             SELECT name, cover_path, song_count, album_count
-            FROM artists_cache
+            FROM artists
             ORDER BY song_count DESC
         """)
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    def is_artists_cache_empty(self) -> bool:
-        """Check if artists cache is empty."""
+    def is_artists_empty(self) -> bool:
+        """Check if artists table is empty."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM artists_cache")
+        cursor.execute("SELECT COUNT(*) as count FROM artists")
         row = cursor.fetchone()
         return row["count"] == 0 if row else True
+
+    # === Albums Incremental Updates ===
+
+    def update_albums_on_track_added(self, album: str, artist: str, cover_path: str, duration: float) -> None:
+        """
+        Update albums table when a track is added.
+
+        Args:
+            album: Album name
+            artist: Artist name
+            cover_path: Path to cover image
+            duration: Track duration in seconds
+        """
+        if not album or not artist:
+            return
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Check if album exists
+        cursor.execute(
+            "SELECT id, song_count, total_duration FROM albums WHERE name = ? AND artist = ?",
+            (album, artist)
+        )
+        row = cursor.fetchone()
+
+        if row:
+            # Update existing album
+            cursor.execute("""
+                UPDATE albums
+                SET song_count = song_count + 1,
+                    total_duration = total_duration + ?,
+                    cover_path = COALESCE(cover_path, ?)
+                WHERE id = ?
+            """, (duration, cover_path, row["id"]))
+        else:
+            # Insert new album
+            cursor.execute("""
+                INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+                VALUES (?, ?, ?, 1, ?)
+            """, (album, artist, cover_path, duration))
+
+        conn.commit()
+
+    def update_albums_on_track_updated(
+        self,
+        old_album: str, old_artist: str, old_duration: float,
+        new_album: str, new_artist: str, new_cover_path: str, new_duration: float
+    ) -> None:
+        """
+        Update albums table when a track's metadata is updated.
+
+        Args:
+            old_album: Previous album name
+            old_artist: Previous artist name
+            old_duration: Previous duration
+            new_album: New album name
+            new_artist: New artist name
+            new_cover_path: New cover path
+            new_duration: New duration
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # If album or artist changed, we need to update both old and new albums
+        if old_album != new_album or old_artist != new_artist:
+            # Decrease count for old album
+            if old_album and old_artist:
+                cursor.execute("""
+                    UPDATE albums
+                    SET song_count = song_count - 1,
+                        total_duration = total_duration - ?
+                    WHERE name = ? AND artist = ?
+                """, (old_duration, old_album, old_artist))
+
+                # Delete album if no songs left
+                cursor.execute("""
+                    DELETE FROM albums WHERE name = ? AND artist = ? AND song_count <= 0
+                """, (old_album, old_artist))
+
+            # Increase count for new album
+            if new_album and new_artist:
+                self.update_albums_on_track_added(new_album, new_artist, new_cover_path, new_duration)
+        else:
+            # Same album, just update duration and cover
+            cursor.execute("""
+                UPDATE albums
+                SET total_duration = total_duration - ? + ?,
+                    cover_path = COALESCE(cover_path, ?)
+                WHERE name = ? AND artist = ?
+            """, (old_duration, new_duration, new_cover_path, new_album, new_artist))
+
+        conn.commit()
+
+    def update_albums_on_track_deleted(self, album: str, artist: str, duration: float) -> None:
+        """
+        Update albums table when a track is deleted.
+
+        Args:
+            album: Album name
+            artist: Artist name
+            duration: Track duration in seconds
+        """
+        if not album or not artist:
+            return
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Decrease count
+        cursor.execute("""
+            UPDATE albums
+            SET song_count = song_count - 1,
+                total_duration = total_duration - ?
+            WHERE name = ? AND artist = ?
+        """, (duration, album, artist))
+
+        # Delete album if no songs left
+        cursor.execute("""
+            DELETE FROM albums WHERE name = ? AND artist = ? AND song_count <= 0
+        """, (album, artist))
+
+        conn.commit()
+
+    # === Artists Incremental Updates ===
+
+    def update_artists_on_track_added(self, artist: str, album: str, cover_path: str) -> None:
+        """
+        Update artists table when a track is added.
+
+        Args:
+            artist: Artist name
+            album: Album name (for album count)
+            cover_path: Path to cover image
+        """
+        if not artist:
+            return
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Check if artist exists
+        cursor.execute(
+            "SELECT id, song_count, album_count FROM artists WHERE name = ?",
+            (artist,)
+        )
+        row = cursor.fetchone()
+
+        if row:
+            # Update existing artist
+            # Check if this is a new album for this artist
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM tracks
+                WHERE artist = ? AND album = ?
+            """, (artist, album))
+            album_exists = cursor.fetchone()["count"] > 0
+
+            new_album_count = row["album_count"]
+            if album and not album_exists:
+                new_album_count += 1
+
+            cursor.execute("""
+                UPDATE artists
+                SET song_count = song_count + 1,
+                    album_count = ?,
+                    cover_path = COALESCE(cover_path, ?)
+                WHERE id = ?
+            """, (new_album_count, cover_path, row["id"]))
+        else:
+            # Insert new artist
+            cursor.execute("""
+                INSERT INTO artists (name, cover_path, song_count, album_count)
+                VALUES (?, ?, 1, ?)
+            """, (artist, cover_path, 1 if album else 0))
+
+        conn.commit()
+
+    def update_artists_on_track_updated(
+        self,
+        old_artist: str, old_album: str,
+        new_artist: str, new_album: str, new_cover_path: str
+    ) -> None:
+        """
+        Update artists table when a track's metadata is updated.
+
+        Args:
+            old_artist: Previous artist name
+            old_album: Previous album name
+            new_artist: New artist name
+            new_album: New album name
+            new_cover_path: New cover path
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # If artist changed, we need to update both old and new artists
+        if old_artist != new_artist:
+            # Decrease count for old artist
+            if old_artist:
+                cursor.execute("""
+                    UPDATE artists
+                    SET song_count = song_count - 1
+                    WHERE name = ?
+                """, (old_artist,))
+
+                # Recalculate album count for old artist
+                cursor.execute("""
+                    UPDATE artists
+                    SET album_count = (
+                        SELECT COUNT(DISTINCT album) FROM tracks WHERE artist = ?
+                    )
+                    WHERE name = ?
+                """, (old_artist, old_artist))
+
+                # Delete artist if no songs left
+                cursor.execute("DELETE FROM artists WHERE name = ? AND song_count <= 0", (old_artist,))
+
+            # Increase count for new artist
+            if new_artist:
+                self.update_artists_on_track_added(new_artist, new_album, new_cover_path)
+        else:
+            # Same artist, check if album changed
+            if old_album != new_album:
+                # Recalculate album count
+                cursor.execute("""
+                    UPDATE artists
+                    SET album_count = (
+                        SELECT COUNT(DISTINCT album) FROM tracks WHERE artist = ?
+                    ),
+                    cover_path = COALESCE(cover_path, ?)
+                    WHERE name = ?
+                """, (new_artist, new_cover_path, new_artist))
+
+        conn.commit()
+
+    def update_artists_on_track_deleted(self, artist: str, album: str) -> None:
+        """
+        Update artists table when a track is deleted.
+
+        Args:
+            artist: Artist name
+            album: Album name
+        """
+        if not artist:
+            return
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Decrease count
+        cursor.execute("""
+            UPDATE artists
+            SET song_count = song_count - 1
+            WHERE name = ?
+        """, (artist,))
+
+        # Recalculate album count
+        cursor.execute("""
+            UPDATE artists
+            SET album_count = (
+                SELECT COUNT(DISTINCT album) FROM tracks WHERE artist = ?
+            )
+            WHERE name = ?
+        """, (artist, artist))
+
+        # Delete artist if no songs left
+        cursor.execute("DELETE FROM artists WHERE name = ? AND song_count <= 0", (artist,))
+
+        conn.commit()

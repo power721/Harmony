@@ -169,13 +169,13 @@ class SqliteTrackRepository:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Try to use cache first
+        # Try to use albums table first
         if use_cache:
-            cursor.execute("SELECT COUNT(*) as count FROM albums_cache")
+            cursor.execute("SELECT COUNT(*) as count FROM albums")
             if cursor.fetchone()["count"] > 0:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
-                    FROM albums_cache
+                    FROM albums
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()
@@ -263,13 +263,13 @@ class SqliteTrackRepository:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Try to use cache first
+        # Try to use artists table first
         if use_cache:
-            cursor.execute("SELECT COUNT(*) as count FROM artists_cache")
+            cursor.execute("SELECT COUNT(*) as count FROM artists")
             if cursor.fetchone()["count"] > 0:
                 cursor.execute("""
                     SELECT name, cover_path, song_count, album_count
-                    FROM artists_cache
+                    FROM artists
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()

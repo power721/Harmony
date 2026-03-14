@@ -250,5 +250,10 @@
     "no_results": "No results found",
     "found": "Found",
     "results": "results",
-    "match_score": "Match Score"
+    "match_score": "Match Score",
+    "artist_type": "ARTIST",
+    "play_all": "Play All",
+    "shuffle": "Shuffle",
+    "loading_artist": "Loading artist...",
+    "songs_albums": "{songs} songs • {albums} albums"
 }

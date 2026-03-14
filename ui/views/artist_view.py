@@ -165,7 +165,7 @@ class ArtistView(QWidget):
         info_layout.setSpacing(8)
 
         # Artist type label
-        type_label = QLabel("ARTIST")
+        type_label = QLabel(t("artist_type"))
         type_label.setStyleSheet("""
             QLabel {
                 color: #b3b3b3;
@@ -200,7 +200,7 @@ class ArtistView(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
 
-        self._play_btn = QPushButton("Play All")
+        self._play_btn = QPushButton(t("play_all"))
         self._play_btn.setFixedSize(120, 36)
         self._play_btn.setCursor(Qt.PointingHandCursor)
         self._play_btn.setStyleSheet("""
@@ -219,7 +219,7 @@ class ArtistView(QWidget):
         self._play_btn.clicked.connect(self._on_play_all)
         btn_layout.addWidget(self._play_btn)
 
-        self._shuffle_btn = QPushButton("Shuffle")
+        self._shuffle_btn = QPushButton(t("shuffle"))
         self._shuffle_btn.setFixedSize(100, 36)
         self._shuffle_btn.setCursor(Qt.PointingHandCursor)
         self._shuffle_btn.setStyleSheet("""
@@ -459,7 +459,7 @@ class ArtistView(QWidget):
         """)
         layout.addWidget(progress)
 
-        label = QLabel("Loading artist...")
+        label = QLabel(t("loading_artist"))
         label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
         layout.addWidget(label)
 
@@ -483,7 +483,10 @@ class ArtistView(QWidget):
             # Update header
             self._name_label.setText(artist.display_name)
             self._stats_label.setText(
-                f"{artist.song_count} songs • {artist.album_count} albums"
+                t("songs_albums").format(
+                    songs=artist.song_count,
+                    albums=artist.album_count
+                )
             )
             self._load_cover(artist)
 

@@ -1,29 +1,35 @@
 """
 Artists view widget for browsing artists in a grid layout.
+Uses QListView + Model/Delegate for high-performance rendering.
 """
 
 import logging
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
-    QGridLayout,
+    QListView,
     QFrame,
     QLineEdit,
     QProgressBar,
+    QStyledItemDelegate,
+    QStyle,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QThread
-from PySide6.QtGui import QColor
+from PySide6.QtCore import (
+    Qt, Signal, QTimer, QThread,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen
 
 from domain.artist import Artist
 from services.library import LibraryService
 from services.metadata import CoverService
-from ui.widgets import ArtistCard
 from system.event_bus import EventBus
+from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +47,189 @@ class LoadArtistsWorker(QThread):
         self.finished.emit(artists)
 
 
+class ArtistModel(QAbstractListModel):
+    """Model for artist data."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._artists: List[Artist] = []
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._artists)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._artists):
+            return None
+
+        artist = self._artists[index.row()]
+
+        if role == Qt.DisplayRole:
+            return artist.name
+        elif role == Qt.UserRole:
+            return artist
+
+        return None
+
+    def set_artists(self, artists: List[Artist]):
+        self.beginResetModel()
+        self._artists = artists
+        self.endResetModel()
+
+    def get_artist(self, row: int) -> Optional[Artist]:
+        if 0 <= row < len(self._artists):
+            return self._artists[row]
+        return None
+
+
+class ArtistDelegate(QStyledItemDelegate):
+    """Delegate for rendering artist cards."""
+
+    # Card size constants
+    COVER_SIZE = 180
+    CARD_WIDTH = 180
+    CARD_HEIGHT = 240
+    BORDER_RADIUS = 90  # Circular
+    SPACING = 20
+
+    clicked = Signal(object)  # Emits Artist object
+    download_cover_requested = Signal(object)  # Emits Artist object
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cover_cache = {}
+        self._default_cover = self._create_default_cover()
+
+    def _create_default_cover(self) -> QPixmap:
+        """Create default cover pixmap."""
+        pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Draw circular background
+        painter.setBrush(QColor("#3d3d3d"))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
+
+        # Draw person icon
+        painter.setPen(QColor("#666666"))
+        font = QFont()
+        font.setPixelSize(80)
+        painter.setFont(font)
+        painter.drawText(
+            QRect(0, 0, self.COVER_SIZE, self.COVER_SIZE),
+            Qt.AlignCenter, "\u265A"
+        )
+        painter.end()
+        return pixmap
+
+    def _load_cover(self, cover_path: str) -> QPixmap:
+        """Load cover from path with caching."""
+        if not cover_path:
+            return self._default_cover
+
+        if cover_path in self._cover_cache:
+            return self._cover_cache[cover_path]
+
+        if Path(cover_path).exists():
+            try:
+                pixmap = QPixmap(cover_path)
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        self.COVER_SIZE, self.COVER_SIZE,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    # Create circular mask
+                    circular = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+                    circular.fill(Qt.transparent)
+
+                    painter = QPainter(circular)
+                    painter.setRenderHint(QPainter.Antialiasing)
+                    painter.setBrush(Qt.white)
+                    painter.setPen(Qt.NoPen)
+                    painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
+                    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                    painter.drawPixmap(0, 0, scaled)
+                    painter.end()
+
+                    self._cover_cache[cover_path] = circular
+                    return circular
+            except Exception:
+                pass
+
+        return self._default_cover
+
+    def sizeHint(self, option, index):
+        return QSize(self.CARD_WIDTH, self.CARD_HEIGHT)
+
+    def paint(self, painter, option, index):
+        artist = index.data(Qt.UserRole)
+        if not artist:
+            return
+
+        rect = option.rect
+        is_hovered = option.state & QStyle.State_MouseOver
+
+        # Draw cover (circular)
+        cover = self._load_cover(artist.cover_path)
+        cover_x = rect.x() + (rect.width() - self.COVER_SIZE) // 2
+        cover_y = rect.y()
+
+        # Draw border on hover
+        if is_hovered:
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(QPen(QColor("#1db954"), 3))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(cover_x - 2, cover_y - 2, self.COVER_SIZE + 4, self.COVER_SIZE + 4)
+
+        painter.drawPixmap(cover_x, cover_y, cover)
+
+        # Draw artist name
+        painter.setPen(QColor("#ffffff"))
+        font = QFont()
+        font.setPixelSize(13)
+        font.setBold(True)
+        painter.setFont(font)
+
+        name_rect = QRect(
+            rect.x() + 4,
+            rect.y() + self.COVER_SIZE + 8,
+            rect.width() - 8,
+            36
+        )
+        painter.drawText(name_rect, Qt.AlignHCenter | Qt.TextWordWrap, artist.display_name)
+
+        # Draw stats
+        painter.setPen(QColor("#b3b3b3"))
+        font.setBold(False)
+        font.setPixelSize(11)
+        painter.setFont(font)
+
+        stats_text = f"{artist.song_count} {t('tracks')} • {artist.album_count} {t('albums')}"
+        stats_rect = QRect(
+            rect.x() + 4,
+            rect.y() + self.COVER_SIZE + 44,
+            rect.width() - 8,
+            20
+        )
+        painter.drawText(stats_rect, Qt.AlignHCenter, stats_text)
+
+    def clear_cache(self):
+        """Clear cover cache."""
+        self._cover_cache.clear()
+
+
 class ArtistsView(QWidget):
     """
     Artists page displaying a scrollable grid of artist cards.
-
-    Features:
-        - Responsive grid layout
-        - Search/filter functionality
-        - Click to view artist detail
-        - Lazy loading for better performance
+    Uses QListView with custom delegate for high performance.
     """
 
     artist_clicked = Signal(object)  # Emits Artist object
     download_cover_requested = Signal(object)  # Emits Artist object
 
-    # Grid settings
-    CARDS_PER_ROW = 5
-    CARD_SPACING = 20
     MARGIN = 20
 
     def __init__(
@@ -71,13 +243,11 @@ class ArtistsView(QWidget):
         self._cover_service = cover_service
         self._artists: List[Artist] = []
         self._filtered_artists: List[Artist] = []
-        self._cards: List[ArtistCard] = []
         self._data_loaded = False
         self._load_worker = None
 
         self._setup_ui()
         self._connect_signals()
-        # Don't load data here - use lazy loading
 
     def showEvent(self, event):
         """Load data when view is first shown."""
@@ -98,13 +268,16 @@ class ArtistsView(QWidget):
         header = self._create_header()
         layout.addWidget(header)
 
-        # Scroll area for grid
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
+        # List view
+        self._list_view = QListView()
+        self._list_view.setViewMode(QListView.IconMode)
+        self._list_view.setResizeMode(QListView.Adjust)
+        self._list_view.setMovement(QListView.Static)
+        self._list_view.setSelectionMode(QListView.SingleSelection)
+        self._list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._list_view.setVerticalScrollMode(QListView.ScrollPerPixel)
+        self._list_view.setStyleSheet("""
+            QListView {
                 background-color: #121212;
                 border: none;
             }
@@ -122,16 +295,19 @@ class ArtistsView(QWidget):
             }
         """)
 
-        # Grid container
-        self._grid_container = QWidget()
-        self._grid_container.setStyleSheet("background-color: #121212;")
-        self._grid_layout = QGridLayout(self._grid_container)
-        self._grid_layout.setContentsMargins(self.MARGIN, self.MARGIN, self.MARGIN, self.MARGIN)
-        self._grid_layout.setSpacing(self.CARD_SPACING)
-        self._grid_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        # Model and delegate
+        self._model = ArtistModel(self)
+        self._delegate = ArtistDelegate(self)
+        self._list_view.setModel(self._model)
+        self._list_view.setItemDelegate(self._delegate)
 
-        scroll_area.setWidget(self._grid_container)
-        layout.addWidget(scroll_area)
+        # Set grid size
+        self._list_view.setGridSize(QSize(
+            ArtistDelegate.CARD_WIDTH + ArtistDelegate.SPACING,
+            ArtistDelegate.CARD_HEIGHT + ArtistDelegate.SPACING
+        ))
+
+        layout.addWidget(self._list_view)
 
         # Loading indicator
         self._loading = self._create_loading_indicator()
@@ -153,7 +329,7 @@ class ArtistsView(QWidget):
         layout.setContentsMargins(20, 10, 20, 10)
 
         # Title
-        title_label = QLabel("Artists")
+        title_label = QLabel(t("artists"))
         title_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
@@ -176,7 +352,7 @@ class ArtistsView(QWidget):
 
         # Search box
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search artists...")
+        self._search_input.setPlaceholderText(t("search"))
         self._search_input.setFixedWidth(250)
         self._search_input.setStyleSheet("""
             QLineEdit {
@@ -217,7 +393,7 @@ class ArtistsView(QWidget):
         """)
         layout.addWidget(progress)
 
-        label = QLabel("Loading artists...")
+        label = QLabel(t("loading"))
         label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
         layout.addWidget(label)
 
@@ -226,6 +402,7 @@ class ArtistsView(QWidget):
     def _connect_signals(self):
         """Connect signals."""
         self._search_input.textChanged.connect(self._on_search_changed)
+        self._list_view.clicked.connect(self._on_artist_clicked)
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
 
     def _load_artists(self):
@@ -234,9 +411,8 @@ class ArtistsView(QWidget):
             return
 
         self._loading.show()
-        self._grid_container.hide()
+        self._list_view.hide()
 
-        # Use background thread to load data
         self._load_worker = LoadArtistsWorker(self._library)
         self._load_worker.finished.connect(self._on_artists_loaded)
         self._load_worker.start()
@@ -248,12 +424,11 @@ class ArtistsView(QWidget):
         self._data_loaded = True
 
         self._update_count_label()
-        self._render_grid()
+        self._model.set_artists(self._filtered_artists)
 
         self._loading.hide()
-        self._grid_container.show()
+        self._list_view.show()
 
-        # Clean up worker
         if self._load_worker:
             self._load_worker.deleteLater()
             self._load_worker = None
@@ -263,36 +438,9 @@ class ArtistsView(QWidget):
         total = len(self._artists)
         if self._search_input.text():
             showing = len(self._filtered_artists)
-            self._count_label.setText(f"{showing} of {total} artists")
+            self._count_label.setText(f"{showing}/{total} {t('artists')}")
         else:
-            self._count_label.setText(f"{total} artists")
-
-    def _render_grid(self):
-        """Render the artist cards in a grid."""
-        # Clear existing cards
-        self._clear_grid()
-
-        # Calculate cards per row based on width
-        available_width = self.width() - (2 * self.MARGIN)
-        cards_per_row = max(1, available_width // (ArtistCard.CARD_WIDTH + self.CARD_SPACING))
-
-        # Add cards to grid
-        for i, artist in enumerate(self._filtered_artists):
-            card = ArtistCard(artist)
-            card.clicked.connect(self._on_artist_clicked)
-            card.download_cover_requested.connect(self.download_cover_requested.emit)
-
-            row = i // cards_per_row
-            col = i % cards_per_row
-            self._grid_layout.addWidget(card, row, col, Qt.AlignTop | Qt.AlignLeft)
-            self._cards.append(card)
-
-    def _clear_grid(self):
-        """Clear all cards from the grid."""
-        for card in self._cards:
-            self._grid_layout.removeWidget(card)
-            card.deleteLater()
-        self._cards.clear()
+            self._count_label.setText(f"{total} {t('artists')}")
 
     def _on_search_changed(self, text: str):
         """Handle search text change."""
@@ -306,23 +454,20 @@ class ArtistsView(QWidget):
             self._filtered_artists = self._artists.copy()
 
         self._update_count_label()
-        self._render_grid()
+        self._model.set_artists(self._filtered_artists)
 
-    def _on_artist_clicked(self, artist: Artist):
-        """Handle artist card click."""
-        self.artist_clicked.emit(artist)
+    def _on_artist_clicked(self, index: QModelIndex):
+        """Handle artist click."""
+        artist = index.data(Qt.UserRole)
+        if artist:
+            self.artist_clicked.emit(artist)
 
     def _on_tracks_added(self, count: int):
         """Handle tracks added to library."""
-        # Reload artists
+        self._data_loaded = False
         self._load_artists()
-
-    def resizeEvent(self, event):
-        """Handle resize to reflow grid."""
-        super().resizeEvent(event)
-        if self._filtered_artists:
-            self._render_grid()
 
     def refresh(self):
         """Refresh the artists view."""
+        self._data_loaded = False
         self._load_artists()

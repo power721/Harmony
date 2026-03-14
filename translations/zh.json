@@ -250,6 +250,11 @@
     "no_results": "未找到结果",
     "found": "找到",
     "results": "个结果",
-    "match_score": "匹配度"
+    "match_score": "匹配度",
+    "artist_type": "歌手",
+    "play_all": "播放全部",
+    "shuffle": "随机播放",
+    "loading_artist": "正在加载歌手...",
+    "songs_albums": "{songs} 首歌曲 • {albums} 张专辑"
 }
 
