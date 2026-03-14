@@ -3,6 +3,8 @@ Helper utility functions for the music player.
 """
 from typing import List, Tuple, Optional
 
+from system import t
+
 
 def format_duration(seconds: float) -> str:
     """
@@ -105,7 +107,6 @@ def format_count_message(key: str, count: int) -> str:
     Returns:
         Formatted message string
     """
-    from .i18n import t
 
     template = t(key)
     plural_suffix = 's' if count > 1 else ''

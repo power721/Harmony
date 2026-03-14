@@ -1228,68 +1228,97 @@ class LibraryView(QWidget):
         if not selected_items:
             return
 
+        # Collect rows and their track data
+        rows_to_update = {}  # row -> (track_id/cloud_file_id, is_cloud)
         track_ids = []
         cloud_files = []
+
         for item in selected_items:
             if item.column() == 0:
+                row = item.row()
                 track_data = item.data(Qt.UserRole)
                 if track_data:
                     if isinstance(track_data, dict):
                         if track_data.get("type") == "cloud":
+                            cloud_file_id = track_data.get("cloud_file_id")
+                            cloud_account_id = track_data.get("cloud_account_id")
                             cloud_files.append({
-                                "cloud_file_id": track_data.get("cloud_file_id"),
-                                "cloud_account_id": track_data.get("cloud_account_id")
+                                "cloud_file_id": cloud_file_id,
+                                "cloud_account_id": cloud_account_id,
+                                "row": row
                             })
+                            rows_to_update[row] = (cloud_file_id, True)
                         else:
                             tid = track_data.get("id")
                             if tid:
-                                track_ids.append(tid)
+                                track_ids.append({"id": tid, "row": row})
+                                rows_to_update[row] = (tid, False)
                     else:
-                        track_ids.append(track_data)
+                        track_ids.append({"id": track_data, "row": row})
+                        rows_to_update[row] = (track_data, False)
 
-        if not track_ids:
+        if not track_ids and not cloud_files:
             return
 
         added_count = 0
         removed_count = 0
         bus = EventBus.instance()
+        rows_to_remove = []  # Rows to remove when in favorites view
 
         # Process local tracks
-        for track_id in track_ids:
+        for track_info in track_ids:
+            track_id = track_info["id"]
+            row = track_info["row"]
             if self._db.is_favorite(track_id=track_id):
                 self._db.remove_favorite(track_id=track_id)
                 removed_count += 1
-                # Emit event for UI update
                 bus.emit_favorite_change(track_id, False, is_cloud=False)
+                if self._current_view == "favorites":
+                    rows_to_remove.append(row)
             else:
                 self._db.add_favorite(track_id=track_id)
                 added_count += 1
-                # Emit event for UI update
                 bus.emit_favorite_change(track_id, True, is_cloud=False)
 
         # Process cloud files
         for cloud_file in cloud_files:
             cloud_file_id = cloud_file.get("cloud_file_id")
             cloud_account_id = cloud_file.get("cloud_account_id")
+            row = cloud_file.get("row")
             if cloud_file_id:
                 if self._db.is_favorite(cloud_file_id=cloud_file_id):
                     self._db.remove_favorite(cloud_file_id=cloud_file_id)
                     removed_count += 1
-                    # Emit event for UI update
                     bus.emit_favorite_change(cloud_file_id, False, is_cloud=True)
+                    if self._current_view == "favorites":
+                        rows_to_remove.append(row)
                 else:
                     self._db.add_favorite(cloud_file_id=cloud_file_id, cloud_account_id=cloud_account_id)
                     added_count += 1
-                    # Emit event for UI update
                     bus.emit_favorite_change(cloud_file_id, True, is_cloud=True)
 
         total_count = added_count + removed_count
         if total_count == 0:
             return
 
-        if added_count > 0 and removed_count == 0:
-            # format_count_message imported at top
+        # Update UI
+        if self._current_view == "favorites" and rows_to_remove:
+            # Remove rows from table (in reverse order to maintain indices)
+            for row in sorted(rows_to_remove, reverse=True):
+                self._tracks_table.removeRow(row)
+            # Update status label
+            remaining = self._tracks_table.rowCount()
+            self._status_label.setText(f"{remaining} {t('favorites_word')}")
+        else:
+            # Update only the favorite column for affected rows
+            for row, (item_id, is_cloud) in rows_to_update.items():
+                if is_cloud:
+                    is_fav = self._db.is_favorite(cloud_file_id=item_id)
+                else:
+                    is_fav = self._db.is_favorite(track_id=item_id)
+                self._update_favorite_cell(row, is_fav)
 
+        if added_count > 0 and removed_count == 0:
             message = format_count_message("added_x_tracks_to_favorites", added_count)
             QMessageBox.information(
                 self,
@@ -1297,8 +1326,6 @@ class LibraryView(QWidget):
                 message,
             )
         elif removed_count > 0 and added_count == 0:
-            # format_count_message imported at top
-
             message = format_count_message(
                 "removed_x_tracks_from_favorites", removed_count
             )
@@ -1317,7 +1344,14 @@ class LibraryView(QWidget):
                 message,
             )
 
-        self.refresh()
+    def _update_favorite_cell(self, row: int, is_favorite: bool):
+        """Update the favorite indicator in a specific row."""
+        fav_text = "⭐" if is_favorite else ""
+        fav_item = QTableWidgetItem(fav_text)
+        fav_item.setForeground(
+            QBrush(QColor("#ffd700" if is_favorite else "#505050"))
+        )
+        self._tracks_table.setItem(row, 4, fav_item)
 
     def _add_to_playlist(self):
         """Add selected tracks to a playlist."""
