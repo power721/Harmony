@@ -1106,144 +1106,23 @@ class MainWindow(QMainWindow):
 
     def _on_lyrics_search_results(self, results: list):
         """Handle lyrics search results - show selection dialog."""
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QHBoxLayout,
-            QListWidget,
-            QListWidgetItem,
-            QPushButton,
-            QLabel,
-            QCheckBox,
-        )
+        from ui.widgets.lyrics_download_dialog import LyricsDownloadDialog
 
         if not results:
             self._lyrics_view.set_lyrics(t("no_lyrics_found"))
             return
 
-        # Create selection dialog
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("select_song"))
-        dialog.setMinimumWidth(600)
-        dialog.setMinimumHeight(500)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-            }
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-            }
-            QListWidget {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #303030;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #e0e0e0;
-            }
-            QCheckBox {
-                color: #e0e0e0;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 3px;
-                border: 2px solid #404040;
-                background-color: #1a1a1a;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #1db954;
-                border-color: #1db954;
-            }
-        """)
+        # Show selection dialog
+        result = LyricsDownloadDialog.show_dialog(
+            results,
+            self._lyrics_download_title,
+            self._lyrics_download_artist,
+            self
+        )
 
-        layout = QVBoxLayout(dialog)
-
-        # Info label
-        info_label = QLabel(f"{t('search_results_for')}: {self._lyrics_download_title} - {self._lyrics_download_artist}")
-        layout.addWidget(info_label)
-
-        # Song list
-        song_list = QListWidget()
-        for result in results:
-            item_text = f"{result['title']} - {result['artist']}"
-            # Only show album if it exists, is not empty, and is not "-"
-            album = result.get('album', '')
-            if album and album.strip() and album.strip() != '-':
-                item_text += f" ({album})"
-
-            # Add duration for LRCLIB and NetEase results (if available)
-            if result.get('duration') and result.get('duration') > 0:
-                duration = result['duration']
-                minutes = int(duration // 60)
-                seconds = int(duration % 60)
-                item_text += f" [{minutes}:{seconds:02d}]"
-
-            item_text += f" [{result['source']}]"
-
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.UserRole, result)
-            song_list.addItem(item)
-
-        song_list.itemDoubleClicked.connect(dialog.accept)
-        layout.addWidget(song_list)
-
-        # Checkbox for downloading cover
-        download_cover_checkbox = QCheckBox(t("download_cover"))
-        download_cover_checkbox.setChecked(True)  # Default to checked
-        download_cover_checkbox.setToolTip(t("download_cover_tooltip"))
-        layout.addWidget(download_cover_checkbox)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setProperty("role", "cancel")
-        cancel_btn.clicked.connect(dialog.reject)
-        download_btn = QPushButton(t("download"))
-        download_btn.clicked.connect(dialog.accept)
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(download_btn)
-        layout.addLayout(button_layout)
-
-        # Show dialog
-        if dialog.exec_() != QDialog.Accepted:
-            return
-
-        # Get selected song
-        current_item = song_list.currentItem()
-        if not current_item:
-            return
-
-        selected_song = current_item.data(Qt.UserRole)
-
-        # Pass the checkbox state to download function
-        self._download_lyrics_for_song(selected_song, download_cover_checkbox.isChecked())
+        if result:
+            selected_song, download_cover = result
+            self._download_lyrics_for_song(selected_song, download_cover)
 
     def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
         """Download lyrics for a specific song.
