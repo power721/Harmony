@@ -1921,15 +1921,28 @@ class CloudDriveView(QWidget):
                     album = track.album or ""
                     logger.info(f"[CloudView] Using database metadata: title={title}, artist={artist}, album={album}")
 
-            # Fallback to file extraction if no database record
-            if not title and not artist:
+            # Fallback to file extraction if artist or album is missing
+            # This is important for cache key consistency
+            if not artist or not album:
                 from services.metadata import MetadataService
                 metadata = MetadataService.extract_metadata(file.local_path)
                 if metadata:
-                    title = metadata.get("title", "")
-                    artist = metadata.get("artist", "")
-                    album = metadata.get("album", "")
-                    logger.info(f"[CloudView] Using file metadata: title={title}, artist={artist}, album={album}")
+                    # Only override if file metadata has the missing info
+                    if not artist and metadata.get("artist"):
+                        artist = metadata.get("artist", "")
+                    if not album and metadata.get("album"):
+                        album = metadata.get("album", "")
+                    if not title and metadata.get("title"):
+                        title = metadata.get("title", "")
+                    logger.info(f"[CloudView] Supplemented with file metadata: title={title}, artist={artist}, album={album}")
+
+                    # Update database record with supplemented metadata for cache key consistency
+                    if app and app.bootstrap and (artist or album):
+                        db = app.bootstrap.db
+                        track = db.get_track_by_cloud_file_id(file.file_id)
+                        if track and track.id:
+                            db.update_track(track.id, artist=artist or None, album=album or None)
+                            logger.info(f"[CloudView] Updated database track {track.id} with metadata: artist={artist}, album={album}")
 
             if not title:
                 title = file_path.stem
