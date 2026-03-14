@@ -625,6 +625,8 @@ class PlayerControls(QWidget):
             self._current_cover_path = None
             # Use a copy of current_track to avoid closure issues
             track_copy = dict(current_track)
+            # Clear cover_path so that _load_cover_art_async will search for the new cached cover
+            track_copy["cover_path"] = None
             QTimer.singleShot(100, lambda t=track_copy: self._load_cover_art_async(t))
 
     def _update_favorite_button_style(self, is_favorite: bool):

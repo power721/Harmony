@@ -168,33 +168,46 @@ class CoverService:
         Returns:
             Path to downloaded cover, or None
         """
+        # Collect search results from multiple sources
+        all_results: List[SearchResult] = []
+
         # Search NetEase for covers with metadata
         try:
-            results = self._search_covers_from_netease(title, artist, album, duration)
-            if results:
-                # Find best match
-                track_info = TrackInfo(
-                    title=title,
-                    artist=artist,
-                    album=album,
-                    duration=duration
-                )
-                best_match = MatchScorer.find_best_match(track_info, results)
-
-                if best_match:
-                    result, score = best_match
-                    logger.info(f"Best cover match: {result.title} - {result.artist} (score: {score:.1f})")
-
-                    if score >= 30 and result.cover_url:
-                        cover_data = self.http_client.get_content(result.cover_url, timeout=5)
-                        if cover_data:
-                            return self._save_cover_to_cache(cover_data, cache_key)
+            netease_results = self._search_covers_from_netease(title, artist, album, duration)
+            all_results.extend(netease_results)
+            logger.debug(f"NetEase found {len(netease_results)} results")
         except Exception as e:
-            logger.warning(f"Error fetching cover from NetEase: {e}")
+            logger.warning(f"Error searching cover from NetEase: {e}")
+
+        # Search iTunes for covers with metadata
+        try:
+            itunes_results = self._search_covers_from_itunes(title, artist, album)
+            all_results.extend(itunes_results)
+            logger.debug(f"iTunes found {len(itunes_results)} results")
+        except Exception as e:
+            logger.warning(f"Error searching cover from iTunes: {e}")
+
+        # Find best match from all collected results
+        if all_results:
+            track_info = TrackInfo(
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration
+            )
+            best_match = MatchScorer.find_best_match(track_info, all_results)
+
+            if best_match:
+                result, score = best_match
+                logger.info(f"Best cover match: {result.title} - {result.artist} (score: {score:.1f}, source: {result.source})")
+
+                if score >= 30 and result.cover_url:
+                    cover_data = self.http_client.get_content(result.cover_url, timeout=5)
+                    if cover_data:
+                        return self._save_cover_to_cache(cover_data, cache_key)
 
         # Fallback to other sources (without smart matching)
         sources = [
-            ("iTunes", self._fetch_from_itunes),
             ("MusicBrainz", self._fetch_from_musicbrainz),
             ("Last.fm", self._fetch_from_lastfm),
         ]
@@ -326,12 +339,24 @@ class CoverService:
             List of dicts with cover info for UI display
         """
         results = []
+        all_search_results: List[SearchResult] = []
 
         # Search NetEase
         try:
             netease_results = self._search_covers_from_netease(title, artist, album, duration)
+            all_search_results.extend(netease_results)
+        except Exception as e:
+            logger.error(f"Error searching NetEase covers: {e}", exc_info=True)
 
-            # Use MatchScorer to rank results
+        # Search iTunes
+        try:
+            itunes_results = self._search_covers_from_itunes(title, artist, album)
+            all_search_results.extend(itunes_results)
+        except Exception as e:
+            logger.error(f"Error searching iTunes covers: {e}", exc_info=True)
+
+        # Use MatchScorer to rank all results
+        if all_search_results:
             track_info = TrackInfo(
                 title=title,
                 artist=artist,
@@ -339,7 +364,7 @@ class CoverService:
                 duration=duration
             )
 
-            for result in netease_results:
+            for result in all_search_results:
                 score = MatchScorer.calculate_score(track_info, result)
                 results.append({
                     'title': result.title,
@@ -354,9 +379,6 @@ class CoverService:
 
             # Sort by score descending
             results.sort(key=lambda x: x['score'], reverse=True)
-
-        except Exception as e:
-            logger.error(f"Error searching covers: {e}", exc_info=True)
 
         return results
 
@@ -562,6 +584,57 @@ class CoverService:
             logger.debug(f"MusicBrainz fetch error: {e}")
 
         return None
+
+    def _search_covers_from_itunes(self, title: str, artist: str, album: str) -> List[SearchResult]:
+        """
+        Search for covers from iTunes Search API.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        try:
+            search_url = "https://itunes.apple.com/search"
+
+            # Search for albums
+            params = {
+                'term': f'{artist} {album or title}',
+                'media': 'music',
+                'entity': 'album',
+                'limit': 5
+            }
+
+            response = self.http_client.get(search_url, params=params, timeout=3)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('results'):
+                    for item in data['results']:
+                        artwork_url = item.get('artworkUrl100')
+                        if artwork_url:
+                            # Get larger version
+                            artwork_url = artwork_url.replace('100x100', '600x600')
+
+                            results.append(SearchResult(
+                                title=item.get('collectionName', ''),
+                                artist=item.get('artistName', ''),
+                                album=item.get('collectionName', ''),
+                                duration=None,
+                                source='itunes',
+                                id=str(item.get('collectionId', '')),
+                                cover_url=artwork_url
+                            ))
+
+        except Exception as e:
+            logger.debug(f"iTunes search error: {e}")
+
+        return results
 
     def _fetch_from_itunes(self, artist: str, album: str) -> Optional[bytes]:
         """
