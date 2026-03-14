@@ -529,6 +529,12 @@ class PlaybackService(QObject):
         """
         if track_id is None and cloud_file_id is None:
             track_id = self._current_track_id
+            # For cloud files, get cloud_file_id and cloud_account_id from current item
+            if track_id is None:
+                current_item = self._engine.current_playlist_item
+                if current_item:
+                    cloud_file_id = current_item.cloud_file_id
+                    cloud_account_id = current_item.cloud_account_id
 
         if track_id is None and cloud_file_id is None:
             return False
