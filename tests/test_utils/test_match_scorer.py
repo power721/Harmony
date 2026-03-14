@@ -123,3 +123,54 @@ class TestMatchScorer:
 
         score = MatchScorer.calculate_score(track, result)
         assert score == 100.0
+
+    def test_lyrics_mode_title_highest_weight(self):
+        """Test lyrics mode where title has highest weight."""
+        track = TrackInfo(title="SongA", artist="ArtistA", album="AlbumA", duration=180)
+
+        # Result with matching title but wrong album
+        result1 = SearchResult(title="SongA", artist="ArtistA", album="AlbumB", duration=180, source="netease", id="1")
+        # Result with wrong title but matching album
+        result2 = SearchResult(title="SongB", artist="ArtistA", album="AlbumA", duration=180, source="netease", id="2")
+
+        score1 = MatchScorer.calculate_score(track, result1, mode='lyrics')
+        score2 = MatchScorer.calculate_score(track, result2, mode='lyrics')
+
+        # In lyrics mode, title match should win (title weight=40, album weight=15)
+        # result1: title=100, artist=100, album=50, duration=100 -> 40+30+7.5+15=92.5
+        # result2: title=0, artist=100, album=100, duration=100 -> 0+30+15+15=60
+        assert score1 > score2
+
+    def test_cover_mode_album_highest_weight(self):
+        """Test cover mode where album has highest weight."""
+        track = TrackInfo(title="SongA", artist="ArtistA", album="AlbumA", duration=180)
+
+        # Result with matching title but wrong album
+        result1 = SearchResult(title="SongA", artist="ArtistA", album="AlbumB", duration=180, source="netease", id="1")
+        # Result with wrong title but matching album
+        result2 = SearchResult(title="SongB", artist="ArtistA", album="AlbumA", duration=180, source="netease", id="2")
+
+        score1 = MatchScorer.calculate_score(track, result1, mode='cover')
+        score2 = MatchScorer.calculate_score(track, result2, mode='cover')
+
+        # In cover mode, album match should win (title weight=15, album weight=40)
+        # result1: title=100, artist=100, album=50, duration=100 -> 15+30+20+15=80
+        # result2: title=0, artist=100, album=100, duration=100 -> 0+30+40+15=85
+        assert score2 > score1
+
+    def test_find_best_match_with_mode(self):
+        """Test find_best_match respects mode parameter."""
+        track = TrackInfo(title="SongA", artist="ArtistA", album="AlbumA", duration=180)
+
+        results = [
+            SearchResult(title="SongA", artist="ArtistA", album="AlbumB", duration=180, source="netease", id="1"),
+            SearchResult(title="SongB", artist="ArtistA", album="AlbumA", duration=180, source="netease", id="2"),
+        ]
+
+        # In lyrics mode, result1 should win (title match)
+        best_lyrics, _ = MatchScorer.find_best_match(track, results, mode='lyrics')
+        assert best_lyrics.id == "1"
+
+        # In cover mode, result2 should win (album match)
+        best_cover, _ = MatchScorer.find_best_match(track, results, mode='cover')
+        assert best_cover.id == "2"

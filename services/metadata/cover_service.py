@@ -187,7 +187,7 @@ class CoverService:
         except Exception as e:
             logger.warning(f"Error searching cover from iTunes: {e}")
 
-        # Find best match from all collected results
+        # Find best match from all collected results (use 'cover' mode - album highest weight)
         if all_results:
             track_info = TrackInfo(
                 title=title,
@@ -195,7 +195,7 @@ class CoverService:
                 album=album,
                 duration=duration
             )
-            best_match = MatchScorer.find_best_match(track_info, all_results)
+            best_match = MatchScorer.find_best_match(track_info, all_results, mode='cover')
 
             if best_match:
                 result, score = best_match
@@ -355,7 +355,7 @@ class CoverService:
         except Exception as e:
             logger.error(f"Error searching iTunes covers: {e}", exc_info=True)
 
-        # Use MatchScorer to rank all results
+        # Use MatchScorer to rank all results (use 'cover' mode - album highest weight)
         if all_search_results:
             track_info = TrackInfo(
                 title=title,
@@ -365,7 +365,7 @@ class CoverService:
             )
 
             for result in all_search_results:
-                score = MatchScorer.calculate_score(track_info, result)
+                score = MatchScorer.calculate_score(track_info, result, mode='cover')
                 results.append({
                     'title': result.title,
                     'artist': result.artist,

@@ -45,25 +45,36 @@ class MatchScorer:
     - Duration match (0-15 points)
 
     Total max score: 100 points
+
+    Match modes:
+    - 'lyrics': Title has highest weight (default for lyrics matching)
+    - 'cover': Album has highest weight (default for cover matching)
     """
 
-    # Scoring weights
+    # Default scoring weights (for lyrics mode - title highest)
     TITLE_WEIGHT = 40
     ARTIST_WEIGHT = 30
     ALBUM_WEIGHT = 15
     DURATION_WEIGHT = 15
 
+    # Weights for cover matching (album highest)
+    COVER_TITLE_WEIGHT = 15
+    COVER_ARTIST_WEIGHT = 30
+    COVER_ALBUM_WEIGHT = 40
+    COVER_DURATION_WEIGHT = 15
+
     # Duration tolerance in seconds (±30 seconds)
     DURATION_TOLERANCE = 30
 
     @classmethod
-    def calculate_score(cls, track: TrackInfo, result: SearchResult) -> float:
+    def calculate_score(cls, track: TrackInfo, result: SearchResult, mode: str = 'lyrics') -> float:
         """
         Calculate overall match score between track and search result.
 
         Args:
             track: Original track information
             result: Search result to evaluate
+            mode: Match mode - 'lyrics' (title highest) or 'cover' (album highest)
 
         Returns:
             Match score (0-100)
@@ -73,29 +84,42 @@ class MatchScorer:
         album_score = cls._album_score(track.album, result.album)
         duration_score = cls._duration_score(track.duration, result.duration)
 
+        # Select weights based on mode
+        if mode == 'cover':
+            title_weight = cls.COVER_TITLE_WEIGHT
+            artist_weight = cls.COVER_ARTIST_WEIGHT
+            album_weight = cls.COVER_ALBUM_WEIGHT
+            duration_weight = cls.COVER_DURATION_WEIGHT
+        else:  # 'lyrics' mode (default)
+            title_weight = cls.TITLE_WEIGHT
+            artist_weight = cls.ARTIST_WEIGHT
+            album_weight = cls.ALBUM_WEIGHT
+            duration_weight = cls.DURATION_WEIGHT
+
         total_score = (
-            title_score * cls.TITLE_WEIGHT / 100 +
-            artist_score * cls.ARTIST_WEIGHT / 100 +
-            album_score * cls.ALBUM_WEIGHT / 100 +
-            duration_score * cls.DURATION_WEIGHT / 100
+            title_score * title_weight / 100 +
+            artist_score * artist_weight / 100 +
+            album_score * album_weight / 100 +
+            duration_score * duration_weight / 100
         )
 
         logger.debug(
-            f"Match score: {total_score:.1f} "
-            f"(title={title_score:.0f}%, artist={artist_score:.0f}%, "
-            f"album={album_score:.0f}%, duration={duration_score:.0f}%)"
+            f"Match score ({mode}): {total_score:.1f} "
+            f"(title={title_score:.0f}%×{title_weight}, artist={artist_score:.0f}%×{artist_weight}, "
+            f"album={album_score:.0f}%×{album_weight}, duration={duration_score:.0f}%×{duration_weight})"
         )
 
         return total_score
 
     @classmethod
-    def find_best_match(cls, track: TrackInfo, results: list) -> Optional[tuple]:
+    def find_best_match(cls, track: TrackInfo, results: list, mode: str = 'lyrics') -> Optional[tuple]:
         """
         Find the best matching result from a list.
 
         Args:
             track: Original track information
             results: List of SearchResult objects
+            mode: Match mode - 'lyrics' (title highest) or 'cover' (album highest)
 
         Returns:
             Tuple of (best_result, score) or None if no results
@@ -121,14 +145,14 @@ class MatchScorer:
                     accesskey=result.get('accesskey')
                 )
 
-            score = cls.calculate_score(track, result)
+            score = cls.calculate_score(track, result, mode)
 
             if score > best_score:
                 best_score = score
                 best_result = result
 
         if best_result:
-            logger.info(f"Best match: {best_result.title} - {best_result.artist} (score: {best_score:.1f})")
+            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f})")
 
         return (best_result, best_score) if best_result else None
 

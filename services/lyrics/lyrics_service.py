@@ -533,7 +533,7 @@ class LyricsService:
         if not all_results:
             return ""
 
-        # Use MatchScorer to find best match
+        # Use MatchScorer to find best match (use 'lyrics' mode - title highest weight)
         track_info = TrackInfo(
             title=title,
             artist=artist,
@@ -541,7 +541,7 @@ class LyricsService:
             duration=duration
         )
 
-        best_match = MatchScorer.find_best_match(track_info, all_results)
+        best_match = MatchScorer.find_best_match(track_info, all_results, mode='lyrics')
 
         if best_match:
             result, score = best_match
