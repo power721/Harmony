@@ -235,6 +235,11 @@ class CloudLoginDialog(QDialog):
         if hasattr(self, '_qr_url') and self._qr_url:
             QTimer.singleShot(100, lambda: self._display_qr_code(self._qr_url))
 
+    def reject(self):
+        """Handle dialog rejection (cancel button or Escape key)"""
+        self._poll_timer.stop()
+        super().reject()
+
     def closeEvent(self, event):
         """Clean up on close"""
         self._poll_timer.stop()
