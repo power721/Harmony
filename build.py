@@ -15,6 +15,7 @@ import platform
 import subprocess
 import shutil
 import argparse
+import glob
 from pathlib import Path
 from datetime import datetime
 
@@ -95,6 +96,7 @@ def find_icon(platform_name: str) -> Path:
 
     # Check common icon locations
     icon_paths = [
+        PROJECT_ROOT / f"icon{icon_extension}",
         PROJECT_ROOT / f"icons{icon_extension}",
         PROJECT_ROOT / "icons" / f"icon{icon_extension}",
         PROJECT_ROOT / "resources" / f"icon{icon_extension}",
@@ -106,7 +108,140 @@ def find_icon(platform_name: str) -> Path:
         if icon_path.exists():
             return icon_path
 
+    # If platform-specific icon not found, try to generate from PNG
+    if platform_name in ("darwin", "windows"):
+        png_icon = find_png_icon()
+        if png_icon:
+            generated_icon = generate_icon(png_icon, platform_name)
+            if generated_icon:
+                return generated_icon
+
     return None
+
+
+def find_png_icon() -> Path:
+    """Find PNG icon file for conversion."""
+    png_paths = [
+        PROJECT_ROOT / "icon.png",
+        PROJECT_ROOT / "icons.png",
+        PROJECT_ROOT / "icons" / "icon.png",
+        PROJECT_ROOT / "resources" / "icon.png",
+        PROJECT_ROOT / "assets" / "icon.png",
+        PROJECT_ROOT / f"{APP_NAME.lower()}.png",
+    ]
+    for png_path in png_paths:
+        if png_path.exists():
+            return png_path
+    return None
+
+
+def generate_icon(png_path: Path, platform_name: str) -> Path:
+    """Generate platform-specific icon from PNG."""
+    output_dir = PROJECT_ROOT / "icons"
+    output_dir.mkdir(exist_ok=True)
+
+    if platform_name == "windows":
+        output_path = output_dir / "icon.ico"
+        if output_path.exists():
+            return output_path
+        return generate_ico(png_path, output_path)
+    elif platform_name == "darwin":
+        output_path = output_dir / "icon.icns"
+        if output_path.exists():
+            return output_path
+        return generate_icns(png_path, output_path)
+
+    return None
+
+
+def generate_ico(png_path: Path, output_path: Path) -> Path:
+    """Generate ICO file from PNG using Pillow."""
+    try:
+        from PIL import Image
+
+        print(f"Generating ICO from {png_path}...")
+        img = Image.open(png_path)
+
+        # Generate multiple sizes for ICO
+        sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+        icons = []
+        for size in sizes:
+            resized = img.resize(size, Image.Resampling.LANCZOS)
+            icons.append(resized)
+
+        # Save as ICO with multiple sizes
+        icons[0].save(
+            output_path,
+            format="ICO",
+            sizes=[(i.width, i.height) for i in icons],
+            append_images=icons[1:],
+        )
+        print(f"Generated: {output_path}")
+        return output_path
+
+    except ImportError:
+        print("Warning: Pillow not installed, cannot generate ICO. Install with: pip install Pillow")
+        return None
+    except Exception as e:
+        print(f"Warning: Failed to generate ICO: {e}")
+        return None
+
+
+def generate_icns(png_path: Path, output_path: Path) -> Path:
+    """Generate ICNS file from PNG."""
+    try:
+        from PIL import Image
+        import tempfile
+        import shutil
+
+        print(f"Generating ICNS from {png_path}...")
+        img = Image.open(png_path)
+
+        # Create temporary iconset directory
+        iconset_dir = output_path.parent / "icon.iconset"
+        iconset_dir.mkdir(exist_ok=True)
+
+        # ICNS requires specific sizes with specific names
+        size_map = {
+            "icon_16x16.png": 16,
+            "icon_16x16@2x.png": 32,
+            "icon_32x32.png": 32,
+            "icon_32x32@2x.png": 64,
+            "icon_128x128.png": 128,
+            "icon_128x128@2x.png": 256,
+            "icon_256x256.png": 256,
+            "icon_256x256@2x.png": 512,
+            "icon_512x512.png": 512,
+            "icon_512x512@2x.png": 1024,
+        }
+
+        for filename, size in size_map.items():
+            resized = img.resize((size, size), Image.Resampling.LANCZOS)
+            resized.save(iconset_dir / filename)
+
+        # Use iconutil on macOS, or just use the PNG directly
+        if platform.system() == "Darwin":
+            subprocess.run(
+                ["iconutil", "-c", "icns", "-o", str(output_path), str(iconset_dir)],
+                check=True,
+            )
+            print(f"Generated: {output_path}")
+        else:
+            # On non-macOS, we can't create proper ICNS, use PNG fallback
+            print("Warning: ICNS generation requires macOS. Using PNG fallback.")
+            shutil.rmtree(iconset_dir)
+            return None
+
+        # Clean up
+        shutil.rmtree(iconset_dir)
+        return output_path
+
+    except ImportError:
+        print("Warning: Pillow not installed, cannot generate ICNS. Install with: pip install Pillow")
+        return None
+    except Exception as e:
+        print(f"Warning: Failed to generate ICNS: {e}")
+        return None
 
 
 def collect_data_files() -> list:
@@ -126,6 +261,241 @@ def collect_data_files() -> list:
             datas.append((str(dir_path), data_dir))
 
     return datas
+
+
+def collect_ssl_certificates() -> list:
+    """Collect SSL certificates for HTTPS connections."""
+    datas = []
+
+    # Use collect_data_files for certifi
+    try:
+        from PyInstaller.utils.hooks import collect_data_files
+        datas += collect_data_files("certifi")
+        print("Added certifi data files via collect_data_files")
+    except Exception as e:
+        print(f"Warning: Could not collect certifi data files: {e}")
+        # Fallback: try to find certifi certificates manually
+        try:
+            import certifi
+            cert_path = Path(certifi.where())
+            if cert_path.exists():
+                datas.append((str(cert_path), "certifi"))
+                print(f"Found certifi certificates: {cert_path}")
+        except ImportError:
+            print("Warning: certifi not installed, SSL may not work properly")
+
+    # Also try to find system certificates (Linux)
+    system_cert_paths = [
+        "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu
+        "/etc/pki/tls/certs/ca-bundle.crt",    # RHEL/CentOS
+        "/etc/ssl/ca-bundle.pem",               # OpenSUSE
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  # Fedora
+    ]
+
+    for cert_path in system_cert_paths:
+        if Path(cert_path).exists():
+            datas.append((cert_path, "certs"))
+            print(f"Found system certificates: {cert_path}")
+            break
+
+    return datas
+
+
+def collect_hidden_imports() -> list:
+    """Collect hidden imports using PyInstaller's collect_submodules."""
+    hiddenimports = []
+
+    try:
+        from PyInstaller.utils.hooks import collect_submodules
+
+        # 网络请求相关 - 自动收集所有子模块
+        for package in ["requests", "urllib3", "certifi", "charset_normalizer", "idna"]:
+            try:
+                hiddenimports += collect_submodules(package)
+                print(f"Collected submodules for: {package}")
+            except Exception as e:
+                print(f"Warning: Could not collect submodules for {package}: {e}")
+
+        # 音频元数据
+        try:
+            hiddenimports += collect_submodules("mutagen")
+            print("Collected submodules for: mutagen")
+        except Exception as e:
+            print(f"Warning: Could not collect mutagen submodules: {e}")
+
+        # 其他依赖
+        for package in ["PIL", "qrcode", "bs4", "lxml"]:
+            try:
+                hiddenimports += collect_submodules(package)
+                print(f"Collected submodules for: {package}")
+            except Exception as e:
+                print(f"Warning: Could not collect submodules for {package}: {e}")
+
+    except ImportError:
+        print("Warning: PyInstaller hooks not available, using fallback list")
+        # Fallback to manual list
+        hiddenimports = get_fallback_hidden_imports()
+
+    # 添加核心模块
+    hiddenimports += [
+        "ssl",
+        "_ssl",
+        "PySide6.QtCore",
+        "PySide6.QtGui",
+        "PySide6.QtWidgets",
+        "PySide6.QtMultimedia",
+        "PySide6.QtNetwork",
+        "PySide6.QtSvg",
+    ]
+
+    # 去重
+    return list(set(hiddenimports))
+
+
+def get_fallback_hidden_imports() -> list:
+    """Fallback hidden imports list if collect_submodules is not available."""
+    return [
+        "requests", "urllib3", "certifi", "charset_normalizer", "idna",
+        "mutagen", "mutagen.easyid3", "mutagen.id3", "mutagen.flac",
+        "mutagen.ogg", "mutagen.oggflac", "mutagen.oggopus", "mutagen.oggvorbis",
+        "mutagen.mp4", "mutagen.asf", "mutagen.apev2", "mutagen.musepack",
+        "mutagen.optimfrog", "mutagen.trueaudio", "mutagen.wavpack",
+        "mutagen.dsf", "mutagen.dsd", "mutagen.smf", "mutagen.aac",
+        "mutagen.ac3", "mutagen.aiff", "mutagen.monkeysaudio",
+        "PIL", "PIL._imaging", "qrcode", "qrcode.util",
+        "qrcode.image.pil", "qrcode.image.svg",
+        "bs4", "lxml", "lxml.etree", "lxml._elementpath",
+    ]
+
+
+def find_openssl_libs() -> list:
+    """自动查找OpenSSL动态库 - 优先使用Python _ssl模块实际链接的库"""
+    binaries = []
+
+    # 方法1: 通过 _ssl 模块获取实际链接的SSL库
+    try:
+        import _ssl
+        ssl_so = _ssl.__file__
+        result = subprocess.run(
+            ["ldd", ssl_so],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        for line in result.stdout.splitlines():
+            if "libssl.so" in line or "libcrypto.so" in line:
+                parts = line.split("=>")
+                if len(parts) >= 2:
+                    lib_path = parts[1].split("(")[0].strip()
+                    # 规范化路径（处理 ../ 等）
+                    lib_path = os.path.normpath(lib_path)
+                    if os.path.exists(lib_path):
+                        binaries.append((lib_path, "."))
+                        print(f"[INFO] Found Python's OpenSSL: {lib_path}")
+
+    except Exception as e:
+        print(f"[WARN] Could not detect Python's SSL libs via ldd: {e}")
+
+    # 方法2: 检查conda/miniforge环境
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        conda_libs = [
+            os.path.join(conda_prefix, "lib", "libssl.so.3"),
+            os.path.join(conda_prefix, "lib", "libcrypto.so.3"),
+            os.path.join(conda_prefix, "lib", "libssl.so.1.1"),
+            os.path.join(conda_prefix, "lib", "libcrypto.so.1.1"),
+        ]
+        for lib_path in conda_libs:
+            if os.path.exists(lib_path) and (lib_path, ".") not in binaries:
+                binaries.append((lib_path, "."))
+                print(f"[INFO] Found Conda OpenSSL: {lib_path}")
+
+    # 方法3: 系统库作为备选
+    if not binaries:
+        print("[WARN] No Python-linked SSL found, falling back to system libs")
+        possible_paths = [
+            # Ubuntu 22.04+ / Debian (OpenSSL 3.x)
+            "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+            "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+            # Ubuntu 20.04 / Debian (OpenSSL 1.1)
+            "/usr/lib/x86_64-linux-gnu/libssl.so.1.1",
+            "/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1",
+            # Fedora / RHEL
+            "/usr/lib64/libssl.so.3",
+            "/usr/lib64/libcrypto.so.3",
+            "/usr/lib64/libssl.so.1.1",
+            "/usr/lib64/libcrypto.so.1.1",
+            # Arch Linux
+            "/usr/lib/libssl.so.3",
+            "/usr/lib/libcrypto.so.3",
+        ]
+
+        for lib_path in possible_paths:
+            if os.path.exists(lib_path):
+                binaries.append((lib_path, "."))
+                print(f"[INFO] Found System OpenSSL: {lib_path}")
+
+    # 去重
+    return list(set(binaries))
+
+
+def find_qt_plugins() -> list:
+    """收集Qt插件目录"""
+    binaries = []
+
+    # 获取site-packages路径
+    try:
+        import site
+        site_packages = None
+        for sp in site.getsitepackages():
+            if 'site-packages' in sp:
+                site_packages = sp
+                break
+        if not site_packages:
+            site_packages = site.getsitepackages()[0]
+
+        qt_plugins = os.path.join(site_packages, "PySide6", "plugins")
+
+        # 需要打包的Qt插件目录
+        plugin_dirs = ["platforms", "imageformats", "multimedia", "audio", "mediaservice"]
+
+        for plugin_name in plugin_dirs:
+            plugin_path = os.path.join(qt_plugins, plugin_name)
+            if os.path.exists(plugin_path):
+                binaries.append((plugin_path, f"PySide6/plugins/{plugin_name}"))
+                print(f"[INFO] Found Qt plugin: {plugin_name}")
+
+    except Exception as e:
+        print(f"Warning: Could not find Qt plugins: {e}")
+
+    return binaries
+
+
+def find_ffmpeg_libs() -> list:
+    """查找FFmpeg库（QtMultimedia依赖）"""
+    binaries = []
+
+    if platform.system() != "Linux":
+        return binaries
+
+    ffmpeg_libs = ["libavcodec", "libavformat", "libavutil", "libswresample", "libswscale"]
+
+    for lib_name in ffmpeg_libs:
+        patterns = [
+            f"/usr/lib/x86_64-linux-gnu/{lib_name}.so*",
+            f"/usr/lib64/{lib_name}.so*",
+            f"/usr/lib/{lib_name}.so*",
+        ]
+        for pattern in patterns:
+            matches = glob.glob(pattern)
+            if matches:
+                # 只取第一个匹配（通常是最新版本）
+                binaries.append((matches[0], "."))
+                print(f"[INFO] Found FFmpeg: {matches[0]}")
+                break
+
+    return binaries
 
 
 def clean_build_dirs():
@@ -217,56 +587,28 @@ def build_executable(
         cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
         print(f"Adding data: {src} -> {dst}")
 
-    # Add hidden imports for PySide6
-    hidden_imports = [
-        "PySide6.QtCore",
-        "PySide6.QtGui",
-        "PySide6.QtWidgets",
-        "PySide6.QtMultimedia",
-        "PySide6.QtNetwork",
-        "PySide6.QtSvg",
-        "mutagen",
-        "mutagen.easyid3",
-        "mutagen.id3",
-        "mutagen.flac",
-        "mutagen.ogg",
-        "mutagen.oggflac",
-        "mutagen.oggopus",
-        "mutagen.oggvorbis",
-        "mutagen.mp4",
-        "mutagen.asf",
-        "mutagen.apev2",
-        "mutagen.musepack",
-        "mutagen.optimfrog",
-        "mutagen.trueaudio",
-        "mutagen.wavpack",
-        "mutagen.dsf",
-        "mutagen.dsd",
-        "mutagen.smf",
-        "mutagen.aac",
-        "mutagen.ac3",
-        "mutagen.aiff",
-        "mutagen.monkeysaudio",
-        "mutagen.musepack",
-        "mutagen.oggflac",
-        "mutagen.oggopus",
-        "mutagen.oggvorbis",
-        "mutagen.optimfrog",
-        "mutagen.trueaudio",
-        "mutagen.wavpack",
-        "requests",
-        "bs4",
-        "lxml",
-        "lxml.etree",
-        "lxml._elementpath",
-        "PIL",
-        "PIL._imaging",
-        "qrcode",
-        "qrcode.util",
-        "qrcode.image.pil",
-        "qrcode.image.svg",
-        "pymediainfo",
-    ]
+    # Add hidden imports - 使用自动收集
+    print("\nCollecting hidden imports...")
+    hidden_imports = collect_hidden_imports()
+    print(f"Total hidden imports: {len(hidden_imports)}")
+
+    # Add SSL certificates
+    ssl_datas = collect_ssl_certificates()
+    for src, dst in ssl_datas:
+        cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
+        print(f"Adding SSL certs: {src} -> {dst}")
+
+    # Add binaries (OpenSSL, Qt plugins, FFmpeg)
+    print("\nCollecting binaries...")
+    all_binaries = []
+    all_binaries += find_openssl_libs()
+    all_binaries += find_qt_plugins()
+    all_binaries += find_ffmpeg_libs()
+    print(f"Total binaries: {len(all_binaries)}")
+
+    for src, dst in all_binaries:
+        cmd.extend(["--add-binary", f"{src}{os.pathsep}{dst}"])
+        print(f"Adding binary: {src} -> {dst}")
 
     for hidden_import in hidden_imports:
         cmd.extend(["--hidden-import", hidden_import])
@@ -432,6 +774,120 @@ Built with PySide6 (Qt6) and Python {platform.python_version()}
     print(f"README written to: {readme_path}")
 
 
+def create_linux_package():
+    """Create Linux installation package with .desktop file and icon."""
+    print("\nCreating Linux package...")
+
+    # Copy icon to dist directory
+    icon_src = PROJECT_ROOT / "icon.png"
+    if icon_src.exists():
+        icon_dst = DIST_DIR / "harmony.png"
+        shutil.copy(icon_src, icon_dst)
+        print(f"Copied icon: {icon_dst}")
+
+    # Copy .desktop file
+    desktop_src = PROJECT_ROOT / "harmony.desktop"
+    if desktop_src.exists():
+        desktop_dst = DIST_DIR / "harmony.desktop"
+        shutil.copy(desktop_src, desktop_dst)
+        print(f"Copied .desktop file: {desktop_dst}")
+
+    # Create install script
+    install_script = f"""#!/bin/bash
+# Harmony Music Player - Linux Installation Script
+
+set -e
+
+INSTALL_DIR="/opt/{APP_NAME.lower()}"
+BIN_LINK="/usr/local/bin/{APP_NAME.lower()}"
+DESKTOP_FILE="/usr/share/applications/{APP_NAME.lower()}.desktop"
+ICON_FILE="/usr/share/icons/hicolor/512x512/apps/{APP_NAME.lower()}.png"
+
+echo "Installing {APP_NAME} Music Player..."
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (sudo ./install.sh)"
+    exit 1
+fi
+
+# Create installation directory
+mkdir -p "$INSTALL_DIR"
+
+# Copy executable
+cp {APP_NAME} "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/{APP_NAME}"
+
+# Copy icon
+if [ -f "{APP_NAME.lower()}.png" ]; then
+    mkdir -p /usr/share/icons/hicolor/512x512/apps
+    cp {APP_NAME.lower()}.png "$ICON_FILE"
+    gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+# Install .desktop file
+if [ -f "{APP_NAME.lower()}.desktop" ]; then
+    # Update paths in .desktop file
+    sed -e "s|Exec=.*|Exec=$INSTALL_DIR/{APP_NAME} %F|" \\
+        -e "s|Icon=.*|Icon={APP_NAME.lower()}|" \\
+        {APP_NAME.lower()}.desktop > "$DESKTOP_FILE"
+fi
+
+# Create symlink in PATH
+ln -sf "$INSTALL_DIR/{APP_NAME}" "$BIN_LINK"
+
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "You can now run {APP_NAME} by:"
+echo "  - Typing '{APP_NAME.lower()}' in terminal"
+echo "  - Finding it in your application menu"
+echo ""
+echo "To uninstall, run: sudo ./uninstall.sh"
+"""
+    install_path = DIST_DIR / "install.sh"
+    with open(install_path, "w") as f:
+        f.write(install_script)
+    os.chmod(install_path, 0o755)
+    print(f"Created install script: {install_path}")
+
+    # Create uninstall script
+    uninstall_script = f"""#!/bin/bash
+# Harmony Music Player - Linux Uninstallation Script
+
+set -e
+
+INSTALL_DIR="/opt/{APP_NAME.lower()}"
+BIN_LINK="/usr/local/bin/{APP_NAME.lower()}"
+DESKTOP_FILE="/usr/share/applications/{APP_NAME.lower()}.desktop"
+ICON_FILE="/usr/share/icons/hicolor/512x512/apps/{APP_NAME.lower()}.png"
+
+echo "Uninstalling {APP_NAME} Music Player..."
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (sudo ./uninstall.sh)"
+    exit 1
+fi
+
+# Remove files
+rm -rf "$INSTALL_DIR"
+rm -f "$BIN_LINK"
+rm -f "$DESKTOP_FILE"
+rm -f "$ICON_FILE"
+
+# Update icon cache
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+
+echo "✓ Uninstallation complete!"
+"""
+    uninstall_path = DIST_DIR / "uninstall.sh"
+    with open(uninstall_path, "w") as f:
+        f.write(uninstall_script)
+    os.chmod(uninstall_path, 0o755)
+    print(f"Created uninstall script: {uninstall_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=f"Build {APP_NAME} executable for different platforms"
@@ -482,6 +938,7 @@ def main():
     else:
         # Build for single platform
         target = None if args.platform == "current" else args.platform
+        target_platform = target or platform.system().lower()
         success = build_executable(
             platform_name=target,
             one_file=not args.dir,
@@ -491,6 +948,9 @@ def main():
 
         if success:
             create_readme()
+            # Create platform-specific packages
+            if target_platform == "linux":
+                create_linux_package()
 
     print("\nDone!")
 

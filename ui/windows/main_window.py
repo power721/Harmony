@@ -3,6 +3,7 @@ Main application window for the music player.
 """
 import logging
 
+from app import Bootstrap
 from domain.playback import PlaybackState
 from infrastructure.database import DatabaseManager
 from services import PlaybackService
@@ -715,14 +716,18 @@ class MainWindow(QMainWindow):
         logger.info(f"[MainWindow] Scanning music folder: {folder}")
 
         # Create worker class for scanning
+        # Get cover service for saving covers
+        cover_service = Bootstrap.instance().cover_service
+
         class ScanWorker(QObject):
             progress = Signal(int, str)  # value, filename
             finished = Signal(int, int)  # added, skipped
 
-            def __init__(self, folder_path, db):
+            def __init__(self, folder_path, db, cover_svc):
                 super().__init__()
                 self.folder_path = folder_path
                 self.db = db
+                self.cover_service = cover_svc
                 self._cancelled = False
 
             def cancel(self):
@@ -764,7 +769,7 @@ class MainWindow(QMainWindow):
                         metadata = MetadataService.extract_metadata(str(audio_file))
 
                         # Save cover art from metadata
-                        cover_path = self._playback.save_cover_from_metadata(
+                        cover_path = self.cover_service.save_cover_from_metadata(
                             str(audio_file), metadata.get("cover")
                         )
 
@@ -799,7 +804,7 @@ class MainWindow(QMainWindow):
         progress.show()
 
         # Create worker and thread
-        self._scan_worker = ScanWorker(folder, self._db)
+        self._scan_worker = ScanWorker(folder, self._db, cover_service)
         self._scan_thread = QThread()
         self._scan_worker.moveToThread(self._scan_thread)
 

@@ -13,7 +13,42 @@ Architecture:
 """
 
 import sys
+import os
 import logging
+from pathlib import Path
+
+# Setup SSL certificates for PyInstaller bundle
+def setup_ssl_certificates():
+    """Setup SSL certificates for HTTPS connections in PyInstaller bundle."""
+    # Check if running in PyInstaller bundle
+    if getattr(sys, 'frozen', False):
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = Path(sys._MEIPASS)
+
+        # Try certifi bundled certificates
+        certifi_cert = base_path / "certifi" / "cacert.pem"
+        if certifi_cert.exists():
+            os.environ['SSL_CERT_FILE'] = str(certifi_cert)
+            os.environ['REQUESTS_CA_BUNDLE'] = str(certifi_cert)
+            return
+
+        # Try system bundled certificates
+        system_cert = base_path / "certs" / "ca-certificates.crt"
+        if system_cert.exists():
+            os.environ['SSL_CERT_FILE'] = str(system_cert)
+            os.environ['REQUESTS_CA_BUNDLE'] = str(system_cert)
+            return
+
+        # Fallback: try to use certifi at runtime
+        try:
+            import certifi
+            os.environ['SSL_CERT_FILE'] = certifi.where()
+            os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+        except ImportError:
+            pass
+
+# Setup SSL before any HTTPS requests
+setup_ssl_certificates()
 
 # Configure logging
 logging.basicConfig(

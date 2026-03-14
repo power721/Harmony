@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Harmony
+Comment=Modern Music Player with Spotify-like Interface
+Exec=/opt/harmony/Harmony %F
+Icon=harmony
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;Qt;
+Keywords=music;player;audio;mp3;flac;
+StartupNotify=true
+StartupWMClass=harmony
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/x-m4a;
