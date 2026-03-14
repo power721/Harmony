@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QColor
 
 from domain.artist import Artist
@@ -28,6 +28,19 @@ from system.event_bus import EventBus
 logger = logging.getLogger(__name__)
 
 
+class LoadArtistsWorker(QThread):
+    """Background worker to load artists."""
+    finished = Signal(list)
+
+    def __init__(self, library_service: LibraryService, parent=None):
+        super().__init__(parent)
+        self._library = library_service
+
+    def run(self):
+        artists = self._library.get_artists()
+        self.finished.emit(artists)
+
+
 class ArtistsView(QWidget):
     """
     Artists page displaying a scrollable grid of artist cards.
@@ -36,6 +49,7 @@ class ArtistsView(QWidget):
         - Responsive grid layout
         - Search/filter functionality
         - Click to view artist detail
+        - Lazy loading for better performance
     """
 
     artist_clicked = Signal(object)  # Emits Artist object
@@ -57,10 +71,18 @@ class ArtistsView(QWidget):
         self._artists: List[Artist] = []
         self._filtered_artists: List[Artist] = []
         self._cards: List[ArtistCard] = []
+        self._data_loaded = False
+        self._load_worker = None
 
         self._setup_ui()
         self._connect_signals()
-        self._load_artists()
+        # Don't load data here - use lazy loading
+
+    def showEvent(self, event):
+        """Load data when view is first shown."""
+        super().showEvent(event)
+        if not self._data_loaded:
+            self._load_artists()
 
     def _setup_ui(self):
         """Set up the artists view UI."""
@@ -206,25 +228,34 @@ class ArtistsView(QWidget):
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
 
     def _load_artists(self):
-        """Load artists from library."""
+        """Load artists from library in background thread."""
+        if self._data_loaded:
+            return
+
         self._loading.show()
         self._grid_container.hide()
 
-        # Use QTimer to allow UI to update
-        QTimer.singleShot(10, self._do_load_artists)
+        # Use background thread to load data
+        self._load_worker = LoadArtistsWorker(self._library)
+        self._load_worker.finished.connect(self._on_artists_loaded)
+        self._load_worker.start()
 
-    def _do_load_artists(self):
-        """Actually load artists (called from timer)."""
-        try:
-            self._artists = self._library.get_artists()
-            self._filtered_artists = self._artists.copy()
-            self._update_count_label()
-            self._render_grid()
-        except Exception as e:
-            logger.error(f"Error loading artists: {e}")
-        finally:
-            self._loading.hide()
-            self._grid_container.show()
+    def _on_artists_loaded(self, artists: List[Artist]):
+        """Handle artists loaded from background thread."""
+        self._artists = artists
+        self._filtered_artists = artists.copy()
+        self._data_loaded = True
+
+        self._update_count_label()
+        self._render_grid()
+
+        self._loading.hide()
+        self._grid_container.show()
+
+        # Clean up worker
+        if self._load_worker:
+            self._load_worker.deleteLater()
+            self._load_worker = None
 
     def _update_count_label(self):
         """Update the artist count label."""

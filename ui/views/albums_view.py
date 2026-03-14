@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QColor
 
 from domain.album import Album
@@ -30,6 +30,19 @@ from system.event_bus import EventBus
 logger = logging.getLogger(__name__)
 
 
+class LoadAlbumsWorker(QThread):
+    """Background worker to load albums."""
+    finished = Signal(list)
+
+    def __init__(self, library_service: LibraryService, parent=None):
+        super().__init__(parent)
+        self._library = library_service
+
+    def run(self):
+        albums = self._library.get_albums()
+        self.finished.emit(albums)
+
+
 class AlbumsView(QWidget):
     """
     Albums page displaying a scrollable grid of album cards.
@@ -38,6 +51,7 @@ class AlbumsView(QWidget):
         - Responsive grid layout
         - Search/filter functionality
         - Click to view album tracks
+        - Lazy loading for better performance
     """
 
     album_clicked = Signal(object)  # Emits Album object
@@ -60,10 +74,18 @@ class AlbumsView(QWidget):
         self._albums: List[Album] = []
         self._filtered_albums: List[Album] = []
         self._cards: List[AlbumCard] = []
+        self._data_loaded = False
+        self._load_worker = None
 
         self._setup_ui()
         self._connect_signals()
-        self._load_albums()
+        # Don't load data here - use lazy loading
+
+    def showEvent(self, event):
+        """Load data when view is first shown."""
+        super().showEvent(event)
+        if not self._data_loaded:
+            self._load_albums()
 
     def _setup_ui(self):
         """Set up the albums view UI."""
@@ -209,25 +231,34 @@ class AlbumsView(QWidget):
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
 
     def _load_albums(self):
-        """Load albums from library."""
+        """Load albums from library in background thread."""
+        if self._data_loaded:
+            return
+
         self._loading.show()
         self._grid_container.hide()
 
-        # Use QTimer to allow UI to update
-        QTimer.singleShot(10, self._do_load_albums)
+        # Use background thread to load data
+        self._load_worker = LoadAlbumsWorker(self._library)
+        self._load_worker.finished.connect(self._on_albums_loaded)
+        self._load_worker.start()
 
-    def _do_load_albums(self):
-        """Actually load albums (called from timer)."""
-        try:
-            self._albums = self._library.get_albums()
-            self._filtered_albums = self._albums.copy()
-            self._update_count_label()
-            self._render_grid()
-        except Exception as e:
-            logger.error(f"Error loading albums: {e}")
-        finally:
-            self._loading.hide()
-            self._grid_container.show()
+    def _on_albums_loaded(self, albums: List[Album]):
+        """Handle albums loaded from background thread."""
+        self._albums = albums
+        self._filtered_albums = albums.copy()
+        self._data_loaded = True
+
+        self._update_count_label()
+        self._render_grid()
+
+        self._loading.hide()
+        self._grid_container.show()
+
+        # Clean up worker
+        if self._load_worker:
+            self._load_worker.deleteLater()
+            self._load_worker = None
 
     def _update_count_label(self):
         """Update the album count label."""

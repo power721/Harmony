@@ -152,7 +152,10 @@ class Bootstrap:
                 playlist_repo=self.playlist_repo,
                 event_bus=self.event_bus,
                 cover_service=self.cover_service,
+                db_manager=self.db,
             )
+            # Initialize cache if needed
+            self._library_service.init_cache()
         return self._library_service
 
     @property

@@ -488,6 +488,72 @@ class DatabaseManager:
                        END
                        """)
 
+        # Create albums cache table
+        cursor.execute("""
+                       CREATE TABLE IF NOT EXISTS albums_cache
+                       (
+                           id
+                           INTEGER
+                           PRIMARY
+                           KEY
+                           AUTOINCREMENT,
+                           name
+                           TEXT
+                           NOT
+                           NULL,
+                           artist
+                           TEXT
+                           NOT
+                           NULL,
+                           cover_path
+                           TEXT,
+                           song_count
+                           INTEGER
+                           DEFAULT
+                           0,
+                           total_duration
+                           REAL
+                           DEFAULT
+                           0,
+                           updated_at
+                           TIMESTAMP
+                           DEFAULT
+                           CURRENT_TIMESTAMP,
+                           UNIQUE(name, artist)
+                       )
+                       """)
+
+        # Create artists cache table
+        cursor.execute("""
+                       CREATE TABLE IF NOT EXISTS artists_cache
+                       (
+                           id
+                           INTEGER
+                           PRIMARY
+                           KEY
+                           AUTOINCREMENT,
+                           name
+                           TEXT
+                           UNIQUE
+                           NOT
+                           NULL,
+                           cover_path
+                           TEXT,
+                           song_count
+                           INTEGER
+                           DEFAULT
+                           0,
+                           album_count
+                           INTEGER
+                           DEFAULT
+                           0,
+                           updated_at
+                           TIMESTAMP
+                           DEFAULT
+                           CURRENT_TIMESTAMP
+                       )
+                       """)
+
         # Run migrations for existing databases
         self._run_migrations(conn, cursor)
 
@@ -2118,3 +2184,122 @@ class DatabaseManager:
         row = cursor.fetchone()
 
         return row["count"] if row else 0
+
+    # Album cache operations
+
+    def refresh_albums_cache(self) -> bool:
+        """
+        Refresh the albums cache from tracks table.
+
+        Returns:
+            True if successful
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Clear existing cache
+        cursor.execute("DELETE FROM albums_cache")
+
+        # Populate cache from tracks
+        cursor.execute("""
+            INSERT INTO albums_cache (name, artist, cover_path, song_count, total_duration)
+            SELECT
+                album as name,
+                artist,
+                cover_path,
+                COUNT(*) as song_count,
+                SUM(duration) as total_duration
+            FROM tracks
+            WHERE album IS NOT NULL AND album != ''
+            GROUP BY album, artist
+        """)
+
+        conn.commit()
+        return True
+
+    def get_albums_from_cache(self) -> List[dict]:
+        """
+        Get all albums from cache.
+
+        Returns:
+            List of album dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT name, artist, cover_path, song_count, total_duration
+            FROM albums_cache
+            ORDER BY song_count DESC
+        """)
+
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def is_albums_cache_empty(self) -> bool:
+        """Check if albums cache is empty."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM albums_cache")
+        row = cursor.fetchone()
+        return row["count"] == 0 if row else True
+
+    # Artist cache operations
+
+    def refresh_artists_cache(self) -> bool:
+        """
+        Refresh the artists cache from tracks table.
+
+        Returns:
+            True if successful
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Clear existing cache
+        cursor.execute("DELETE FROM artists_cache")
+
+        # Populate cache from tracks
+        cursor.execute("""
+            INSERT INTO artists_cache (name, cover_path, song_count, album_count)
+            SELECT
+                artist as name,
+                (SELECT cover_path FROM tracks t2
+                 WHERE t2.artist = tracks.artist AND cover_path IS NOT NULL
+                 LIMIT 1) as cover_path,
+                COUNT(*) as song_count,
+                COUNT(DISTINCT album) as album_count
+            FROM tracks
+            WHERE artist IS NOT NULL AND artist != ''
+            GROUP BY artist
+        """)
+
+        conn.commit()
+        return True
+
+    def get_artists_from_cache(self) -> List[dict]:
+        """
+        Get all artists from cache.
+
+        Returns:
+            List of artist dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT name, cover_path, song_count, album_count
+            FROM artists_cache
+            ORDER BY song_count DESC
+        """)
+
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def is_artists_cache_empty(self) -> bool:
+        """Check if artists cache is empty."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM artists_cache")
+        row = cursor.fetchone()
+        return row["count"] == 0 if row else True

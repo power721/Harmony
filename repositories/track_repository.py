@@ -154,9 +154,12 @@ class SqliteTrackRepository:
 
     # ===== Album Operations =====
 
-    def get_albums(self) -> List['Album']:
+    def get_albums(self, use_cache: bool = True) -> List['Album']:
         """
         Get all albums aggregated from tracks.
+
+        Args:
+            use_cache: If True, use cache table for faster loading
 
         Returns:
             List of Album objects with aggregated info
@@ -165,6 +168,29 @@ class SqliteTrackRepository:
 
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # Try to use cache first
+        if use_cache:
+            cursor.execute("SELECT COUNT(*) as count FROM albums_cache")
+            if cursor.fetchone()["count"] > 0:
+                cursor.execute("""
+                    SELECT name, artist, cover_path, song_count, total_duration
+                    FROM albums_cache
+                    ORDER BY song_count DESC
+                """)
+                rows = cursor.fetchall()
+                return [
+                    Album(
+                        name=row["name"] or "",
+                        artist=row["artist"] or "",
+                        cover_path=row["cover_path"],
+                        song_count=row["song_count"] or 0,
+                        duration=row["total_duration"] or 0.0,
+                    )
+                    for row in rows
+                ]
+
+        # Fallback to direct query (slower)
         cursor.execute("""
             SELECT
                 album as name,
@@ -175,7 +201,7 @@ class SqliteTrackRepository:
             FROM tracks
             WHERE album IS NOT NULL AND album != ''
             GROUP BY album, artist
-            ORDER BY artist, album
+            ORDER BY song_count DESC
         """)
         rows = cursor.fetchall()
 
@@ -222,17 +248,42 @@ class SqliteTrackRepository:
 
     # ===== Artist Operations =====
 
-    def get_artists(self) -> List['Artist']:
+    def get_artists(self, use_cache: bool = True) -> List['Artist']:
         """
         Get all artists aggregated from tracks.
 
+        Args:
+            use_cache: If True, use cache table for faster loading
+
         Returns:
-            List of Artist objects with aggregated info
+            List of Artist objects with aggregated info, sorted by song count descending
         """
         from domain.artist import Artist
 
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # Try to use cache first
+        if use_cache:
+            cursor.execute("SELECT COUNT(*) as count FROM artists_cache")
+            if cursor.fetchone()["count"] > 0:
+                cursor.execute("""
+                    SELECT name, cover_path, song_count, album_count
+                    FROM artists_cache
+                    ORDER BY song_count DESC
+                """)
+                rows = cursor.fetchall()
+                return [
+                    Artist(
+                        name=row["name"] or "",
+                        cover_path=row["cover_path"],
+                        song_count=row["song_count"] or 0,
+                        album_count=row["album_count"] or 0,
+                    )
+                    for row in rows
+                ]
+
+        # Fallback to direct query (slower)
         cursor.execute("""
             SELECT
                 artist as name,
@@ -241,7 +292,7 @@ class SqliteTrackRepository:
             FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
             GROUP BY artist
-            ORDER BY artist
+            ORDER BY song_count DESC
         """)
         rows = cursor.fetchall()
 

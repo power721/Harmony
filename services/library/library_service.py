@@ -29,12 +29,30 @@ class LibraryService:
             track_repo: SqliteTrackRepository,
             playlist_repo: SqlitePlaylistRepository,
             event_bus: EventBus = None,
-            cover_service: 'CoverService' = None
+            cover_service: 'CoverService' = None,
+            db_manager: 'DatabaseManager' = None
     ):
         self._track_repo = track_repo
         self._playlist_repo = playlist_repo
         self._event_bus = event_bus or EventBus.instance()
         self._cover_service = cover_service
+        self._db = db_manager
+
+    # ===== Cache Operations =====
+
+    def init_cache(self):
+        """Initialize album and artist cache if empty."""
+        if self._db:
+            if self._db.is_albums_cache_empty():
+                self._db.refresh_albums_cache()
+            if self._db.is_artists_cache_empty():
+                self._db.refresh_artists_cache()
+
+    def refresh_cache(self):
+        """Refresh album and artist cache."""
+        if self._db:
+            self._db.refresh_albums_cache()
+            self._db.refresh_artists_cache()
 
     # ===== Track Operations =====
 
@@ -136,6 +154,8 @@ class LibraryService:
 
         if added_count > 0:
             self._event_bus.tracks_added.emit(added_count)
+            # Refresh cache after adding tracks
+            self.refresh_cache()
 
         return added_count
 
