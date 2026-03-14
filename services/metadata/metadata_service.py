@@ -4,7 +4,7 @@ Metadata extraction service for audio files using mutagen.
 import logging
 
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import mutagen
 from mutagen.mp3 import MP3
 from mutagen.flac import FLAC

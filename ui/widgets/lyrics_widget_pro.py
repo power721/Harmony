@@ -1,5 +1,4 @@
 import re
-from dataclasses import dataclass
 from typing import List
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal

@@ -2,7 +2,6 @@
 File cache for downloaded cloud files.
 """
 
-import os
 import hashlib
 import logging
 from pathlib import Path

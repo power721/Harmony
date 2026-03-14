@@ -1,15 +1,12 @@
 """
 Lyrics service for fetching and parsing lyrics.
 """
-import re
 import logging
-
-from pathlib import Path
 
 # Configure logging
 logger = logging.getLogger(__name__)
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List
 import requests
 import base64
 import zlib

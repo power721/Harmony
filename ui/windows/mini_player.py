@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QSlider,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QThread
-from PySide6.QtGui import QPixmap, QPainter, QColor, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from services.playback import PlaybackService
 from domain.playback import PlaybackState, PlayMode

@@ -16,8 +16,6 @@ from domain.playback import PlayMode, PlaybackState
 from domain.track import Track
 from infrastructure.audio import PlayerEngine
 from infrastructure.database import DatabaseManager
-from repositories.track_repository import SqliteTrackRepository
-from repositories.queue_repository import SqliteQueueRepository
 from system.config import ConfigManager
 from system.event_bus import EventBus
 

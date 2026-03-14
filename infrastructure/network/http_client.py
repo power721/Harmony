@@ -3,7 +3,7 @@ HTTP client wrapper for network requests.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import requests
 
 logger = logging.getLogger(__name__)

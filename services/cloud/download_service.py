@@ -6,7 +6,6 @@ with support for caching, progress tracking, and download cancellation.
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional, Dict, TYPE_CHECKING
 

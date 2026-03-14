@@ -3,7 +3,6 @@ Asynchronous lyrics loader to prevent UI blocking.
 """
 
 import logging
-from typing import Optional
 
 from PySide6.QtCore import QThread, Signal
 

@@ -33,7 +33,6 @@ from typing import Optional
 from shiboken6 import isValid
 
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
-from utils import format_time
 from system.i18n import t, set_language
 from system.config import ConfigManager
 from system.event_bus import EventBus

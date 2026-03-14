@@ -6,20 +6,14 @@ import logging
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
-    QVBoxLayout,
     QPushButton,
     QSlider,
     QLabel,
-    QToolButton,
-    QMenu,
-    QStyle,
     QDialog,
     QVBoxLayout,
-    QScrollArea,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QTime, QPoint
-from PySide6.QtGui import QIcon, QFont, QPixmap, QCursor, QMouseEvent, QPainter, QScreen
-from typing import Optional
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen
 import threading
 
 from services.playback import PlaybackService
