@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from utils import t
+from system.i18n import t
 
 # Configure logging
 logger = logging.getLogger(__name__)

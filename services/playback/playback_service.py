@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, Signal
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
-from infrastructure.audio import AudioEngine, PlayerEngine
+from infrastructure.audio import PlayerEngine
 from repositories.track_repository import SqliteTrackRepository
 from repositories.queue_repository import SqliteQueueRepository
 from system.event_bus import EventBus
@@ -40,7 +40,7 @@ class PlaybackService(QObject):
         self._track_repo = track_repo
         self._queue_repo = queue_repo
         self._config = config_manager
-        self._engine = AudioEngine()
+        self._engine = PlayerEngine()
         self._event_bus = EventBus.instance()
 
         # Playback state
@@ -80,7 +80,7 @@ class PlaybackService(QObject):
     # ===== Properties =====
 
     @property
-    def engine(self) -> AudioEngine:
+    def engine(self) -> PlayerEngine:
         return self._engine
 
     @property

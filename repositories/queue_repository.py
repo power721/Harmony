@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from typing import List
 
-from domain.cloud_file import PlayQueueItem
+from domain.playback import PlayQueueItem
 
 
 class SqliteQueueRepository:

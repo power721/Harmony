@@ -2,7 +2,7 @@
 Infrastructure module - Technical implementations.
 """
 
-from .audio import AudioEngine
-from .database import SqliteManager
+from .audio import PlayerEngine
+from .database import DatabaseManager
 
-__all__ = ['AudioEngine', 'SqliteManager']
+__all__ = ['PlayerEngine', 'DatabaseManager']

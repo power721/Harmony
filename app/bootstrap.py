@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 
 from infrastructure.database import DatabaseManager
-from infrastructure.audio import AudioEngine
+from infrastructure.audio import PlayerEngine
 from repositories.track_repository import SqliteTrackRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.cloud_repository import SqliteCloudRepository
@@ -146,14 +146,3 @@ class Bootstrap:
                 event_bus=self.event_bus,
             )
         return self._library_service
-
-    # ===== Legacy Compatibility =====
-
-    @property
-    def database_manager(self) -> DatabaseManager:
-        """Alias for db property (legacy compatibility)."""
-        return self.db
-
-    def get_playback_manager(self):
-        """Get playback manager (legacy alias)."""
-        return self.playback_service

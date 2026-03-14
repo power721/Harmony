@@ -24,7 +24,8 @@ import threading
 
 from services.playback import PlayerController
 from domain.playback import PlaybackState, PlayMode
-from utils import format_time, t
+from utils import format_time
+from system.i18n import t
 from system.event_bus import EventBus
 
 # Configure logging

@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QTimer, QRectF, Signal
 from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget
 
-from utils import t
+from system.i18n import t
 from utils.lrc_parser import LyricLine
 
 

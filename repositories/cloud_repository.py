@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from typing import List, Optional
 
-from domain.cloud_file import CloudAccount, CloudFile
+from domain.cloud import CloudAccount, CloudFile
 
 
 class SqliteCloudRepository:

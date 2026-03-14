@@ -39,12 +39,13 @@ from typing import Optional
 from shiboken6 import isValid
 
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
-from utils import t, set_language
+from utils import format_time
+from system.i18n import t, set_language
 from system.config import ConfigManager
 from system.event_bus import EventBus
 from domain.track import Track
 from domain.playlist_item import PlaylistItem
-from domain.cloud_file import CloudProvider
+from domain.cloud import CloudProvider
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
@@ -411,7 +412,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # Language selector
-        from utils import get_language
+        from system.i18n import get_language
 
         lang_text = "EN" if get_language() == "en" else "中文"
         self._language_btn = QPushButton("🌐 " + lang_text)
@@ -845,7 +846,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_language(self):
         """Toggle between English and Chinese."""
-        from utils import get_language, set_language
+        from system.i18n import get_language, set_language
 
         current_lang = get_language()
         new_lang = "zh" if current_lang == "en" else "en"

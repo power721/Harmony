@@ -10,7 +10,7 @@ from PySide6.QtGui import QPixmap
 import qrcode
 from io import BytesIO
 from services.cloud.quark_service import QuarkDriveService
-from utils import t
+from system.i18n import t
 
 # Configure logging
 logger = logging.getLogger(__name__)

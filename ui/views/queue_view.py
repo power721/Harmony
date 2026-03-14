@@ -21,7 +21,8 @@ from typing import List
 
 from services.playback import PlayerController
 from domain.playback import PlaybackState
-from utils import format_duration, t
+from utils import format_duration
+from system.i18n import t
 
 
 class QueueView(QWidget):

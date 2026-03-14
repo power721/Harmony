@@ -6,7 +6,7 @@ import logging
 
 from domain import PlaylistItem
 from domain.playback import PlayMode
-from infrastructure.audio import AudioEngine
+from infrastructure.audio import PlayerEngine
 from repositories.queue_repository import SqliteQueueRepository
 
 
@@ -22,7 +22,7 @@ class QueueService:
         self,
         queue_repo: SqliteQueueRepository,
         config_manager,
-        engine: AudioEngine
+        engine: PlayerEngine
     ):
         self._queue_repo = queue_repo
         self._config = config_manager

@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Protocol
 from domain.track import Track, TrackId
 from domain.playlist import Playlist
-from domain.cloud_file import CloudAccount, CloudFile, PlayQueueItem
+from domain.cloud import CloudAccount, CloudFile
+from domain.playback import PlayQueueItem
 
 
 class TrackRepository(Protocol):

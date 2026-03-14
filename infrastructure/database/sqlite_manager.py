@@ -9,7 +9,9 @@ from datetime import datetime
 
 from domain.track import Track
 from domain.playlist import Playlist
-from domain.cloud_file import CloudAccount, CloudFile, PlayQueueItem, PlayHistory
+from domain.cloud import CloudAccount, CloudFile
+from domain.playback import PlayQueueItem
+from domain.history import PlayHistory
 
 
 # Configure logging

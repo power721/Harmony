@@ -38,7 +38,8 @@ from infrastructure.database import DatabaseManager
 from domain.track import Track
 from services.playback import PlayerController
 from domain.playback import PlaybackState
-from utils import t
+from utils import format_duration, format_count_message
+from system.i18n import t
 from system.config import ConfigManager
 from system.event_bus import EventBus
 
@@ -643,7 +644,7 @@ class LibraryView(QWidget):
             self._tracks_table.setItem(row, 2, album_item)
 
             # Duration
-            from utils import format_duration
+            # format_duration imported at top
             duration_item = QTableWidgetItem(format_duration(item.get("duration", 0)))
             duration_item.setForeground(text_color)
             self._tracks_table.setItem(row, 3, duration_item)
@@ -709,7 +710,7 @@ class LibraryView(QWidget):
 
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
-        from utils import format_duration
+        # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor
 
         # Block UI updates during population
@@ -1265,7 +1266,7 @@ class LibraryView(QWidget):
             return
 
         if added_count > 0 and removed_count == 0:
-            from utils import format_count_message
+            # format_count_message imported at top
 
             message = format_count_message("added_x_tracks_to_favorites", added_count)
             QMessageBox.information(
@@ -1274,7 +1275,7 @@ class LibraryView(QWidget):
                 message,
             )
         elif removed_count > 0 and added_count == 0:
-            from utils import format_count_message
+            # format_count_message imported at top
 
             message = format_count_message(
                 "removed_x_tracks_from_favorites", removed_count
@@ -1918,7 +1919,7 @@ class LibraryView(QWidget):
         if not track_ids and not cloud_file_ids:
             return
 
-        from utils import format_count_message
+        # format_count_message imported at top
 
         total_count = len(track_ids) + len(cloud_file_ids)
         confirm_message = format_count_message("remove_from_library_confirm", total_count)
@@ -2100,7 +2101,7 @@ class LibraryView(QWidget):
         Args:
             track_ids: List of track IDs to refresh
         """
-        from utils import format_duration
+        # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor, QFont
 
         # Find and update rows for the given track IDs

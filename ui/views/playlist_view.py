@@ -29,7 +29,8 @@ from infrastructure.database import DatabaseManager
 from domain.track import Track
 from domain.playlist import Playlist
 from services.playback import PlayerController
-from utils import format_duration, t
+from utils import format_duration
+from system.i18n import t
 
 
 class DarkInputDialog(QDialog):

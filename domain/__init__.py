@@ -9,9 +9,6 @@ from .playback import PlayMode, PlaybackState, PlayQueueItem
 from .playlist_item import PlaylistItem
 from .history import PlayHistory, Favorite
 
-# Backward compatibility - re-export from cloud_file module
-from .cloud_file import CloudFile, CloudAccount, CloudProvider, PlayQueueItem, PlayHistory, Favorite
-
 __all__ = [
     'Track', 'TrackId',
     'Playlist',

@@ -36,10 +36,11 @@ from PySide6.QtGui import QCursor, QColor, QBrush
 from typing import List, Optional
 import tempfile
 import os
-from domain.cloud_file import CloudAccount, CloudFile
+from domain.cloud import CloudAccount, CloudFile
 from services.cloud.quark_service import QuarkDriveService
 from ui.widgets.cloud_login_dialog import CloudLoginDialog
-from utils import t, format_duration
+from utils import format_duration
+from system.i18n import t
 from system.event_bus import EventBus
 
 
@@ -979,7 +980,7 @@ class CloudDriveView(QWidget):
                 for i, f in enumerate(self._current_audio_files):
                     if f.file_id == self._current_audio_files[file_index].file_id:
                         # Create updated CloudFile with local_path
-                        from domain.cloud_file import CloudFile as CloudFileModel
+                        from domain.cloud import CloudFile as CloudFileModel
                         updated_file = CloudFileModel(
                             id=f.id,
                             account_id=f.account_id,
@@ -1045,7 +1046,7 @@ class CloudDriveView(QWidget):
                     for i, f in enumerate(self._current_audio_files):
                         if f.file_id == self._current_audio_files[file_index].file_id:
                             # Create updated CloudFile with local_path
-                            from domain.cloud_file import CloudFile as CloudFileModel
+                            from domain.cloud import CloudFile as CloudFileModel
                             updated_file = CloudFileModel(
                                 id=f.id,
                                 account_id=f.account_id,
@@ -1963,7 +1964,7 @@ class CloudDriveView(QWidget):
     def _fast_restore_playback(self, account_id: int, file_fid: str, local_path: str, start_position: float):
         """Fast restore playback using known local path without loading folder."""
         from pathlib import Path
-        from domain.cloud_file import CloudFile
+        from domain.cloud import CloudFile
 
         # Select the account in UI
         accounts = self._db.get_cloud_accounts()

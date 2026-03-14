@@ -11,10 +11,6 @@ from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
 
 
-# Alias for backward compatibility
-PlayerState = PlaybackState
-AudioEngine = None  # Will be defined below as PlayerEngine alias
-
 # Configure logging
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -32,7 +28,7 @@ class PlayerEngine(QObject):
     Signals:
         position_changed: Emitted when playback position changes (position_ms)
         duration_changed: Emitted when track duration changes (duration_ms)
-        state_changed: Emitted when player state changes (PlayerState)
+        state_changed: Emitted when player state changes (PlaybackState)
         current_track_changed: Emitted when current track changes
         volume_changed: Emitted when volume changes (volume 0-100)
         track_finished: Emitted when current track finishes playing
@@ -41,7 +37,7 @@ class PlayerEngine(QObject):
 
     position_changed = Signal(int)
     duration_changed = Signal(int)
-    state_changed = Signal(PlayerState)
+    state_changed = Signal(PlaybackState)
     current_track_changed = Signal(object)  # PlaylistItem or dict (backward compat)
     volume_changed = Signal(int)
     track_finished = Signal()
@@ -111,14 +107,14 @@ class PlayerEngine(QObject):
         return self._play_mode
 
     @property
-    def state(self) -> PlayerState:
+    def state(self) -> PlaybackState:
         """Get the current player state."""
         state = self._player.playbackState()
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            return PlayerState.PLAYING
+            return PlaybackState.PLAYING
         elif state == QMediaPlayer.PlaybackState.PausedState:
-            return PlayerState.PAUSED
-        return PlayerState.STOPPED
+            return PlaybackState.PAUSED
+        return PlaybackState.STOPPED
 
     @property
     def volume(self) -> int:
@@ -234,14 +230,20 @@ class PlayerEngine(QObject):
         """Start or resume playback."""
         if self._current_index < 0 and self._playlist:
             self._current_index = 0
-            self._load_track(self._current_index)
 
-        if self._current_index >= 0:
-            # Check if current track needs download
+        if 0 <= self._current_index < len(self._playlist):
             item = self._playlist[self._current_index]
+
+            # Check if current track needs download
             if item.needs_download or not item.local_path:
                 self.track_needs_download.emit(item)
                 return
+
+            # Load track if not already loaded
+            current_source = self._player.source()
+            if not current_source.isValid() or current_source.toLocalFile() != item.local_path:
+                self._load_track(self._current_index)
+
             self._player.play()
 
     def pause(self):
@@ -572,11 +574,11 @@ class PlayerEngine(QObject):
     def _on_state_changed(self, state):
         """Handle state change."""
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.state_changed.emit(PlayerState.PLAYING)
+            self.state_changed.emit(PlaybackState.PLAYING)
         elif state == QMediaPlayer.PlaybackState.PausedState:
-            self.state_changed.emit(PlayerState.PAUSED)
+            self.state_changed.emit(PlaybackState.PAUSED)
         else:
-            self.state_changed.emit(PlayerState.STOPPED)
+            self.state_changed.emit(PlaybackState.STOPPED)
 
     def _on_media_status_changed(self, status):
         """Handle media status change."""
@@ -609,7 +611,3 @@ class PlayerEngine(QObject):
     def _on_error(self, error, error_string):
         """Handle playback error."""
         self.error_occurred.emit(error_string)
-
-
-# Alias for new architecture
-AudioEngine = PlayerEngine

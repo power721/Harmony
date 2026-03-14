@@ -9,7 +9,7 @@ from .cloud import CloudProvider
 
 if TYPE_CHECKING:
     from domain.track import Track
-    from domain.cloud_file import CloudFile
+    from domain.cloud import CloudFile
 
 
 @dataclass

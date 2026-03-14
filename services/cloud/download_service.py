@@ -13,7 +13,7 @@ from typing import Optional, Dict, TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal, QThread
 
 if TYPE_CHECKING:
-    from domain.cloud_file import CloudFile, CloudAccount
+    from domain.cloud import CloudFile, CloudAccount
 
 # Configure logging
 logger = logging.getLogger(__name__)
