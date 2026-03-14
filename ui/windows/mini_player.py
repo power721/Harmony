@@ -400,7 +400,6 @@ class MiniPlayer(QWidget):
     def _load_cover_async(self, track_dict: dict):
         """Load cover art in background thread."""
         def load_cover():
-            from services import CoverService
             from pathlib import Path
 
             # First check if cover_path is already saved in database
@@ -414,7 +413,7 @@ class MiniPlayer(QWidget):
             artist = track_dict.get("artist", "")
             album = track_dict.get("album", "")
 
-            return CoverService.get_cover(path, title, artist, album)
+            return self._player.get_track_cover(path, title, artist, album)
 
         def worker():
             cover_path = load_cover()

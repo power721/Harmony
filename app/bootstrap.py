@@ -5,6 +5,7 @@ Bootstrap - Dependency injection container.
 import logging
 from typing import Optional
 
+from infrastructure import HttpClient
 from infrastructure.database import DatabaseManager
 from repositories.track_repository import SqliteTrackRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
@@ -12,6 +13,7 @@ from repositories.cloud_repository import SqliteCloudRepository
 from repositories.queue_repository import SqliteQueueRepository
 from services.playback import PlaybackService, QueueService
 from services.library import LibraryService
+from services.metadata import CoverService
 from system.config import ConfigManager
 from system.event_bus import EventBus
 
@@ -37,6 +39,7 @@ class Bootstrap:
         self._db: Optional[DatabaseManager] = None
         self._config: Optional[ConfigManager] = None
         self._event_bus: Optional[EventBus] = None
+        self._http_client: Optional[HttpClient] = None
 
         # Repositories
         self._track_repo: Optional[SqliteTrackRepository] = None
@@ -48,6 +51,7 @@ class Bootstrap:
         self._playback_service: Optional[PlaybackService] = None
         self._queue_service: Optional[QueueService] = None
         self._library_service: Optional[LibraryService] = None
+        self._cover_service: Optional[CoverService] = None
 
     @classmethod
     def instance(cls) -> "Bootstrap":
@@ -78,6 +82,13 @@ class Bootstrap:
         if self._event_bus is None:
             self._event_bus = EventBus.instance()
         return self._event_bus
+
+    @property
+    def http_client(self) -> HttpClient:
+        """Get HTTP client."""
+        if self._http_client is None:
+            self._http_client = HttpClient()
+        return self._http_client
 
     # ===== Repositories =====
 
@@ -118,6 +129,7 @@ class Bootstrap:
             self._playback_service = PlaybackService(
                 db_manager=self.db,
                 config_manager=self.config,
+                cover_service=self.cover_service,
             )
         return self._playback_service
 
@@ -140,5 +152,13 @@ class Bootstrap:
                 track_repo=self.track_repo,
                 playlist_repo=self.playlist_repo,
                 event_bus=self.event_bus,
+                cover_service=self.cover_service,
             )
         return self._library_service
+
+    @property
+    def cover_service(self) -> CoverService:
+        """Get cover service."""
+        if self._cover_service is None:
+            self._cover_service = CoverService(http_client=self.http_client)
+        return self._cover_service

@@ -34,12 +34,18 @@ class TestLibraryService:
         return bus
 
     @pytest.fixture
-    def library_service(self, mock_track_repo, mock_playlist_repo, mock_event_bus):
+    def mock_cover_service(self):
+        """Create mock cover service."""
+        return Mock()
+
+    @pytest.fixture
+    def library_service(self, mock_track_repo, mock_playlist_repo, mock_event_bus, mock_cover_service):
         """Create LibraryService instance with mocked dependencies."""
         return LibraryService(
             track_repo=mock_track_repo,
             playlist_repo=mock_playlist_repo,
             event_bus=mock_event_bus,
+            cover_service=mock_cover_service,
         )
 
     def test_initialization(self, library_service, mock_track_repo, mock_playlist_repo):
@@ -271,10 +277,9 @@ class TestLibraryService:
             assert True  # Placeholder for documentation
 
     @patch("services.library.library_service.MetadataService")
-    @patch("services.library.library_service.CoverService")
     @patch("services.library.library_service.Path")
     def test_create_track_from_file_success(
-        self, mock_path_class, mock_cover_service, mock_metadata_service
+        self, mock_path_class, mock_metadata_service, library_service
     ):
         """Test creating track from file successfully."""
         # Setup mocks
@@ -285,12 +290,9 @@ class TestLibraryService:
             "duration": 180.0,
             "cover": None,
         }
-        mock_cover_service.save_cover_from_metadata.return_value = "/covers/test.jpg"
+        library_service._cover_service.save_cover_from_metadata.return_value = "/covers/test.jpg"
         mock_path_class.return_value.exists.return_value = True
         mock_path_class.return_value.stem = "test"
-
-        # Create service
-        library_service = LibraryService(Mock(), Mock())
 
         result = library_service._create_track_from_file("/music/test.mp3")
 

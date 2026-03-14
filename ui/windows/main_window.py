@@ -5,7 +5,7 @@ import logging
 
 from domain.playback import PlaybackState
 from infrastructure.database import DatabaseManager
-from services import CoverService, PlaybackService
+from services import PlaybackService
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsSearchWorker, LyricsDownloadWorker
 
@@ -75,8 +75,14 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Initialize playback service
-        self._playback = PlaybackService(self._db, self._config)
+        # Initialize playback service with proper dependencies
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        self._playback = PlaybackService(
+            self._db,
+            self._config,
+            cover_service=bootstrap.cover_service
+        )
 
         # Keep reference to engine for backward compatibility
         # Use closures to capture self for methods that need access to db
@@ -167,6 +173,16 @@ class MainWindow(QMainWindow):
 
             def restore_queue(self):
                 return playback.restore_queue()
+
+            @property
+            def cover_service(self):
+                return playback.cover_service
+
+            def get_track_cover(self, track_path: str, title: str, artist: str, album: str = ""):
+                return playback.get_track_cover(track_path, title, artist, album)
+
+            def save_cover_from_metadata(self, track_path: str, cover_data: bytes):
+                return playback.save_cover_from_metadata(track_path, cover_data)
 
         self._player = PlayerProxy()
 
@@ -744,7 +760,7 @@ class MainWindow(QMainWindow):
                         metadata = MetadataService.extract_metadata(str(audio_file))
 
                         # Save cover art from metadata
-                        cover_path = CoverService.save_cover_from_metadata(
+                        cover_path = self._playback.save_cover_from_metadata(
                             str(audio_file), metadata.get("cover")
                         )
 
@@ -1230,7 +1246,8 @@ class MainWindow(QMainWindow):
             song_id=song_info['id'],
             source=song_info['source'],
             accesskey=song_info.get('accesskey'),
-            download_cover=download_cover
+            download_cover=download_cover,
+            cover_service=self._playback.cover_service
         )
 
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)

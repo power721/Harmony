@@ -96,7 +96,7 @@ class LyricsDownloadWorker(QThread):
 
     def __init__(self, track_path: str, title: str, artist: str, parent=None,
                  song_id: str = None, source: str = None, accesskey: str = None,
-                 download_cover: bool = True):
+                 download_cover: bool = True, cover_service: 'CoverService' = None):
         """
         Initialize the worker.
 
@@ -118,6 +118,7 @@ class LyricsDownloadWorker(QThread):
         self._source = source
         self._accesskey = accesskey
         self._should_download_cover = download_cover
+        self._cover_service = cover_service
 
     def run(self):
         """Download lyrics in background."""
@@ -176,12 +177,12 @@ class LyricsDownloadWorker(QThread):
                 return
 
             # Save cover to cache directory
-            from services import CoverService
-            cache_key = CoverService._get_cache_key(self._artist, self._title)
-            cover_path = CoverService._save_cover_to_cache(cover_data, cache_key)
-
-            if cover_path:
-                                self.cover_downloaded.emit(cover_path)
+            if self._cover_service:
+                cover_path = self._cover_service.save_cover_data_to_cache(
+                    cover_data, self._artist, self._title
+                )
+                if cover_path:
+                    self.cover_downloaded.emit(cover_path)
 
         except Exception as e:
             logger.error(f"[LyricsDownloadWorker] Error downloading cover: {e}", exc_info=True)

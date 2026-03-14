@@ -3,7 +3,7 @@ HTTP client wrapper for network requests.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import requests
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,28 @@ class HttpClient:
         final_headers = {**self.default_headers, **(headers or {})}
         return requests.get(url, params=params, headers=final_headers,
                            timeout=timeout or self.timeout)
+
+    def get_content(self, url: str, params: Dict = None, headers: Dict = None,
+                    timeout: int = None) -> Optional[bytes]:
+        """
+        Make a GET request and return content as bytes.
+
+        Args:
+            url: Request URL
+            params: Query parameters
+            headers: Additional headers
+            timeout: Request timeout
+
+        Returns:
+            Response content as bytes, or None if request failed
+        """
+        try:
+            response = self.get(url, params=params, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            logger.error(f"GET content failed for {url}: {e}")
+            return None
 
     def post(self, url: str, json: Any = None, data: Any = None,
              headers: Dict = None, timeout: int = None) -> requests.Response:

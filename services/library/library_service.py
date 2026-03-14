@@ -11,7 +11,6 @@ from domain.playlist import Playlist
 from repositories.track_repository import SqliteTrackRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from services.metadata.metadata_service import MetadataService
-from services.metadata.cover_service import CoverService
 from system.event_bus import EventBus
 
 
@@ -28,11 +27,13 @@ class LibraryService:
         self,
         track_repo: SqliteTrackRepository,
         playlist_repo: SqlitePlaylistRepository,
-        event_bus: EventBus = None
+        event_bus: EventBus = None,
+        cover_service: 'CoverService' = None
     ):
         self._track_repo = track_repo
         self._playlist_repo = playlist_repo
         self._event_bus = event_bus or EventBus.instance()
+        self._cover_service = cover_service
 
     # ===== Track Operations =====
 
@@ -141,10 +142,12 @@ class LibraryService:
         """Create a Track object from a file by extracting metadata."""
         try:
             metadata = MetadataService.extract_metadata(file_path)
-            cover_path = CoverService.save_cover_from_metadata(
-                file_path,
-                metadata.get("cover")
-            )
+            cover_path = None
+            if self._cover_service:
+                cover_path = self._cover_service.save_cover_from_metadata(
+                    file_path,
+                    metadata.get("cover")
+                )
 
             return Track(
                 path=file_path,

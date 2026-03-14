@@ -50,6 +50,7 @@ class PlaybackService(QObject):
         self,
         db_manager: DatabaseManager,
         config_manager: ConfigManager,
+        cover_service: 'CoverService' = None,
         parent=None
     ):
         """
@@ -58,12 +59,14 @@ class PlaybackService(QObject):
         Args:
             db_manager: Database manager for track data
             config_manager: Configuration manager for settings
+            cover_service: Cover service for album art
             parent: Optional parent QObject
         """
         super().__init__(parent)
 
         self._db = db_manager
         self._config = config_manager
+        self._cover_service = cover_service
         self._engine = PlayerEngine()
         self._event_bus = EventBus.instance()
 
@@ -141,6 +144,11 @@ class PlaybackService(QObject):
     def current_track_id(self) -> Optional[int]:
         """Get the current track ID."""
         return self._current_track_id
+
+    @property
+    def cover_service(self) -> Optional['CoverService']:
+        """Get the cover service."""
+        return self._cover_service
 
     @property
     def state(self) -> PlaybackState:
@@ -806,7 +814,6 @@ class PlaybackService(QObject):
             cover_path: Path to the extracted cover art, or None
         """
         from services.metadata.metadata_service import MetadataService
-        from services.metadata.cover_service import CoverService
 
         existing = self._db.get_track_by_cloud_file_id(file_id)
         if existing:
@@ -829,10 +836,12 @@ class PlaybackService(QObject):
         artist = metadata.get("artist", "")
         album = metadata.get("album", "")
 
-        cover_path = CoverService.save_cover_from_metadata(
-            local_path,
-            metadata.get("cover")
-        )
+        cover_path = None
+        if self._cover_service:
+            cover_path = self._cover_service.save_cover_from_metadata(
+                local_path,
+                metadata.get("cover")
+            )
 
         track = Track(
             path=local_path,
@@ -846,3 +855,35 @@ class PlaybackService(QObject):
 
         self._db.add_track(track)
         return cover_path
+
+    def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "") -> Optional[str]:
+        """
+        Get cover art for a track.
+
+        Args:
+            track_path: Path to the audio file
+            title: Track title
+            artist: Track artist
+            album: Album name
+
+        Returns:
+            Path to the cover image, or None
+        """
+        if self._cover_service:
+            return self._cover_service.get_cover(track_path, title, artist, album)
+        return None
+
+    def save_cover_from_metadata(self, track_path: str, cover_data: bytes) -> Optional[str]:
+        """
+        Save cover art from already extracted metadata.
+
+        Args:
+            track_path: Path to the audio file (used for generating cache filename)
+            cover_data: Cover image data from metadata
+
+        Returns:
+            Path to saved cover, or None
+        """
+        if self._cover_service:
+            return self._cover_service.save_cover_from_metadata(track_path, cover_data)
+        return None
