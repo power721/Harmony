@@ -3,10 +3,11 @@ Cover art service for extracting and fetching album covers.
 """
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import hashlib
 
 from infrastructure.network import HttpClient
+from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class CoverService:
         """
         self.http_client = http_client
 
-    def get_cover(self, track_path: str, title: str, artist: str, album: str = "") -> Optional[str]:
+    def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None) -> Optional[str]:
         """
         Get cover art for a track, prioritizing cached/downloaded covers.
 
@@ -36,6 +37,7 @@ class CoverService:
             title: Track title
             artist: Track artist
             album: Album name
+            duration: Track duration in seconds (optional, for better matching)
 
         Returns:
             Path to the cover image, or None
@@ -55,9 +57,9 @@ class CoverService:
         if cover_path:
             return cover_path
 
-        # Try online sources
+        # Try online sources with smart matching
         logger.info(f"[CoverService] No cover found, trying online sources")
-        return self._fetch_online_cover(title, artist, album, cache_key)
+        return self._fetch_online_cover(title, artist, album, cache_key, duration)
 
     def _extract_embedded_cover(self, track_path: str) -> Optional[str]:
         """
@@ -152,21 +154,46 @@ class CoverService:
                 return cover_path
         return None
 
-    def _fetch_online_cover(self, title: str, artist: str, album: str, cache_key: str) -> Optional[str]:
+    def _fetch_online_cover(self, title: str, artist: str, album: str, cache_key: str, duration: float = None) -> Optional[str]:
         """
-        Fetch cover art from online sources.
+        Fetch cover art from online sources with smart matching.
 
         Args:
             title: Track title
             artist: Track artist
             album: Album name
             cache_key: Cache key for storing the cover
+            duration: Track duration in seconds (optional, for better matching)
 
         Returns:
             Path to downloaded cover, or None
         """
+        # Search NetEase for covers with metadata
+        try:
+            results = self._search_covers_from_netease(title, artist, album, duration)
+            if results:
+                # Find best match
+                track_info = TrackInfo(
+                    title=title,
+                    artist=artist,
+                    album=album,
+                    duration=duration
+                )
+                best_match = MatchScorer.find_best_match(track_info, results)
+
+                if best_match:
+                    result, score = best_match
+                    logger.info(f"Best cover match: {result.title} - {result.artist} (score: {score:.1f})")
+
+                    if score >= 30 and result.cover_url:
+                        cover_data = self.http_client.get_content(result.cover_url, timeout=5)
+                        if cover_data:
+                            return self._save_cover_to_cache(cover_data, cache_key)
+        except Exception as e:
+            logger.warning(f"Error fetching cover from NetEase: {e}")
+
+        # Fallback to other sources (without smart matching)
         sources = [
-            ("NetEase", self._fetch_from_netease),
             ("iTunes", self._fetch_from_itunes),
             ("MusicBrainz", self._fetch_from_musicbrainz),
             ("Last.fm", self._fetch_from_lastfm),
@@ -180,6 +207,179 @@ class CoverService:
             except Exception as e:
                 logger.warning(f"Error fetching cover from {source_name}: {e}")
                 continue
+
+        return None
+
+    def _search_covers_from_netease(self, title: str, artist: str, album: str, duration: float = None) -> List[SearchResult]:
+        """
+        Search for covers from NetEase Cloud Music.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+            duration: Track duration in seconds
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        try:
+            search_url = "https://music.163.com/api/search/get/web"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://music.163.com/'
+            }
+
+            # First try album search
+            params = {
+                's': f'{artist} {album or title}',
+                'type': 10,  # album search
+                'limit': 5
+            }
+
+            response = self.http_client.get(
+                search_url,
+                params=params,
+                headers=headers,
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if data.get('code') == 200 and data.get('result', {}).get('albums'):
+                    for album_info in data['result']['albums']:
+                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
+                        if pic_url:
+                            # Get high quality version
+                            if '?' not in pic_url:
+                                pic_url += '?param=500y500'
+
+                            results.append(SearchResult(
+                                title=album_info.get('name', ''),
+                                artist=album_info.get('artist', {}).get('name', ''),
+                                album=album_info.get('name', ''),
+                                duration=None,
+                                source='netease',
+                                id=str(album_info.get('id', '')),
+                                cover_url=pic_url
+                            ))
+
+            # Also try song search for more accurate matching
+            params = {
+                's': f'{artist} {title}',
+                'type': 1,  # song search
+                'limit': 5
+            }
+
+            response = self.http_client.get(
+                search_url,
+                params=params,
+                headers=headers,
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if data.get('code') == 200 and data.get('result', {}).get('songs'):
+                    for song in data['result']['songs']:
+                        album_info = song.get('album', {})
+                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
+
+                        if pic_url:
+                            if '?' not in pic_url:
+                                pic_url += '?param=500y500'
+
+                            song_duration = None
+                            if song.get('duration'):
+                                song_duration = song['duration'] / 1000
+
+                            results.append(SearchResult(
+                                title=song.get('name', ''),
+                                artist=song['artists'][0]['name'] if song.get('artists') else '',
+                                album=album_info.get('name', ''),
+                                duration=song_duration,
+                                source='netease',
+                                id=str(song.get('id', '')),
+                                cover_url=pic_url
+                            ))
+
+        except Exception as e:
+            logger.debug(f"NetEase cover search error: {e}")
+
+        return results
+
+    def search_covers(self, title: str, artist: str, album: str = "", duration: float = None) -> List[dict]:
+        """
+        Search for covers from online sources (for manual download dialog).
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+            duration: Track duration in seconds
+
+        Returns:
+            List of dicts with cover info for UI display
+        """
+        results = []
+
+        # Search NetEase
+        try:
+            netease_results = self._search_covers_from_netease(title, artist, album, duration)
+
+            # Use MatchScorer to rank results
+            track_info = TrackInfo(
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration
+            )
+
+            for result in netease_results:
+                score = MatchScorer.calculate_score(track_info, result)
+                results.append({
+                    'title': result.title,
+                    'artist': result.artist,
+                    'album': result.album,
+                    'duration': result.duration,
+                    'cover_url': result.cover_url,
+                    'source': result.source,
+                    'id': result.id,
+                    'score': score
+                })
+
+            # Sort by score descending
+            results.sort(key=lambda x: x['score'], reverse=True)
+
+        except Exception as e:
+            logger.error(f"Error searching covers: {e}", exc_info=True)
+
+        return results
+
+    def download_cover_by_url(self, cover_url: str, artist: str, title: str, album: str = "") -> Optional[str]:
+        """
+        Download cover from URL and save to cache.
+
+        Args:
+            cover_url: URL to download cover from
+            artist: Artist name (for cache key)
+            title: Track title (for cache key)
+            album: Album name (for cache key)
+
+        Returns:
+            Path to cached cover, or None
+        """
+        try:
+            cover_data = self.http_client.get_content(cover_url, timeout=5)
+            if cover_data:
+                cache_key = self._get_cache_key(artist, album or title)
+                return self._save_cover_to_cache(cover_data, cache_key)
+        except Exception as e:
+            logger.error(f"Error downloading cover from URL: {e}", exc_info=True)
 
         return None
 

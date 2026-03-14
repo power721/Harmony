@@ -244,5 +244,11 @@
     "cover_saved_success": "Cover saved successfully",
     "cover_save_failed": "Failed to save cover",
     "track": "Track",
-    "download_cover_manual": "Download Cover Art"
+    "download_cover_manual": "Download Cover Art",
+    "search_results": "Search Results",
+    "search": "Search",
+    "no_results": "No results found",
+    "found": "Found",
+    "results": "results",
+    "match_score": "Match Score"
 }

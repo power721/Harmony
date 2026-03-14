@@ -244,6 +244,12 @@
     "cover_saved_success": "封面保存成功",
     "cover_save_failed": "保存封面失败",
     "track": "歌曲",
-    "download_cover_manual": "下载封面"
+    "download_cover_manual": "下载封面",
+    "search_results": "搜索结果",
+    "search": "搜索",
+    "no_results": "未找到结果",
+    "found": "找到",
+    "results": "个结果",
+    "match_score": "匹配度"
 }
 

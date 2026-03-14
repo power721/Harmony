@@ -31,6 +31,7 @@ def mock_cover_service():
     """Create mock CoverService."""
     service = Mock(spec=CoverService)
     service.save_cover_data_to_cache = Mock(return_value="/path/to/cover.jpg")
+    service.search_covers = Mock(return_value=[])
     return service
 
 
@@ -80,19 +81,25 @@ class TestCoverDownloadDialog:
         assert "Test Song 1" in dialog.details_label.text()
         assert "Test Artist" in dialog.details_label.text()
 
-    def test_source_selection(self, app, sample_tracks, mock_cover_service):
-        """Test that source combo has correct options."""
+    def test_search_button_exists(self, app, sample_tracks, mock_cover_service):
+        """Test that search button exists."""
         dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
 
-        # Check source combo items
-        sources = [dialog.source_combo.itemText(i) for i in range(dialog.source_combo.count())]
-        assert "iTunes" in sources
-        assert "MusicBrainz" in sources
-        assert "Last.fm" in sources
+        # Check search button exists
+        assert hasattr(dialog, 'search_btn')
+        assert dialog.search_btn is not None
 
-    @patch('ui.widgets.cover_download_dialog.CoverDownloadThread')
-    def test_download_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
-        """Test that download button starts download thread."""
+    def test_results_list_exists(self, app, sample_tracks, mock_cover_service):
+        """Test that results list exists."""
+        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
+
+        # Check results list exists
+        assert hasattr(dialog, 'results_list')
+        assert dialog.results_list is not None
+
+    @patch('ui.widgets.cover_download_dialog.CoverSearchThread')
+    def test_search_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
+        """Test that search button starts search thread."""
         dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
 
         # Mock thread
@@ -100,8 +107,8 @@ class TestCoverDownloadDialog:
         mock_thread.isRunning.return_value = False
         mock_thread_class.return_value = mock_thread
 
-        # Click download button
-        dialog._download_cover()
+        # Click search button
+        dialog._search_covers()
 
         # Verify thread was created and started
         mock_thread_class.assert_called_once()

@@ -12,6 +12,7 @@ import base64
 import zlib
 
 from utils.lrc_parser import LyricLine
+from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 # Initialize OpenCC converter for Traditional to Simplified Chinese conversion
 try:
@@ -430,7 +431,7 @@ class LyricsService:
         return False
 
     @classmethod
-    def get_lyrics(cls, track_path: str, title: str, artist: str) -> str:
+    def get_lyrics(cls, track_path: str, title: str, artist: str, album: str = "", duration: float = None) -> str:
         """
         Get lyrics for a track, prioritizing local .lrc files.
 
@@ -438,9 +439,11 @@ class LyricsService:
             track_path: Path to the audio file
             title: Track title
             artist: Track artist
+            album: Album name (optional, for better matching)
+            duration: Track duration in seconds (optional, for better matching)
 
         Returns:
-            List of (time, text) tuples for synchronized lyrics, or None
+            Lyrics content or empty string
         """
         # First try local .lrc file
         if track_path:
@@ -450,7 +453,7 @@ class LyricsService:
 
         # Fall back to online sources (only if enabled)
         if cls.ENABLE_ONLINE:
-            lyrics = cls._get_online_lyrics(title, artist)
+            lyrics = cls._get_online_lyrics(title, artist, album, duration)
             if lyrics:
                 cls.save_lyrics(track_path, lyrics)
                 return lyrics
@@ -489,32 +492,77 @@ class LyricsService:
         return ""
 
     @classmethod
-    def _get_online_lyrics(cls, title: str, artist: str) -> str:
+    def _get_online_lyrics(cls, title: str, artist: str, album: str = "", duration: float = None) -> str:
         """
-        Fetch lyrics from online sources.
+        Fetch lyrics from online sources with smart matching.
 
         Args:
             title: Track title
             artist: Track artist
+            album: Album name (optional)
+            duration: Track duration in seconds (optional)
 
         Returns:
-            List of (time, text) tuples, or None if not found
+            Lyrics content or empty string
         """
-        # Try multiple online sources (prioritize LRCLIB)
-        sources = [
-            cls._fetch_from_lrclib,
-            cls._fetch_from_netease,
-            cls._fetch_from_kugou_music,
-        ]
+        # Search all sources and collect results
+        all_results = []
 
-        for source in sources:
+        # Try LRCLIB
+        try:
+            lrclib_results = cls._search_from_lrclib(title, artist, limit=5)
+            all_results.extend(lrclib_results)
+        except Exception as e:
+            logger.error(f"Error searching from LRCLIB: {e}", exc_info=True)
+
+        # Try NetEase
+        try:
+            netease_results = cls._search_from_netease(title, artist, limit=5)
+            all_results.extend(netease_results)
+        except Exception as e:
+            logger.error(f"Error searching from NetEase: {e}", exc_info=True)
+
+        # Try Kugou if needed
+        if len(all_results) < 3:
             try:
-                lyrics = source(title, artist)
-                if lyrics:
-                    return lyrics
+                kugou_results = cls._search_from_kugou(title, artist, limit=5)
+                all_results.extend(kugou_results)
             except Exception as e:
-                logger.error(f"Error fetching lyrics from {source.__name__}: {e}", exc_info=True)
-                continue
+                logger.error(f"Error searching from Kugou: {e}", exc_info=True)
+
+        if not all_results:
+            return ""
+
+        # Use MatchScorer to find best match
+        track_info = TrackInfo(
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration
+        )
+
+        best_match = MatchScorer.find_best_match(track_info, all_results)
+
+        if best_match:
+            result, score = best_match
+            logger.info(f"Best lyrics match: {result['title']} - {result['artist']} (score: {score:.1f})")
+
+            # If score is too low, don't use
+            if score < 30:
+                logger.info(f"Score too low ({score:.1f}), skipping")
+                return ""
+
+            # Get lyrics from result
+            if result.get('lyrics'):
+                # Already have lyrics (LRCLIB)
+                return result['lyrics']
+
+            # Download lyrics by ID
+            return cls.download_lyrics_by_id(
+                result['id'],
+                result['source'],
+                result.get('accesskey')
+            )
 
         return ""
 
