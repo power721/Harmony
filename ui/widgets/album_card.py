@@ -156,9 +156,13 @@ class AlbumCard(QWidget):
 
         menu.exec_(self.mapToGlobal(pos))
 
-    def _load_cover(self):
-        """Load album cover image lazily."""
-        if self._cover_loaded:
+    def _load_cover(self, force: bool = False):
+        """Load album cover image lazily.
+
+        Args:
+            force: If True, reload even if already loaded
+        """
+        if self._cover_loaded and not force:
             return
 
         cover_path = self._album.cover_path
@@ -235,4 +239,4 @@ class AlbumCard(QWidget):
     def update_cover(self, cover_path: str):
         """Update cover after download."""
         self._album.cover_path = cover_path
-        self._load_cover()
+        self._load_cover(force=True)

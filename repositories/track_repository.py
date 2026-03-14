@@ -315,6 +315,69 @@ class SqliteTrackRepository:
             ))
         return artists
 
+    def get_artist_by_name(self, artist_name: str) -> Optional['Artist']:
+        """
+        Get a specific artist by name.
+
+        Args:
+            artist_name: Artist name
+
+        Returns:
+            Artist object or None if not found
+        """
+        from domain.artist import Artist
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Try to use artists table first
+        cursor.execute("SELECT COUNT(*) as count FROM artists")
+        if cursor.fetchone()["count"] > 0:
+            cursor.execute("""
+                SELECT name, cover_path, song_count, album_count
+                FROM artists
+                WHERE name = ?
+            """, (artist_name,))
+            row = cursor.fetchone()
+            if row:
+                return Artist(
+                    name=row["name"] or "",
+                    cover_path=row["cover_path"],
+                    song_count=row["song_count"] or 0,
+                    album_count=row["album_count"] or 0,
+                )
+            return None
+
+        # Fallback to direct query
+        cursor.execute("""
+            SELECT
+                artist as name,
+                COUNT(*) as song_count,
+                COUNT(DISTINCT album) as album_count
+            FROM tracks
+            WHERE artist = ?
+            GROUP BY artist
+        """, (artist_name,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        # Get cover from first track of artist
+        cursor.execute("""
+            SELECT cover_path FROM tracks
+            WHERE artist = ? AND cover_path IS NOT NULL
+            LIMIT 1
+        """, (artist_name,))
+        cover_row = cursor.fetchone()
+        cover_path = cover_row["cover_path"] if cover_row else None
+
+        return Artist(
+            name=row["name"] or "",
+            cover_path=cover_path,
+            song_count=row["song_count"] or 0,
+            album_count=row["album_count"] or 0,
+        )
+
     def get_artist_tracks(self, artist_name: str) -> List[Track]:
         """
         Get all tracks for a specific artist.

@@ -410,6 +410,7 @@ class ArtistsView(QWidget):
         self._list_view.clicked.connect(self._on_artist_clicked)
         self._list_view.entered.connect(self._on_item_entered)
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
+        EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
     def _on_item_entered(self, index):
         """Handle item entered for hover effect."""
@@ -444,10 +445,10 @@ class ArtistsView(QWidget):
             }
         """)
 
-        # Play action
-        play_action = QAction(t("play"), self)
-        play_action.triggered.connect(lambda: self.artist_clicked.emit(artist))
-        menu.addAction(play_action)
+        # View details action
+        view_action = QAction(t("view_details"), self)
+        view_action.triggered.connect(lambda: self.artist_clicked.emit(artist))
+        menu.addAction(view_action)
 
         # Download cover action
         download_action = QAction(t("download_cover_manual"), self)
@@ -456,14 +457,25 @@ class ArtistsView(QWidget):
 
         menu.exec_(self._list_view.mapToGlobal(pos))
 
-    def _load_artists(self):
-        """Load artists from library in background thread."""
-        if self._data_loaded:
+    def _load_artists(self, force: bool = False):
+        """Load artists from library in background thread.
+
+        Args:
+            force: If True, reload even if data is already loaded
+        """
+        if self._data_loaded and not force:
             return
 
-        self._loading.show()
-        self._list_view.hide()
+        if force:
+            # Just reload data without showing loading indicator
+            self._do_load_artists()
+        else:
+            self._loading.show()
+            self._list_view.hide()
+            self._do_load_artists()
 
+    def _do_load_artists(self):
+        """Actually load artists in background."""
         self._load_worker = LoadArtistsWorker(self._library)
         self._load_worker.finished.connect(self._on_artists_loaded)
         self._load_worker.start()
@@ -517,6 +529,32 @@ class ArtistsView(QWidget):
         """Handle tracks added to library."""
         self._data_loaded = False
         self._load_artists()
+
+    def _on_cover_updated(self, item_id, is_cloud: bool = False):
+        """Handle cover update from EventBus - update specific artist cover."""
+        # item_id for artist is the artist name
+        if not isinstance(item_id, str):
+            return
+
+        artist_name = item_id
+
+        # Find and update the matching artist in the list
+        for i, artist in enumerate(self._filtered_artists):
+            if artist.name == artist_name:
+                # Reload this specific artist from database
+                updated_artist = self._library.get_artist_by_name(artist_name)
+                if updated_artist:
+                    self._filtered_artists[i] = updated_artist
+                    # Also update in the full list
+                    for j, full_artist in enumerate(self._artists):
+                        if full_artist.name == artist_name:
+                            self._artists[j] = updated_artist
+                            break
+                # Clear delegate cache for this cover
+                self._delegate.clear_cache()
+                # Refresh the view
+                self._model.set_artists(self._filtered_artists)
+                break
 
     def refresh(self):
         """Refresh the artists view."""

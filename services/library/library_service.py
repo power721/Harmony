@@ -250,3 +250,7 @@ class LibraryService:
     def get_artist_albums(self, artist_name: str) -> List[Album]:
         """Get all albums for a specific artist."""
         return self._track_repo.get_artist_albums(artist_name)
+
+    def get_artist_by_name(self, artist_name: str) -> Optional[Artist]:
+        """Get a specific artist by name."""
+        return self._track_repo.get_artist_by_name(artist_name)

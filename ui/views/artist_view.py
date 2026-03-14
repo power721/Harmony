@@ -74,6 +74,7 @@ class ArtistView(QWidget):
         self._album_cards: List[AlbumCard] = []
 
         self._setup_ui()
+        self._connect_signals()
 
     def _setup_ui(self):
         """Set up the artist view UI."""
@@ -134,6 +135,10 @@ class ArtistView(QWidget):
         self._loading = self._create_loading_indicator()
         layout.addWidget(self._loading)
         self._loading.hide()
+
+    def _connect_signals(self):
+        """Connect signals."""
+        EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
     def _create_header(self) -> QWidget:
         """Create artist header with cover and info."""
@@ -701,3 +706,27 @@ class ArtistView(QWidget):
     def _on_download_cover_requested(self, album: Album):
         """Handle download cover request from album card."""
         self.download_cover_requested.emit(album)
+
+    def _on_cover_updated(self, item_id, is_cloud: bool = False):
+        """Handle cover update from EventBus - reload artist cover if matching."""
+        if not self._artist:
+            return
+
+        # Check if this is an artist cover update
+        if item_id == self._artist.name:
+            # Reload artist from database to get updated cover_path
+            try:
+                updated_artist = self._library.get_artist_by_name(self._artist.name)
+                if updated_artist:
+                    self._artist = updated_artist
+                    self._load_cover(updated_artist)
+            except Exception as e:
+                logger.error(f"Error reloading artist cover: {e}")
+
+        # Check if this is an album cover update (item_id format: "album_name:artist_name")
+        if isinstance(item_id, str) and ":" in item_id:
+            album_name, artist_name = item_id.split(":", 1)
+            if artist_name == self._artist.name:
+                # Reload albums to get updated cover paths
+                self._albums = self._library.get_artist_albums(self._artist.name)
+                self._render_albums()

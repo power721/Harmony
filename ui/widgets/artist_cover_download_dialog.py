@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from domain.artist import Artist
 from services.metadata import CoverService
+from system.event_bus import EventBus
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
@@ -421,7 +422,7 @@ class ArtistCoverDownloadDialog(QDialog):
         )
 
         if cover_path:
-            # Update artists_cache in database
+            # Update artists in database
             from app import Application
             app = Application.instance()
             if app and app.bootstrap:
@@ -429,7 +430,7 @@ class ArtistCoverDownloadDialog(QDialog):
                 conn = db._get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    UPDATE artists_cache
+                    UPDATE artists
                     SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE name = ?
                 """, (cover_path, self._artist.name))
@@ -437,6 +438,10 @@ class ArtistCoverDownloadDialog(QDialog):
 
             # Emit signal
             self.cover_saved.emit(cover_path)
+
+            # Notify listeners to refresh cover display
+            bus = EventBus.instance()
+            bus.cover_updated.emit(self._artist.name, False)
 
             # Close dialog after successful save
             self.accept()

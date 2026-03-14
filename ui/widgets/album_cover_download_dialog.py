@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from domain.album import Album
 from services.metadata import CoverService
+from system.event_bus import EventBus
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
@@ -430,6 +431,10 @@ class AlbumCoverDownloadDialog(QDialog):
 
             # Emit signal
             self.cover_saved.emit(cover_path)
+
+            # Notify listeners to refresh cover display
+            bus = EventBus.instance()
+            bus.cover_updated.emit(f"{self._album.name}:{self._album.artist}", False)
 
             # Close dialog after successful save
             self.accept()
