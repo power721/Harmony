@@ -545,7 +545,7 @@ class LyricsService:
 
         if best_match:
             result, score = best_match
-            logger.info(f"Best lyrics match: {result['title']} - {result['artist']} (score: {score:.1f})")
+            logger.info(f"Best lyrics match: {result.title} - {result.artist} (score: {score:.1f})")
 
             # If score is too low, don't use
             if score < 30:
@@ -553,15 +553,15 @@ class LyricsService:
                 return ""
 
             # Get lyrics from result
-            if result.get('lyrics'):
+            if result.lyrics:
                 # Already have lyrics (LRCLIB)
-                return result['lyrics']
+                return result.lyrics
 
             # Download lyrics by ID
             return cls.download_lyrics_by_id(
-                result['id'],
-                result['source'],
-                result.get('accesskey')
+                result.id,
+                result.source,
+                result.accesskey
             )
 
         return ""
