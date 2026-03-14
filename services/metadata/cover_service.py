@@ -713,6 +713,13 @@ class CoverService:
         try:
             self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+            # Delete old cached covers with different extensions
+            for old_ext in ['.jpg', '.jpeg', '.png']:
+                old_path = self.CACHE_DIR / f"{cache_key}{old_ext}"
+                if old_path.exists():
+                    old_path.unlink()
+                    logger.debug(f"Deleted old cached cover: {old_path}")
+
             # Try to determine format from data
             if cover_data[:4] == b'\x89PNG':
                 ext = '.png'
@@ -720,6 +727,7 @@ class CoverService:
                 ext = '.jpg'
 
             cache_path = self.CACHE_DIR / f"{cache_key}{ext}"
+            print(f'Cache path: {cache_path}')
 
             with open(cache_path, 'wb') as f:
                 f.write(cover_data)

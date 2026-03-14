@@ -243,13 +243,20 @@ class PlaylistItem:
         if item.source_type == "cloud" and item.cloud_type:
             source_type = CloudProvider(item.cloud_type)
 
-        # Try to get cover_path from database for local tracks
+        # Try to get cover_path from database
         cover_path = None
-        if db and item.track_id:
+        if db:
             try:
-                track = db.get_track(item.track_id)
-                if track:
-                    cover_path = track.cover_path
+                # For local tracks, get by track_id
+                if item.track_id:
+                    track = db.get_track(item.track_id)
+                    if track:
+                        cover_path = track.cover_path
+                # For cloud files, get by cloud_file_id
+                elif item.cloud_file_id:
+                    track = db.get_track_by_cloud_file_id(item.cloud_file_id)
+                    if track:
+                        cover_path = track.cover_path
             except Exception:
                 pass  # Ignore errors, cover_path will remain None
 

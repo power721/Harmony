@@ -619,7 +619,7 @@ class PlayerControls(QWidget):
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
 
-            # For cloud files, reload from database to get correct metadata (artist/album)
+            # For cloud files, reload from database to get correct metadata (artist/album/cover_path)
             # This is critical for cache key matching
             if is_cloud and hasattr(self._player, 'db'):
                 try:
@@ -629,8 +629,8 @@ class PlayerControls(QWidget):
                         updated_track["title"] = track.title or updated_track.get("title", "")
                         updated_track["artist"] = track.artist or ""
                         updated_track["album"] = track.album or ""
-                        updated_track["cover_path"] = None  # Clear to search for new cached cover
-                        logger.info(f"[PlayerControls] Reloaded cloud track metadata: artist={track.artist}, album={track.album}")
+                        updated_track["cover_path"] = track.cover_path  # Use database cover_path
+                        logger.info(f"[PlayerControls] Reloaded cloud track metadata: artist={track.artist}, album={track.album}, cover_path={track.cover_path}")
                         QTimer.singleShot(100, lambda t=updated_track: self._load_cover_art_async(t))
                         return
                 except Exception as e:

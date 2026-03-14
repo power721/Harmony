@@ -1947,6 +1947,14 @@ class CloudDriveView(QWidget):
             if not title:
                 title = file_path.stem
 
+            # Get existing cover path from database if available
+            cover_path = None
+            if app and app.bootstrap:
+                db = app.bootstrap.db
+                track = db.get_track_by_cloud_file_id(file.file_id)
+                if track:
+                    cover_path = track.cover_path
+
             # Create a pseudo-track for the cover download dialog
             from domain.track import Track
             pseudo_track = Track(
@@ -1956,12 +1964,22 @@ class CloudDriveView(QWidget):
                 album=album,
                 path=file.local_path,
                 duration=file.duration or 0,
+                cover_path=cover_path,
             )
 
             # Define save callback for cloud file
-            def save_cover_callback(track, cover_path, cover_data):
-                """Save cover for cloud file - cover is already saved to cache by CoverDownloadDialog."""
-                # The cover is already saved to cache by CoverDownloadDialog._save_cover()
+            def save_cover_callback(track, new_cover_path, cover_data):
+                """Save cover for cloud file - update database and notify listeners."""
+                # Update cover_path in database
+                from app import Application
+                app = Application.instance()
+                if app and app.bootstrap:
+                    db = app.bootstrap.db
+                    db_track = db.get_track_by_cloud_file_id(file.file_id)
+                    if db_track and db_track.id:
+                        db.update_track_cover_path(db_track.id, new_cover_path)
+                        logger.info(f"[CloudView] Updated cover_path in database: track_id={db_track.id}, cover_path={new_cover_path}")
+
                 # Notify listeners to refresh cover display
                 from system.event_bus import EventBus
                 bus = EventBus.instance()
