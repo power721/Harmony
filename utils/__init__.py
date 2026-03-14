@@ -1,4 +1,7 @@
-# Utils module
+"""
+Utils module - Shared utilities.
+"""
+
 from .helpers import (
     format_duration,
     format_time,
@@ -8,8 +11,6 @@ from .helpers import (
     format_count_message,
 )
 from .lrc_parser import parse_lrc
-from .config import ConfigManager
-from .i18n import t, set_language, get_language, get_available_languages
 
 __all__ = [
     "format_duration",
@@ -19,9 +20,4 @@ __all__ = [
     "sanitize_filename",
     "truncate_text",
     "format_count_message",
-    "ConfigManager",
-    "t",
-    "set_language",
-    "get_language",
-    "get_available_languages",
 ]

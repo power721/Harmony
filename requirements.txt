@@ -15,6 +15,9 @@ pymediainfo==6.1.0
 beautifulsoup4==4.12.2
 lxml==5.1.0
 
+# Chinese text conversion (Traditional to Simplified)
+opencc-python-reimplemented==0.1.7
+
 # QR code generation
 qrcode[pil]==8.2
 

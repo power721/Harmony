@@ -237,6 +237,19 @@
     "acoustid_identify": "识别歌曲",
     "acoustid_enable_first": "请先在设置中启用 AcoustID",
     "acoustid_identifying": "正在识别歌曲...",
-    "acoustid_result": "成功识别 {identified} 首，失败 {failed} 首"
+    "acoustid_result": "成功识别 {identified} 首，失败 {failed} 首",
+    "cover_source": "封面来源",
+    "cover_download_failed": "下载封面失败",
+    "cover_already_exists": "现有封面",
+    "cover_saved_success": "封面保存成功",
+    "cover_save_failed": "保存封面失败",
+    "track": "歌曲",
+    "download_cover_manual": "下载封面",
+    "search_results": "搜索结果",
+    "search": "搜索",
+    "no_results": "未找到结果",
+    "found": "找到",
+    "results": "个结果",
+    "match_score": "匹配度"
 }
 

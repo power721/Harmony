@@ -237,5 +237,18 @@
     "acoustid_identify": "Identify with AcoustID",
     "acoustid_enable_first": "Please enable AcoustID in settings first",
     "acoustid_identifying": "Identifying tracks...",
-    "acoustid_result": "Identified {identified} tracks, failed {failed}"
+    "acoustid_result": "Identified {identified} tracks, failed {failed}",
+    "cover_source": "Cover Source",
+    "cover_download_failed": "Failed to download cover",
+    "cover_already_exists": "Existing cover art",
+    "cover_saved_success": "Cover saved successfully",
+    "cover_save_failed": "Failed to save cover",
+    "track": "Track",
+    "download_cover_manual": "Download Cover Art",
+    "search_results": "Search Results",
+    "search": "Search",
+    "no_results": "No results found",
+    "found": "Found",
+    "results": "results",
+    "match_score": "Match Score"
 }

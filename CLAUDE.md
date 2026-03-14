@@ -64,17 +64,32 @@ tests/
 
 ---
 
-# Architecture
+# Architecture (Harmony 3.0)
 
-The project follows a **layered architecture**.
+The project follows a **clean layered architecture** with dependency inversion:
 
 ```
-database/
-player/
-services/
-ui/
-utils/
+app/           → Application bootstrap and dependency injection
+domain/        → Pure domain models (no dependencies)
+repositories/  → Data access abstraction layer
+services/      → Business logic layer
+infrastructure/→ Technical implementations
+ui/            → PySide6 user interface
+system/        → Application-wide components
 ```
+
+## Layer Dependencies
+
+```
+UI → Services → Repositories → Infrastructure
+              ↘ Domain ↗
+```
+
+- **UI** only depends on **Services** and **Domain**
+- **Services** depend on **Repositories** and **Domain**
+- **Repositories** depend on **Infrastructure** and **Domain**
+- **Domain** has no dependencies (pure dataclasses)
+- **Infrastructure** implements technical details
 
 AI agents should maintain this separation.
 
@@ -84,89 +99,63 @@ Never mix UI logic, database logic, and playback logic.
 
 # Module Responsibilities
 
-## database
+## app
 
-Responsible for **data persistence**.
+Application bootstrap and dependency injection.
 
 Important components:
 
-- `DatabaseManager`
-- `models.py`
+- `Application` - Application singleton
+- `Bootstrap` - Dependency injection container
+
+---
+
+## domain
+
+Pure domain models with **no external dependencies**.
+
+Important components:
+
+- `Track`, `PlaylistItem` - Music track entities
+- `Playlist` - Playlist entity
+- `CloudFile`, `CloudAccount` - Cloud storage entities
+- `PlayMode`, `PlaybackState` - Playback enumerations
 
 Key rule:
 
-Each thread must use **its own SQLite connection**.
-
-This is implemented using:
-
-```
-threading.local()
-```
-
-Never share SQLite connections across threads.
+Domain models must **never import** from other modules.
 
 ---
 
-## player
+## repositories
 
-Handles playback control and queue management.
+Data access abstraction layer.
 
-Important classes:
+Important components:
 
-### PlayerEngine
+- `TrackRepository` - Track data access
+- `PlaylistRepository` - Playlist data access
+- `CloudRepository` - Cloud account/file data access
+- `QueueRepository` - Play queue persistence
 
-Low‑level wrapper around:
+Key rule:
 
-```
-QMediaPlayer
-```
-
-Responsibilities:
-
-- audio playback
-- playback signals
-
----
-
-### PlaybackManager
-
-Primary controller of the system.
-
-Responsibilities:
-
-- playback orchestration
-- queue management
-- local/cloud unification
-- queue persistence
-- download coordination
-
-Most playback logic should live here.
-
----
-
-### PlaylistItem
-
-Unified abstraction representing:
-
-- local track
-- cloud file
-
-Used across the player so the engine treats all sources the same.
+Repositories abstract database operations from business logic.
 
 ---
 
 ## services
 
-Services handle **external data or background work**.
+Business logic layer organized by domain.
 
-Key services:
+Important subdirectories:
 
-- MetadataService
-- CoverService
-- LyricsService
-- LyricsLoader
-- QuarkDriveService
-- CloudDownloadService
+- `playback/` - PlaybackService, QueueService
+- `library/` - LibraryService
+- `lyrics/` - LyricsService, LyricsLoader
+- `metadata/` - MetadataService, CoverService
+- `cloud/` - QuarkService, CloudDownloadService
+- `ai/` - AiMetadataService, AcoustidService
 
 Rules:
 
@@ -175,20 +164,28 @@ Rules:
 
 ---
 
+## infrastructure
+
+Technical implementations.
+
+Important components:
+
+- `audio/` - AudioEngine (QMediaPlayer wrapper)
+- `database/` - SqliteManager
+- `network/` - HttpClient
+- `cache/` - FileCache
+
+---
+
 ## ui
 
 Contains all PySide6 UI components.
 
-Main components:
+Structure:
 
-- MainWindow
-- LibraryView
-- PlaylistView
-- QueueView
-- PlayerControls
-- MiniPlayer
-- CloudDriveView
-- LyricsWidget
+- `windows/` - MainWindow, MiniPlayer
+- `views/` - LibraryView, PlaylistView, QueueView, CloudView
+- `widgets/` - PlayerControls, LyricsWidget, dialogs
 
 UI should communicate through signals and the EventBus.
 
@@ -196,18 +193,16 @@ Avoid direct coupling between widgets and services.
 
 ---
 
-## utils
+## system
 
-Shared utilities.
+Application-wide components.
 
-Important modules:
+Important components:
 
-- ConfigManager
-- event_bus
-- i18n
-- global_hotkeys
-- lrc_parser
-- helpers
+- `ConfigManager` - Configuration management
+- `EventBus` - Global event bus
+- `i18n` - Internationalization
+- `hotkeys` - Global hotkeys
 
 ---
 
@@ -242,7 +237,7 @@ Cloud files are integrated through PlaylistItem.
 Typical flow:
 
 1. User selects cloud file
-2. PlaybackManager creates PlaylistItem(needs_download=True)
+2. PlaybackService creates PlaylistItem(needs_download=True)
 3. CloudDownloadService downloads file
 4. On completion playback begins
 
@@ -279,8 +274,8 @@ Playback queue is persisted in the database.
 Managed by:
 
 ```
-PlaybackManager.save_queue()
-PlaybackManager.restore_queue()
+QueueService.save()
+QueueService.restore()
 ```
 
 The queue supports:
@@ -314,6 +309,7 @@ Preferred patterns:
 - signal‑driven UI updates
 - centralized state management
 - minimal UI‑service coupling
+- dependency injection through Bootstrap
 
 ---
 
@@ -371,6 +367,12 @@ CLAUDE.md
 ```
 
 so future AI agents understand the project.
+
+---
+
+### Rule 4 - Save documentation
+
+Save new documentation Markdown files to folder docs/
 
 ---
 
