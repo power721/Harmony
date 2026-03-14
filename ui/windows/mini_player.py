@@ -413,7 +413,13 @@ class MiniPlayer(QWidget):
             artist = track_dict.get("artist", "")
             album = track_dict.get("album", "")
 
-            return self._player.get_track_cover(path, title, artist, album)
+            # For cloud files that need download, skip online cover fetching
+            # Online cover will be fetched after download completes in _save_cloud_track_to_library
+            needs_download = track_dict.get("needs_download", False)
+            is_cloud = track_dict.get("is_cloud", False)
+            skip_online = needs_download or (is_cloud and not path)
+
+            return self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
 
         def worker():
             cover_path = load_cover()

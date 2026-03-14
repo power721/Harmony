@@ -151,6 +151,7 @@ class PlaylistItem:
             "cloud_account_id": self.cloud_account_id,
             "needs_download": self.needs_download,
             "needs_metadata": self.needs_metadata,
+            "is_cloud": self.is_cloud,
         }
 
     @property

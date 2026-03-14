@@ -830,10 +830,16 @@ class PlayerControls(QWidget):
             artist = track_dict.get("artist", "")
             album = track_dict.get("album", "")
 
-            logger.debug(f"[PlayerControls] Loading cover for: path={path}, title={title}, artist={artist}, album={album}")
+            # For cloud files that need download, skip online cover fetching
+            # Online cover will be fetched after download completes in _save_cloud_track_to_library
+            needs_download = track_dict.get("needs_download", False)
+            is_cloud = track_dict.get("is_cloud", False)
+            skip_online = needs_download or (is_cloud and not path)
+
+            logger.debug(f"[PlayerControls] Loading cover for: path={path}, title={title}, artist={artist}, album={album}, skip_online={skip_online}")
 
             try:
-                cover_path = self._player.get_track_cover(path, title, artist, album)
+                cover_path = self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
                 logger.debug(f"[PlayerControls] get_track_cover returned: {cover_path}")
                 if cover_path:
                     return cover_path

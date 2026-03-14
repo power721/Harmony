@@ -817,6 +817,11 @@ class PlaybackService(QObject):
         """
         Save downloaded cloud track to library with metadata and cover art.
 
+        This method is called AFTER cloud file download completes. It:
+        1. Extracts metadata from the downloaded file
+        2. Saves embedded cover if present (as fallback)
+        3. Fetches cover from online sources (even if embedded cover exists)
+
         Args:
             file_id: Cloud file ID
             local_path: Local path of downloaded file
@@ -841,25 +846,51 @@ class PlaybackService(QObject):
             conn.commit()
             return existing_by_path.cover_path
 
+        # Step 1: Extract metadata from downloaded file
         metadata = MetadataService.extract_metadata(local_path)
 
         title = metadata.get("title", Path(local_path).stem)
         artist = metadata.get("artist", "")
         album = metadata.get("album", "")
+        duration = metadata.get("duration", 0)
 
         cover_path = None
         if self._cover_service:
-            cover_path = self._cover_service.save_cover_from_metadata(
-                local_path,
-                metadata.get("cover")
-            )
+            # Step 2: Save embedded cover as fallback (if present)
+            embedded_cover_path = None
+            if metadata.get("cover"):
+                embedded_cover_path = self._cover_service.save_cover_from_metadata(
+                    local_path,
+                    metadata.get("cover")
+                )
+                logger.info(f"[PlaybackService] Embedded cover saved: {embedded_cover_path}")
+
+            # Step 3: Always try to fetch online cover (even if embedded exists)
+            # Online cover with high score is preferred
+            if title and artist:
+                logger.info(f"[PlaybackService] Fetching online cover for: {title} - {artist}")
+                online_cover_path = self._cover_service.fetch_online_cover(
+                    title,
+                    artist,
+                    album,
+                    duration
+                )
+                if online_cover_path:
+                    logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
+                    cover_path = online_cover_path
+                elif embedded_cover_path:
+                    # Use embedded cover if online fetch failed
+                    logger.info(f"[PlaybackService] Using embedded cover as fallback")
+                    cover_path = embedded_cover_path
+            elif embedded_cover_path:
+                cover_path = embedded_cover_path
 
         track = Track(
             path=local_path,
             title=title,
             artist=artist,
             album=album,
-            duration=metadata.get("duration", 0),
+            duration=duration,
             cloud_file_id=file_id,
             cover_path=cover_path,
         )
@@ -867,7 +898,7 @@ class PlaybackService(QObject):
         self._db.add_track(track)
         return cover_path
 
-    def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "") -> Optional[str]:
+    def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "", skip_online: bool = False) -> Optional[str]:
         """
         Get cover art for a track.
 
@@ -876,12 +907,13 @@ class PlaybackService(QObject):
             title: Track title
             artist: Track artist
             album: Album name
+            skip_online: If True, skip online fetching (for cloud files before download completes)
 
         Returns:
             Path to the cover image, or None
         """
         if self._cover_service:
-            return self._cover_service.get_cover(track_path, title, artist, album)
+            return self._cover_service.get_cover(track_path, title, artist, album, skip_online=skip_online)
         return None
 
     def save_cover_from_metadata(self, track_path: str, cover_data: bytes) -> Optional[str]:

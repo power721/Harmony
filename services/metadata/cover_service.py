@@ -28,7 +28,7 @@ class CoverService:
         """
         self.http_client = http_client
 
-    def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None) -> Optional[str]:
+    def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None, skip_online: bool = False) -> Optional[str]:
         """
         Get cover art for a track, prioritizing cached/downloaded covers.
 
@@ -38,6 +38,7 @@ class CoverService:
             artist: Track artist
             album: Album name
             duration: Track duration in seconds (optional, for better matching)
+            skip_online: If True, skip online fetching (used for cloud files before download completes)
 
         Returns:
             Path to the cover image, or None
@@ -56,6 +57,11 @@ class CoverService:
         logger.info(f"[CoverService] embedded cover_path={cover_path}")
         if cover_path:
             return cover_path
+
+        # Skip online fetching if requested (e.g., for cloud files before download completes)
+        if skip_online:
+            logger.info(f"[CoverService] Skipping online fetch (skip_online=True)")
+            return None
 
         # Try online sources with smart matching
         logger.info(f"[CoverService] No cover found, trying online sources")
@@ -154,6 +160,25 @@ class CoverService:
                 return cover_path
         return None
 
+    def fetch_online_cover(self, title: str, artist: str, album: str = "", duration: float = None) -> Optional[str]:
+        """
+        Fetch cover art from online sources (public method).
+
+        This method always attempts to download cover from online sources,
+        regardless of whether an embedded cover exists.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+            duration: Track duration in seconds (optional, for better matching)
+
+        Returns:
+            Path to downloaded cover, or None if no suitable cover found
+        """
+        cache_key = self._get_cache_key(artist, album or title)
+        return self._fetch_online_cover(title, artist, album, cache_key, duration)
+
     def _fetch_online_cover(self, title: str, artist: str, album: str, cache_key: str, duration: float = None) -> Optional[str]:
         """
         Fetch cover art from online sources with smart matching.
@@ -201,7 +226,7 @@ class CoverService:
                 result, score = best_match
                 logger.info(f"Best cover match: {result.title} - {result.artist} (score: {score:.1f}, source: {result.source})")
 
-                if score >= 30 and result.cover_url:
+                if score >= 50 and result.cover_url:
                     cover_data = self.http_client.get_content(result.cover_url, timeout=5)
                     if cover_data:
                         return self._save_cover_to_cache(cover_data, cache_key)

@@ -178,8 +178,8 @@ class MainWindow(QMainWindow):
             def cover_service(self):
                 return playback.cover_service
 
-            def get_track_cover(self, track_path: str, title: str, artist: str, album: str = ""):
-                return playback.get_track_cover(track_path, title, artist, album)
+            def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "", skip_online: bool = False):
+                return playback.get_track_cover(track_path, title, artist, album, skip_online=skip_online)
 
             def save_cover_from_metadata(self, track_path: str, cover_data: bytes):
                 return playback.save_cover_from_metadata(track_path, cover_data)
