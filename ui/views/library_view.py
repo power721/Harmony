@@ -30,7 +30,7 @@ from typing import List, Optional
 
 from infrastructure.database import DatabaseManager
 from domain.track import Track
-from services.playback import PlayerController
+from services.playback import PlaybackService
 from domain.playback import PlaybackState
 from utils import format_duration, format_count_message
 from system.i18n import t
@@ -49,7 +49,7 @@ class LibraryView(QWidget):
     )  # Signal when tracks should be added to a playlist
 
     def __init__(
-        self, db_manager: DatabaseManager, player: PlayerController, config_manager: ConfigManager = None, parent=None
+        self, db_manager: DatabaseManager, player: PlaybackService, config_manager: ConfigManager = None, parent=None
     ):
         """
         Initialize library view.

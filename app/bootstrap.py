@@ -6,15 +6,12 @@ import logging
 from typing import Optional
 
 from infrastructure.database import DatabaseManager
-from infrastructure.audio import PlayerEngine
 from repositories.track_repository import SqliteTrackRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.cloud_repository import SqliteCloudRepository
 from repositories.queue_repository import SqliteQueueRepository
 from services.playback import PlaybackService, QueueService
 from services.library import LibraryService
-from services.lyrics import LyricsService
-from services.metadata import MetadataService
 from system.config import ConfigManager
 from system.event_bus import EventBus
 
@@ -119,8 +116,7 @@ class Bootstrap:
         """Get playback service."""
         if self._playback_service is None:
             self._playback_service = PlaybackService(
-                track_repo=self.track_repo,
-                queue_repo=self.queue_repo,
+                db_manager=self.db,
                 config_manager=self.config,
             )
         return self._playback_service

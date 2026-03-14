@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Use TYPE_CHECKING to avoid circular import
 if TYPE_CHECKING:
-    from services.playback.player_controller import PlayerController
+    from services.playback.playback_service import PlaybackService
 
 # Import PlaybackState from domain (no circular dependency)
 from domain.playback import PlaybackState
@@ -38,7 +38,7 @@ class GlobalHotkeys(QObject):
     similar systems.
     """
 
-    def __init__(self, player: "PlayerController", window):
+    def __init__(self, player: "PlaybackService", window):
         """
         Initialize global hotkeys.
 
@@ -150,7 +150,7 @@ class GlobalHotkeys(QObject):
             self._window._playlist_view._create_playlist()
 
 
-def setup_media_key_handler(player: "PlayerController"):
+def setup_media_key_handler(player: "PlaybackService"):
     """
     Setup media key handler using system-specific APIs.
 
@@ -179,7 +179,7 @@ def setup_media_key_handler(player: "PlayerController"):
         logger.error(f"Could not setup media key handler: {e}", exc_info=True)
 
 
-def _setup_linux_media_keys(player: "PlayerController"):
+def _setup_linux_media_keys(player: "PlaybackService"):
     """Setup media keys on Linux using MPRIS."""
     try:
         import dbus
@@ -227,14 +227,14 @@ def _setup_linux_media_keys(player: "PlayerController"):
         print("DBus not available for MPRIS support")
 
 
-def _setup_macos_media_keys(player: "PlayerController"):
+def _setup_macos_media_keys(player: "PlaybackService"):
     """Setup media keys on macOS."""
     # Requires pyobjc and CGEvent tap
     # This is a simplified placeholder
     pass
 
 
-def _setup_windows_media_keys(player: "PlayerController"):
+def _setup_windows_media_keys(player: "PlaybackService"):
     """Setup media keys on Windows."""
     # Requires keyboard or pynput library
     # This is a simplified placeholder

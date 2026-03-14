@@ -3,7 +3,7 @@ Services module - Business logic layer organized by domain.
 """
 
 # Playback services
-from .playback import PlaybackService, PlaybackManager, QueueService, PlayerController
+from .playback import PlaybackService, QueueService
 
 # Library services
 from .library import LibraryService
@@ -21,7 +21,7 @@ from .cloud import QuarkDriveService, CloudDownloadService
 from .ai import AIMetadataService, AcoustIDService
 
 __all__ = [
-    'PlaybackService', 'PlaybackManager', 'QueueService', 'PlayerController',
+    'PlaybackService', 'QueueService',
     'LibraryService',
     'LyricsService',
     'MetadataService', 'CoverService',

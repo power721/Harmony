@@ -5,7 +5,7 @@ import logging
 
 from domain.playback import PlaybackState
 from infrastructure.database import DatabaseManager
-from services import CoverService, PlaybackManager
+from services import CoverService, PlaybackService
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsSearchWorker, LyricsDownloadWorker
 
@@ -76,8 +76,8 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Initialize playback manager (replaces PlayerController + CloudPlaylistManager)
-        self._playback = PlaybackManager(self._db, self._config)
+        # Initialize playback service
+        self._playback = PlaybackService(self._db, self._config)
 
         # Keep reference to engine for backward compatibility
         # Use closures to capture self for methods that need access to db
@@ -155,40 +155,10 @@ class MainWindow(QMainWindow):
                 return playback.set_play_mode(mode)
 
             def is_favorite(self, track_id=None, cloud_file_id=None):
-                if track_id is None and cloud_file_id is None:
-                    track_id = self.current_track_id
-                    cloud_file_id = self.current_cloud_file_id
-                if track_id:
-                    return db.is_favorite(track_id=track_id)
-                if cloud_file_id:
-                    return db.is_favorite(cloud_file_id=cloud_file_id)
-                return False
+                return playback.is_favorite(track_id, cloud_file_id)
 
             def toggle_favorite(self, track_id=None, cloud_file_id=None, cloud_account_id=None):
-                if track_id is None and cloud_file_id is None:
-                    track_id = self.current_track_id
-                    cloud_file_id = self.current_cloud_file_id
-                    item = playback.current_track
-                    if item and item.is_cloud:
-                        cloud_account_id = item.cloud_account_id
-                if not track_id and not cloud_file_id:
-                    return False
-
-                bus = EventBus.instance()
-                # Check current favorite status (database will convert cloud_file_id to track_id if available)
-                is_fav = db.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
-
-                if is_fav:
-                    db.remove_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
-                    # Emit with track_id if available, otherwise cloud_file_id
-                    emit_id = track_id if track_id else cloud_file_id
-                    bus.emit_favorite_change(emit_id, False, is_cloud=bool(cloud_file_id and not track_id))
-                    return False
-                else:
-                    db.add_favorite(track_id=track_id, cloud_file_id=cloud_file_id, cloud_account_id=cloud_account_id)
-                    emit_id = track_id if track_id else cloud_file_id
-                    bus.emit_favorite_change(emit_id, True, is_cloud=bool(cloud_file_id and not track_id))
-                    return True
+                return playback.toggle_favorite(track_id, cloud_file_id, cloud_account_id)
 
             def load_playlist(self, playlist_id):
                 return playback.load_playlist(playlist_id)
@@ -958,21 +928,21 @@ class MainWindow(QMainWindow):
 
         self._current_cloud_account = account
 
-        # Use PlaybackManager for cloud playback
+        # Use PlaybackService for cloud playback
         self._playback.play_cloud_playlist(cloud_files, index, account, start_position)
 
         # If first file is already downloaded, update it
         if temp_path and index < len(cloud_files):
-            self._playback.on_download_completed(cloud_files[index].file_id, temp_path)
+            self._playback.on_cloud_file_downloaded(cloud_files[index].file_id, temp_path)
 
     def _on_cloud_download_completed(self, file_id: str, local_path: str):
         """Handle cloud file download completion."""
-        # Forward to playback manager
-        self._playback.on_download_completed(file_id, local_path)
+        # Forward to playback service
+        self._playback.on_cloud_file_downloaded(file_id, local_path)
 
     def _on_queue_reordered(self):
         """Handle queue reorder (drag-drop in queue view)."""
-        # Sync playlist items from engine to playback manager and save
+        # Sync playlist items from engine to playback service and save
         self._playback.save_queue()
 
     def _on_track_changed(self, track_item):
@@ -1782,7 +1752,7 @@ class MainWindow(QMainWindow):
         if splitter_state:
             self._splitter.restoreState(splitter_state)
 
-        # Volume is restored by PlayerController, just update slider
+        # Volume is restored by PlaybackService, just update slider
         volume = self._config.get_volume()
         self._player_controls.set_volume(volume)
 

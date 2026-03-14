@@ -22,7 +22,7 @@ from PySide6.QtGui import QIcon, QFont, QPixmap, QCursor, QMouseEvent, QPainter,
 from typing import Optional
 import threading
 
-from services.playback import PlayerController
+from services.playback import PlaybackService
 from domain.playback import PlaybackState, PlayMode
 from utils import format_time
 from system.i18n import t
@@ -38,7 +38,7 @@ class PlayerControls(QWidget):
     # Signal for cover loaded in background thread
     _cover_loaded = Signal(str)
 
-    def __init__(self, player: PlayerController, parent=None):
+    def __init__(self, player: PlaybackService, parent=None):
         """
         Initialize player controls.
 
@@ -545,10 +545,9 @@ class PlayerControls(QWidget):
         elif current_path:
             # Try to find track by path and check if it matches
             try:
-                from services.playback import PlayerController
-                # Get database from player controller if available
-                if hasattr(self._player, '_db'):
-                    track = self._player._db.get_track_by_path(current_path)
+                # Get database from player if available
+                if hasattr(self._player, 'db'):
+                    track = self._player.db.get_track_by_path(current_path)
                     if track and track.id == track_id:
                         should_reload = True
                         logger.info(f"[PlayerControls] Found track by path: {track_id}, reloading cover")
@@ -557,9 +556,9 @@ class PlayerControls(QWidget):
 
         if should_reload:
             # Reload from database to get latest cover_path
-            if current_path and hasattr(self._player, '_db'):
+            if current_path and hasattr(self._player, 'db'):
                 try:
-                    track = self._player._db.get_track_by_path(current_path)
+                    track = self._player.db.get_track_by_path(current_path)
                     if track:
                         # Create updated track dict
                         updated_track = {

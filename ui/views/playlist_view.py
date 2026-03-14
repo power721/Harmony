@@ -28,7 +28,7 @@ from typing import List, Optional
 from infrastructure.database import DatabaseManager
 from domain.track import Track
 from domain.playlist import Playlist
-from services.playback import PlayerController
+from services.playback import PlaybackService
 from utils import format_duration
 from system.i18n import t
 
@@ -126,7 +126,7 @@ class PlaylistView(QWidget):
     playlist_track_double_clicked = Signal(int, int)  # Signal when playlist track is double-clicked (playlist_id, track_id)
 
     def __init__(
-        self, db_manager: DatabaseManager, player: PlayerController, parent=None
+        self, db_manager: DatabaseManager, player: PlaybackService, parent=None
     ):
         """
         Initialize playlist view.

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QPixmap, QPainter, QColor, QKeySequence, QShortcut
 
-from services.playback import PlayerController
+from services.playback import PlaybackService
 from domain.playback import PlaybackState, PlayMode
 from utils import format_time
 from system.i18n import t
@@ -34,7 +34,7 @@ class MiniPlayer(QWidget):
     closed = Signal()  # Signal when mini player is closed
     _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
 
-    def __init__(self, player: PlayerController, parent=None):
+    def __init__(self, player: PlaybackService, parent=None):
         """
         Initialize mini player.
 

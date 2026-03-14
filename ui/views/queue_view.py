@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QAction, QColor, QBrush
 from typing import List
 
-from services.playback import PlayerController
+from services.playback import PlaybackService
 from domain.playback import PlaybackState
 from utils import format_duration
 from system.i18n import t
@@ -31,12 +31,12 @@ class QueueView(QWidget):
     play_track = Signal(int)
     queue_reordered = Signal()  # Emitted when queue order changes via drag-drop
 
-    def __init__(self, player: PlayerController, db_manager=None, parent=None):
+    def __init__(self, player: PlaybackService, db_manager=None, parent=None):
         """
         Initialize queue view.
 
         Args:
-            player: Player controller
+            player: Playback service
             db_manager: Database manager
             parent: Parent widget
         """
