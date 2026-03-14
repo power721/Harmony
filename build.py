@@ -669,7 +669,7 @@ def build_executable(
 
     try:
         result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
-        print("\n✓ Build completed successfully!")
+        print("\n[OK] Build completed successfully!")
 
         # Print output location
         output_name = APP_NAME + platform_info["extension"]
@@ -686,7 +686,7 @@ def build_executable(
         return True
 
     except subprocess.CalledProcessError as e:
-        print(f"\n✗ Build failed with error: {e}")
+        print(f"\n[ERROR] Build failed with error: {e}")
         return False
 
 
@@ -837,7 +837,7 @@ fi
 ln -sf "$INSTALL_DIR/{APP_NAME}" "$BIN_LINK"
 
 echo ""
-echo "✓ Installation complete!"
+echo "[OK] Installation complete!"
 echo ""
 echo "You can now run {APP_NAME} by:"
 echo "  - Typing '{APP_NAME.lower()}' in terminal"
@@ -879,7 +879,7 @@ rm -f "$ICON_FILE"
 # Update icon cache
 gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 
-echo "✓ Uninstallation complete!"
+echo "[OK] Uninstallation complete!"
 """
     uninstall_path = DIST_DIR / "uninstall.sh"
     with open(uninstall_path, "w") as f:
