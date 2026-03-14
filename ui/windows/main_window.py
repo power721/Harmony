@@ -1247,7 +1247,8 @@ class MainWindow(QMainWindow):
             source=song_info['source'],
             accesskey=song_info.get('accesskey'),
             download_cover=download_cover,
-            cover_service=self._playback.cover_service
+            cover_service=self._playback.cover_service,
+            lyrics_data=song_info.get('lyrics')  # Pre-fetched lyrics for LRCLIB
         )
 
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)

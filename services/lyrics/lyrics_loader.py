@@ -96,7 +96,8 @@ class LyricsDownloadWorker(QThread):
 
     def __init__(self, track_path: str, title: str, artist: str, parent=None,
                  song_id: str = None, source: str = None, accesskey: str = None,
-                 download_cover: bool = True, cover_service: 'CoverService' = None):
+                 download_cover: bool = True, cover_service: 'CoverService' = None,
+                 lyrics_data: str = None):
         """
         Initialize the worker.
 
@@ -106,9 +107,11 @@ class LyricsDownloadWorker(QThread):
             artist: Track artist
             parent: Optional parent QObject
             song_id: If provided, download specific song's lyrics
-            source: Source name ('netease' or 'kugou')
+            source: Source name ('lrclib', 'netease' or 'kugou')
             accesskey: Access key for Kugou
             download_cover: Whether to download cover art (default: True)
+            cover_service: CoverService for downloading cover art
+            lyrics_data: Pre-fetched lyrics (for LRCLIB)
         """
         super().__init__(parent)
         self._path = track_path
@@ -119,15 +122,22 @@ class LyricsDownloadWorker(QThread):
         self._accesskey = accesskey
         self._should_download_cover = download_cover
         self._cover_service = cover_service
+        self._lyrics_data = lyrics_data
 
     def run(self):
         """Download lyrics in background."""
         try:
             if self._song_id and self._source:
-                # Download specific song's lyrics
-                lyrics = LyricsService.download_lyrics_by_id(
-                    self._song_id, self._source, self._accesskey
-                )
+                # For LRCLIB, lyrics may be pre-fetched in search results
+                # Check if lyrics are provided directly (for LRCLIB)
+                if hasattr(self, '_lyrics_data') and self._lyrics_data:
+                    lyrics = self._lyrics_data
+                else:
+                    # Download specific song's lyrics
+                    lyrics = LyricsService.download_lyrics_by_id(
+                        self._song_id, self._source, self._accesskey
+                    )
+
                 if lyrics:
                     # Save to local file
                     LyricsService.save_lyrics(self._path, lyrics)
