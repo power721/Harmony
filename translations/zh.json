@@ -255,6 +255,9 @@
     "play_all": "播放全部",
     "shuffle": "随机播放",
     "loading_artist": "正在加载歌手...",
-    "songs_albums": "{songs} 首歌曲 • {albums} 张专辑"
+    "songs_albums": "{songs} 首歌曲 • {albums} 张专辑",
+    "album_type": "专辑",
+    "album_stats": "{songs} 首歌曲 • {duration}",
+    "loading_album": "正在加载专辑..."
 }
 

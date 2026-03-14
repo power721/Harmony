@@ -50,6 +50,7 @@ from ui.views.cloud_view import CloudDriveView
 from ui.views.albums_view import AlbumsView
 from ui.views.artists_view import ArtistsView
 from ui.views.artist_view import ArtistView
+from ui.views.album_view import AlbumView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
 from ui.widgets.ai_settings_dialog import AISettingsDialog
@@ -269,6 +270,7 @@ class MainWindow(QMainWindow):
         self._albums_view = AlbumsView(bootstrap.library_service, bootstrap.cover_service)
         self._artists_view = ArtistsView(bootstrap.library_service, bootstrap.cover_service)
         self._artist_view = ArtistView(bootstrap.library_service, self._playback, bootstrap.cover_service)
+        self._album_view = AlbumView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
         self._stacked_widget.addWidget(self._library_view)       # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)   # 1
@@ -277,6 +279,7 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._albums_view)        # 4
         self._stacked_widget.addWidget(self._artists_view)       # 5
         self._stacked_widget.addWidget(self._artist_view)        # 6
+        self._stacked_widget.addWidget(self._album_view)         # 7
 
         self._splitter.addWidget(self._stacked_widget)
 
@@ -552,6 +555,10 @@ class MainWindow(QMainWindow):
         self._artist_view.play_tracks.connect(self._play_tracks)
         self._artist_view.track_double_clicked.connect(self._play_track)
 
+        # Album view connections
+        self._album_view.play_tracks.connect(self._play_tracks)
+        self._album_view.track_double_clicked.connect(self._play_track)
+
     def _setup_system_tray(self):
         """Setup system tray icon."""
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -730,13 +737,19 @@ class MainWindow(QMainWindow):
 
     def _on_album_clicked(self, album):
         """Handle album card click."""
-        from app.bootstrap import Bootstrap
-        bootstrap = Bootstrap.instance()
+        # Show album detail view
+        self._album_view.set_album(album)
+        self._stacked_widget.setCurrentIndex(7)
 
-        # Get album tracks and play them
-        tracks = bootstrap.library_service.get_album_tracks(album.name, album.artist)
-        if tracks:
-            self._play_tracks(tracks)
+        # Update nav button states
+        self._nav_library.setChecked(False)
+        self._nav_cloud.setChecked(False)
+        self._nav_playlists.setChecked(False)
+        self._nav_queue.setChecked(False)
+        self._nav_albums.setChecked(False)
+        self._nav_artists.setChecked(False)
+        self._nav_favorites.setChecked(False)
+        self._nav_history.setChecked(False)
 
     def _on_download_album_cover(self, album):
         """Handle download album cover request."""
@@ -751,11 +764,9 @@ class MainWindow(QMainWindow):
         )
 
         def on_cover_saved(cover_path):
-            # Update the specific album card instead of reloading entire view
-            for card in self._albums_view._cards:
-                if card.get_album().name == album.name and card.get_album().artist == album.artist:
-                    card.update_cover(cover_path)
-                    break
+            # Clear the delegate's cover cache and refresh the view
+            self._albums_view._delegate.clear_cache()
+            self._albums_view._list_view.viewport().update()
 
         dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()
@@ -789,11 +800,9 @@ class MainWindow(QMainWindow):
         )
 
         def on_cover_saved(cover_path):
-            # Update the specific artist card instead of reloading entire view
-            for card in self._artists_view._cards:
-                if card.get_artist().name == artist.name:
-                    card.update_avatar(cover_path)
-                    break
+            # Clear the delegate's cover cache and refresh the view
+            self._artists_view._delegate.clear_cache()
+            self._artists_view._list_view.viewport().update()
 
         dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()

@@ -255,5 +255,8 @@
     "play_all": "Play All",
     "shuffle": "Shuffle",
     "loading_artist": "Loading artist...",
-    "songs_albums": "{songs} songs • {albums} albums"
+    "songs_albums": "{songs} songs • {albums} albums",
+    "album_type": "ALBUM",
+    "album_stats": "{songs} songs • {duration}",
+    "loading_album": "Loading album..."
 }

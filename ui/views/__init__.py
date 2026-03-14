@@ -2,6 +2,7 @@
 UI views module.
 """
 
+from .album_view import AlbumView
 from .albums_view import AlbumsView
 from .artist_view import ArtistView
 from .artists_view import ArtistsView
@@ -12,5 +13,5 @@ from .queue_view import QueueView
 
 __all__ = [
     'LibraryView', 'PlaylistView', 'QueueView', 'CloudDriveView',
-    'AlbumsView', 'ArtistsView', 'ArtistView',
+    'AlbumsView', 'ArtistsView', 'AlbumView', 'ArtistView',
 ]
