@@ -1,5 +1,7 @@
 import logging
 import re
+from dataclasses import dataclass
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -8,17 +10,28 @@ logger = logging.getLogger(__name__)
 # 数据结构
 # =========================
 
-class LyricLine:
-
-    def __init__(self, time: float, text: str, words=None):
-        self.time = time
-        self.text = text
-
-        # 逐字歌词
-        self.words = words or []
+@dataclass
+class LyricWord:
+    """逐字歌词的单字数据"""
+    time: float       # 开始时间(秒)
+    duration: float   # 持续时间(秒)
+    text: str         # 字符内容
 
     def __repr__(self):
-        return f"<LyricLine {self.time:.2f} {self.text}>"
+        return f"<{self.text}@{self.time:.2f}s>"
+
+
+class LyricLine:
+    """歌词行数据"""
+
+    def __init__(self, time: float, text: str, words: List[LyricWord] = None, duration: float = 0):
+        self.time = time           # 行开始时间(秒)
+        self.text = text           # 行文本
+        self.words = words or []   # 逐字歌词列表
+        self.duration = duration   # 行持续时间(秒)
+
+    def __repr__(self):
+        return f"<LyricLine {self.time:.2f}s {self.text}>"
 
 
 # =========================
@@ -34,6 +47,11 @@ WORD_RE = re.compile(r"<(\d+),(\d+),\d+>([^<]+)")
 # 逐字歌词格式: [00:00.00]<00:00.000>青<00:00.366>花<00:00.732>瓷
 # 格式: <分:秒.毫秒>字符
 CHAR_WORD_RE = re.compile(r"<(\d+):(\d+\.\d+)>([^<]+)")
+
+# YRC 逐字歌词格式 (网易云)
+# 格式: [行开始时间ms,行持续时间ms](字偏移ms,字持续时间ms,flag)字
+YRC_LINE_RE = re.compile(r"\[(\d+),(\d+)\]")
+YRC_WORD_RE = re.compile(r"\((\d+),(\d+),\d+\)([^(]+)")
 
 
 # =========================
@@ -86,7 +104,7 @@ def parse_lrc(text: str):
 
         # 去掉逐字标签后的文本
         if words:
-            content = "".join([w[2] for w in words])
+            content = "".join([w.text for w in words])
 
         for m, s in times:
             t = int(m) * 60 + float(s)
@@ -176,7 +194,11 @@ def parse_char_word_lrc(text: str):
                     # 最后一个字符，默认持续1秒
                     duration = 1.0
 
-                words.append((word['time'], duration, word['char']))
+                words.append(LyricWord(
+                    time=word['time'],
+                    duration=duration,
+                    text=word['char']
+                ))
 
             # 使用第一个字符的时间作为行时间
             first_char_time = char_words[0]['time']
@@ -199,6 +221,7 @@ def parse_char_word_lrc(text: str):
 # =========================
 
 def parse_words(text):
+    """解析 <start,dur,flag>word 格式的逐字歌词"""
     words = []
 
     matches = WORD_RE.findall(text)
@@ -208,11 +231,97 @@ def parse_words(text):
 
     for start, dur, word in matches:
         words.append(
-            (
-                int(start) / 1000,
-                int(dur) / 1000,
-                word
+            LyricWord(
+                time=int(start) / 1000,
+                duration=int(dur) / 1000,
+                text=word
             )
         )
 
     return words
+
+def parse_yrc(yrc_text: str) -> List[LyricLine]:
+
+    if not yrc_text:
+        return []
+
+    lyrics = []
+
+    for line in yrc_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        line_match = YRC_LINE_RE.match(line)
+        if not line_match:
+            continue
+
+        line_time_ms = int(line_match.group(1))
+        line_duration_ms = int(line_match.group(2))
+
+        content = line[line_match.end():]
+
+        words = []
+        full_text_parts = []
+
+        for word_match in YRC_WORD_RE.finditer(content):
+
+            offset_ms = int(word_match.group(1))
+            duration_ms = int(word_match.group(2))
+            char = word_match.group(3)
+
+            # =========================
+            # 关键修复
+            # =========================
+
+            # 判断是否是绝对时间
+            if offset_ms >= line_time_ms:
+                word_time_ms = offset_ms
+            else:
+                word_time_ms = line_time_ms + offset_ms
+
+            words.append(LyricWord(
+                time=word_time_ms / 1000,
+                duration=duration_ms / 1000,
+                text=char
+            ))
+
+            full_text_parts.append(char)
+
+        if words:
+            lyrics.append(LyricLine(
+                time=line_time_ms / 1000,
+                text=''.join(full_text_parts),
+                words=words,
+                duration=line_duration_ms / 1000
+            ))
+
+    lyrics.sort(key=lambda x: x.time)
+
+    return lyrics
+
+def detect_and_parse(text: str) -> List[LyricLine]:
+    """
+    自动检测歌词格式并解析。
+
+    支持的格式:
+    - YRC (网易云逐字歌词): [时间,时长](偏移,时长,flag)字
+    - 逐字格式: [00:00.00]<00:00.000>字
+    - 标准 LRC: [00:00.00]歌词
+
+    Args:
+        text: 歌词文本
+
+    Returns:
+        List[LyricLine]: 解析后的歌词行列表
+    """
+    if not text:
+        return []
+
+    # 检测 YRC 格式: [数字,数字](数字,数字,数字)
+    if YRC_LINE_RE.search(text) and YRC_WORD_RE.search(text):
+        logger.info("[lrc_parser] 检测到 YRC 格式，使用 YRC 解析器")
+        return parse_yrc(text)
+
+    # 使用原有的 parse_lrc 函数处理其他格式
+    return parse_lrc(text)

@@ -2,11 +2,11 @@ import re
 from typing import List
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal
-from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics
+from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics, QLinearGradient
 from PySide6.QtWidgets import QWidget
 
 from system.i18n import t
-from utils.lrc_parser import LyricLine, parse_lrc
+from utils.lrc_parser import LyricLine, LyricWord, detect_and_parse
 
 
 # =============================
@@ -19,12 +19,11 @@ class LrcParser:
     @staticmethod
     def parse(lrc: str) -> List[LyricLine]:
         """
-        解析LRC歌词文本，支持标准LRC格式和逐字歌词格式。
+        解析LRC歌词文本，支持标准LRC格式、逐字歌词格式和YRC格式。
 
-        使用统一的parse_lrc函数来处理所有格式。
+        使用统一的detect_and_parse函数来自动检测格式。
         """
-        # 使用改进的parse_lrc函数，支持所有格式
-        return parse_lrc(lrc)
+        return detect_and_parse(lrc)
 
 
 # =============================
@@ -165,7 +164,8 @@ class LyricsWidget(QWidget):
 
                 progress = self._line_progress(i)
 
-                self._draw_progress_text(p, line.text, y, progress)
+                # 传递逐字歌词数据
+                self._draw_progress_text(p, line.text, y, progress, line.words)
 
             else:
 
@@ -201,8 +201,19 @@ class LyricsWidget(QWidget):
     # 绘制渐变高亮
     # =============================
 
-    def _draw_progress_text(self, p, text, y, progress):
+    def _draw_progress_text(self, p, text, y, progress, words=None):
+        """
+        绘制当前行的进度高亮。
 
+        如果有逐字歌词数据，使用逐字高亮；
+        否则使用行级别的进度高亮。
+        """
+        # 如果有逐字歌词，使用逐字高亮
+        if words:
+            self._draw_word_progress(p, text, y, words)
+            return
+
+        # 否则使用行级别进度高亮
         metrics = QFontMetrics(self.font_current)
 
         text_width = metrics.horizontalAdvance(text)
@@ -224,6 +235,50 @@ class LyricsWidget(QWidget):
         p.drawText(base_rect, Qt.AlignCenter, text)
 
         p.restore()
+
+    def _draw_word_progress(self, p, text, y, words: List[LyricWord]):
+        """
+        绘制逐字高亮效果。
+
+        根据当前时间，已唱的字显示高亮色，未唱的字显示普通色。
+        """
+        metrics = QFontMetrics(self.font_current)
+
+        # 计算每个字的 x 位置
+        char_positions = []
+        current_x = self.width() / 2 - metrics.horizontalAdvance(text) / 2
+
+        for word in words:
+            char_width = metrics.horizontalAdvance(word.text)
+            char_positions.append((current_x, char_width, word))
+            current_x += char_width
+
+        # 绘制每个字
+        for x, char_width, word in char_positions:
+            # 判断该字是否已唱
+            word_end_time = word.time + word.duration
+
+            if self.current_time >= word_end_time:
+                # 已唱完 - 高亮色
+                color = self.color_current
+            elif self.current_time >= word.time:
+                # 正在唱 - 渐变高亮
+                progress = (self.current_time - word.time) / word.duration if word.duration > 0 else 1
+                color = self._interpolate_color(self.color_normal, self.color_current, progress)
+            else:
+                # 未唱 - 普通色
+                color = self.color_normal
+
+            p.setPen(color)
+            rect = QRectF(x, y - 20, char_width, 40)
+            p.drawText(rect, Qt.AlignCenter, word.text)
+
+    def _interpolate_color(self, color1: QColor, color2: QColor, t: float) -> QColor:
+        """在两个颜色之间插值"""
+        r = int(color1.red() + (color2.red() - color1.red()) * t)
+        g = int(color1.green() + (color2.green() - color1.green()) * t)
+        b = int(color1.blue() + (color2.blue() - color1.blue()) * t)
+        return QColor(r, g, b)
 
     def _draw_text(self, p, text, y):
 

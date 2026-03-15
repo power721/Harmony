@@ -5,11 +5,16 @@ Tests for LRC parser utility.
 import pytest
 from utils.lrc_parser import (
     LyricLine,
+    LyricWord,
     parse_lrc,
     parse_words,
+    parse_yrc,
+    detect_and_parse,
     TIME_RE,
     META_RE,
     WORD_RE,
+    YRC_LINE_RE,
+    YRC_WORD_RE,
 )
 
 
@@ -93,8 +98,13 @@ class TestParseWords:
         words = parse_words(text)
 
         assert len(words) == 2
-        assert words[0] == (0.1, 0.2, "Hello")
-        assert words[1] == (0.3, 0.4, "World")
+        assert isinstance(words[0], LyricWord)
+        assert words[0].time == 0.1
+        assert words[0].duration == 0.2
+        assert words[0].text == "Hello"
+        assert words[1].time == 0.3
+        assert words[1].duration == 0.4
+        assert words[1].text == "World"
 
     def test_parse_empty_string(self):
         """Test parsing empty string."""
@@ -112,8 +122,8 @@ class TestParseWords:
         words = parse_words(text)
 
         assert len(words) == 2
-        assert words[0][2] == "Word1"
-        assert words[1][2] == "Word2 extra"  # Text after tag is included
+        assert words[0].text == "Word1"
+        assert words[1].text == "Word2 extra"  # Text after tag is included
 
 
 class TestParseLrc:
@@ -197,7 +207,10 @@ class TestParseLrc:
         assert len(lyrics) == 1
         assert lyrics[0].text == "HelloWorld"  # Words concatenated
         assert len(lyrics[0].words) == 2
-        assert lyrics[0].words[0] == (0.1, 0.2, "Hello")
+        assert isinstance(lyrics[0].words[0], LyricWord)
+        assert lyrics[0].words[0].time == 0.1
+        assert lyrics[0].words[0].duration == 0.2
+        assert lyrics[0].words[0].text == "Hello"
 
     def test_parse_empty_lrc(self):
         """Test parsing empty LRC."""
@@ -257,9 +270,14 @@ class TestParseCharWordLrc:
         assert lyrics[0].time == 0.0
         assert lyrics[0].text == "青花瓷"
         assert len(lyrics[0].words) == 3
-        assert lyrics[0].words[0] == (0.0, 0.366, "青")
-        assert lyrics[0].words[1] == (0.366, 0.366, "花")
-        assert lyrics[0].words[2] == (0.732, 1.0, "瓷")
+        assert isinstance(lyrics[0].words[0], LyricWord)
+        assert lyrics[0].words[0].time == 0.0
+        assert lyrics[0].words[0].duration == 0.366
+        assert lyrics[0].words[0].text == "青"
+        assert lyrics[0].words[1].time == 0.366
+        assert lyrics[0].words[1].text == "花"
+        assert lyrics[0].words[2].time == 0.732
+        assert lyrics[0].words[2].text == "瓷"
 
         # Second line
         assert lyrics[1].time == 5.49
@@ -276,9 +294,9 @@ class TestParseCharWordLrc:
         assert lyrics[0].text == "青花瓷 - 周杰伦"
         assert len(lyrics[0].words) == 9
         # Check space character
-        assert lyrics[0].words[3][2] == " "
+        assert lyrics[0].words[3].text == " "
         # Check dash
-        assert lyrics[0].words[4][2] == "-"
+        assert lyrics[0].words[4].text == "-"
 
     def test_parse_char_word_with_english(self):
         """Test parsing character-word lyrics with English text."""
@@ -289,11 +307,11 @@ class TestParseCharWordLrc:
         assert len(lyrics) == 1
         assert lyrics[0].text == "(Jay Chou)"
         assert len(lyrics[0].words) == 5
-        assert lyrics[0].words[0][2] == "("
-        assert lyrics[0].words[1][2] == "Jay"
-        assert lyrics[0].words[2][2] == " "
-        assert lyrics[0].words[3][2] == "Chou"
-        assert lyrics[0].words[4][2] == ")"
+        assert lyrics[0].words[0].text == "("
+        assert lyrics[0].words[1].text == "Jay"
+        assert lyrics[0].words[2].text == " "
+        assert lyrics[0].words[3].text == "Chou"
+        assert lyrics[0].words[4].text == ")"
 
     def test_parse_char_word_empty_lines(self):
         """Test parsing character-word lyrics with empty lines."""
@@ -306,3 +324,96 @@ class TestParseCharWordLrc:
         assert len(lyrics) == 2
         assert lyrics[0].text == "青花"
         assert lyrics[1].text == "词："
+
+
+class TestParseYrc:
+    """Test parsing YRC (NetEase word-by-word) lyrics format."""
+
+    def test_parse_basic_yrc(self):
+        """Test parsing basic YRC format."""
+        yrc_text = """[1234,567](123,45,0)嘿(234,45,0)等(345,45,0)我"""
+
+        lyrics = parse_yrc(yrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].time == 1.234  # 1234ms = 1.234s
+        assert lyrics[0].duration == 0.567  # 567ms = 0.567s
+        assert lyrics[0].text == "嘿等我"
+        assert len(lyrics[0].words) == 3
+
+        # First word: line_time + offset = 1234 + 123 = 1357ms = 1.357s
+        assert lyrics[0].words[0].time == 1.357
+        assert lyrics[0].words[0].duration == 0.045
+        assert lyrics[0].words[0].text == "嘿"
+
+        # Second word: 1234 + 234 = 1468ms
+        assert lyrics[0].words[1].time == 1.468
+        assert lyrics[0].words[1].text == "等"
+
+        # Third word: 1234 + 345 = 1579ms
+        assert lyrics[0].words[2].time == 1.579
+        assert lyrics[0].words[2].text == "我"
+
+    def test_parse_yrc_multiple_lines(self):
+        """Test parsing YRC with multiple lines."""
+        yrc_text = """[1000,2000](0,500,0)Hello(500,500,0)World
+[4000,3000](0,1000,0)Test(1000,1000,0)Line"""
+
+        lyrics = parse_yrc(yrc_text)
+
+        assert len(lyrics) == 2
+        assert lyrics[0].time == 1.0
+        assert lyrics[0].text == "HelloWorld"
+        assert lyrics[1].time == 4.0
+        assert lyrics[1].text == "TestLine"
+
+    def test_parse_yrc_empty(self):
+        """Test parsing empty YRC."""
+        assert parse_yrc("") == []
+        assert parse_yrc(None) == []
+
+    def test_parse_yrc_with_chinese(self):
+        """Test parsing YRC with Chinese characters."""
+        yrc_text = """[0,5000](0,500,0)青(500,500,0)花(1000,500,0)瓷"""
+
+        lyrics = parse_yrc(yrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "青花瓷"
+        assert lyrics[0].words[0].text == "青"
+        assert lyrics[0].words[1].text == "花"
+        assert lyrics[0].words[2].text == "瓷"
+
+
+class TestDetectAndParse:
+    """Test auto-detection and parsing of lyrics format."""
+
+    def test_detect_yrc_format(self):
+        """Test detecting YRC format."""
+        yrc_text = "[1234,567](123,45,0)嘿(234,45,0)等"
+        lyrics = detect_and_parse(yrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "嘿等"
+
+    def test_detect_char_word_format(self):
+        """Test detecting char-word format."""
+        lrc_text = "[00:00.00]<00:00.000>青<00:00.366>花"
+        lyrics = detect_and_parse(lrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "青花"
+
+    def test_detect_standard_lrc_format(self):
+        """Test detecting standard LRC format."""
+        lrc_text = "[00:01.00]Hello World\n[00:03.00]Second Line"
+        lyrics = detect_and_parse(lrc_text)
+
+        assert len(lyrics) == 2
+        assert lyrics[0].text == "Hello World"
+        assert lyrics[1].text == "Second Line"
+
+    def test_detect_empty(self):
+        """Test detecting empty input."""
+        assert detect_and_parse("") == []
+        assert detect_and_parse(None) == []

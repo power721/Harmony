@@ -8,50 +8,7 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-
-# =========================================================
-# 数据结构
-# =========================================================
-
-@dataclass
-class LyricLine:
-    time: float
-    text: str
-
-
-# =========================================================
-# LRC 解析
-# =========================================================
-
-class LrcParser:
-
-    TIME_RE = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
-
-    @staticmethod
-    def parse(lrc: str) -> List[LyricLine]:
-
-        lines: List[LyricLine] = []
-
-        for line in lrc.splitlines():
-
-            matches = LrcParser.TIME_RE.findall(line)
-
-            text = LrcParser.TIME_RE.sub("", line).strip()
-
-            if not matches:
-                continue
-
-            for m in matches:
-                minute = int(m[0])
-                second = float(m[1])
-
-                t = minute * 60 + second
-
-                lines.append(LyricLine(t, text))
-
-        lines.sort(key=lambda x: x.time)
-
-        return lines
+from utils.lrc_parser import LyricLine, LyricWord, detect_and_parse
 
 
 # =========================================================
@@ -120,6 +77,7 @@ class LyricsWidget(QWidget):
 
         # 颜色
         self.color_normal = QColor(150, 150, 150)
+        self.color_current = QColor(255, 255, 255)
 
         # 动画
         self.timer = QTimer(self)
@@ -133,8 +91,9 @@ class LyricsWidget(QWidget):
     # =====================================================
 
     def set_lyrics(self, lrc_text):
+        """设置歌词文本，自动检测格式(YRC/LRC)"""
 
-        lines = LrcParser.parse(lrc_text)
+        lines = detect_and_parse(lrc_text)
 
         self.engine.set_lyrics(lines)
 
@@ -209,7 +168,7 @@ class LyricsWidget(QWidget):
 
                 progress = self._line_progress(i)
 
-                self._draw_current_line(p, line.text, y, progress)
+                self._draw_current_line(p, line, y, progress)
 
             else:
 
@@ -270,17 +229,27 @@ class LyricsWidget(QWidget):
         p.setOpacity(1)
 
     # =====================================================
-    # 当前歌词
+    # 当前歌词 (支持逐字高亮)
     # =====================================================
 
-    def _draw_current_line(self, p, text, y, progress):
+    def _draw_current_line(self, p, line: LyricLine, y, progress):
+        """
+        绘制当前行，支持逐字高亮。
+        如果有逐字数据，使用逐字高亮；否则使用行级别进度高亮。
+        """
+        text = line.text
+        words = line.words
 
         metrics = QFontMetrics(self.font_current)
-
         text_width = metrics.horizontalAdvance(text)
-
         x = self.width() / 2 - text_width / 2
 
+        # 如果有逐字歌词，使用逐字高亮
+        if words:
+            self._draw_word_by_word(p, text, words, x, y, metrics)
+            return
+
+        # 否则使用行级别进度高亮
         rect = QRectF(x, y - 30, text_width, 60)
 
         # 未唱部分
@@ -323,6 +292,75 @@ class LyricsWidget(QWidget):
         p.drawPath(path)
 
         p.restore()
+
+    def _draw_word_by_word(self, p, text: str, words: List[LyricWord], x: float, y: float, metrics: QFontMetrics):
+        """
+        逐字高亮绘制。
+        已唱的字显示渐变色，正在唱的字显示过渡色，未唱的字显示灰色。
+        """
+        p.setFont(self.font_current)
+
+        # 计算每个字的 x 位置
+        char_positions = []
+        current_x = x
+
+        for word in words:
+            char_width = metrics.horizontalAdvance(word.text)
+            char_positions.append((current_x, char_width, word))
+            current_x += char_width
+
+        # 绘制每个字
+        for char_x, char_width, word in char_positions:
+            word_end_time = word.time + word.duration
+
+            if self.current_time >= word_end_time:
+                # 已唱完 - 渐变色
+                color = self._get_gradient_color(char_x - x, char_x - x + char_width)
+            elif self.current_time >= word.time:
+                # 正在唱 - 过渡色
+                progress = (self.current_time - word.time) / word.duration if word.duration > 0 else 1
+                normal_color = QColor(180, 180, 180)
+                highlight_color = self._get_gradient_color(char_x - x, char_x - x + char_width)
+                color = self._interpolate_color(normal_color, highlight_color, progress)
+            else:
+                # 未唱 - 灰色
+                color = QColor(180, 180, 180)
+
+            p.setPen(color)
+            rect = QRectF(char_x, y - 30, char_width, 60)
+            p.drawText(rect, Qt.AlignCenter, word.text)
+
+    def _get_gradient_color(self, start_x: float, end_x: float) -> QColor:
+        """根据 x 位置获取渐变色"""
+        # 使用 gradient_shift 创建动态渐变效果
+        total_width = self.width()
+        pos = (start_x + self.gradient_shift) % total_width
+        ratio = pos / total_width
+
+        # 渐变色定义
+        colors = [
+            QColor("#00F5FF"),
+            QColor("#00C3FF"),
+            QColor("#7A5CFF"),
+            QColor("#FF4D9D"),
+        ]
+
+        # 在颜色之间插值
+        idx = ratio * (len(colors) - 1)
+        i = int(idx)
+        t = idx - i
+
+        if i >= len(colors) - 1:
+            return colors[-1]
+
+        return self._interpolate_color(colors[i], colors[i + 1], t)
+
+    def _interpolate_color(self, c1: QColor, c2: QColor, t: float) -> QColor:
+        """在两个颜色之间插值"""
+        r = int(c1.red() + (c2.red() - c1.red()) * t)
+        g = int(c1.green() + (c2.green() - c1.green()) * t)
+        b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
+        return QColor(r, g, b)
 
     # =====================================================
     # 鼠标
@@ -383,6 +421,12 @@ demo_lrc = """
 [00:28.00]Harmony Player
 """
 
+# YRC 格式示例
+demo_yrc = """
+[1000,3000](0,500,0)青(500,500,0)花(1000,500,0)瓷(1500,500,0)瓷
+[5000,4000](0,800,0)周(800,800,0)杰(1600,800,0)伦(2400,800,0)唱
+"""
+
 
 class DemoWindow(QWidget):
 
@@ -396,11 +440,12 @@ class DemoWindow(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.lyrics = LyricsWidgetPro()
+        self.lyrics = LyricsWidget()
 
         layout.addWidget(self.lyrics)
 
-        self.lyrics.set_lyrics(demo_lrc)
+        # 使用 YRC 格式演示逐字高亮
+        self.lyrics.set_lyrics(demo_yrc)
 
         self.time = 0
 

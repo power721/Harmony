@@ -184,7 +184,11 @@ class LyricsDownloadDialog(QDialog):
             seconds = int(duration % 60)
             item_text += f" [{minutes}:{seconds:02d}]"
 
-        item_text += f" [{result['source']}]"
+        # Source name with YRC indicator
+        source = result['source']
+        if result.get('supports_yrc'):
+            source = f"{source} YRC"  # Indicate YRC (word-by-word) support
+        item_text += f" [{source}]"
 
         return item_text
 

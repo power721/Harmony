@@ -12,7 +12,7 @@ import requests
 import base64
 import zlib
 
-from utils.lrc_parser import LyricLine
+from utils.lrc_parser import LyricLine, parse_yrc, detect_and_parse
 from utils.match_scorer import MatchScorer, TrackInfo
 
 # Initialize OpenCC converter for Traditional to Simplified Chinese conversion
@@ -148,7 +148,8 @@ class LyricsService:
                 'album': song['album']['name'] if song.get('album') else '',
                 'duration': duration,  # Duration in seconds
                 'cover_url': cover_url,
-                'source': 'netease'
+                'source': 'netease',
+                'supports_yrc': True  # NetEase supports YRC word-by-word lyrics
             })
 
         return results
@@ -254,8 +255,47 @@ class LyricsService:
 
     @classmethod
     def _download_netease_lyrics(cls, song_id: str) -> str:
-        """Download lyrics from NetEase by song ID."""
+        """
+        Download lyrics from NetEase by song ID.
+        Prioritizes YRC (word-by-word) format over LRC.
+
+        Args:
+            song_id: NetEase song ID
+
+        Returns:
+            Lyrics content (YRC or LRC format) or empty string
+        """
         try:
+            # Try to get YRC (word-by-word lyrics) first
+            # API params: yv=0 enables YRC format
+            yrc_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=0&kv=0&tv=0&yv=0"
+            response = requests.get(
+                yrc_url,
+                headers=cls.HEADERS,
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('code') == 200:
+                    # Check for YRC (word-by-word lyrics)
+                    yrc_data = data.get('yrc')
+                    if yrc_data and yrc_data.get('lyric'):
+                        yrc_content = yrc_data['lyric']
+                        logger.info(f"[LyricsService] Got YRC lyrics for song {song_id}, length: {len(yrc_content)}")
+                        logger.debug(f"[LyricsService] YRC sample: {yrc_content[:200] if len(yrc_content) > 200 else yrc_content}")
+                        return yrc_content
+                    else:
+                        logger.info(f"[LyricsService] No YRC for song {song_id}, yrc field: {yrc_data}")
+
+                    # Fall back to LRC if no YRC
+                    lrc_data = data.get('lrc')
+                    if lrc_data and lrc_data.get('lyric'):
+                        lrc_content = lrc_data['lyric']
+                        logger.info(f"[LyricsService] Got LRC lyrics for song {song_id} (no YRC)")
+                        return lrc_content
+
+            # Fallback to original API if YRC API fails
             lyrics_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
             response = requests.get(
                 lyrics_url,
@@ -280,6 +320,41 @@ class LyricsService:
 
         except Exception as e:
             logger.error(f"Error downloading NetEase lyrics: {e}", exc_info=True)
+            return ""
+
+    @classmethod
+    def _download_netease_yrc(cls, song_id: str) -> str:
+        """
+        Download YRC (word-by-word) lyrics from NetEase by song ID.
+
+        Args:
+            song_id: NetEase song ID
+
+        Returns:
+            YRC lyrics content or empty string
+        """
+        try:
+            yrc_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=0&kv=0&tv=0&yv=0"
+            response = requests.get(
+                yrc_url,
+                headers=cls.HEADERS,
+                timeout=5
+            )
+
+            if response.status_code != 200:
+                return ""
+
+            data = response.json()
+            if data.get('code') != 200:
+                return ""
+
+            if 'yrc' in data and data['yrc'] and data['yrc'].get('lyric'):
+                return data['yrc']['lyric']
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"Error downloading NetEase YRC: {e}", exc_info=True)
             return ""
 
     @classmethod
