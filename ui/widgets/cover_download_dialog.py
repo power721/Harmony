@@ -96,7 +96,7 @@ class CoverDownloadDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        self.setWindowTitle(t("download_cover"))
+        self.setWindowTitle(t("download_cover_manual"))
         self.setMinimumSize(900, 700)
         self.resize(1000, 750)
 
@@ -457,6 +457,7 @@ class CoverDownloadDialog(QDialog):
             title = result.get('title', '')
             artist = result.get('artist', '')
             album = result.get('album', '')
+            source = result.get('source', '')
             score = result.get('score', 0)
 
             # Format display text
@@ -465,7 +466,7 @@ class CoverDownloadDialog(QDialog):
                 display += f" - {artist}"
             if album:
                 display += f" ({album})"
-            display += f" [{score:.0f}%]"
+            display += f" [{source}] [{score:.0f}%]"
 
             item = QListWidgetItem(display)
             item.setData(Qt.UserRole, result)  # Store full result data
@@ -572,13 +573,7 @@ class CoverDownloadDialog(QDialog):
             if self._save_callback:
                 success = self._save_callback(track, cover_path, self.current_cover_data)
                 if success:
-                    self.status_label.setText(t("cover_saved_success"))
-                    self.save_btn.setEnabled(False)
-                    QMessageBox.information(
-                        self,
-                        t("success"),
-                        t("cover_saved_success")
-                    )
+                    self.accept()
                 else:
                     QMessageBox.warning(
                         self,
@@ -595,19 +590,12 @@ class CoverDownloadDialog(QDialog):
                 track.cover_path = cover_path
                 track_repo.update(track)
 
-            self.status_label.setText(t("cover_saved_success"))
-            self.save_btn.setEnabled(False)
-
             # Notify listeners to refresh cover display
             from system.event_bus import EventBus
             bus = EventBus.instance()
             bus.cover_updated.emit(track.id, False)  # False = is_cloud (local track)
 
-            QMessageBox.information(
-                self,
-                t("success"),
-                t("cover_saved_success")
-            )
+            self.accept()
         else:
             QMessageBox.warning(
                 self,

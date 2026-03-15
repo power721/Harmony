@@ -384,6 +384,20 @@ class CoverService:
         except Exception as e:
             logger.error(f"Error searching iTunes covers: {e}", exc_info=True)
 
+        # Search MusicBrainz
+        try:
+            musicbrainz_results = self._search_covers_from_musicbrainz(artist, album or title)
+            all_search_results.extend(musicbrainz_results)
+        except Exception as e:
+            logger.error(f"Error searching MusicBrainz covers: {e}", exc_info=True)
+
+        # Search Last.fm
+        try:
+            lastfm_results = self._search_covers_from_lastfm(artist, album or title)
+            all_search_results.extend(lastfm_results)
+        except Exception as e:
+            logger.error(f"Error searching Last.fm covers: {e}", exc_info=True)
+
         # Use MatchScorer to rank all results (use 'cover' mode - album highest weight)
         if all_search_results:
             track_info = TrackInfo(
@@ -528,8 +542,7 @@ class CoverService:
 
         api_key = os.getenv("LASTFM_API_KEY")
         if not api_key or api_key == "YOUR_LASTFM_API_KEY":
-            logger.debug("Last.fm API key not configured, skipping")
-            return None
+            api_key = "9b0cdcf446cc96dea3e747787ad23575"
 
         try:
             url = "http://ws.audioscrobbler.com/2.0/"
@@ -614,6 +627,122 @@ class CoverService:
 
         return None
 
+    def _search_covers_from_musicbrainz(self, artist: str, album: str) -> List[SearchResult]:
+        """
+        Search for covers from MusicBrainz Cover Art Archive.
+
+        Args:
+            artist: Artist name
+            album: Album name
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        try:
+            search_url = "https://musicbrainz.org/ws/2/release/"
+            params = {
+                'query': f'artist:"{artist}" AND release:"{album}"',
+                'limit': 5,
+                'fmt': 'json'
+            }
+
+            response = self.http_client.get(
+                search_url,
+                params=params,
+                headers={'User-Agent': 'HarmonyPlayer/1.0'},
+                timeout=5
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('releases'):
+                    for release in data['releases']:
+                        release_id = release.get('id')
+                        if release_id:
+                            # Construct cover art URL
+                            cover_url = f"https://coverartarchive.org/release/{release_id}/front-500"
+
+                            results.append(SearchResult(
+                                title=release.get('title', ''),
+                                artist=', '.join([a.get('name', '') for a in release.get('artist-credit', []) if isinstance(a, dict) and 'name' in a]) or artist,
+                                album=release.get('title', ''),
+                                duration=None,
+                                source='musicbrainz',
+                                id=release_id,
+                                cover_url=cover_url
+                            ))
+
+        except Exception as e:
+            logger.debug(f"MusicBrainz search error: {e}")
+
+        return results
+
+    def _search_covers_from_lastfm(self, artist: str, album: str) -> List[SearchResult]:
+        """
+        Search for covers from Last.fm API.
+
+        Args:
+            artist: Artist name
+            album: Album name
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        import os
+        api_key = os.getenv("LASTFM_API_KEY")
+        if not api_key or api_key == "YOUR_LASTFM_API_KEY":
+            api_key = "9b0cdcf446cc96dea3e747787ad23575"
+
+        try:
+            url = "http://ws.audioscrobbler.com/2.0/"
+            params = {
+                'method': 'album.getinfo',
+                'api_key': api_key,
+                'artist': artist,
+                'album': album,
+                'format': 'json'
+            }
+
+            response = self.http_client.get(url, params=params, timeout=5)
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if 'error' in data:
+                    logger.debug(f"Last.fm API error: {data.get('message')}")
+                    return results
+
+                if 'album' in data:
+                    album_info = data['album']
+                    image_url = None
+
+                    # Get the largest image
+                    if 'image' in album_info:
+                        for img in reversed(album_info['image']):
+                            if img.get('#text'):
+                                image_url = img['#text']
+                                break
+
+                    if image_url:
+                        results.append(SearchResult(
+                            title=album_info.get('name', ''),
+                            artist=album_info.get('artist', ''),
+                            album=album_info.get('name', ''),
+                            duration=None,
+                            source='lastfm',
+                            id=album_info.get('mbid', ''),
+                            cover_url=image_url
+                        ))
+
+        except Exception as e:
+            logger.debug(f"Last.fm search error: {e}")
+
+        return results
+
     def _search_covers_from_itunes(self, title: str, artist: str, album: str) -> List[SearchResult]:
         """
         Search for covers from iTunes Search API.
@@ -659,6 +788,35 @@ class CoverService:
                                 id=str(item.get('collectionId', '')),
                                 cover_url=artwork_url
                             ))
+
+            # If album has value, also search with album only (without artist)
+            if album:
+                params_album_only = {
+                    'term': album,
+                    'media': 'music',
+                    'entity': 'album',
+                    'limit': 5
+                }
+
+                response = self.http_client.get(search_url, params=params_album_only, timeout=3)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('results'):
+                        for item in data['results']:
+                            artwork_url = item.get('artworkUrl100')
+                            if artwork_url:
+                                artwork_url = artwork_url.replace('100x100', '600x600')
+
+                                results.append(SearchResult(
+                                    title=item.get('collectionName', ''),
+                                    artist=item.get('artistName', ''),
+                                    album=item.get('collectionName', ''),
+                                    duration=None,
+                                    source='itunes',
+                                    id=str(item.get('collectionId', '')),
+                                    cover_url=artwork_url
+                                ))
 
         except Exception as e:
             logger.debug(f"iTunes search error: {e}")
@@ -772,7 +930,7 @@ class CoverService:
 
     def search_artist_covers(self, artist_name: str, limit: int = 10) -> List[dict]:
         """
-        Search for artist covers from NetEase Cloud Music.
+        Search for artist covers from NetEase Cloud Music and iTunes.
 
         Args:
             artist_name: Artist name to search
@@ -783,6 +941,7 @@ class CoverService:
         """
         results = []
 
+        # Search NetEase
         try:
             search_url = "https://music.163.com/api/search/get/web"
             headers = {
@@ -828,11 +987,53 @@ class CoverService:
                                 'source': 'netease'
                             })
 
-            # Sort by score descending
-            results.sort(key=lambda x: x['score'], reverse=True)
+        except Exception as e:
+            logger.error(f"Error searching artist covers from NetEase: {e}", exc_info=True)
+
+        # Search iTunes - use album search to get artist-related artwork
+        try:
+            search_url = "https://itunes.apple.com/search"
+            params = {
+                'term': artist_name,
+                'media': 'music',
+                'entity': 'album',
+                'limit': limit
+            }
+
+            response = self.http_client.get(search_url, params=params, timeout=5)
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('results'):
+                    seen_artists = set()
+                    for item in data['results']:
+                        name = item.get('artistName', '')
+                        # Skip duplicate artists
+                        if name.lower() in seen_artists:
+                            continue
+                        seen_artists.add(name.lower())
+
+                        artwork_url = item.get('artworkUrl100')
+                        if artwork_url:
+                            artwork_url = artwork_url.replace('100x100', '600x600')
+
+                            # Calculate match score
+                            score = self._calculate_artist_name_score(artist_name, name)
+
+                            results.append({
+                                'name': name,
+                                'id': item.get('artistId'),
+                                'cover_url': artwork_url,
+                                'album_count': None,
+                                'score': score,
+                                'source': 'itunes'
+                            })
 
         except Exception as e:
-            logger.error(f"Error searching artist covers: {e}", exc_info=True)
+            logger.error(f"Error searching artist covers from iTunes: {e}", exc_info=True)
+
+        # Sort by score descending
+        results.sort(key=lambda x: x['score'], reverse=True)
 
         return results
 
