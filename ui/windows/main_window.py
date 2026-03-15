@@ -942,7 +942,13 @@ class MainWindow(QMainWindow):
         def on_finished(added, skipped):
             progress.close()
             logger.info(f"[MainWindow] Scan complete: {added} added, {skipped} skipped")
+            # Refresh albums and artists tables after scanning
+            if added > 0:
+                self._db.refresh_albums()
+                self._db.refresh_artists()
             self._library_view.refresh()
+            self._albums_view.refresh()
+            self._artists_view.refresh()
             self._scan_thread.quit()
             self._scan_thread.wait()
 
