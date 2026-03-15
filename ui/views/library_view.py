@@ -3,6 +3,7 @@ Library view widget for browsing the music library.
 """
 import logging
 import shutil
+from pathlib import Path
 
 from app import Bootstrap
 from services.ai import AcoustIDService, AIMetadataService
@@ -1188,9 +1189,14 @@ class LibraryView(QWidget):
 
         menu.addSeparator()
 
-        # Remove from library action
+        # Remove from library action (only removes from database, not files)
         remove_action = menu.addAction(t("remove_from_library"))
         remove_action.triggered.connect(lambda: self._remove_from_library())
+
+        # Delete file action (deletes from database and disk) - only for local tracks
+        if not is_cloud:
+            delete_file_action = menu.addAction(t("delete_file"))
+            delete_file_action.triggered.connect(lambda: self._delete_file())
 
         menu.exec_(self._tracks_table.mapToGlobal(pos))
 
@@ -2031,6 +2037,111 @@ class LibraryView(QWidget):
                 t("remove_from_library"),
                 success_message,
             )
+            self.refresh()
+
+    def _delete_file(self):
+        """Delete selected tracks from library and remove files from disk."""
+        selected_items = self._tracks_table.selectedItems()
+        if not selected_items:
+            return
+
+        track_ids = []
+        for item in selected_items:
+            if item.column() == 0:
+                track_data = item.data(Qt.UserRole)
+                if track_data:
+                    if isinstance(track_data, dict):
+                        # Only delete local tracks, not cloud tracks
+                        if track_data.get("type") != "cloud":
+                            tid = track_data.get("id")
+                            if tid:
+                                track_ids.append(tid)
+                    else:
+                        track_ids.append(track_data)
+
+        if not track_ids:
+            return
+
+        # Get track info for confirmation and later updates
+        track_info_list = []
+        for track_id in track_ids:
+            track = self._db.get_track(track_id)
+            if track:
+                track_info_list.append((track_id, track))
+
+        if not track_info_list:
+            return
+
+        # Show confirmation dialog with file paths
+        total_count = len(track_info_list)
+        confirm_message = format_count_message("delete_file_confirm", total_count)
+
+        reply = QMessageBox.question(
+            self,
+            t("delete_file"),
+            confirm_message,
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # Delete files
+        deleted_count = 0
+        failed_count = 0
+        for track_id, track in track_info_list:
+            try:
+                # Remove from database first
+                if self._db.remove_track(track_id):
+                    # Update albums and artists tables
+                    self._db.update_albums_on_track_deleted(
+                        track.album, track.artist, track.duration
+                    )
+                    self._db.update_artists_on_track_deleted(
+                        track.artist, track.album
+                    )
+
+                    # Try to delete the file from disk
+                    try:
+                        path_obj = Path(track.path)
+                        if path_obj.exists():
+                            # Also try to delete the lyrics file if it exists
+                            lyrics_path = path_obj.with_suffix('.lrc')
+                            if lyrics_path.exists():
+                                lyrics_path.unlink()
+
+                            # Delete the audio file
+                            path_obj.unlink()
+                            deleted_count += 1
+                        else:
+                            # File doesn't exist, but we removed it from DB
+                            deleted_count += 1
+                    except Exception as e:
+                        logger.error(f"Error deleting file {track.path}: {e}")
+                        failed_count += 1
+                else:
+                    failed_count += 1
+            except Exception as e:
+                logger.error(f"Error deleting track {track_id}: {e}")
+                failed_count += 1
+
+        # Show result message
+        if deleted_count > 0:
+            if failed_count > 0:
+                QMessageBox.warning(
+                    self,
+                    t("warning"),
+                    f"{t('delete_file_success')} ({deleted_count})\n{t('delete_file_failed')} ({failed_count})",
+                )
+            else:
+                success_message = format_count_message(
+                    "delete_file_success", deleted_count
+                )
+                QMessageBox.information(
+                    self,
+                    t("success"),
+                    success_message,
+                )
             self.refresh()
 
     def _ai_enhance_selected(self):
