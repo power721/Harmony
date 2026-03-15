@@ -2157,8 +2157,9 @@ class LibraryView(QWidget):
             self.refresh()
 
     def _ai_enhance_selected(self):
-        """Enhance metadata for selected tracks using AI."""
+        """Enhance metadata for selected tracks using AI (batch mode)."""
         from PySide6.QtCore import QThread, Signal
+        from pathlib import Path
 
         if not self._config:
             QMessageBox.warning(self, t("warning"), t("ai_config_not_found"))
@@ -2195,9 +2196,9 @@ class LibraryView(QWidget):
         api_key = self._config.get_ai_api_key()
         model = self._config.get_ai_model()
 
-        # Create worker thread
+        # Create worker thread with batch processing
         class AIEnhanceWorker(QThread):
-            progress = Signal(int, int, int)  # current, total, track_id
+            progress = Signal(int, int)  # current, total
             finished_signal = Signal(list, int, int)  # enhanced_ids, enhanced_count, failed_count
 
             def __init__(self, track_ids, db, base_url, api_key, model):
@@ -2216,32 +2217,53 @@ class LibraryView(QWidget):
                 failed_count = 0
                 enhanced_track_ids = []
 
+                # Collect all tracks and filenames
+                tracks_info = []  # [(index, track_id, track_path, filename)]
                 for i, track_id in enumerate(self._track_ids):
                     if self._cancelled:
                         break
-
-                    self.progress.emit(i, len(self._track_ids), track_id)
-
                     track = self._db.get_track(track_id)
-                    if not track:
-                        failed_count += 1
-                        continue
+                    if track:
+                        filename = Path(track.path).name
+                        tracks_info.append((i, track_id, track.path, filename))
 
-                    current_metadata = MetadataService.extract_metadata(track.path)
+                if not tracks_info:
+                    self.finished_signal.emit([], 0, len(self._track_ids))
+                    return
 
-                    # if not AIMetadataService.is_metadata_incomplete(current_metadata):
-                    #     continue
+                # Extract filenames for batch processing
+                filenames = [info[3] for info in tracks_info]
 
-                    enhanced = AIMetadataService.enhance_track(
-                        file_path=track.path,
-                        base_url=self._base_url,
-                        api_key=self._api_key,
-                        model=self._model,
-                        current_metadata=current_metadata,
-                        update_file=True
-                    )
+                # Batch call AI
+                self.progress.emit(0, len(tracks_info))
+                batch_results = AIMetadataService.enhance_metadata_batch(
+                    filenames=filenames,
+                    base_url=self._base_url,
+                    api_key=self._api_key,
+                    model=self._model,
+                )
 
-                    if enhanced:
+                # Apply results
+                for idx, (orig_idx, track_id, track_path, filename) in enumerate(tracks_info):
+                    if self._cancelled:
+                        break
+
+                    self.progress.emit(idx + 1, len(tracks_info))
+
+                    if idx in batch_results:
+                        enhanced = batch_results[idx]
+                        # Update file metadata
+                        try:
+                            MetadataService.save_metadata(
+                                track_path,
+                                title=enhanced.get('title'),
+                                artist=enhanced.get('artist'),
+                                album=enhanced.get('album')
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to save metadata: {e}")
+
+                        # Update database
                         self._db.update_track(
                             track_id,
                             title=enhanced.get('title'),
@@ -2270,9 +2292,9 @@ class LibraryView(QWidget):
         # Create and start worker
         worker = AIEnhanceWorker(track_ids, self._db, base_url, api_key, model)
 
-        def on_progress(current, total, track_id):
+        def on_progress(current, total):
             progress_dialog.setValue(current)
-            progress_dialog.setLabelText(f"{t('ai_enhancing')} {current + 1}/{total}")
+            progress_dialog.setLabelText(f"{t('ai_enhancing')} {current}/{total}")
 
         def on_finished(enhanced_ids, enhanced_count, failed_count):
             progress_dialog.close()

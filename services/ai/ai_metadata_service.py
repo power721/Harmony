@@ -3,7 +3,7 @@ AI Metadata Service for enhancing music metadata using AI models.
 """
 import json
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,6 +23,24 @@ Rules:
 5. Return JSON only, no explanation
 
 Filename: {filename}"""
+
+BATCH_METADATA_PROMPT_TEMPLATE = """You are a music metadata parser specialized in Chinese music.
+
+Extract metadata from the following music filenames.
+Return a JSON array where each item contains:
+- index: the original index number (0-based)
+- artist: artist name (normalized, e.g., "Taylor Swift" not "taylor swift")
+- title: song title
+- album: album name (null if not present in filename)
+
+Rules:
+1. Ignore file extensions
+2. Handle Chinese and English names
+3. Normalize artist names
+4. Return JSON array only, no explanation
+
+Filenames (one per line with index):
+{filenames}"""
 
 
 class AIMetadataService:
@@ -255,3 +273,128 @@ class AIMetadataService:
                 logger.error(f"Failed to update file metadata: {e}", exc_info=True)
 
         return result
+
+    @classmethod
+    def enhance_metadata_batch(
+            cls,
+            filenames: list,
+            base_url: str,
+            api_key: str,
+            model: str,
+    ) -> Dict[int, Dict[str, str]]:
+        """
+        Batch enhance metadata using AI model.
+
+        Args:
+            filenames: List of music filenames (without path)
+            base_url: AI API base URL
+            api_key: AI API key
+            model: AI model name
+
+        Returns:
+            Dict mapping index to metadata dict
+        """
+        if not filenames:
+            return {}
+
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+            )
+
+            # Format filenames with index
+            indexed_filenames = "\n".join(
+                f"[{i}] {name}" for i, name in enumerate(filenames)
+            )
+            prompt = BATCH_METADATA_PROMPT_TEMPLATE.format(filenames=indexed_filenames)
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=4000,
+            )
+
+            if not response.choices:
+                logger.warning("AI returned empty response for batch")
+                return {}
+
+            content = response.choices[0].message.content.strip()
+            results = cls._parse_batch_json_response(content)
+
+            if results:
+                logger.info(f"AI enhanced {len(results)} tracks in batch")
+
+            return results
+
+        except ImportError:
+            logger.error("openai package not installed. Run: pip install openai")
+            return {}
+        except Exception as e:
+            logger.error(f"AI batch metadata enhancement failed: {e}", exc_info=True)
+            return {}
+
+    @classmethod
+    def _parse_batch_json_response(cls, content: str) -> Dict[int, Dict[str, str]]:
+        """
+        Parse batch JSON response from AI.
+
+        Args:
+            content: Raw response content
+
+        Returns:
+            Dict mapping index to metadata dict
+        """
+        import re
+
+        results = {}
+
+        # Try to extract JSON array from response
+        json_data = None
+
+        # Try direct JSON parse
+        try:
+            json_data = json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract JSON from code blocks
+        if json_data is None:
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+            if json_match:
+                try:
+                    json_data = json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+
+        # Try to find JSON array in the text
+        if json_data is None:
+            json_match = re.search(r'\[[\s\S]*\]', content)
+            if json_match:
+                try:
+                    json_data = json.loads(json_match.group(0))
+                except json.JSONDecodeError:
+                    pass
+
+        if not isinstance(json_data, list):
+            logger.warning(f"Expected JSON array, got: {type(json_data)}")
+            return {}
+
+        # Parse each item
+        for item in json_data:
+            if not isinstance(item, dict):
+                continue
+
+            index = item.get('index')
+            if index is None:
+                continue
+
+            # Validate metadata
+            metadata = cls._validate_metadata(item)
+            if metadata:
+                results[index] = metadata
+
+        return results
