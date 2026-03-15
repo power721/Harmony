@@ -1134,11 +1134,11 @@ class CoverService:
             logger.error(f"Error searching artist covers from iTunes: {e}", exc_info=True)
 
         # Search Spotify
-        try:
-            spotify_results = self._search_artist_covers_from_spotify(artist_name, limit)
-            results.extend(spotify_results)
-        except Exception as e:
-            logger.error(f"Error searching artist covers from Spotify: {e}", exc_info=True)
+        # try:
+        #     spotify_results = self._search_artist_covers_from_spotify(artist_name, limit)
+        #     results.extend(spotify_results)
+        # except Exception as e:
+        #     logger.error(f"Error searching artist covers from Spotify: {e}", exc_info=True)
 
         # Sort by score descending
         results.sort(key=lambda x: x['score'], reverse=True)

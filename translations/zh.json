@@ -195,6 +195,7 @@
     "download_cover": "同时下载封面",
     "download_cover_tooltip": "自动从网络下载歌曲封面并保存到数据库",
     "album_art": "专辑封面",
+    "artist_cover": "歌手封面",
     "cover_load_failed": "封面加载失败",
     "ai_settings": "AI 设置",
     "ai_enable": "启用 AI 增强",

@@ -195,6 +195,7 @@
     "download_cover": "Download cover art",
     "download_cover_tooltip": "Automatically download album cover from web and save to database",
     "album_art": "Album Art",
+    "artist_cover": "Artist Cover",
     "cover_load_failed": "Failed to load cover",
     "ai_settings": "AI Settings",
     "ai_enable": "Enable AI Enhancement",

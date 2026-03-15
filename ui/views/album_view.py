@@ -20,9 +20,10 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QAbstractItemView,
     QMenu,
+    QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction, QCursor, QMouseEvent, QScreen
 
 from domain.album import Album
 from domain.track import Track
@@ -65,6 +66,7 @@ class AlbumView(QWidget):
         self._cover_service = cover_service
         self._album: Album = None
         self._tracks: List[Track] = []
+        self._current_cover_path: str = None  # Store current cover path
 
         self._setup_ui()
 
@@ -141,8 +143,8 @@ class AlbumView(QWidget):
         layout.setContentsMargins(40, 40, 40, 20)
         layout.setSpacing(30)
 
-        # Album cover
-        self._cover_label = QLabel()
+        # Album cover (clickable to show large image)
+        self._cover_label = ClickableLabel()
         self._cover_label.setFixedSize(200, 200)
         self._cover_label.setStyleSheet("""
             QLabel {
@@ -150,6 +152,7 @@ class AlbumView(QWidget):
                 border-radius: 8px;
             }
         """)
+        self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
 
         # Album info
@@ -449,12 +452,14 @@ class AlbumView(QWidget):
                         Qt.SmoothTransformation
                     )
                     self._cover_label.setPixmap(scaled)
+                    self._current_cover_path = cover_path  # Store cover path
                     return
             except Exception as e:
                 logger.debug(f"Error loading cover: {e}")
 
         # Default cover
         self._set_default_cover()
+        self._current_cover_path = None
 
     def _set_default_cover(self):
         """Set default cover."""
@@ -473,6 +478,17 @@ class AlbumView(QWidget):
         painter.end()
 
         self._cover_label.setPixmap(pixmap)
+        self._current_cover_path = None
+
+    def _on_cover_clicked(self):
+        """Handle cover art click - show large image dialog."""
+        if self._current_cover_path:
+            try:
+                album_name = self._album.display_name if self._album else ""
+                dialog = AlbumCoverDialog(self._current_cover_path, album_name, self)
+                dialog.exec_()
+            except Exception as e:
+                logger.error(f"Error showing cover dialog: {e}")
 
     def _render_tracks(self):
         """Render tracks table."""
@@ -607,3 +623,91 @@ class AlbumView(QWidget):
                     duration=format_duration(self._album.duration)
                 )
             )
+
+
+class ClickableLabel(QLabel):
+    """A QLabel that emits a signal when clicked."""
+
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press event."""
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+class AlbumCoverDialog(QDialog):
+    """Dialog to display large album cover."""
+
+    def __init__(self, cover_path: str, album_name: str = "", parent=None):
+        """
+        Initialize cover dialog.
+
+        Args:
+            cover_path: Path to the cover image
+            album_name: Album name for window title
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        self._cover_path = cover_path
+        self._album_name = album_name
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Setup the dialog UI."""
+        self.setWindowTitle(self._album_name or t("album_art"))
+        self.setModal(True)
+
+        # Get screen size
+        screen = QScreen.availableGeometry(self.screen())
+        screen_width = screen.width()
+        screen_height = screen.height()
+
+        # Set dialog size to 80% of screen, max 800x800
+        dialog_width = min(int(screen_width * 0.8), 800)
+        dialog_height = min(int(screen_height * 0.8), 800)
+        self.setFixedSize(dialog_width, dialog_height)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Image label
+        image_label = QLabel()
+        image_label.setAlignment(Qt.AlignCenter)
+        image_label.setStyleSheet("background-color: #1e1e1e;")
+
+        # Load and scale image to fit dialog
+        pixmap = QPixmap(self._cover_path)
+        if not pixmap.isNull():
+            # Scale image to fit within dialog while maintaining aspect ratio
+            scaled = pixmap.scaled(
+                dialog_width - 20,
+                dialog_height - 20,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            image_label.setPixmap(scaled)
+        else:
+            image_label.setText(t("cover_load_failed"))
+
+        layout.addWidget(image_label)
+
+        # Apply dialog style
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e1e;
+            }
+        """)
+
+    def keyPressEvent(self, event):
+        """Handle key press - close on Escape."""
+        if event.key() == Qt.Key_Escape:
+            self.accept()
+        else:
+            super().keyPressEvent(event)
