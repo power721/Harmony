@@ -9,12 +9,17 @@ from utils.lrc_parser import (
     parse_lrc,
     parse_words,
     parse_yrc,
+    parse_qrc,
     detect_and_parse,
+    detect_format,
     TIME_RE,
     META_RE,
     WORD_RE,
     YRC_LINE_RE,
     YRC_WORD_RE,
+    QRC_LINE_RE,
+    QRC_WORD_RE,
+    QRC_XML_RE,
 )
 
 
@@ -417,3 +422,87 @@ class TestDetectAndParse:
         """Test detecting empty input."""
         assert detect_and_parse("") == []
         assert detect_and_parse(None) == []
+
+
+class TestParseQrc:
+    """Test parsing QRC (QQ Music word-by-word) lyrics format."""
+
+    def test_parse_basic_qrc(self):
+        """Test parsing basic QRC format."""
+        # QRC format: [line_time_ms,line_dur_ms]char(offset_ms,dur_ms)char(offset_ms,dur_ms)...
+        qrc_text = "[0,5000]稻(0,500)香(500,500)"
+
+        lyrics = parse_qrc(qrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].time == 0.0
+        assert lyrics[0].duration == 5.0
+        assert lyrics[0].text == "稻香"
+        assert len(lyrics[0].words) == 2
+
+        # First word: absolute time 0ms
+        assert lyrics[0].words[0].time == 0.0
+        assert lyrics[0].words[0].duration == 0.5
+        assert lyrics[0].words[0].text == "稻"
+
+        # Second word: absolute time 500ms
+        assert lyrics[0].words[1].time == 0.5
+        assert lyrics[0].words[1].duration == 0.5
+        assert lyrics[0].words[1].text == "香"
+
+    def test_parse_qrc_with_xml_wrapper(self):
+        """Test parsing QRC with XML wrapper."""
+        qrc_text = '''<?xml version="1.0" encoding="utf-8"?>
+<QrcInfos>
+<QrcHeadInfo SaveTime="223" Version="100"/>
+<LyricInfo LyricCount="1">
+<Lyric_1 LyricType="1" LyricContent="[ti:Test Song]
+[ar:Test Artist]
+[0,3000]测(0,500)试(500,500)歌(1000,500)词(1500,500)
+"/>
+</LyricInfo>
+</QrcInfos>'''
+
+        lyrics = parse_qrc(qrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "测试歌词"
+        assert len(lyrics[0].words) == 4
+
+    def test_parse_qrc_multiple_lines(self):
+        """Test parsing QRC with multiple lines."""
+        qrc_text = """[0,3000]第(0,500)一(500,500)行(1000,500)
+[3000,3000]第(3000,500)二(3500,500)行(4000,500)"""
+
+        lyrics = parse_qrc(qrc_text)
+
+        assert len(lyrics) == 2
+        assert lyrics[0].time == 0.0
+        assert lyrics[0].text == "第一行"
+        assert lyrics[1].time == 3.0
+        assert lyrics[1].text == "第二行"
+
+    def test_parse_qrc_empty(self):
+        """Test parsing empty QRC."""
+        assert parse_qrc("") == []
+        assert parse_qrc(None) == []
+
+    def test_detect_qrc_format(self):
+        """Test detecting QRC format."""
+        qrc_text = "[0,5000]稻(0,500)香(500,500)"
+        fmt = detect_format(qrc_text)
+        assert fmt == 'qrc'
+
+    def test_detect_qrc_xml_format(self):
+        """Test detecting QRC XML format."""
+        qrc_text = '<?xml version="1.0"?><QrcInfos><Lyric_1 LyricContent="..."/></QrcInfos>'
+        fmt = detect_format(qrc_text)
+        assert fmt == 'qrc'
+
+    def test_detect_and_parse_qrc(self):
+        """Test auto-detecting and parsing QRC format."""
+        qrc_text = "[0,5000]稻(0,500)香(500,500)"
+        lyrics = detect_and_parse(qrc_text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "稻香"

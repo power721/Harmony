@@ -201,12 +201,13 @@ class CoverService:
         # Define search tasks
         search_tasks = [
             ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
+            # ("QQMusic", lambda: self._search_covers_from_qqmusic(title, artist, album, duration)),
             ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
             # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
         ]
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks
@@ -367,6 +368,106 @@ class CoverService:
 
         return results
 
+    def _search_covers_from_qqmusic(self, title: str, artist: str, album: str, duration: float = None) -> List[
+        SearchResult]:
+        """
+        Search for covers from QQ Music.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+            duration: Track duration in seconds
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        try:
+            from services.lyrics.qqmusic_lyrics import QQMusicClient, get_qqmusic_cover_url
+
+            client = QQMusicClient()
+
+            # Search for songs
+            keyword = f"{artist} {title}" if artist else title
+            songs = client.search(keyword, limit=5)
+
+            for song in songs:
+                # Parse artist from singer list
+                artist_name = ""
+                singer_mid = ""
+                if isinstance(song.get('singer'), list) and song['singer']:
+                    artist_name = song['singer'][0].get('name', '')
+                    singer_mid = song['singer'][0].get('mid', '')
+
+                # Parse album from album dict
+                album_name = ""
+                album_mid = ""
+                if isinstance(song.get('album'), dict):
+                    album_name = song['album'].get('name', '')
+                    album_mid = song['album'].get('mid', '')
+
+                # Get cover URL using album_mid or song mid
+                cover_url = None
+                if album_mid:
+                    cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
+                elif song.get('mid'):
+                    cover_url = get_qqmusic_cover_url(mid=song.get('mid'), size=500)
+
+                if cover_url:
+                    results.append(SearchResult(
+                        title=song.get('name', ''),
+                        artist=artist_name,
+                        album=album_name,
+                        duration=song.get('interval'),  # Already in seconds
+                        source='qqmusic',
+                        id=song.get('mid', ''),
+                        cover_url=cover_url
+                    ))
+
+            # Also search for albums directly
+            if album:
+                album_songs = client.session.get(
+                    f"{client.BASE_URL}/search",
+                    params={
+                        "keyword": f"{artist} {album}",
+                        "type": "album",
+                        "num": 3,
+                        "page": 1,
+                    },
+                    headers=client.HEADERS,
+                    timeout=5
+                )
+                album_data = album_songs.json()
+                album_list = album_data.get("data", {}).get("list", [])
+
+                for album_info in album_list:
+                    album_mid = album_info.get('mid', '')
+                    album_name = album_info.get('name', '')
+
+                    # Get singer info
+                    singer_name = ""
+                    if isinstance(album_info.get('singer'), list) and album_info['singer']:
+                        singer_name = album_info['singer'][0].get('name', '')
+
+                    cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
+                    if cover_url:
+                        results.append(SearchResult(
+                            title='',
+                            artist=singer_name,
+                            album=album_name,
+                            duration=None,
+                            source='qqmusic',
+                            id=album_mid,
+                            cover_url=cover_url
+                        ))
+
+        except Exception as e:
+            logger.debug(f"QQ Music cover search error: {e}")
+
+        return results
+
     def search_covers(self, title: str, artist: str, album: str = "", duration: float = None) -> List[dict]:
         """
         Search for covers from online sources (for manual download dialog).
@@ -386,13 +487,14 @@ class CoverService:
         # Define search tasks
         search_tasks = [
             ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
+            ("QQMusic", lambda: self._search_covers_from_qqmusic(title, artist, album, duration)),
             ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
             # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
             ("Last.fm", lambda: self._search_covers_from_lastfm(artist, album or title)),
         ]
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks

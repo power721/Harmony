@@ -14,6 +14,7 @@ import zlib
 
 from utils.lrc_parser import LyricLine, parse_yrc, detect_and_parse
 from utils.match_scorer import MatchScorer, TrackInfo
+from .qqmusic_lyrics import search_from_qqmusic, download_qqmusic_lyrics
 
 # Initialize OpenCC converter for Traditional to Simplified Chinese conversion
 try:
@@ -79,10 +80,11 @@ class LyricsService:
             ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit)),
             ("NetEase", lambda: cls._search_from_netease(title, artist, limit)),
             ("Kugou", lambda: cls._search_from_kugou(title, artist, limit)),
+            ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit)),
         ]
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks
@@ -233,13 +235,22 @@ class LyricsService:
         return results
 
     @classmethod
+    def _search_from_qqmusic(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
+        """Search songs from QQ Music."""
+        try:
+            return search_from_qqmusic(title, artist, limit)
+        except Exception as e:
+            logger.error(f"Error searching from QQ Music: {e}", exc_info=True)
+            return []
+
+    @classmethod
     def download_lyrics_by_id(cls, song_id: str, source: str, accesskey: str = None) -> str:
         """
         Download lyrics by song ID from a specific source.
 
         Args:
             song_id: Song ID
-            source: Source name ('lrclib', 'netease' or 'kugou')
+            source: Source name ('lrclib', 'netease', 'kugou', or 'qqmusic')
             accesskey: Access key for Kugou
 
         Returns:
@@ -251,6 +262,8 @@ class LyricsService:
             return cls._download_netease_lyrics(song_id)
         elif source == 'kugou':
             return cls._download_kugou_lyrics(song_id, accesskey)
+        elif source == 'qqmusic':
+            return cls._download_qqmusic_lyrics(song_id)
         return ""
 
     @classmethod
@@ -441,6 +454,23 @@ class LyricsService:
             return ""
 
     @classmethod
+    def _download_qqmusic_lyrics(cls, mid: str) -> str:
+        """
+        Download lyrics from QQ Music by song mid.
+
+        Args:
+            mid: QQ Music song mid
+
+        Returns:
+            Lyrics content (QRC or LRC format) or empty string
+        """
+        try:
+            return download_qqmusic_lyrics(mid)
+        except Exception as e:
+            logger.error(f"Error downloading QQ Music lyrics: {e}", exc_info=True)
+            return ""
+
+    @classmethod
     def _download_lrclib_lyrics(cls, song_id: str) -> str:
         """Download lyrics from LRCLIB by song ID.
 
@@ -593,10 +623,11 @@ class LyricsService:
             ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit=5)),
             ("NetEase", lambda: cls._search_from_netease(title, artist, limit=5)),
             ("Kugou", lambda: cls._search_from_kugou(title, artist, limit=5)),
+            ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit=5)),
         ]
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks

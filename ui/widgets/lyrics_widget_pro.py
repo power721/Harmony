@@ -6,7 +6,8 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-from utils.lrc_parser import LyricLine, LyricWord, detect_and_parse, YRC_LINE_RE, YRC_WORD_RE
+from system import t
+from utils.lrc_parser import LyricLine, LyricWord, detect_and_parse, detect_format, YRC_LINE_RE, YRC_WORD_RE, QRC_XML_RE, QRC_WORD_RE
 
 
 # =========================================================
@@ -70,6 +71,7 @@ class LyricsWidget(QWidget):
         self.margin_x = 40
 
         self.is_yrc = False
+        self.is_qrc = False
 
         # 字体
         self.font_normal = QFont("Microsoft YaHei", 18)
@@ -91,10 +93,12 @@ class LyricsWidget(QWidget):
     # =====================================================
 
     def set_lyrics(self, lrc_text):
-        """设置歌词文本，自动检测格式(YRC/LRC)"""
+        """设置歌词文本，自动检测格式(QRC/YRC/LRC)"""
 
-        # 检测是否是YRC格式
-        self.is_yrc = bool(YRC_LINE_RE.search(lrc_text) and YRC_WORD_RE.search(lrc_text))
+        # 检测歌词格式
+        fmt = detect_format(lrc_text)
+        self.is_qrc = (fmt == 'qrc')
+        self.is_yrc = (fmt == 'yrc')
 
         lines = detect_and_parse(lrc_text)
 
@@ -147,8 +151,10 @@ class LyricsWidget(QWidget):
 
         p.fillRect(self.rect(), QColor(10, 10, 10))
 
-        # YRC标记
-        if self.is_yrc:
+        # 格式标记 (QRC优先显示，YRC次之)
+        if self.is_qrc:
+            self._draw_qrc_badge(p)
+        elif self.is_yrc:
             self._draw_yrc_badge(p)
 
         lines = self.engine.lines
@@ -158,7 +164,7 @@ class LyricsWidget(QWidget):
             p.setPen(QColor(120, 120, 120))
             p.setFont(self.font_normal)
 
-            p.drawText(self.rect(), Qt.AlignCenter, "No Lyrics")
+            p.drawText(self.rect(), Qt.AlignCenter, t("no_lyrics"))
 
             return
 
@@ -182,7 +188,7 @@ class LyricsWidget(QWidget):
                 self._draw_normal_line(p, line.text, y, i)
 
     # =====================================================
-    # YRC标记
+    # 格式标记
     # =====================================================
 
     def _draw_yrc_badge(self, p):
@@ -190,6 +196,12 @@ class LyricsWidget(QWidget):
         p.setPen(QColor(100, 200, 255))
         p.setFont(QFont("Segoe UI Emoji", 12))
         p.drawText(self.width() - 30, 25, "🇾")
+
+    def _draw_qrc_badge(self, p):
+        """在右上角绘制QRC标记"""
+        p.setPen(QColor(255, 180, 100))  # 橙色
+        p.setFont(QFont("Segoe UI Emoji", 12))
+        p.drawText(self.width() - 30, 25, "🇶")
 
     # =====================================================
     # 行进度
