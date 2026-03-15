@@ -494,6 +494,7 @@ class PlaybackService(QObject):
 
                 # Update metadata from database track
                 if track:
+                    item.track_id = track.id  # Update track_id for file organization
                     item.title = track.title or item.title
                     item.artist = track.artist or item.artist
                     item.album = track.album or item.album

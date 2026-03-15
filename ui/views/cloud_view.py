@@ -901,19 +901,31 @@ class CloudDriveView(QWidget):
         from pathlib import Path
         from utils.helpers import sanitize_filename
 
-        if self._config_manager:
-            download_dir = Path(self._config_manager.get_cloud_download_dir())
-        else:
-            download_dir = Path("data/cloud_downloads")
+        # First, check if we have a local_path in database (may have been moved by file organization)
+        local_file_path = None
+        if self._current_account:
+            db_file = self._db.get_cloud_file_by_file_id(file.file_id)
+            if db_file and db_file.local_path:
+                db_path = Path(db_file.local_path)
+                if db_path.exists():
+                    local_file_path = db_path
 
-        # Convert to absolute path
-        if not download_dir.is_absolute():
-            download_dir = Path.cwd() / download_dir
+        # If not found in database, check default download directory
+        if not local_file_path:
+            if self._config_manager:
+                download_dir = Path(self._config_manager.get_cloud_download_dir())
+            else:
+                download_dir = Path("data/cloud_downloads")
 
-        safe_filename = sanitize_filename(file.name)
-        local_file_path = download_dir / safe_filename
+            # Convert to absolute path
+            if not download_dir.is_absolute():
+                download_dir = Path.cwd() / download_dir
+
+            safe_filename = sanitize_filename(file.name)
+            local_file_path = download_dir / safe_filename
 
         # Check file status
+        file_exists_and_valid = False
         if local_file_path.exists() and file.size:
             actual_size = local_file_path.stat().st_size
             size_diff = abs(actual_size - file.size)
@@ -924,18 +936,32 @@ class CloudDriveView(QWidget):
                 size_mb = file.size / (1024 * 1024)
                 self._status_label.setText(f"{t('file_size_mismatch')}: {file.name} ({size_mb:.1f} MB)")
             else:
-                # File exists and size matches
+                # File exists and size matches - use directly without download thread
+                file_exists_and_valid = True
                 if actual_start_position == 0:
                     self._status_label.setText(f"{t('using_cached_file')}: {file.name}")
                 # else: already set message above about resuming
 
-        else:
-            # File doesn't exist or no size info
+                # Call _on_file_exists directly
+                self._on_file_exists(
+                    str(local_file_path), file_index, self._current_audio_files, file.name, actual_start_position
+                )
+                return
+
+        if not file_exists_and_valid:
+            # File doesn't exist or size mismatch - need to download
             size_info = ""
             if file.size:
                 size_mb = file.size / (1024 * 1024)
                 size_info = f" ({size_mb:.1f} MB)"
             self._status_label.setText(f"{t('downloading')} {file.name}{size_info}...")
+
+        # Get db_local_path for download thread (may have been moved by file organization)
+        db_local_path = None
+        if self._current_account:
+            db_file = self._db.get_cloud_file_by_file_id(file.file_id)
+            if db_file and db_file.local_path:
+                db_local_path = db_file.local_path
 
         # Create download thread with context info
         download_thread = CloudFileDownloadThread(
@@ -945,6 +971,7 @@ class CloudDriveView(QWidget):
             self._current_audio_files,
             self._config_manager,
             self,
+            db_local_path,
         )
         download_thread.finished.connect(
             lambda path: self._on_file_downloaded(
@@ -2379,6 +2406,7 @@ class CloudFileDownloadThread(QThread):
             audio_files: list = None,
             config_manager=None,
             parent=None,
+            db_local_path: str = None,
     ):
         super().__init__(parent)
         self._access_token = access_token
@@ -2386,6 +2414,7 @@ class CloudFileDownloadThread(QThread):
         self._file_index = file_index
         self._audio_files = audio_files or []
         self._config_manager = config_manager
+        self._db_local_path = db_local_path
         pass  # Thread created
 
     def run(self):
@@ -2394,6 +2423,24 @@ class CloudFileDownloadThread(QThread):
         import time
 
         start_time = time.time()
+
+        # First check if file exists at database path (may have been moved by file organization)
+        if self._db_local_path:
+            db_path = Path(self._db_local_path)
+            if db_path.exists():
+                file_size = db_path.stat().st_size
+                expected_size = self._file.size if self._file.size else 0
+
+                if expected_size > 0:
+                    size_diff = abs(file_size - expected_size)
+                    tolerance = expected_size * 0.01
+
+                    if size_diff <= tolerance:
+                        self.file_exists.emit(str(db_path))
+                        return
+                else:
+                    self.file_exists.emit(str(db_path))
+                    return
 
         # Get download directory from config
         if self._config_manager:

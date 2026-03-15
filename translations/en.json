@@ -303,5 +303,9 @@
     "files_failed": "files failed to organize",
     "more": "more",
     "select_directory_first": "Please select a directory first",
-    "file_org_service_not_available": "File organization service is not available"
+    "file_org_service_not_available": "File organization service is not available",
+    "smart_deduplicate": "Smart Deduplicate",
+    "deduplicate_confirm": "Remove duplicate versions (instrumental, live, etc.) and keep only the best version of each song?",
+    "deduplicate_success": "Removed {removed} duplicates, kept {kept} unique tracks",
+    "deduplicate_nothing": "No duplicates found"
 }

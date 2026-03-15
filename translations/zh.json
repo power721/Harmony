@@ -303,5 +303,9 @@
     "files_failed": "个文件整理失败",
     "more": "更多",
     "select_directory_first": "请先选择目录",
-    "file_org_service_not_available": "文件整理服务不可用"
+    "file_org_service_not_available": "文件整理服务不可用",
+    "smart_deduplicate": "智能去重",
+    "deduplicate_confirm": "删除重复版本（伴奏、live等），保留每首歌的最佳版本？",
+    "deduplicate_success": "已移除 {removed} 个重复项，保留 {kept} 首歌曲",
+    "deduplicate_nothing": "未发现重复"
 }

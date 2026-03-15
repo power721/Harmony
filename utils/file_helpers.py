@@ -13,10 +13,6 @@ def sanitize_filename(name: str) -> str:
     """
     清理文件名中的非法字符。
 
-    - 路径分隔符 / 和 \ 替换为 &
-    - 移除其他非法字符 : * ? < > |
-    - 清理多余空格和点
-
     Args:
         name: 原始文件名
 

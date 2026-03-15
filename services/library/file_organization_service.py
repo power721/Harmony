@@ -127,8 +127,8 @@ class FileOrganizationService:
                 results['errors'].append(f"{track.title}: 数据库更新失败")
                 continue
 
-            # 更新 play_queue 中的路径
-            self._update_play_queue_path(track_id, str(final_audio_path))
+            # 更新 play_queue 和 cloud_files 中的路径
+            self._update_paths_after_move(track_id, str(final_audio_path), track.cloud_file_id)
 
             results['success'] += 1
             logger.info(f"成功整理: {track.title} -> {final_audio_path}")
@@ -137,28 +137,37 @@ class FileOrganizationService:
         self._event_bus.tracks_organized.emit(results)
         return results
 
-    def _update_play_queue_path(self, track_id: int, new_path: str):
+    def _update_paths_after_move(self, track_id: int, new_path: str, cloud_file_id: str = None):
         """
-        更新播放队列中的路径。
-
-        更新所有匹配 track_id 的记录（无论是否为云文件）。
+        更新播放队列和云文件表中的路径。
 
         Args:
             track_id: 歌曲ID
             new_path: 新的路径
+            cloud_file_id: 云文件ID（如果是云下载文件）
         """
         try:
             conn = self._db._get_connection()
             cursor = conn.cursor()
-            # 不限制 source_type，只要 track_id 匹配就更新
+
+            # 更新 play_queue 表
             cursor.execute(
                 "UPDATE play_queue SET local_path = ? WHERE track_id = ?",
                 (new_path, track_id)
             )
-            conn.commit()
             logger.debug(f"更新 play_queue: track_id={track_id}, 新路径={new_path}, 更新了 {cursor.rowcount} 条记录")
+
+            # 更新 cloud_files 表（如果是云下载文件）
+            if cloud_file_id:
+                cursor.execute(
+                    "UPDATE cloud_files SET local_path = ?, updated_at = CURRENT_TIMESTAMP WHERE file_id = ?",
+                    (new_path, cloud_file_id)
+                )
+                logger.debug(f"更新 cloud_files: file_id={cloud_file_id}, 新路径={new_path}, 更新了 {cursor.rowcount} 条记录")
+
+            conn.commit()
         except Exception as e:
-            logger.error(f"更新 play_queue 失败: {e}")
+            logger.error(f"更新路径失败: {e}")
 
     def _handle_conflict(self, path: Path) -> Path:
         """

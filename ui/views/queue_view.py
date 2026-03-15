@@ -24,6 +24,7 @@ from domain.playback import PlaybackState
 from services.playback import PlaybackService
 from system.i18n import t
 from utils.helpers import format_duration
+from utils.dedup import deduplicate_playlist_items, get_version_summary
 
 
 class QueueView(QWidget):
@@ -85,6 +86,13 @@ class QueueView(QWidget):
             self._title_label.setFont(font)
 
         header_layout.addStretch()
+
+        # Smart deduplicate button
+        self._dedup_btn = QPushButton(t("smart_deduplicate"))
+        self._dedup_btn.setObjectName("queueActionBtn")
+        self._dedup_btn.setCursor(Qt.PointingHandCursor)
+        self._dedup_btn.clicked.connect(self._deduplicate_queue)
+        header_layout.addWidget(self._dedup_btn)
 
         # Clear button
         self._clear_btn = QPushButton(t("clear_queue"))
@@ -338,6 +346,9 @@ class QueueView(QWidget):
         """Update UI texts after language change."""
         # Update title
         self._title_label.setText("🎶" + t("play_queue"))
+
+        # Update deduplicate button
+        self._dedup_btn.setText(t("smart_deduplicate"))
 
         # Update clear button
         self._clear_btn.setText(t("clear_queue"))
@@ -787,3 +798,77 @@ class QueueView(QWidget):
     def refresh(self):
         """Refresh the queue display."""
         self._refresh_queue()
+
+    def _deduplicate_queue(self):
+        """Intelligently deduplicate the queue by removing version duplicates."""
+        from domain.playlist_item import PlaylistItem
+
+        # Get current playlist items
+        current_playlist = self._player.engine.playlist_items
+        if not current_playlist:
+            return
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            t("smart_deduplicate"),
+            t("deduplicate_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # Perform deduplication
+        original_count = len(current_playlist)
+        deduplicated = deduplicate_playlist_items(current_playlist)
+        new_count = len(deduplicated)
+
+        if new_count == original_count:
+            # No duplicates removed
+            QMessageBox.information(self, t("info"), t("deduplicate_nothing"))
+            return
+
+        # Get currently playing track info before changing playlist
+        current_index = self._player.engine.current_index
+        current_track = None
+        if 0 <= current_index < len(current_playlist):
+            current_track = current_playlist[current_index]
+
+        # Build new playlist
+        new_playlist = []
+        for item in deduplicated:
+            if isinstance(item, PlaylistItem):
+                new_playlist.append(item.to_dict())
+            else:
+                new_playlist.append(item)
+
+        # Find new index of currently playing track
+        new_current_index = -1
+        if current_track:
+            current_track_id = current_track.track_id if hasattr(current_track, 'track_id') else current_track.get("id")
+            current_cloud_file_id = current_track.cloud_file_id if hasattr(current_track, 'cloud_file_id') else current_track.get("cloud_file_id")
+            for i, item_dict in enumerate(new_playlist):
+                # Match by track_id for local tracks or cloud_file_id for cloud tracks
+                if current_track_id and item_dict.get("id") == current_track_id:
+                    new_current_index = i
+                    break
+                elif current_cloud_file_id and item_dict.get("cloud_file_id") == current_cloud_file_id:
+                    new_current_index = i
+                    break
+
+        # Replace engine playlist
+        self._player.engine.load_playlist(new_playlist)
+
+        # Update current index if we found the track
+        if new_current_index >= 0:
+            self._player.engine._current_index = new_current_index
+            self._player.engine._load_track(new_current_index)
+
+        # Show success message
+        removed_count = original_count - new_count
+        message = t("deduplicate_success").format(removed=removed_count, kept=new_count)
+        QMessageBox.information(self, t("success"), message)
+
+        # Notify that queue was reordered (for saving)
+        self.queue_reordered.emit()
