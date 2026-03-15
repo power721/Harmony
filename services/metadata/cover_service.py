@@ -3,6 +3,7 @@ Cover art service for extracting and fetching album covers.
 """
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List
 
@@ -195,24 +196,30 @@ class CoverService:
         Returns:
             Path to downloaded cover, or None
         """
-        # Collect search results from multiple sources
         all_results: List[SearchResult] = []
 
-        # Search NetEase for covers with metadata
-        try:
-            netease_results = self._search_covers_from_netease(title, artist, album, duration)
-            all_results.extend(netease_results)
-            logger.debug(f"NetEase found {len(netease_results)} results")
-        except Exception as e:
-            logger.warning(f"Error searching cover from NetEase: {e}")
+        # Define search tasks
+        search_tasks = [
+            ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
+            ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
+            # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
+        ]
 
-        # Search iTunes for covers with metadata
-        try:
-            itunes_results = self._search_covers_from_itunes(title, artist, album)
-            all_results.extend(itunes_results)
-            logger.debug(f"iTunes found {len(itunes_results)} results")
-        except Exception as e:
-            logger.warning(f"Error searching cover from iTunes: {e}")
+        # Parallel search from multiple sources
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(task[1]): task[0]
+                for task in search_tasks
+            }
+
+            for future in as_completed(futures, timeout=10):
+                source_name = futures[future]
+                try:
+                    results = future.result()
+                    all_results.extend(results)
+                    logger.debug(f"{source_name} found {len(results)} results")
+                except Exception as e:
+                    logger.warning(f"Error searching cover from {source_name}: {e}")
 
         # Find best match from all collected results (use 'cover' mode - album highest weight)
         if all_results:
@@ -234,20 +241,26 @@ class CoverService:
                     if cover_data:
                         return self._save_cover_to_cache(cover_data, cache_key)
 
-        # Fallback to other sources (without smart matching)
-        sources = [
-            ("MusicBrainz", self._fetch_from_musicbrainz),
-            ("Last.fm", self._fetch_from_lastfm),
+        # Fallback to other sources (without smart matching) - parallel
+        fallback_sources = [
+            ("MusicBrainz", lambda: self._fetch_from_musicbrainz(artist, album or title)),
+            ("Last.fm", lambda: self._fetch_from_lastfm(artist, album or title)),
         ]
 
-        for source_name, source_func in sources:
-            try:
-                cover_data = source_func(artist, album or title)
-                if cover_data:
-                    return self._save_cover_to_cache(cover_data, cache_key)
-            except Exception as e:
-                logger.warning(f"Error fetching cover from {source_name}: {e}")
-                continue
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(src[1]): src[0]
+                for src in fallback_sources
+            }
+
+            for future in as_completed(futures, timeout=10):
+                source_name = futures[future]
+                try:
+                    cover_data = future.result()
+                    if cover_data:
+                        return self._save_cover_to_cache(cover_data, cache_key)
+                except Exception as e:
+                    logger.warning(f"Error fetching cover from {source_name}: {e}")
 
         return None
 
@@ -370,33 +383,28 @@ class CoverService:
         results = []
         all_search_results: List[SearchResult] = []
 
-        # Search NetEase
-        try:
-            netease_results = self._search_covers_from_netease(title, artist, album, duration)
-            all_search_results.extend(netease_results)
-        except Exception as e:
-            logger.error(f"Error searching NetEase covers: {e}", exc_info=True)
+        # Define search tasks
+        search_tasks = [
+            ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
+            ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
+            # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
+            ("Last.fm", lambda: self._search_covers_from_lastfm(artist, album or title)),
+        ]
 
-        # Search iTunes
-        try:
-            itunes_results = self._search_covers_from_itunes(title, artist, album)
-            all_search_results.extend(itunes_results)
-        except Exception as e:
-            logger.error(f"Error searching iTunes covers: {e}", exc_info=True)
+        # Parallel search from multiple sources
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(task[1]): task[0]
+                for task in search_tasks
+            }
 
-        # Search MusicBrainz
-        try:
-            musicbrainz_results = self._search_covers_from_musicbrainz(artist, album or title)
-            all_search_results.extend(musicbrainz_results)
-        except Exception as e:
-            logger.error(f"Error searching MusicBrainz covers: {e}", exc_info=True)
-
-        # Search Last.fm
-        try:
-            lastfm_results = self._search_covers_from_lastfm(artist, album or title)
-            all_search_results.extend(lastfm_results)
-        except Exception as e:
-            logger.error(f"Error searching Last.fm covers: {e}", exc_info=True)
+            for future in as_completed(futures, timeout=15):
+                source_name = futures[future]
+                try:
+                    search_results = future.result()
+                    all_search_results.extend(search_results)
+                except Exception as e:
+                    logger.error(f"Error searching {source_name} covers: {e}", exc_info=True)
 
         # Use MatchScorer to rank all results (use 'cover' mode - album highest weight)
         if all_search_results:
@@ -822,6 +830,97 @@ class CoverService:
 
         except Exception as e:
             logger.debug(f"iTunes search error: {e}")
+
+        return results
+
+    def _search_covers_from_spotify(self, title: str, artist: str, album: str) -> List[SearchResult]:
+        """
+        Search for album covers from Spotify Web API.
+
+        Args:
+            title: Track title
+            artist: Track artist
+            album: Album name
+
+        Returns:
+            List of SearchResult objects with cover URLs
+        """
+        results = []
+
+        token = self._get_spotify_token()
+        if not token:
+            logger.debug("Failed to get Spotify token for album search")
+            return results
+
+        try:
+            url = "https://api.spotify.com/v1/search"
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
+
+            # Build search query
+            search_album = album or title
+            params = {
+                "q": f"album:{search_album} artist:{artist}",
+                "type": "album",
+                "limit": 5
+            }
+
+            response = self.http_client.get(url, headers=headers, params=params, timeout=5)
+
+            if response.status_code == 200:
+                data = response.json()
+                albums = data.get("albums", {}).get("items", [])
+
+                for album_info in albums:
+                    images = album_info.get("images", [])
+                    if images:
+                        # Get the largest image (first in list)
+                        cover_url = images[0].get("url")
+
+                        if cover_url:
+                            results.append(SearchResult(
+                                title=album_info.get("name", ""),
+                                artist=album_info.get("artists", [{}])[0].get("name", ""),
+                                album=album_info.get("name", ""),
+                                duration=None,
+                                source='spotify',
+                                id=album_info.get("id", ""),
+                                cover_url=cover_url
+                            ))
+
+            # If album has value, also search with album only (without artist)
+            if album:
+                params_album_only = {
+                    "q": f"album:{album}",
+                    "type": "album",
+                    "limit": 5
+                }
+
+                response = self.http_client.get(url, headers=headers, params=params_album_only, timeout=5)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    albums = data.get("albums", {}).get("items", [])
+
+                    for album_info in albums:
+                        images = album_info.get("images", [])
+                        if images:
+                            cover_url = images[0].get("url")
+
+                            if cover_url:
+                                results.append(SearchResult(
+                                    title=album_info.get("name", ""),
+                                    artist=album_info.get("artists", [{}])[0].get("name", ""),
+                                    album=album_info.get("name", ""),
+                                    duration=None,
+                                    source='spotify',
+                                    id=album_info.get("id", ""),
+                                    cover_url=cover_url
+                                ))
+
+        except Exception as e:
+            logger.debug(f"Spotify album search error: {e}")
 
         return results
 

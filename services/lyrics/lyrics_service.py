@@ -2,6 +2,7 @@
 Lyrics service for fetching and parsing lyrics.
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ class LyricsService:
     def search_songs(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
         """
         Search for songs online and return a list of candidates.
+        Uses parallel searching for better performance.
 
         Args:
             title: Track title
@@ -72,27 +74,28 @@ class LyricsService:
         """
         results = []
 
-        # Try LRCLIB first (recommended, free and open source)
-        try:
-            lrclib_results = cls._search_from_lrclib(title, artist, limit)
-            results.extend(lrclib_results)
-        except Exception as e:
-            logger.error(f"Error searching from LRCLIB: {e}", exc_info=True)
+        # Define search tasks for parallel execution
+        search_tasks = [
+            ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit)),
+            ("NetEase", lambda: cls._search_from_netease(title, artist, limit)),
+            ("Kugou", lambda: cls._search_from_kugou(title, artist, limit)),
+        ]
 
-        # Try NetEase Cloud Music (always include, up to limit)
-        try:
-            netease_results = cls._search_from_netease(title, artist, limit)
-            results.extend(netease_results)
-        except Exception as e:
-            logger.error(f"Error searching from NetEase: {e}", exc_info=True)
+        # Parallel search from multiple sources
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(task[1]): task[0]
+                for task in search_tasks
+            }
 
-        # Try Kugou if needed
-        if len(results) < limit * 2:  # Only if we don't have enough from both sources
-            try:
-                kugou_results = cls._search_from_kugou(title, artist, limit)
-                results.extend(kugou_results)
-            except Exception as e:
-                logger.error(f"Error searching from Kugou: {e}", exc_info=True)
+            for future in as_completed(futures, timeout=10):
+                source_name = futures[future]
+                try:
+                    source_results = future.result()
+                    results.extend(source_results)
+                    logger.debug(f"[LyricsService] {source_name}: found {len(source_results)} results")
+                except Exception as e:
+                    logger.error(f"Error searching from {source_name}: {e}", exc_info=True)
 
         # Return all results (user can see all sources)
         return results
@@ -496,6 +499,7 @@ class LyricsService:
     def _get_online_lyrics(cls, title: str, artist: str, album: str = "", duration: float = None) -> str:
         """
         Fetch lyrics from online sources with smart matching.
+        Uses parallel searching for better performance.
 
         Args:
             title: Track title
@@ -509,27 +513,27 @@ class LyricsService:
         # Search all sources and collect results
         all_results = []
 
-        # Try LRCLIB
-        try:
-            lrclib_results = cls._search_from_lrclib(title, artist, limit=5)
-            all_results.extend(lrclib_results)
-        except Exception as e:
-            logger.error(f"Error searching from LRCLIB: {e}", exc_info=True)
+        # Define search tasks for parallel execution
+        search_tasks = [
+            ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit=5)),
+            ("NetEase", lambda: cls._search_from_netease(title, artist, limit=5)),
+            ("Kugou", lambda: cls._search_from_kugou(title, artist, limit=5)),
+        ]
 
-        # Try NetEase
-        try:
-            netease_results = cls._search_from_netease(title, artist, limit=5)
-            all_results.extend(netease_results)
-        except Exception as e:
-            logger.error(f"Error searching from NetEase: {e}", exc_info=True)
+        # Parallel search from multiple sources
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(task[1]): task[0]
+                for task in search_tasks
+            }
 
-        # Try Kugou if needed
-        if len(all_results) < 3:
-            try:
-                kugou_results = cls._search_from_kugou(title, artist, limit=5)
-                all_results.extend(kugou_results)
-            except Exception as e:
-                logger.error(f"Error searching from Kugou: {e}", exc_info=True)
+            for future in as_completed(futures, timeout=10):
+                source_name = futures[future]
+                try:
+                    source_results = future.result()
+                    all_results.extend(source_results)
+                except Exception as e:
+                    logger.error(f"Error searching from {source_name}: {e}", exc_info=True)
 
         if not all_results:
             return ""
