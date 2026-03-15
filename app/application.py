@@ -26,7 +26,7 @@ class Application(QObject):
     # Signals
     initialized = Signal()
 
-    def __init__(self, qt_app: QApplication, db_path: str = "music_player.db"):
+    def __init__(self, qt_app: QApplication, db_path: str = "Harmony.db"):
         """
         Initialize application.
 
@@ -48,7 +48,7 @@ class Application(QObject):
         return cls._instance
 
     @classmethod
-    def create(cls, qt_app: QApplication, db_path: str = "music_player.db") -> "Application":
+    def create(cls, qt_app: QApplication, db_path: str = "Harmony.db") -> "Application":
         """
         Create application instance.
 

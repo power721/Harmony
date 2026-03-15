@@ -53,7 +53,7 @@ python -m pytest tests/
 Database:
 
 ```
-./music_player.db
+./Harmony.db
 ```
 
 Tests:

@@ -14,7 +14,7 @@ from repositories.track_repository import SqliteTrackRepository
 class SqlitePlaylistRepository:
     """SQLite implementation of PlaylistRepository."""
 
-    def __init__(self, db_path: str = "music_player.db"):
+    def __init__(self, db_path: str = "Harmony.db"):
         self.db_path = db_path
         self.local = threading.local()
         self._track_repo = SqliteTrackRepository(db_path)

@@ -84,7 +84,7 @@ class Bootstrap:
 
     _instance: Optional["Bootstrap"] = None
 
-    def __init__(self, db_path: str = "music_player.db"):
+    def __init__(self, db_path: str = "Harmony.db"):
         """Initialize bootstrap container."""
         self._db_path = db_path
 

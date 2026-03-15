@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Manages SQLite database operations for the music player."""
 
-    def __init__(self, db_path: str = "music_player.db"):
+    def __init__(self, db_path: str = "Harmony.db"):
         """
         Initialize database manager.
 

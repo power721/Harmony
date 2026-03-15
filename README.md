@@ -299,7 +299,7 @@ Harmony/
 
 ### 数据库
 
-- **位置**: `./music_player.db`（项目根目录）
+- **位置**: `./Harmony.db`（项目根目录）
 - **表结构**:
   - `tracks` - 本地音乐库
   - `playlists` / `playlist_items` - 播放列表

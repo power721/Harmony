@@ -12,7 +12,7 @@ from domain.cloud import CloudAccount, CloudFile
 class SqliteCloudRepository:
     """SQLite implementation of CloudRepository."""
 
-    def __init__(self, db_path: str = "music_player.db"):
+    def __init__(self, db_path: str = "Harmony.db"):
         self.db_path = db_path
         self.local = threading.local()
 
