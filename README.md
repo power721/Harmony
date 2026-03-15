@@ -1,6 +1,6 @@
-# Harmony - Modern Music Player
+# Harmony - 现代化音乐播放器
 
-一个使用 PySide6 构建的现代化音乐播放器，采用清洁架构设计，支持本地音乐和云盘音乐的无缝播放。
+一款使用 Python 和 PySide6 构建的现代化桌面音乐播放器，采用清洁架构设计，支持本地音乐和云盘音乐的无缝播放。
 
 ## 功能特性
 
@@ -9,31 +9,30 @@
 - **智能元数据提取** - 自动提取音频文件标签信息（标题、艺术家、专辑等）
 - **专辑封面显示** - 自动抓取和显示专辑封面
 - **多种音频格式** - 支持 MP3、FLAC、OGG、M4A、WAV、WMA 等格式
-- **全文搜索** - 基于 FTS5 的快速歌曲搜索，支持模糊匹配和相关度排序
+- **全文搜索** - 基于 SQLite FTS5 的快速歌曲搜索，支持模糊匹配
 
 ### ☁️ 云盘音乐集成
 - **夸克网盘支持** - 通过二维码登录夸克网盘
 - **在线浏览** - 直接浏览网盘中的音乐文件
 - **智能下载** - 自动下载云盘音乐到本地缓存
-- **断点续传** - 支持播放进度保存和恢复
 - **混合播放** - 本地音乐和云盘音乐无缝切换
 
 ### 📋 播放列表管理
 - **自定义播放列表** - 创建和管理播放列表
 - **播放队列** - 实时查看和管理当前播放队列
-- **队列拖拽排序** - 拖拽调整播放队列中的歌曲顺序
-- **队列持久化** - 应用重启后恢复播放队列和顺序
+- **拖拽排序** - 拖拽调整播放队列中的歌曲顺序
+- **队列持久化** - 应用重启后恢复播放队列
 
 ### ⏯️ 播放控制
 - **完整播放控制** - 播放/暂停/上一曲/下一曲
-- **多种播放模式** - 顺序播放、随机播放、列表循环、单曲循环等
+- **多种播放模式** - 顺序播放、随机播放、列表循环、单曲循环
 - **均衡器** - 内置音频均衡器和预设
 - **进度控制** - 精确的播放进度控制
 
 ### 🎤 歌词功能
 - **自动下载歌词** - 自动从网络获取歌词
-- **多源支持** - 支持 LRCLIB、网易云音乐、酷狗音乐等多个歌词源
-- **智能匹配** - 基于标题、艺术家、专辑、时长的智能歌词匹配算法
+- **多源支持** - LRCLIB、网易云音乐、酷狗音乐
+- **智能匹配** - 基于标题、艺术家、专辑、时长的智能匹配算法
 - **LRC 格式支持** - 支持 .lrc 歌词文件解析
 - **同步显示** - 歌词与播放进度同步显示
 - **高级歌词窗口** - 支持滚屏和高亮显示
@@ -43,7 +42,7 @@
 - **自动封面获取** - 自动从网络获取专辑封面
 - **智能匹配** - 使用 MatchScorer 算法精确匹配封面
 - **手动下载封面** - 支持手动选择和下载专辑封面
-- **多源支持** - 支持 iTunes、MusicBrainz、Last.fm 等封面来源
+- **多源支持** - iTunes、MusicBrainz、Last.fm、网易云音乐
 - **封面预览** - 下载前预览封面效果
 
 ### 🤖 AI 元数据增强
@@ -57,6 +56,7 @@
 - **迷你播放器** - 小巧的悬浮播放窗口，支持拖拽移动
 - **系统托盘** - 最小化到系统托盘，后台播放
 - **响应式布局** - 适配不同屏幕尺寸
+- **专辑/艺术家视图** - 卡片式浏览专辑和艺术家
 
 ### ⌨️ 其他功能
 - **全局快捷键** - 支持系统级媒体键控制
@@ -89,24 +89,25 @@ python main.py
 ### 依赖项
 
 ```
-PySide6==6.6.0          # Qt6 GUI 框架
-PySide6-Addons==6.6.0   # Qt6 多媒体支持
-mutagen==1.47.0         # 音频元数据提取
-requests==2.31.0        # HTTP 请求
-beautifulsoup4==4.12.2  # 歌词爬取
-lxml==5.1.0             # HTML 解析
-pymediainfo==6.1.0      # 媒体信息提取（可选）
-qrcode[pil]==8.2        # 二维码生成
-openai>=1.0.0           # AI 元数据增强
+PySide6==6.6.0              # Qt6 GUI 框架
+PySide6-Addons==6.6.0       # Qt6 多媒体支持
+mutagen==1.47.0             # 音频元数据提取
+requests==2.31.0            # HTTP 请求
+beautifulsoup4==4.12.2      # 歌词爬取
+lxml==5.1.0                 # HTML 解析
+pymediainfo==6.1.0          # 媒体信息提取
+qrcode[pil]==8.2            # 二维码生成
+openai>=1.0.0               # AI 元数据增强
 opencc-python-reimplemented==0.1.7  # 繁简转换
-pyacoustid>=1.2.0       # 音频指纹识别
+pyacoustid>=1.2.0           # 音频指纹识别
+shiboken6                   # Python-C++ 绑定
 ```
 
 ## 使用说明
 
 ### 本地音乐
 
-1. 首次运行时，点击左下角的"添加音乐"按钮
+1. 点击左下角的"添加音乐"按钮
 2. 选择包含音乐文件的文件夹
 3. 音乐将被扫描并添加到音乐库
 4. 点击歌曲即可播放
@@ -151,7 +152,7 @@ pyacoustid>=1.2.0       # 音频指纹识别
 
 - **GUI 框架**: PySide6 (Qt6)
 - **音频引擎**: Qt Multimedia (QMediaPlayer)
-- **数据库**: SQLite3
+- **数据库**: SQLite3 with FTS5
 - **元数据提取**: mutagen, pymediainfo
 - **网络请求**: requests
 - **歌词解析**: BeautifulSoup4, lxml
@@ -246,8 +247,14 @@ Harmony/
 │       ├── player_controls.py
 │       ├── lyrics_widget_pro.py
 │       ├── cover_download_dialog.py
+│       ├── album_cover_download_dialog.py
+│       ├── artist_cover_download_dialog.py
 │       ├── ai_settings_dialog.py
-│       └── cloud_login_dialog.py
+│       ├── cloud_login_dialog.py
+│       ├── equalizer_widget.py
+│       ├── help_dialog.py
+│       ├── album_card.py
+│       └── artist_card.py
 ├── system/                 # 系统组件
 │   ├── config.py          # 配置管理
 │   ├── event_bus.py       # 事件总线
@@ -295,24 +302,52 @@ Harmony/
 - 时长匹配（权重 15%）
 - 支持中文、英文混合匹配
 
-## 配置文件
+**EventBus** - 集中式事件信号：
+- 播放事件：`track_changed`、`playback_state_changed`、`position_changed`
+- 下载事件：`download_started`、`download_progress`、`download_completed`
+- UI 事件：`lyrics_loaded`、`metadata_updated`、`cover_updated`
+- 库事件：`tracks_added`、`playlist_created`、`favorite_changed`
 
-### 数据库
+## 数据存储
+
+### 数据库（Harmony.db）
+
+所有数据统一存储在 SQLite 数据库中。
 
 - **位置**: `./Harmony.db`（项目根目录）
-- **表结构**:
-  - `tracks` - 本地音乐库
-  - `playlists` / `playlist_items` - 播放列表
-  - `play_history` - 播放历史
-  - `favorites` - 收藏
-  - `cloud_accounts` - 云盘账号
-  - `cloud_files` - 云盘文件缓存
-  - `play_queue` - 持久化播放队列
 
-### 配置文件
+**表结构**:
+- `tracks` - 本地音乐库
+- `albums` - 专辑聚合
+- `artists` - 艺术家聚合
+- `playlists` / `playlist_items` - 播放列表
+- `play_history` - 播放历史
+- `favorites` - 收藏
+- `cloud_accounts` - 云盘账号
+- `cloud_files` - 云盘文件缓存
+- `play_queue` - 持久化播放队列
+- **`settings`** - 应用配置存储（统一配置管理）
 
-- **位置**: `~/.config/harmony_player/config.json`
-- **内容**: 播放模式、音量、播放队列状态等
+### Settings 表
+
+应用的配置（播放模式、音量、AI 设置等）存储在 `settings` 表中：
+
+**存储内容**:
+- 播放器设置：音量、播放模式、播放源
+- 播放状态：当前曲目 ID、播放位置
+- 云盘设置：账号 ID、下载目录
+- UI 设置：语言、窗口几何、视图类型
+- AI 设置：API 地址、密钥、模型
+- AcoustID 设置：API 密钥
+
+**表结构**:
+```sql
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+```
 
 ### 翻译文件
 
@@ -366,14 +401,6 @@ AI 开发者应遵循以下规则：
 4. Services 应避免 UI 逻辑
 5. 使用 EventBus 进行跨组件通信
 6. 保持线程安全
-
-### 贡献指南
-
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
 
 ## 打包发布
 

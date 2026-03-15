@@ -7,16 +7,6 @@
 - SQLite
 - mutagen (audio metadata)
 
-Main capabilities:
-
-- Local music library
-- Playlists
-- Lyrics (LRC sync)
-- Album art
-- Cloud playback (Quark Drive)
-- Persistent play queue
-- Global hotkeys
-
 The project prioritizes:
 
 - modular architecture
@@ -64,7 +54,7 @@ tests/
 
 ---
 
-# Architecture (Harmony 3.0)
+# Architecture (Harmony 1.0)
 
 The project follows a **clean layered architecture** with dependency inversion:
 
