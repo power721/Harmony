@@ -133,6 +133,7 @@ class LyricsDownloadDialog(QDialog):
 
         # Song list
         self._song_list = QListWidget()
+        self._song_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
         for result in self._results:
             item_text = self._format_result_text(result)
             item = QListWidgetItem(item_text)

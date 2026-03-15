@@ -176,6 +176,7 @@ class ArtistCoverDownloadDialog(QDialog):
 
         self._results_list = QListWidget()
         self._results_list.setMinimumWidth(300)
+        self._results_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
         self._results_list.itemClicked.connect(self._on_result_selected)
         left_layout.addWidget(self._results_list)
 

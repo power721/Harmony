@@ -249,6 +249,7 @@ class CoverDownloadDialog(QDialog):
 
         self.results_list = QListWidget()
         self.results_list.setMinimumWidth(350)
+        self.results_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
         self.results_list.itemClicked.connect(self._on_result_selected)
         left_layout.addWidget(self.results_list)
 
