@@ -508,6 +508,9 @@ class PlaybackService(QObject):
         # Save queue to persist the updated local_path
         self.save_queue()
 
+        # Preload next cloud track
+        self._preload_next_cloud_track()
+
     # ===== Favorites Management =====
 
     def toggle_favorite(
@@ -827,6 +830,53 @@ class PlaybackService(QObject):
 
         if cloud_file:
             service.download_file(cloud_file, self._cloud_account)
+
+    def _preload_next_cloud_track(self):
+        """Preload the next cloud track in the queue."""
+        from services.cloud.download_service import CloudDownloadService
+
+        # Single track loop modes - don't preload
+        if self._engine.play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            return
+
+        # Get next item
+        next_item = self._engine.get_next_item()
+        if not next_item or not next_item.is_cloud:
+            return
+
+        # Skip if already downloaded or downloading
+        if next_item.local_path:
+            return
+
+        service = CloudDownloadService.instance()
+        if service.is_downloading(next_item.cloud_file_id):
+            return
+
+        # Find the CloudFile
+        cloud_file = None
+        for cf in self._cloud_files:
+            if cf.file_id == next_item.cloud_file_id:
+                cloud_file = cf
+                break
+
+        if not cloud_file:
+            cloud_file = self._db.get_cloud_file_by_file_id(next_item.cloud_file_id)
+
+        if not cloud_file:
+            return
+
+        # Get cloud account if needed
+        account = self._cloud_account
+        if not account and next_item.cloud_account_id:
+            account = self._db.get_cloud_account(next_item.cloud_account_id)
+
+        if not account:
+            return
+
+        # Start preload
+        logger.info(f"[PlaybackService] Preloading next cloud track: {next_item.title}")
+        service.set_download_dir(self._config.get_cloud_download_dir())
+        service.download_file(cloud_file, account)
 
     def _save_cloud_track_to_library(self, file_id: str, local_path: str) -> str:
         """

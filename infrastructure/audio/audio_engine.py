@@ -557,6 +557,36 @@ class PlayerEngine(QObject):
         """Check if currently in shuffle mode."""
         return self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
 
+    def get_next_item(self) -> Optional[PlaylistItem]:
+        """
+        Get the next playlist item without changing state.
+
+        Returns:
+            Next PlaylistItem or None if no next item
+        """
+        if not self._playlist:
+            return None
+
+        # Single track loop modes - next is current
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            if 0 <= self._current_index < len(self._playlist):
+                return self._playlist[self._current_index]
+            return None
+
+        # Calculate next index
+        next_index = self._current_index + 1
+
+        # Handle end of playlist
+        if next_index >= len(self._playlist):
+            # Playlist loop modes wrap around
+            if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                next_index = 0
+            else:
+                # Sequential mode - no next item
+                return None
+
+        return self._playlist[next_index]
+
     def _load_track(self, index: int):
         """Load a track for playback."""
         if 0 <= index < len(self._playlist):
