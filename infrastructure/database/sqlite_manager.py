@@ -802,23 +802,6 @@ class DatabaseManager:
             for row in rows
         ]
 
-        # Get downloaded cloud files and convert to virtual tracks
-        # Use negative IDs to distinguish from real tracks
-        cloud_files = self.get_all_downloaded_cloud_files()
-        for i, cloud_file in enumerate(cloud_files):
-            # Create a virtual track from cloud file
-            virtual_track = Track(
-                id=-(1000000 + i),  # Negative ID to indicate cloud file
-                path=cloud_file.local_path,
-                title=cloud_file.name,
-                artist="☁️ Cloud File",  # Mark as cloud file
-                album="",
-                duration=cloud_file.duration or 0.0,
-                cover_path=None,
-                created_at=cloud_file.created_at,
-            )
-            tracks.append(virtual_track)
-
         return tracks
 
     def search_tracks(self, query: str) -> List[Track]:
