@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from services.lyrics.lyrics_service import LyricsService
 from system.i18n import t
+from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class LyricsDownloadDialog(QDialog):
 
     This dialog displays search results from online lyrics sources and allows
     the user to select a song to download lyrics (and optionally cover art).
+    Results are sorted by match score (highest first).
     """
 
     # Signals
@@ -60,6 +62,8 @@ class LyricsDownloadDialog(QDialog):
             track_title: str,
             track_artist: str,
             track_path: str = "",
+            track_album: str = "",
+            track_duration: float = None,
             parent=None
     ):
         """Initialize the lyrics download dialog.
@@ -68,12 +72,16 @@ class LyricsDownloadDialog(QDialog):
             track_title: The track title to search
             track_artist: The track artist to search
             track_path: Path to the audio file (for saving lyrics)
+            track_album: Album name (for better matching)
+            track_duration: Track duration in seconds (for better matching)
             parent: Parent widget
         """
         super().__init__(parent)
         self._track_title = track_title
         self._track_artist = track_artist
         self._track_path = track_path
+        self._track_album = track_album
+        self._track_duration = track_duration
         self._selected_song: Optional[dict] = None
         self._download_cover = False
         self._search_thread: Optional[LyricsSearchThread] = None
@@ -221,8 +229,36 @@ class LyricsDownloadDialog(QDialog):
             self._status_label.setText(t("no_results"))
             return
 
-        # Populate song list
+        # Calculate match scores and sort by score descending
+        track_info = TrackInfo(
+            title=self._track_title,
+            artist=self._track_artist,
+            album=self._track_album,
+            duration=self._track_duration
+        )
+
+        scored_results = []
         for result in results:
+            search_result = SearchResult(
+                title=result.get('title', ''),
+                artist=result.get('artist', ''),
+                album=result.get('album', ''),
+                duration=result.get('duration'),
+                source=result.get('source', ''),
+                id=result.get('id', ''),
+                cover_url=result.get('cover_url'),
+                lyrics=result.get('lyrics'),
+                accesskey=result.get('accesskey')
+            )
+            score = MatchScorer.calculate_score(track_info, search_result, mode='lyrics')
+            result['_score'] = score
+            scored_results.append(result)
+
+        # Sort by score descending (highest first)
+        scored_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
+
+        # Populate song list
+        for result in scored_results:
             item_text = self._format_result_text(result)
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, result)
@@ -267,6 +303,10 @@ class LyricsDownloadDialog(QDialog):
             source = f"{source} YRC"  # Indicate YRC (word-by-word) support
         item_text += f" [{source}]"
 
+        # Score at the end
+        score = result.get('_score', 0)
+        item_text += f" [{score:.0f}%]"
+
         return item_text
 
     def get_selected_song(self) -> Optional[dict]:
@@ -305,6 +345,8 @@ class LyricsDownloadDialog(QDialog):
             track_title: str,
             track_artist: str,
             track_path: str = "",
+            track_album: str = "",
+            track_duration: float = None,
             parent=None
     ) -> Optional[tuple]:
         """Static method to show the dialog and get the result.
@@ -313,6 +355,8 @@ class LyricsDownloadDialog(QDialog):
             track_title: The track title to search
             track_artist: The track artist to search
             track_path: Path to the audio file (for saving lyrics)
+            track_album: Album name (for better matching)
+            track_duration: Track duration in seconds (for better matching)
             parent: Parent widget
 
         Returns:
@@ -322,6 +366,8 @@ class LyricsDownloadDialog(QDialog):
             track_title,
             track_artist,
             track_path,
+            track_album,
+            track_duration,
             parent
         )
 

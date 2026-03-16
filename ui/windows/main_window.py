@@ -1226,6 +1226,8 @@ class MainWindow(QMainWindow):
         track_path = current_item.local_path
         track_title = current_item.title
         track_artist = current_item.artist
+        track_album = current_item.album
+        track_duration = current_item.duration
 
         if not track_path:
             QMessageBox.warning(self, t("error"), t("cloud_lyrics_download_not_supported"))
@@ -1241,6 +1243,8 @@ class MainWindow(QMainWindow):
             track_title,
             track_artist,
             track_path,
+            track_album,
+            track_duration,
             self
         )
 
@@ -1261,7 +1265,8 @@ class MainWindow(QMainWindow):
             self._lyrics_download_thread.quit()
             self._lyrics_download_thread.wait(100)
 
-        self._lyrics_view.set_lyrics(t("downloading") + "...")
+        # Don't clear current lyrics - wait for download to complete
+        # self._lyrics_view.set_lyrics(t("downloading") + "...")
 
         # Create download worker with specific song info
         self._lyrics_download_thread = LyricsDownloadWorker(

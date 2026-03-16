@@ -279,11 +279,11 @@ class LyricsService:
             Lyrics content (YRC or LRC format) or empty string
         """
         try:
-            # Try to get YRC (word-by-word lyrics) first
-            # API params: yv=0 enables YRC format
-            yrc_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=0&kv=0&tv=0&yv=0"
+            # Request both YRC and LRC at the same time
+            # API params: lv=1 gets LRC, yv=0 gets YRC
+            api_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=0&tv=0&yv=0"
             response = requests.get(
-                yrc_url,
+                api_url,
                 headers=cls.HEADERS,
                 timeout=5
             )
@@ -291,7 +291,7 @@ class LyricsService:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('code') == 200:
-                    # Check for YRC (word-by-word lyrics)
+                    # Check for YRC (word-by-word lyrics) first
                     yrc_data = data.get('yrc')
                     if yrc_data and yrc_data.get('lyric'):
                         yrc_content = yrc_data['lyric']
@@ -299,14 +299,16 @@ class LyricsService:
                         logger.debug(f"[LyricsService] YRC sample: {yrc_content[:200] if len(yrc_content) > 200 else yrc_content}")
                         return yrc_content
                     else:
-                        logger.info(f"[LyricsService] No YRC for song {song_id}, yrc field: {yrc_data}")
+                        logger.info(f"[LyricsService] No YRC for song {song_id}, falling back to LRC")
 
                     # Fall back to LRC if no YRC
                     lrc_data = data.get('lrc')
                     if lrc_data and lrc_data.get('lyric'):
                         lrc_content = lrc_data['lyric']
-                        logger.info(f"[LyricsService] Got LRC lyrics for song {song_id} (no YRC)")
+                        logger.info(f"[LyricsService] Got LRC lyrics for song {song_id} (no YRC), length: {len(lrc_content)}")
                         return lrc_content
+                    else:
+                        logger.info(f"[LyricsService] No LRC either for song {song_id}")
 
             # Fallback to original API if YRC API fails
             lyrics_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
