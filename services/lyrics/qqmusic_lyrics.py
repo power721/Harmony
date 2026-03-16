@@ -100,22 +100,70 @@ class QQMusicClient:
         elif album_mid:
             params["album_mid"] = album_mid
         else:
+            logger.warning("get_cover_url: No mid or album_mid provided")
             return None
 
         try:
+            logger.info(f"Requesting cover URL: {url} with params: {params}")
+            # Disable auto-redirect to capture 302 response
             r = self.session.get(
                 url,
                 params=params,
                 headers=self.HEADERS,
-                timeout=self.timeout
+                timeout=self.timeout,
+                allow_redirects=False
             )
-            if r.status_code == 200:
+            logger.info(f"Cover URL response status: {r.status_code}")
+
+            if r.status_code == 302:
+                # API returns 302 redirect to actual image URL
+                redirect_url = r.headers.get('Location')
+                logger.info(f"Got cover URL via 302 redirect: {redirect_url}")
+                return redirect_url
+            elif r.status_code == 200:
+                # Fallback: support old JSON response format
                 data = r.json()
+                logger.info(f"Cover URL response data: {data}")
                 if data.get('code') == 0:
-                    return data.get('data', {}).get('url')
+                    cover_url = data.get('data', {}).get('url')
+                    logger.info(f"Got cover URL: {cover_url}")
+                    return cover_url
+                else:
+                    logger.warning(f"Cover URL API error: code={data.get('code')}")
+            else:
+                logger.warning(f"Cover URL request failed: status={r.status_code}")
         except Exception as e:
             logger.error(f"QQ Music cover fetch error: {e}")
             return None
+
+    def search_artist(self, keyword: str, limit: int = 5) -> List[dict]:
+        """
+        Search for artists on QQ Music.
+
+        Args:
+            keyword: Search keyword
+            limit: Maximum number of results
+
+        Returns:
+            List of artist dicts with keys: mid, name, singer_mid
+        """
+        url = f"{self.BASE_URL}/search"
+
+        params = {
+            "keyword": keyword,
+            "type": "singer",  # Artist search
+            "num": limit,
+            "page": 1,
+        }
+
+        try:
+            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            data = r.json()
+            artists = data.get("data", {}).get("list", [])
+            return artists
+        except Exception as e:
+            logger.error(f"QQ Music artist search error: {e}")
+            return []
 
     def get_artist_cover_url(self, singer_mid: str, size: int = 300) -> Optional[str]:
         """
@@ -218,6 +266,33 @@ def get_qqmusic_artist_cover_url(singer_mid: str, size: int = 300) -> Optional[s
     """
     client = QQMusicClient()
     return client.get_artist_cover_url(singer_mid, size)
+
+
+def search_artist_from_qqmusic(artist_name: str, limit: int = 10) -> List[dict]:
+    """
+    Search artists from QQ Music.
+
+    Args:
+        artist_name: Artist name to search
+        limit: Maximum number of results
+
+    Returns:
+        List of dicts with keys: 'id', 'name', 'singer_mid', 'source', 'album_count'
+    """
+    client = QQMusicClient()
+    artists = client.search_artist(artist_name, limit)
+    results = []
+
+    for artist in artists:
+        results.append({
+            'id': artist.get('singerMID', ''),
+            'name': artist.get('singerName', ''),
+            'singer_mid': artist.get('singerMID', ''),
+            'album_count': artist.get('albumNum', 0),
+            'source': 'qqmusic',
+        })
+
+    return results
 
 
 def download_qqmusic_lyrics(mid: str) -> str:

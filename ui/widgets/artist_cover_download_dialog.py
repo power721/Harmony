@@ -4,260 +4,33 @@ Artist cover download dialog for downloading artist avatars.
 import logging
 from typing import List
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QProgressBar, QMessageBox, QScrollArea, QWidget,
-    QListWidget, QListWidgetItem, QSplitter
-)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QListWidgetItem
 
 from domain.artist import Artist
 from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.widgets.base_cover_download_dialog import (
+    BaseCoverDownloadDialog, CoverDownloadThread, QQMusicArtistCoverFetchThread
+)
 
 logger = logging.getLogger(__name__)
 
 
-class ArtistCoverSearchThread(QThread):
-    """Thread for searching artist covers."""
-    search_completed = Signal(list)  # Emits list of search results
-    search_failed = Signal(str)  # Emits error message
-
-    def __init__(self, cover_service: CoverService, artist: Artist):
-        super().__init__()
-        self.cover_service = cover_service
-        self.artist = artist
-
-    def run(self):
-        """Search for artist covers using NetEase API."""
-        try:
-            # Use dedicated artist cover search (type=100)
-            results = self.cover_service.search_artist_covers(self.artist.name, limit=10)
-            self.search_completed.emit(results)
-        except Exception as e:
-            logger.error(f"Error searching artist covers: {e}", exc_info=True)
-            self.search_failed.emit(f"{t('error')}: {str(e)}")
-
-
-class ArtistCoverDownloadThread(QThread):
-    """Thread for downloading cover art."""
-    cover_downloaded = Signal(bytes, str)  # Emits cover data and source
-    download_failed = Signal(str)  # Emits error message
-    finished = Signal()
-
-    def __init__(self, cover_service: CoverService, cover_url: str, source: str = ""):
-        super().__init__()
-        self.cover_service = cover_service
-        self.cover_url = cover_url
-        self.source = source
-
-    def run(self):
-        """Download cover from URL."""
-        try:
-            from infrastructure.network import HttpClient
-            http_client = HttpClient()
-            cover_data = http_client.get_content(self.cover_url, timeout=10)
-
-            if cover_data:
-                self.cover_downloaded.emit(cover_data, self.source)
-            else:
-                self.download_failed.emit(t("cover_download_failed"))
-        except Exception as e:
-            logger.error(f"Error downloading cover: {e}", exc_info=True)
-            self.download_failed.emit(f"{t('error')}: {str(e)}")
-        finally:
-            self.finished.emit()
-
-
-class ArtistCoverDownloadDialog(QDialog):
+class ArtistCoverDownloadDialog(BaseCoverDownloadDialog):
     """Dialog for downloading artist covers."""
 
-    cover_saved = Signal(str)  # Emits cover path
-
     def __init__(self, artist: Artist, cover_service: CoverService, parent=None):
-        super().__init__(parent)
+        super().__init__(cover_service, parent)
         self._artist = artist
-        self._cover_service = cover_service
-        self._search_thread = None
-        self._download_thread = None
-        self._current_cover_data = None
-        self._current_cover_url = None
-        self._search_results = []
-
         self._setup_ui()
         self._search_covers()
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        self.setWindowTitle(t("download_cover_manual"))
-        self.setMinimumSize(800, 600)
-        self.resize(900, 650)
-
-        # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #606060;
-                border-color: #3a3a3a;
-            }
-            QProgressBar {
-                background-color: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 3px;
-            }
-            QListWidget {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #3a3a3a;
-            }
-            QListWidget::item:hover {
-                background-color: #3a3a3a;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-            }
-        """)
-
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        # Artist info
-        info_label = QLabel(f"<b>{self._artist.display_name}</b>")
-        info_label.setStyleSheet("font-size: 16px; padding: 10px;")
-        layout.addWidget(info_label)
-
-        # Main content area with splitter
-        splitter = QSplitter(Qt.Horizontal)
-
-        # Left side: Search results list
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-
-        results_label = QLabel(t("search_results") + ":")
-        results_label.setStyleSheet("font-weight: bold;")
-        left_layout.addWidget(results_label)
-
-        self._results_list = QListWidget()
-        self._results_list.setMinimumWidth(300)
-        self._results_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
-        self._results_list.itemClicked.connect(self._on_result_selected)
-        left_layout.addWidget(self._results_list)
-
-        # Search button
-        self._search_btn = QPushButton(t("search"))
-        self._search_btn.clicked.connect(self._search_covers)
-        left_layout.addWidget(self._search_btn)
-
-        splitter.addWidget(left_widget)
-
-        # Right side: Cover preview
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-
-        cover_title = QLabel(t("album_art") + ":")
-        cover_title.setStyleSheet("font-weight: bold;")
-        right_layout.addWidget(cover_title)
-
-        self._cover_label = QLabel()
-        self._cover_label.setMinimumSize(350, 350)
-        self._cover_label.setAlignment(Qt.AlignCenter)
-        self._cover_label.setStyleSheet("""
-            QLabel {
-                border: 2px solid #404040;
-                border-radius: 175px;
-                background-color: #1a1a1a;
-            }
-        """)
-        self._cover_label.setText(t("searching"))
-
-        # Wrap in scroll area
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(self._cover_label)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-        """)
-        right_layout.addWidget(scroll_area)
-
-        # Match score display
-        self._score_label = QLabel()
-        self._score_label.setAlignment(Qt.AlignCenter)
-        self._score_label.setStyleSheet("color: #1db954; font-weight: bold;")
-        right_layout.addWidget(self._score_label)
-
-        splitter.addWidget(right_widget)
-
-        # Set splitter sizes
-        splitter.setSizes([300, 500])
-
-        layout.addWidget(splitter)
-
-        # Progress bar
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        layout.addWidget(self._progress)
-
-        # Status label
-        self._status_label = QLabel()
-        self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #a0a0a0;")
-        layout.addWidget(self._status_label)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-
-        self._save_btn = QPushButton(t("save"))
-        self._save_btn.setEnabled(False)
-        self._save_btn.clicked.connect(self._save_cover)
-        button_layout.addWidget(self._save_btn)
-
-        close_btn = QPushButton(t("cancel"))
-        close_btn.clicked.connect(self.reject)
-        button_layout.addWidget(close_btn)
-
-        layout.addLayout(button_layout)
-        self.setLayout(layout)
+        info_text = f"<b>{self._artist.display_name}</b>"
+        self._setup_common_ui(info_text, cover_size=350, circular=True)
 
     def _search_covers(self):
         """Search for artist covers."""
@@ -274,6 +47,26 @@ class ArtistCoverDownloadDialog(QDialog):
         self._save_btn.setEnabled(False)
 
         # Start search thread
+        from PySide6.QtCore import QThread, Signal
+
+        class ArtistCoverSearchThread(QThread):
+            search_completed = Signal(list)
+            search_failed = Signal(str)
+
+            def __init__(self, cover_service: CoverService, artist: Artist):
+                super().__init__()
+                self.cover_service = cover_service
+                self.artist = artist
+
+            def run(self):
+                try:
+                    # Use dedicated artist cover search (type=100)
+                    results = self.cover_service.search_artist_covers(self.artist.name, limit=10)
+                    self.search_completed.emit(results)
+                except Exception as e:
+                    logger.error(f"Error searching artist covers: {e}", exc_info=True)
+                    self.search_failed.emit(f"{t('error')}: {str(e)}")
+
         self._search_thread = ArtistCoverSearchThread(
             self._cover_service,
             self._artist
@@ -295,19 +88,9 @@ class ArtistCoverDownloadDialog(QDialog):
 
         # Populate results list
         for result in results:
-            name = result.get('name', '')
-            source = result.get('source', '')
-            album_count = result.get('album_count', 0)
-            score = result.get('score', 0)
-
-            # Format display text
-            display = f"{name}"
-            if album_count:
-                display += f" ({album_count} albums)"
-            display += f" [{source}] [{score:.0f}%]"
-
+            display = self._format_result_display(result)
             item = QListWidgetItem(display)
-            item.setData(Qt.UserRole, result)  # Store full result data
+            item.setData(Qt.UserRole, result)
             self._results_list.addItem(item)
 
         # Auto-select first result
@@ -324,10 +107,35 @@ class ArtistCoverDownloadDialog(QDialog):
         self._status_label.setText(error_message)
         self._cover_label.setText(t("no_results"))
 
+    def _format_result_display(self, result: dict) -> str:
+        """Format search result for display in list."""
+        name = result.get('name', '')
+        source = result.get('source', '')
+        album_count = result.get('album_count', 0)
+        score = result.get('score', 0)
+
+        display = f"{name}"
+        if album_count:
+            display += f" ({album_count} albums)"
+        display += f" [{source}] [{score:.0f}%]"
+        return display
+
     def _on_result_selected(self, item: QListWidgetItem):
         """Handle result selection - download and display cover."""
         result = item.data(Qt.UserRole)
         cover_url = result.get('cover_url')
+        source = result.get('source', '')
+        singer_mid = result.get('singer_mid')
+
+        # For QQ Music, fetch cover URL lazily
+        if not cover_url and source == 'qqmusic':
+            if singer_mid:
+                self._fetch_qqmusic_cover(singer_mid, result)
+                return
+            else:
+                logger.warning("QQ Music result has no singer_mid")
+                self._status_label.setText(t("cover_load_failed"))
+                return
 
         if not cover_url:
             return
@@ -347,68 +155,59 @@ class ArtistCoverDownloadDialog(QDialog):
         self._progress.setRange(0, 0)
         self._status_label.setText(t("downloading"))
 
-        self._download_thread = ArtistCoverDownloadThread(
+        self._download_thread = CoverDownloadThread(
             self._cover_service,
             cover_url,
-            result.get('source', '')
+            source
         )
         self._download_thread.cover_downloaded.connect(self._on_cover_downloaded)
         self._download_thread.download_failed.connect(self._on_download_failed)
         self._download_thread.finished.connect(self._on_download_finished)
         self._download_thread.start()
 
-    def _on_cover_downloaded(self, cover_data: bytes, source: str):
-        """Handle successful cover download."""
-        self._current_cover_data = cover_data
-        self._status_label.setText(f"{t('success')} ({source})")
+    def _fetch_qqmusic_cover(self, singer_mid: str, result: dict):
+        """Fetch QQ Music artist cover URL lazily and download."""
+        score = result.get('score', 0)
+        logger.info(f"Artist QQ Music lazy fetch: singer_mid={singer_mid}")
 
-        # Display cover (circular for artist)
-        try:
-            image = QImage.fromData(cover_data)
-            if not image.isNull():
-                pixmap = QPixmap.fromImage(image)
-                scaled_pixmap = self._make_circular(pixmap.scaled(
-                    350, 350,
-                    Qt.KeepAspectRatioByExpanding,
-                    Qt.SmoothTransformation
-                ))
-                self._cover_label.setPixmap(scaled_pixmap)
-                self._save_btn.setEnabled(True)
-            else:
-                self._cover_label.setText(t("cover_load_failed"))
-        except Exception as e:
-            logger.error(f"Error displaying cover: {e}", exc_info=True)
-            self._cover_label.setText(t("cover_load_failed"))
+        # Update score display
+        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
 
-    def _make_circular(self, pixmap: QPixmap) -> QPixmap:
-        """Make a pixmap circular."""
-        size = min(pixmap.width(), pixmap.height())
-        result = QPixmap(size, size)
-        result.fill(Qt.transparent)
+        # Stop any running download thread
+        if self._download_thread and self._download_thread.isRunning():
+            self._download_thread.terminate()
+            self._download_thread.wait()
 
-        painter = QPainter(result)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        self._progress.setVisible(True)
+        self._progress.setRange(0, 0)
+        self._status_label.setText(t("downloading"))
 
-        # Create circular clip path
-        clip_path = QPainterPath()
-        clip_path.addEllipse(0, 0, size, size)
-        painter.setClipPath(clip_path)
+        # Use QQMusicArtistCoverFetchThread for lazy fetch
+        self._download_thread = QQMusicArtistCoverFetchThread(
+            singer_mid=singer_mid,
+            score=score
+        )
+        self._download_thread.cover_fetched.connect(self._on_qqmusic_cover_fetched)
+        self._download_thread.fetch_failed.connect(self._on_qqmusic_cover_failed)
+        self._download_thread.finished.connect(self._on_download_finished)
+        self._download_thread.start()
 
-        # Draw the pixmap
-        painter.drawPixmap(0, 0, pixmap)
-        painter.end()
+    def _on_qqmusic_cover_fetched(self, cover_data: bytes, source: str, score: float):
+        """Handle QQ Music cover fetch success."""
+        logger.info(f"Artist QQ Music cover fetched: {len(cover_data)} bytes")
+        self._on_cover_downloaded(cover_data, source)
+        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
 
-        return result
-
-    def _on_download_failed(self, error_message: str):
-        """Handle cover download failure."""
+    def _on_qqmusic_cover_failed(self, error_message: str):
+        """Handle QQ Music cover fetch failure."""
+        logger.warning(f"Artist QQ Music cover fetch failed: {error_message}")
+        self._progress.setVisible(False)
         self._status_label.setText(error_message)
         self._cover_label.setText(t("cover_load_failed"))
 
-    def _on_download_finished(self):
-        """Handle download thread completion."""
-        self._progress.setVisible(False)
+    def _on_cover_downloaded(self, cover_data: bytes, source: str):
+        """Handle successful cover download - display as circular."""
+        self._on_cover_downloaded_base(cover_data, source, circular=True)
 
     def _save_cover(self):
         """Save cover to cache and update database."""
@@ -448,18 +247,9 @@ class ArtistCoverDownloadDialog(QDialog):
             # Close dialog after successful save
             self.accept()
         else:
+            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 t("error"),
                 t("cover_save_failed")
             )
-
-    def closeEvent(self, event):
-        """Clean up on close."""
-        if self._search_thread and self._search_thread.isRunning():
-            self._search_thread.terminate()
-            self._search_thread.wait()
-        if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
-        super().closeEvent(event)

@@ -3,6 +3,7 @@ Cover art service for extracting and fetching album covers.
 """
 import hashlib
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List
@@ -380,12 +381,12 @@ class CoverService:
             duration: Track duration in seconds
 
         Returns:
-            List of SearchResult objects with cover URLs
+            List of SearchResult objects (cover_url fetched lazily on click)
         """
         results = []
 
         try:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient, get_qqmusic_cover_url
+            from services.lyrics.qqmusic_lyrics import QQMusicClient
 
             client = QQMusicClient()
 
@@ -396,72 +397,30 @@ class CoverService:
             for song in songs:
                 # Parse artist from singer list
                 artist_name = ""
-                singer_mid = ""
                 if isinstance(song.get('singer'), list) and song['singer']:
                     artist_name = song['singer'][0].get('name', '')
-                    singer_mid = song['singer'][0].get('mid', '')
 
                 # Parse album from album dict
                 album_name = ""
                 album_mid = ""
-                if isinstance(song.get('album'), dict):
-                    album_name = song['album'].get('name', '')
-                    album_mid = song['album'].get('mid', '')
+                album_data = song.get('album')
+                logger.debug(f"QQ Music song album data: {album_data}")
+                if isinstance(album_data, dict):
+                    album_name = album_data.get('name', '')
+                    album_mid = album_data.get('mid', '')
+                    logger.debug(f"QQ Music album_mid: {album_mid}")
 
-                # Get cover URL using album_mid or song mid
-                cover_url = None
-                if album_mid:
-                    cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
-                elif song.get('mid'):
-                    cover_url = get_qqmusic_cover_url(mid=song.get('mid'), size=500)
-
-                if cover_url:
-                    results.append(SearchResult(
-                        title=song.get('name', ''),
-                        artist=artist_name,
-                        album=album_name,
-                        duration=song.get('interval'),  # Already in seconds
-                        source='qqmusic',
-                        id=song.get('mid', ''),
-                        cover_url=cover_url
-                    ))
-
-            # Also search for albums directly
-            if album:
-                album_songs = client.session.get(
-                    f"{client.BASE_URL}/search",
-                    params={
-                        "keyword": f"{artist} {album}",
-                        "type": "album",
-                        "num": 3,
-                        "page": 1,
-                    },
-                    headers=client.HEADERS,
-                    timeout=5
-                )
-                album_data = album_songs.json()
-                album_list = album_data.get("data", {}).get("list", [])
-
-                for album_info in album_list:
-                    album_mid = album_info.get('mid', '')
-                    album_name = album_info.get('name', '')
-
-                    # Get singer info
-                    singer_name = ""
-                    if isinstance(album_info.get('singer'), list) and album_info['singer']:
-                        singer_name = album_info['singer'][0].get('name', '')
-
-                    cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
-                    if cover_url:
-                        results.append(SearchResult(
-                            title='',
-                            artist=singer_name,
-                            album=album_name,
-                            duration=None,
-                            source='qqmusic',
-                            id=album_mid,
-                            cover_url=cover_url
-                        ))
+                # Store album_mid for lazy cover fetch, don't get cover_url now
+                results.append(SearchResult(
+                    title=song.get('name', ''),
+                    artist=artist_name,
+                    album=album_name,
+                    duration=song.get('interval'),  # Already in seconds
+                    source='qqmusic',
+                    id=song.get('mid', ''),
+                    cover_url=None,  # Lazy fetch on click
+                    album_mid=album_mid
+                ))
 
         except Exception as e:
             logger.debug(f"QQ Music cover search error: {e}")
@@ -527,7 +486,8 @@ class CoverService:
                     'cover_url': result.cover_url,
                     'source': result.source,
                     'id': result.id,
-                    'score': score
+                    'score': score,
+                    'album_mid': result.album_mid,  # For QQ Music lazy cover fetch
                 })
 
             # Sort by score descending
@@ -1133,7 +1093,7 @@ class CoverService:
 
     def search_artist_covers(self, artist_name: str, limit: int = 10) -> List[dict]:
         """
-        Search for artist covers from NetEase Cloud Music and iTunes in parallel.
+        Search for artist covers from NetEase Cloud Music, iTunes, and QQ Music in parallel.
 
         Args:
             artist_name: Artist name to search
@@ -1144,10 +1104,11 @@ class CoverService:
         """
         results = []
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {
                 executor.submit(self._search_artist_covers_from_netease, artist_name, limit): 'netease',
-                executor.submit(self._search_artist_covers_from_itunes, artist_name, limit): 'itunes'
+                executor.submit(self._search_artist_covers_from_itunes, artist_name, limit): 'itunes',
+                executor.submit(self._search_artist_covers_from_qqmusic, artist_name, limit): 'qqmusic'
             }
 
             for future in as_completed(futures):
@@ -1253,6 +1214,65 @@ class CoverService:
                             'score': score,
                             'source': 'itunes'
                         })
+
+        return results
+
+    def parse(self, url: str):
+        """
+        解析QQ音乐封面URL
+        """
+        pattern = r"(T\d{3})R\d+x\d+M000([A-Za-z0-9]+)"
+        m = re.search(pattern, url)
+
+        if not m:
+            return "", ""
+
+        img_type = m.group(1)
+        mid = m.group(2)
+
+        return img_type, mid
+
+    def convert(self, url: str, size: int = 500) -> str:
+        """
+        转换为指定尺寸
+        """
+        img_type, mid = self.parse(url)
+
+        return f"https://y.gtimg.cn/music/photo_new/{img_type}R{size}x{size}M000{mid}.jpg"
+
+    def _search_artist_covers_from_qqmusic(self, artist_name: str, limit: int) -> List[dict]:
+        """Search artist covers from QQ Music (lazy loading)."""
+        results = []
+
+        try:
+            from services.lyrics.qqmusic_lyrics import QQMusicClient
+
+            client = QQMusicClient()
+            artists = client.search_artist(artist_name, limit)
+
+            for artist in artists:
+                name = artist.get('singerName', '')
+                singer_mid = artist.get('singerMID', '')
+                cover_url = artist.get('singerPic', '')
+                album_count = artist.get('albumNum', 0)
+
+                if name and singer_mid:
+                    # Calculate match score
+                    score = self._calculate_artist_name_score(artist_name, name)
+
+                    cover_url = self.convert(cover_url)
+                    results.append({
+                        'name': name,
+                        'id': singer_mid,
+                        'singer_mid': singer_mid,
+                        'cover_url': cover_url,
+                        'album_count': album_count,
+                        'score': score,
+                        'source': 'qqmusic'
+                    })
+
+        except Exception as e:
+            logger.debug(f"QQ Music artist cover search error: {e}")
 
         return results
 

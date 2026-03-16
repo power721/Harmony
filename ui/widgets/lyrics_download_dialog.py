@@ -2,9 +2,9 @@
 Lyrics download dialog for searching and downloading lyrics from online sources.
 """
 import logging
-from typing import Optional
+from typing import Optional, List
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -14,11 +14,35 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QCheckBox,
+    QProgressBar,
 )
 
+from services.lyrics.lyrics_service import LyricsService
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
+
+
+class LyricsSearchThread(QThread):
+    """Thread for searching lyrics."""
+
+    search_completed = Signal(list)  # Emits list of search results
+    search_failed = Signal(str)  # Emits error message
+
+    def __init__(self, title: str, artist: str, limit: int = 10):
+        super().__init__()
+        self._title = title
+        self._artist = artist
+        self._limit = limit
+
+    def run(self):
+        """Search for songs."""
+        try:
+            results = LyricsService.search_songs(self._title, self._artist, self._limit)
+            self.search_completed.emit(results)
+        except Exception as e:
+            logger.error(f"Error searching lyrics: {e}", exc_info=True)
+            self.search_failed.emit(f"{t('error')}: {str(e)}")
 
 
 class LyricsDownloadDialog(QDialog):
@@ -33,34 +57,29 @@ class LyricsDownloadDialog(QDialog):
 
     def __init__(
             self,
-            results: list,
             track_title: str,
             track_artist: str,
+            track_path: str = "",
             parent=None
     ):
         """Initialize the lyrics download dialog.
 
         Args:
-            results: List of search result dictionaries with keys:
-                     - id: Song ID
-                     - title: Song title
-                     - artist: Artist name
-                     - album: Album name (optional)
-                     - source: Source name (e.g., 'NetEase', 'LRCLIB')
-                     - duration: Duration in seconds (optional)
-                     - accesskey: Access key for some sources (optional)
-            track_title: The track title that was searched
-            track_artist: The track artist that was searched
+            track_title: The track title to search
+            track_artist: The track artist to search
+            track_path: Path to the audio file (for saving lyrics)
             parent: Parent widget
         """
         super().__init__(parent)
-        self._results = results
         self._track_title = track_title
         self._track_artist = track_artist
+        self._track_path = track_path
         self._selected_song: Optional[dict] = None
         self._download_cover = False
+        self._search_thread: Optional[LyricsSearchThread] = None
 
         self._setup_ui()
+        self._start_search()
 
     def _setup_ui(self):
         """Setup the dialog UI."""
@@ -101,6 +120,10 @@ class LyricsDownloadDialog(QDialog):
             QPushButton:hover {
                 background-color: #1ed760;
             }
+            QPushButton:disabled {
+                background-color: #404040;
+                color: #808080;
+            }
             QPushButton[role="cancel"] {
                 background-color: #404040;
                 color: #e0e0e0;
@@ -121,25 +144,41 @@ class LyricsDownloadDialog(QDialog):
                 background-color: #1db954;
                 border-color: #1db954;
             }
+            QProgressBar {
+                background-color: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                text-align: center;
+                color: #ffffff;
+            }
+            QProgressBar::chunk {
+                background-color: #1db954;
+                border-radius: 3px;
+            }
         """)
 
         layout = QVBoxLayout(self)
 
         # Info label
-        info_label = QLabel(
+        self._info_label = QLabel(
             f"{t('search_results_for')}: {self._track_title} - {self._track_artist}"
         )
-        layout.addWidget(info_label)
+        layout.addWidget(self._info_label)
+
+        # Progress bar for searching state
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 0)  # Indeterminate progress
+        layout.addWidget(self._progress_bar)
+
+        # Status label
+        self._status_label = QLabel(t("searching"))
+        self._status_label.setAlignment(Qt.AlignCenter)
+        self._status_label.setStyleSheet("color: #a0a0a0;")
+        layout.addWidget(self._status_label)
 
         # Song list
         self._song_list = QListWidget()
         self._song_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
-        for result in self._results:
-            item_text = self._format_result_text(result)
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.UserRole, result)
-            self._song_list.addItem(item)
-
         self._song_list.itemDoubleClicked.connect(self.accept)
         layout.addWidget(self._song_list)
 
@@ -154,12 +193,50 @@ class LyricsDownloadDialog(QDialog):
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
-        download_btn = QPushButton(t("download"))
-        download_btn.clicked.connect(self.accept)
+
+        self._download_btn = QPushButton(t("download"))
+        self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
+        self._download_btn.clicked.connect(self.accept)
+
         button_layout.addStretch()
         button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(download_btn)
+        button_layout.addWidget(self._download_btn)
         layout.addLayout(button_layout)
+
+    def _start_search(self):
+        """Start the search thread."""
+        self._search_thread = LyricsSearchThread(self._track_title, self._track_artist)
+        self._search_thread.search_completed.connect(self._on_search_completed)
+        self._search_thread.search_failed.connect(self._on_search_failed)
+        self._search_thread.finished.connect(self._search_thread.deleteLater)
+        self._search_thread.start()
+
+    def _on_search_completed(self, results: list):
+        """Handle search completion."""
+        self._progress_bar.setVisible(False)
+        self._status_label.setVisible(False)
+
+        if not results:
+            self._status_label.setVisible(True)
+            self._status_label.setText(t("no_results"))
+            return
+
+        # Populate song list
+        for result in results:
+            item_text = self._format_result_text(result)
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, result)
+            self._song_list.addItem(item)
+
+        # Auto-select first result
+        if self._song_list.count() > 0:
+            self._song_list.setCurrentRow(0)
+            self._download_btn.setEnabled(True)
+
+    def _on_search_failed(self, error_message: str):
+        """Handle search failure."""
+        self._progress_bar.setVisible(False)
+        self._status_label.setText(error_message)
 
     def _format_result_text(self, result: dict) -> str:
         """Format a search result for display in the list.
@@ -216,31 +293,35 @@ class LyricsDownloadDialog(QDialog):
             self._download_cover = self._download_cover_checkbox.isChecked()
         super().accept()
 
+    def closeEvent(self, event):
+        """Clean up on close."""
+        if self._search_thread and self._search_thread.isRunning():
+            self._search_thread.terminate()
+            self._search_thread.wait()
+        super().closeEvent(event)
+
     @staticmethod
     def show_dialog(
-            results: list,
             track_title: str,
             track_artist: str,
+            track_path: str = "",
             parent=None
     ) -> Optional[tuple]:
         """Static method to show the dialog and get the result.
 
         Args:
-            results: List of search results
-            track_title: The track title that was searched
-            track_artist: The track artist that was searched
+            track_title: The track title to search
+            track_artist: The track artist to search
+            track_path: Path to the audio file (for saving lyrics)
             parent: Parent widget
 
         Returns:
             Tuple of (selected_song, download_cover) or None if cancelled
         """
-        if not results:
-            return None
-
         dialog = LyricsDownloadDialog(
-            results,
             track_title,
             track_artist,
+            track_path,
             parent
         )
 

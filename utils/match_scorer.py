@@ -32,6 +32,7 @@ class SearchResult:
     cover_url: Optional[str] = None
     lyrics: Optional[str] = None
     accesskey: Optional[str] = None
+    album_mid: Optional[str] = None  # For QQ Music lazy cover fetch
 
 
 class MatchScorer:
@@ -147,7 +148,7 @@ class MatchScorer:
 
             score = cls.calculate_score(track, result, mode)
 
-            if score > best_score:
+            if score > best_score or (score == best_score and result.source == 'qqmusic'):
                 best_score = score
                 best_result = result
 

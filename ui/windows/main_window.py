@@ -8,7 +8,7 @@ from domain.playback import PlaybackState
 from infrastructure.database import DatabaseManager
 from services import PlaybackService
 from services.lyrics import LyricsLoader
-from services.lyrics.lyrics_loader import LyricsSearchWorker, LyricsDownloadWorker
+from services.lyrics.lyrics_loader import LyricsDownloadWorker
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -205,7 +205,6 @@ class MainWindow(QMainWindow):
         self._lyrics_thread: Optional[QThread] = None
         # Lyrics download thread (for downloading from online)
         self._lyrics_download_thread: Optional[QThread] = None
-        self._lyrics_search_thread: Optional[QThread] = None
         self._lyrics_download_path: str = ""
         self._lyrics_download_title: str = ""
         self._lyrics_download_artist: str = ""
@@ -1217,6 +1216,8 @@ class MainWindow(QMainWindow):
 
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""
+        from ui.widgets.lyrics_download_dialog import LyricsDownloadDialog
+
         # Get current track
         current_item = self._playback.current_track
         if not current_item:
@@ -1235,35 +1236,11 @@ class MainWindow(QMainWindow):
         self._lyrics_download_title = track_title
         self._lyrics_download_artist = track_artist
 
-        # Clean up existing search thread if any
-        if hasattr(self, '_lyrics_search_thread') and self._lyrics_search_thread and isValid(
-                self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
-            self._lyrics_search_thread.quit()
-            self._lyrics_search_thread.wait(100)
-
-        # Don't clear current lyrics, just start searching in background
-        # The lyrics view will be updated when search completes and user selects a song
-
-        # Create search worker
-        self._lyrics_search_thread = LyricsSearchWorker(track_title, track_artist, limit=10)
-        self._lyrics_search_thread.search_results_ready.connect(self._on_lyrics_search_results)
-        self._lyrics_search_thread.search_failed.connect(self._on_lyrics_search_failed)
-        self._lyrics_search_thread.finished.connect(self._lyrics_search_thread.deleteLater)
-        self._lyrics_search_thread.start()
-
-    def _on_lyrics_search_results(self, results: list):
-        """Handle lyrics search results - show selection dialog."""
-        from ui.widgets.lyrics_download_dialog import LyricsDownloadDialog
-
-        if not results:
-            self._lyrics_view.set_lyrics(t("no_lyrics_found"))
-            return
-
-        # Show selection dialog
+        # Show selection dialog (dialog handles search internally)
         result = LyricsDownloadDialog.show_dialog(
-            results,
-            self._lyrics_download_title,
-            self._lyrics_download_artist,
+            track_title,
+            track_artist,
+            track_path,
             self
         )
 
@@ -1308,10 +1285,6 @@ class MainWindow(QMainWindow):
 
         self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
         self._lyrics_download_thread.start()
-
-    def _on_lyrics_search_failed(self, error: str):
-        """Handle lyrics search failure."""
-        self._lyrics_view.set_lyrics(t("no_lyrics_found"))
 
     def _on_lyrics_downloaded(self, path: str, lyrics: str):
         """Handle lyrics download success."""
@@ -2185,14 +2158,6 @@ class MainWindow(QMainWindow):
             if not self._lyrics_download_thread.wait(1000):
                 self._lyrics_download_thread.terminate()
                 self._lyrics_download_thread.wait()
-
-        if self._lyrics_search_thread and isValid(
-                self._lyrics_search_thread) and self._lyrics_search_thread.isRunning():
-            self._lyrics_search_thread.requestInterruption()
-            self._lyrics_search_thread.quit()
-            if not self._lyrics_search_thread.wait(1000):
-                self._lyrics_search_thread.terminate()
-                self._lyrics_search_thread.wait()
 
         # Close database
         self._db.close()
