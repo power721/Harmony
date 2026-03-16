@@ -443,6 +443,20 @@ class PlaybackService(QObject):
                 local_path = self._get_cached_path(cf.file_id)
 
             item = PlaylistItem.from_cloud_file(cf, account.id, local_path)
+
+            # For already downloaded files, ensure track record exists
+            if local_path:
+                self._save_cloud_track_to_library(cf.file_id, local_path)
+                track = self._db.get_track_by_cloud_file_id(cf.file_id)
+                if track:
+                    item.track_id = track.id
+                    item.title = track.title or item.title
+                    item.artist = track.artist or item.artist
+                    item.album = track.album or item.album
+                    item.duration = track.duration or item.duration
+                    item.cover_path = track.cover_path
+                    item.needs_metadata = False
+
             items.append(item)
 
         self._engine.load_playlist_items(items)
@@ -764,6 +778,10 @@ class PlaybackService(QObject):
 
                 if track and track.id:
                     self._db.add_play_history(track.id)
+                    # Update PlaylistItem with track_id if not set
+                    if not item.track_id:
+                        item.track_id = track.id
+                        self.save_queue()
                 else:
                     # Create a new Track record for this cloud file
                     new_track = Track(
@@ -772,19 +790,15 @@ class PlaybackService(QObject):
                         artist=item.artist,
                         album=item.album,
                         duration=item.duration,
+                        cloud_file_id=item.cloud_file_id,
                     )
                     track_id = self._db.add_track(new_track)
-                    if track_id and item.cloud_file_id:
-                        conn = self._db._get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE tracks SET cloud_file_id = ? WHERE id = ?",
-                            (item.cloud_file_id, track_id)
-                        )
-                        conn.commit()
 
                     if track_id:
                         self._db.add_play_history(track_id)
+                        # Update PlaylistItem with track_id and save queue
+                        item.track_id = track_id
+                        self.save_queue()
 
             # Preload next cloud track if current track is ready
             if item.is_local or (item.is_cloud and item.local_path):
