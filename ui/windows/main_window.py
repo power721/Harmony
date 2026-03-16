@@ -1435,7 +1435,7 @@ class MainWindow(QMainWindow):
             QMessageBox,
         )
         from services import LyricsService
-        from utils import parse_lrc
+        from utils.lrc_parser import detect_and_parse, detect_format
 
         # Check if we're playing a track
         current_track = self._player.engine.current_track
@@ -1532,25 +1532,28 @@ class MainWindow(QMainWindow):
         from pathlib import Path
 
         track_file = Path(track_path)
-        lrc_path = track_file.with_suffix('.lrc')
 
         lyrics_content = None
 
         # Try multiple encodings
         encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
 
-        # Try main location first
-        if lrc_path.exists():
-            for encoding in encodings:
-                try:
-                    with open(lrc_path, 'r', encoding=encoding) as f:
-                        lyrics_content = f.read()
-                    print(f"Loaded lyrics from {lrc_path} with {encoding} encoding")
-                    break
-                except (UnicodeDecodeError, UnicodeError):
-                    continue
-                except Exception as e:
-                    logger.error(f"Error reading {lrc_path}: {e}", exc_info=True)
+        # Try different lyrics file extensions in priority order: .yrc, .qrc, .lrc
+        for ext in ['.yrc', '.qrc', '.lrc']:
+            lyrics_path = track_file.with_suffix(ext)
+            if lyrics_path.exists():
+                for encoding in encodings:
+                    try:
+                        with open(lyrics_path, 'r', encoding=encoding) as f:
+                            lyrics_content = f.read()
+                        print(f"Loaded lyrics from {lyrics_path} with {encoding} encoding")
+                        break
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error reading {lyrics_path}: {e}", exc_info=True)
+                        break
+                if lyrics_content:
                     break
 
         # Load lyrics into editor if found
@@ -1581,19 +1584,45 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(dialog, t("warning"), t("lyrics_cannot_be_empty"))
                 return
 
-            # Parse lyrics
-            parsed_lyrics = parse_lrc(content)
+            # Parse lyrics using detect_and_parse (supports LRC, YRC, QRC formats)
+            parsed_lyrics = detect_and_parse(content)
             if not parsed_lyrics:
                 QMessageBox.warning(dialog, t("warning"), t("invalid_lyrics_format"))
                 return
 
-            # Save lyrics
-            if LyricsService.save_lyrics(track_path, content):
+            # Detect format and save with appropriate extension
+            lyrics_format = detect_format(content)
+
+            # Save lyrics with correct extension
+            from pathlib import Path
+            track_file = Path(track_path)
+
+            if lyrics_format == 'yrc':
+                save_path = track_file.with_suffix('.yrc')
+            elif lyrics_format == 'qrc':
+                save_path = track_file.with_suffix('.qrc')
+            else:
+                save_path = track_file.with_suffix('.lrc')
+
+            try:
+                with open(save_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+
+                # Delete old lyrics files with different extensions
+                for ext in ['.lrc', '.yrc', '.qrc']:
+                    old_path = track_file.with_suffix(ext)
+                    if old_path.exists() and old_path != save_path:
+                        try:
+                            old_path.unlink()
+                        except Exception:
+                            pass
+
                 QMessageBox.information(dialog, t("success"), t("lyrics_saved"))
                 # Refresh lyrics display
                 self._refresh_lyrics()
                 dialog.accept()
-            else:
+            except Exception as e:
+                logger.error(f"Error saving lyrics: {e}", exc_info=True)
                 QMessageBox.warning(dialog, "Error", t("lyrics_save_failed"))
 
         save_btn.clicked.connect(save_lyrics)
@@ -1693,10 +1722,15 @@ class MainWindow(QMainWindow):
 
         track_file = Path(track_path)
 
-        # Find lyrics file
-        lrc_path = track_file.with_suffix(".lrc")
+        # Find lyrics file (check .yrc, .qrc, .lrc in priority order)
+        lyrics_path = None
+        for ext in ['.yrc', '.qrc', '.lrc']:
+            candidate = track_file.with_suffix(ext)
+            if candidate.exists():
+                lyrics_path = candidate
+                break
 
-        if not lrc_path.exists():
+        if not lyrics_path:
             QMessageBox.information(self, t("info"), t("lyrics_file_not_found"))
             return
 
@@ -1704,19 +1738,19 @@ class MainWindow(QMainWindow):
             system = platform.system()
 
             if system == "Windows":
-                subprocess.Popen(["explorer", f"/select,{lrc_path}"])
+                subprocess.Popen(["explorer", f"/select,{lyrics_path}"])
 
             elif system == "Darwin":
-                subprocess.Popen(["open", "-R", str(lrc_path)])
+                subprocess.Popen(["open", "-R", str(lyrics_path)])
 
             else:
                 # Linux
                 # Try to select file in supported file managers
                 file_managers = {
-                    "nautilus": ["nautilus", "--select", str(lrc_path)],
-                    "dolphin": ["dolphin", "--select", str(lrc_path)],
-                    "caja": ["caja", "--select", str(lrc_path)],
-                    "nemo": ["nemo", str(lrc_path)],
+                    "nautilus": ["nautilus", "--select", str(lyrics_path)],
+                    "dolphin": ["dolphin", "--select", str(lyrics_path)],
+                    "caja": ["caja", "--select", str(lyrics_path)],
+                    "nemo": ["nemo", str(lyrics_path)],
                 }
 
                 for fm, cmd in file_managers.items():
@@ -1725,7 +1759,7 @@ class MainWindow(QMainWindow):
                         return
 
                 # fallback
-                subprocess.Popen(["xdg-open", str(lrc_path.parent)])
+                subprocess.Popen(["xdg-open", str(lyrics_path.parent)])
 
         except Exception as e:
             logger.error(f"Failed to open file location: {e}", exc_info=True)

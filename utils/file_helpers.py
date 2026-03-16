@@ -89,10 +89,22 @@ def get_lyrics_path(audio_path: str) -> Path:
     """
     获取歌词文件路径。
 
+    检查 .yrc, .qrc, .lrc 扩展名，返回第一个存在的文件路径。
+    如果都不存在，默认返回 .lrc 路径。
+
     Args:
         audio_path: 音频文件路径
 
     Returns:
-        对应的 .lrc 文件路径
+        对应的歌词文件路径
     """
-    return Path(audio_path).with_suffix('.lrc')
+    audio = Path(audio_path)
+
+    # Check for existing lyrics files in priority order
+    for ext in ['.yrc', '.qrc', '.lrc']:
+        lyrics_path = audio.with_suffix(ext)
+        if lyrics_path.exists():
+            return lyrics_path
+
+    # Default to .lrc if no lyrics file exists
+    return audio.with_suffix('.lrc')

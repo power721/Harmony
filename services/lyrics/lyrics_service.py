@@ -572,31 +572,35 @@ class LyricsService:
     @classmethod
     def _get_local_lyrics(cls, track_path: str) -> str:
         """
-        Load lyrics from a local .lrc file.
+        Load lyrics from a local lyrics file.
+
+        Supports multiple formats: .yrc, .qrc, .lrc
 
         Args:
             track_path: Path to the audio file
 
         Returns:
-            List of (time, text) tuples, or None
+            Lyrics content or empty string
         """
         track_file = Path(track_path)
-        lrc_path = track_file.with_suffix('.lrc')
 
-        if lrc_path.exists():
-            # Try multiple encodings to support different file sources
-            encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
+        # Try multiple encodings to support different file sources
+        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
 
-            for encoding in encodings:
-                try:
-                    with open(lrc_path, 'r', encoding=encoding) as f:
-                        content = f.read()
-                    return content
-                except (UnicodeDecodeError, UnicodeError):
-                    continue
-                except Exception as e:
-                    logger.error(f"Error loading local lyrics from {lrc_path}: {e}", exc_info=True)
-                    break
+        # Try different lyrics file extensions in priority order: .yrc, .qrc, .lrc
+        for ext in ['.yrc', '.qrc', '.lrc']:
+            lyrics_path = track_file.with_suffix(ext)
+            if lyrics_path.exists():
+                for encoding in encodings:
+                    try:
+                        with open(lyrics_path, 'r', encoding=encoding) as f:
+                            content = f.read()
+                        return content
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error loading local lyrics from {lyrics_path}: {e}", exc_info=True)
+                        break
 
         return ""
 
@@ -884,11 +888,16 @@ class LyricsService:
     @classmethod
     def save_lyrics(cls, track_path: str, lyrics: str) -> bool:
         """
-        Save lyrics to a local .lrc file.
+        Save lyrics to a local file.
+
+        Automatically detects format and saves with appropriate extension:
+        - YRC format -> .yrc
+        - QRC format -> .qrc
+        - LRC format -> .lrc
 
         Args:
             track_path: Path to the audio file
-            lyrics: List of (time, text) tuples
+            lyrics: Lyrics content
 
         Returns:
             True if saved successfully
@@ -898,11 +907,30 @@ class LyricsService:
             return False
 
         try:
-            track_file = Path(track_path)
-            lrc_path = track_file.with_suffix('.lrc')
+            from utils.lrc_parser import detect_format
 
-            with open(lrc_path, 'w', encoding='utf-8') as f:
+            track_file = Path(track_path)
+
+            # Detect format and use appropriate extension
+            lyrics_format = detect_format(lyrics)
+            if lyrics_format == 'yrc':
+                save_path = track_file.with_suffix('.yrc')
+            elif lyrics_format == 'qrc':
+                save_path = track_file.with_suffix('.qrc')
+            else:
+                save_path = track_file.with_suffix('.lrc')
+
+            with open(save_path, 'w', encoding='utf-8') as f:
                 f.write(lyrics)
+
+            # Delete old lyrics files with different extensions
+            for ext in ['.lrc', '.yrc', '.qrc']:
+                old_path = track_file.with_suffix(ext)
+                if old_path.exists() and old_path != save_path:
+                    try:
+                        old_path.unlink()
+                    except Exception:
+                        pass
 
             return True
 
@@ -914,6 +942,8 @@ class LyricsService:
     def delete_lyrics(cls, track_path: str) -> bool:
         """
         Delete lyrics file for a track.
+
+        Deletes any existing lyrics file (.lrc, .yrc, or .qrc).
 
         Args:
             track_path: Path to the audio file
@@ -927,13 +957,16 @@ class LyricsService:
 
         try:
             track_file = Path(track_path)
-            lrc_path = track_file.with_suffix('.lrc')
+            deleted = False
 
-            if lrc_path.exists():
-                lrc_path.unlink()
-                return True
+            # Delete any lyrics file regardless of extension
+            for ext in ['.lrc', '.yrc', '.qrc']:
+                lyrics_path = track_file.with_suffix(ext)
+                if lyrics_path.exists():
+                    lyrics_path.unlink()
+                    deleted = True
 
-            return False
+            return deleted
 
         except Exception as e:
             logger.error(f"Error deleting lyrics file for {track_path}: {e}", exc_info=True)
@@ -944,6 +977,8 @@ class LyricsService:
         """
         Check if a lyrics file exists for a track.
 
+        Checks for any supported lyrics format (.lrc, .yrc, .qrc).
+
         Args:
             track_path: Path to the audio file
 
@@ -951,10 +986,12 @@ class LyricsService:
             True if lyrics file exists
         """
         track_file = Path(track_path)
-        lrc_path = track_file.with_suffix('.lrc')
 
-        if lrc_path.exists():
-            return True
+        # Check for any supported lyrics format
+        for ext in ['.lrc', '.yrc', '.qrc']:
+            lyrics_path = track_file.with_suffix(ext)
+            if lyrics_path.exists():
+                return True
 
         return False
 

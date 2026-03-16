@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import List, Dict
 
-from utils.file_helpers import calculate_target_path, ensure_directory, get_lyrics_path
+from utils.file_helpers import calculate_target_path, ensure_directory
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,23 @@ class FileOrganizationService:
         self._event_bus = event_bus
         self._db = db_manager
 
+    def _get_all_lyrics_paths(self, audio_path: Path) -> List[Path]:
+        """
+        获取所有存在的歌词文件路径。
+
+        Args:
+            audio_path: 音频文件路径
+
+        Returns:
+            存在的歌词文件路径列表
+        """
+        lyrics_paths = []
+        for ext in ['.yrc', '.qrc', '.lrc']:
+            lyrics_path = audio_path.with_suffix(ext)
+            if lyrics_path.exists():
+                lyrics_paths.append(lyrics_path)
+        return lyrics_paths
+
     def organize_tracks(self, track_ids: List[int], target_dir: str) -> Dict:
         """
         整理歌曲文件到目标目录。
@@ -38,7 +55,7 @@ class FileOrganizationService:
         - 无专辑: 歌手/歌曲.ext
         - 无歌手: 直接在目标目录
 
-        同时移动对应的 .lrc 歌词文件（如果存在）。
+        同时移动对应的歌词文件（.lrc, .yrc, .qrc，如果存在）。
 
         Args:
             track_ids: 要整理的歌曲 ID 列表
@@ -75,7 +92,9 @@ class FileOrganizationService:
 
             # 计算新路径（音频和歌词）
             new_audio_path, new_lrc_path = calculate_target_path(track, target_dir)
-            old_lrc_path = get_lyrics_path(track.path)
+
+            # 获取所有存在的歌词文件
+            old_lyrics_paths = self._get_all_lyrics_paths(old_audio_path)
 
             # 确保目标目录存在
             if not ensure_directory(new_audio_path.parent):
@@ -85,7 +104,13 @@ class FileOrganizationService:
 
             # 处理文件名冲突
             final_audio_path = self._handle_conflict(new_audio_path)
-            final_lrc_path = new_lrc_path.parent / (final_audio_path.stem + '.lrc')
+
+            # 计算新的歌词文件路径
+            new_lyrics_map = {}  # old_path -> new_path
+            for old_lyrics_path in old_lyrics_paths:
+                ext = old_lyrics_path.suffix
+                new_lyrics_path = final_audio_path.parent / (final_audio_path.stem + ext)
+                new_lyrics_map[old_lyrics_path] = new_lyrics_path
 
             # 移动音频文件
             try:
@@ -97,41 +122,49 @@ class FileOrganizationService:
                 continue
 
             # 移动歌词文件（如果存在）
-            lrc_moved = False
-            if old_lrc_path.exists():
+            moved_lyrics = []
+            for old_lyrics_path, new_lyrics_path in new_lyrics_map.items():
                 try:
-                    shutil.move(str(old_lrc_path), str(final_lrc_path))
-                    lrc_moved = True
-                    logger.debug(f"移动歌词文件: {old_lrc_path} -> {final_lrc_path}")
+                    shutil.move(str(old_lyrics_path), str(new_lyrics_path))
+                    moved_lyrics.append((old_lyrics_path, new_lyrics_path))
+                    logger.debug(f"移动歌词文件: {old_lyrics_path} -> {new_lyrics_path}")
                 except Exception as e:
-                    # 歌词移动失败，回滚音频文件
+                    # 歌词移动失败，回滚音频文件和已移动的歌词
                     try:
                         shutil.move(str(final_audio_path), str(old_audio_path))
                     except Exception:
                         pass
+                    # 回滚已移动的歌词
+                    for old_path, new_path in moved_lyrics:
+                        try:
+                            shutil.move(str(new_path), str(old_path))
+                        except Exception:
+                            pass
                     results['failed'] += 1
                     results['errors'].append(f"{track.title}: 歌词移动失败 {str(e)}")
+                    break
+            else:
+                # 所有歌词移动成功
+
+                # 更新数据库
+                track.path = str(final_audio_path)
+                if not self._track_repo.update(track):
+                    # 回滚文件移动
+                    try:
+                        shutil.move(str(final_audio_path), str(old_audio_path))
+                        for old_path, new_path in moved_lyrics:
+                            shutil.move(str(new_path), str(old_path))
+                    except Exception:
+                        pass
+                    results['failed'] += 1
+                    results['errors'].append(f"{track.title}: 数据库更新失败")
                     continue
 
-            # 更新数据库
-            track.path = str(final_audio_path)
-            if not self._track_repo.update(track):
-                # 回滚文件移动
-                try:
-                    shutil.move(str(final_audio_path), str(old_audio_path))
-                    if lrc_moved:
-                        shutil.move(str(final_lrc_path), str(old_lrc_path))
-                except Exception:
-                    pass
-                results['failed'] += 1
-                results['errors'].append(f"{track.title}: 数据库更新失败")
-                continue
+                # 更新 play_queue 和 cloud_files 中的路径
+                self._update_paths_after_move(track_id, str(final_audio_path), track.cloud_file_id)
 
-            # 更新 play_queue 和 cloud_files 中的路径
-            self._update_paths_after_move(track_id, str(final_audio_path), track.cloud_file_id)
-
-            results['success'] += 1
-            logger.info(f"成功整理: {track.title} -> {final_audio_path}")
+                results['success'] += 1
+                logger.info(f"成功整理: {track.title} -> {final_audio_path}")
 
         # 发出事件
         self._event_bus.tracks_organized.emit(results)
@@ -219,13 +252,17 @@ class FileOrganizationService:
             track = self._track_repo.get_by_id(track_id)
             if track:
                 new_audio_path, new_lrc_path = calculate_target_path(track, target_dir)
-                old_lrc_path = get_lyrics_path(track.path)
+                old_lyrics_paths = self._get_all_lyrics_paths(Path(track.path))
+
+                # Use first lyrics path for backwards compatibility
+                old_lrc_path = old_lyrics_paths[0] if old_lyrics_paths else Path(track.path).with_suffix('.lrc')
+
                 previews.append({
                     'track': track,
                     'old_audio_path': track.path,
                     'new_audio_path': str(new_audio_path),
-                    'has_lyrics': old_lrc_path.exists(),
-                    'old_lrc_path': str(old_lrc_path) if old_lrc_path.exists() else None,
+                    'has_lyrics': len(old_lyrics_paths) > 0,
+                    'old_lrc_path': str(old_lrc_path) if old_lyrics_paths else None,
                     'new_lrc_path': str(new_lrc_path),
                 })
         return previews

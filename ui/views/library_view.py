@@ -1938,10 +1938,11 @@ class LibraryView(QWidget):
                     try:
                         path_obj = Path(track.path)
                         if path_obj.exists():
-                            # Also try to delete the lyrics file if it exists
-                            lyrics_path = path_obj.with_suffix('.lrc')
-                            if lyrics_path.exists():
-                                lyrics_path.unlink()
+                            # Delete all lyrics files (.lrc, .yrc, .qrc) if they exist
+                            for ext in ['.lrc', '.yrc', '.qrc']:
+                                lyrics_path = path_obj.with_suffix(ext)
+                                if lyrics_path.exists():
+                                    lyrics_path.unlink()
 
                             # Delete the audio file
                             path_obj.unlink()
