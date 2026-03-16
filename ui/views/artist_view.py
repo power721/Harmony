@@ -261,6 +261,7 @@ class ArtistView(QWidget):
     def _create_albums_section(self) -> QWidget:
         """Create albums grid section."""
         section = QWidget()
+        section.setMinimumHeight(560)
         layout = QVBoxLayout(section)
         layout.setContentsMargins(20, 20, 20, 0)
         layout.setSpacing(16)
@@ -277,6 +278,32 @@ class ArtistView(QWidget):
         """)
         layout.addWidget(self._albums_title_label)
 
+        # Scroll area for albums
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setMaximumHeight(600)  # ~2 rows of album cards
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #1e1e1e;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #3d3d3d;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #4d4d4d;
+            }
+        """)
+
         # Albums grid container
         self._albums_container = QWidget()
         self._albums_layout = QGridLayout(self._albums_container)
@@ -284,7 +311,8 @@ class ArtistView(QWidget):
         self._albums_layout.setSpacing(20)
         self._albums_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        layout.addWidget(self._albums_container)
+        scroll_area.setWidget(self._albums_container)
+        layout.addWidget(scroll_area)
 
         return section
 
@@ -586,8 +614,8 @@ class ArtistView(QWidget):
             card.deleteLater()
         self._album_cards.clear()
 
-        # Add album cards
-        for i, album in enumerate(self._albums[:10]):  # Limit to 10 albums
+        # Add album cards (show all albums)
+        for i, album in enumerate(self._albums):
             card = AlbumCard(album)
             card.clicked.connect(self._on_album_clicked)
             card.download_cover_requested.connect(self._on_download_cover_requested)

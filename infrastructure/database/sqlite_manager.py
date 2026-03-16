@@ -1223,7 +1223,7 @@ class DatabaseManager:
         conn.commit()
         return history_id
 
-    def get_play_history(self, limit: int = 50) -> List[PlayHistory]:
+    def get_play_history(self, limit: int = 100) -> List[PlayHistory]:
         """Get recent play history."""
         conn = self._get_connection()
         cursor = conn.cursor()

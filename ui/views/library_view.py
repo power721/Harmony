@@ -503,7 +503,7 @@ class LibraryView(QWidget):
         self._loading_label.setVisible(True)
         self._tracks_table.setVisible(False)
 
-        history = self._db.get_play_history(limit=50)
+        history = self._db.get_play_history()
 
         tracks = []
         for entry in history:
@@ -722,7 +722,7 @@ class LibraryView(QWidget):
 
         elif self._current_view == "history":
             # 在历史记录中搜索
-            history = self._db.get_play_history(limit=50)
+            history = self._db.get_play_history()
             tracks = []
             for entry in history:
                 track = self._db.get_track(entry.track_id)
