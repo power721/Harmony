@@ -239,6 +239,8 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
+        from pathlib import Path
+
         source_type = CloudProvider.LOCAL
         if item.source_type == "cloud" and item.cloud_type:
             source_type = CloudProvider(item.cloud_type)
@@ -281,17 +283,29 @@ class PlaylistItem:
             except Exception:
                 pass  # Ignore errors, local_path will remain empty
 
+        # Check if local file actually exists for cloud files
+        # If file was deleted, we need to re-download
+        file_exists = local_path and Path(local_path).exists()
+
+        # Only clear path and set needs_download for cloud files
+        if item.cloud_file_id and not file_exists:
+            needs_download = True
+            final_local_path = ""
+        else:
+            needs_download = bool(item.cloud_file_id and not local_path)
+            final_local_path = local_path
+
         return cls(
             source_type=source_type,
             track_id=item.track_id,
             cloud_file_id=item.cloud_file_id,
             cloud_account_id=item.cloud_account_id,
-            local_path=local_path,
+            local_path=final_local_path,
             title=item.title,
             artist=item.artist,
             album=item.album,
             duration=item.duration,
             cover_path=cover_path,
-            needs_download=bool(item.cloud_file_id and not local_path),
+            needs_download=needs_download,
             needs_metadata=bool(item.cloud_file_id),  # Cloud files need metadata
         )

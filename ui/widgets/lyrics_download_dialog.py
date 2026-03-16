@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QProgressBar,
 )
+from shiboken6.Shiboken import isValid
 
 from services.lyrics.lyrics_service import LyricsService
 from system.i18n import t
@@ -335,7 +336,7 @@ class LyricsDownloadDialog(QDialog):
 
     def closeEvent(self, event):
         """Clean up on close."""
-        if self._search_thread and self._search_thread.isRunning():
+        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
             self._search_thread.terminate()
             self._search_thread.wait()
         super().closeEvent(event)

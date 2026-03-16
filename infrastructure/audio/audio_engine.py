@@ -2,6 +2,7 @@
 Audio playback engine using Qt Multimedia.
 """
 import logging
+from pathlib import Path
 from typing import Optional, List, Union
 
 from PySide6.QtCore import QUrl, QObject, Signal
@@ -227,8 +228,9 @@ class PlayerEngine(QObject):
         if 0 <= self._current_index < len(self._playlist):
             item = self._playlist[self._current_index]
 
-            # Check if current track needs download
-            if item.needs_download or not item.local_path:
+            # Check if current track needs download or file doesn't exist
+            if item.needs_download or not item.local_path or not Path(item.local_path).exists():
+                item.needs_download = True
                 self.track_needs_download.emit(item)
                 return
 
@@ -258,8 +260,9 @@ class PlayerEngine(QObject):
             self._current_index = index
             item = self._playlist[index]
 
-            # Check if track needs download
-            if item.needs_download or not item.local_path:
+            # Check if track needs download or file doesn't exist
+            if item.needs_download or not item.local_path or not Path(item.local_path).exists():
+                item.needs_download = True
                 self.current_track_changed.emit(item.to_dict())
                 self.track_needs_download.emit(item)
                 return
@@ -284,8 +287,9 @@ class PlayerEngine(QObject):
             self._pending_seek = position_ms
             self._pending_play = True
 
-            # Check if track needs download
-            if item.needs_download or not item.local_path:
+            # Check if track needs download or file doesn't exist
+            if item.needs_download or not item.local_path or not Path(item.local_path).exists():
+                item.needs_download = True
                 self.current_track_changed.emit(item.to_dict())
                 self.track_needs_download.emit(item)
                 return
@@ -364,10 +368,12 @@ class PlayerEngine(QObject):
 
         self._load_track(self._current_index)
 
-        # Check if track needs download
-        if item and (item.needs_download or not item.local_path):
+        # Check if track needs download or file doesn't exist
+        if item and (item.needs_download or not item.local_path or not Path(item.local_path).exists()):
+            if item:
+                item.needs_download = True
             self.track_needs_download.emit(item)
-        elif item and item.local_path:
+        elif item and item.local_path and Path(item.local_path).exists():
             self._player.play()
 
     def play_previous(self):
@@ -408,10 +414,12 @@ class PlayerEngine(QObject):
 
             self._load_track(self._current_index)
 
-            # Check if track needs download
-            if item and (item.needs_download or not item.local_path):
+            # Check if track needs download or file doesn't exist
+            if item and (item.needs_download or not item.local_path or not Path(item.local_path).exists()):
+                if item:
+                    item.needs_download = True
                 self.track_needs_download.emit(item)
-            elif item and item.local_path:
+            elif item and item.local_path and Path(item.local_path).exists():
                 self._player.play()
 
     def seek(self, position_ms: int):
@@ -592,8 +600,8 @@ class PlayerEngine(QObject):
         if 0 <= index < len(self._playlist):
             item = self._playlist[index]
 
-            # Skip loading if path is empty (for cloud files not yet downloaded)
-            if not item.local_path or item.needs_download:
+            # Skip loading if path is empty or file doesn't exist (for cloud files not yet downloaded)
+            if not item.local_path or item.needs_download or not Path(item.local_path).exists():
                 self.current_track_changed.emit(item.to_dict())
                 return
 
