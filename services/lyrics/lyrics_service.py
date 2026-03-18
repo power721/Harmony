@@ -90,7 +90,7 @@ class LyricsService:
                 for task in search_tasks
             }
 
-            for future in as_completed(futures, timeout=10):
+            for future in as_completed(futures):
                 source_name = futures[future]
                 try:
                     source_results = future.result()
@@ -639,7 +639,7 @@ class LyricsService:
                 for task in search_tasks
             }
 
-            for future in as_completed(futures, timeout=10):
+            for future in as_completed(futures):
                 source_name = futures[future]
                 try:
                     source_results = future.result()

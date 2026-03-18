@@ -214,7 +214,7 @@ class CoverService:
                 for task in search_tasks
             }
 
-            for future in as_completed(futures, timeout=10):
+            for future in as_completed(futures):
                 source_name = futures[future]
                 try:
                     results = future.result()
@@ -255,7 +255,7 @@ class CoverService:
                 for src in fallback_sources
             }
 
-            for future in as_completed(futures, timeout=10):
+            for future in as_completed(futures):
                 source_name = futures[future]
                 try:
                     cover_data = future.result()

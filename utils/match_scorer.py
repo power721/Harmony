@@ -53,16 +53,16 @@ class MatchScorer:
     """
 
     # Default scoring weights (for lyrics mode - title highest)
-    TITLE_WEIGHT = 40
+    TITLE_WEIGHT = 35
     ARTIST_WEIGHT = 30
     ALBUM_WEIGHT = 15
-    DURATION_WEIGHT = 15
+    DURATION_WEIGHT = 20
 
     # Weights for cover matching (album highest)
     COVER_TITLE_WEIGHT = 15
     COVER_ARTIST_WEIGHT = 30
-    COVER_ALBUM_WEIGHT = 40
-    COVER_DURATION_WEIGHT = 15
+    COVER_ALBUM_WEIGHT = 35
+    COVER_DURATION_WEIGHT = 20
 
     # Duration tolerance in seconds (±30 seconds)
     DURATION_TOLERANCE = 30
