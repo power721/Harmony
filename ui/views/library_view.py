@@ -86,11 +86,12 @@ class LibraryView(QWidget):
     def _setup_ui(self):
         """Setup the user interface."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 10)
-        layout.setSpacing(15)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Header with title and search
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(20, 10, 20, 10)
 
         self._title_label = QLabel("🎼" + t("library"))
         self._title_label.setObjectName("libraryTitle")

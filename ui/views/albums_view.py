@@ -358,18 +358,41 @@ class AlbumsView(QWidget):
         # Search box
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText(t("search"))
-        self._search_input.setFixedWidth(250)
+        self._search_input.setFixedWidth(300)
+        self._search_input.setClearButtonEnabled(True)  # 启用清除按钮
         self._search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #2a2a2a;
-                border: none;
+                color: #e0e0e0;
+                border: 2px solid #3a3a3a;
                 border-radius: 20px;
-                padding: 8px 16px;
-                color: #ffffff;
-                font-size: 13px;
+                padding: 10px 15px;
+                font-size: 14px;
             }
+            QLineEdit:focus {
+                border: 2px solid #1db954;
+                background-color: #2d2d2d;
+            }
+            /* 占位符文本样式 */
             QLineEdit::placeholder {
-                color: #7a7a7a;
+                color: #808080;
+            }
+            /* 清除按钮样式 */
+            QLineEdit::clear-button {
+                subcontrol-origin: padding;
+                subcontrol-position: right;
+                width: 18px;
+                height: 18px;
+                margin-right: 8px;
+                border-radius: 9px;
+                background-color: #505050;
+            }
+            QLineEdit::clear-button:hover {
+                background-color: #606060;
+                border: 1px solid #707070;
+            }
+            QLineEdit::clear-button:pressed {
+                background-color: #404040;
             }
         """)
         layout.addWidget(self._search_input)
