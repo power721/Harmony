@@ -4,8 +4,8 @@ Player controls widget for playback control.
 import logging
 import threading
 
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen, QFont
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen, QFont, QIcon
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
 )
+from pathlib import Path
 
 from domain.playback import PlaybackState, PlayMode
 from services.playback import PlaybackService
@@ -47,6 +48,9 @@ class PlayerControls(QWidget):
         self._current_duration = 0
         self._is_seeking = False
         self._current_cover_path = None  # Store current cover path
+
+        # Get icons directory path (must be before _setup_ui)
+        self._icons_dir = Path(__file__).parent.parent.parent / "icons"
 
         self._setup_ui()
         self._setup_connections()
@@ -193,7 +197,7 @@ class PlayerControls(QWidget):
         controls_layout.setSpacing(8)
 
         # Shuffle button
-        self._shuffle_btn = self._create_control_button("🔀")
+        self._shuffle_btn = self._create_control_button("shuffle.svg")
         self._shuffle_btn.setCheckable(True)
         self._shuffle_btn.setFixedSize(40, 40)
         self._shuffle_btn.setToolTip(t("shuffle"))
@@ -202,20 +206,19 @@ class PlayerControls(QWidget):
         controls_layout.addStretch()
 
         # Previous button
-        self._prev_btn = self._create_control_button("⏮")
+        self._prev_btn = self._create_control_button("previous.svg")
         self._prev_btn.setFixedSize(40, 40)
         self._prev_btn.setToolTip(t("previous"))
         controls_layout.addWidget(self._prev_btn)
 
         # Play/Pause button
-        self._play_pause_btn = self._create_control_button("▶️")
-        self._play_pause_btn.setFixedSize(45, 45)
-        self._play_pause_btn.setObjectName("playPauseBtn")
+        self._play_pause_btn = self._create_control_button("play.svg")
+        self._play_pause_btn.setFixedSize(40, 40)
         self._play_pause_btn.setToolTip(t("play_pause"))
         controls_layout.addWidget(self._play_pause_btn)
 
         # Next button
-        self._next_btn = self._create_control_button("⏭")
+        self._next_btn = self._create_control_button("next.svg")
         self._next_btn.setFixedSize(40, 40)
         self._next_btn.setToolTip(t("next"))
         controls_layout.addWidget(self._next_btn)
@@ -223,7 +226,7 @@ class PlayerControls(QWidget):
         controls_layout.addStretch()
 
         # Repeat button
-        self._repeat_btn = self._create_control_button("🔁")
+        self._repeat_btn = self._create_control_button("repeat.svg")
         self._repeat_btn.setCheckable(True)
         self._repeat_btn.setFixedSize(40, 40)
         self._repeat_btn.setToolTip(t("repeat"))
@@ -265,14 +268,40 @@ class PlayerControls(QWidget):
 
         return widget
 
-    def _create_control_button(self, text: str) -> QPushButton:
-        """Create a control button with emoji support."""
-        btn = QPushButton(text)
+    def _create_control_button(self, icon_name: str) -> QPushButton:
+        """Create a control button with SVG icon."""
+        btn = QPushButton()
         btn.setObjectName("controlBtn")
         btn.setCursor(Qt.PointingHandCursor)
-        font = QFont()
-        font.setPointSize(20)
-        btn.setFont(font)
+
+        # Load SVG icon
+        icon_path = self._icons_dir / icon_name
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(24, 24))  # Set icon size
+        else:
+            # Fallback to emoji if icon not found
+            btn.setText("❌")
+
+        return btn
+
+    def _create_icon_button(self, icon_name: str, size: int = 35) -> QPushButton:
+        """Create a button with SVG icon for volume/favorite buttons."""
+        btn = QPushButton()
+        btn.setFixedSize(size, size)
+        btn.setCursor(Qt.PointingHandCursor)
+
+        # Load SVG icon
+        icon_path = self._icons_dir / icon_name
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(size - 8, size - 8))  # Icon slightly smaller than button
+        else:
+            # Fallback to emoji if icon not found
+            btn.setText("❌")
+
         return btn
 
     def _apply_styles(self):
@@ -297,16 +326,6 @@ class PlayerControls(QWidget):
             }
             QPushButton#controlBtn[active="true"]:hover {
                 color: #1ed760;
-            }
-            QPushButton#playPauseBtn {
-                background: #ffffff;
-                border-radius: 22px;
-                color: #000000;
-                font-size: 22px;
-            }
-            QPushButton#playPauseBtn:hover {
-                background: #1db954;
-                color: #000000;
             }
             QPushButton#favoriteBtn {
                 background: transparent;
@@ -346,7 +365,6 @@ class PlayerControls(QWidget):
                 background: transparent;
                 border: none;
                 color: #b3b3b3;
-                font-size: 16px;
             }
             QPushButton#volumeBtn:hover, QPushButton#queueBtn:hover {
                 color: #ffffff;
@@ -408,25 +426,25 @@ class PlayerControls(QWidget):
                 PlayMode.RANDOM_TRACK_LOOP,
         ):
             self._shuffle_btn.setChecked(True)
-            self._shuffle_btn.setText("🔀")
+            self._update_button_icon(self._shuffle_btn, "shuffle.svg")
             self._update_button_style(self._shuffle_btn, active=True)
         else:
             self._shuffle_btn.setChecked(False)
-            self._shuffle_btn.setText("🔀")
+            self._update_button_icon(self._shuffle_btn, "shuffle.svg")
             self._update_button_style(self._shuffle_btn, active=False)
 
         # Sync repeat button
         if current_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
             self._repeat_btn.setChecked(True)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._update_button_style(self._repeat_btn, active=True)
         elif current_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
             self._repeat_btn.setChecked(True)
-            self._repeat_btn.setText("🔂")
+            self._update_button_icon(self._repeat_btn, "repeat_once.svg")
             self._update_button_style(self._repeat_btn, active=True)
         else:
             self._repeat_btn.setChecked(False)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._update_button_style(self._repeat_btn, active=False)
 
     def _toggle_play_pause(self):
@@ -706,7 +724,7 @@ class PlayerControls(QWidget):
                 # Switch to random
                 self._player.engine.set_play_mode(PlayMode.RANDOM)
             # Already in a random mode, no change needed
-            self._shuffle_btn.setText("🔀")
+            self._update_button_icon(self._shuffle_btn, "shuffle.svg")
             self._update_button_style(self._shuffle_btn, active=True)
         else:
             # Disable shuffle - preserve loop state
@@ -716,7 +734,7 @@ class PlayerControls(QWidget):
                 self._player.engine.set_play_mode(PlayMode.LOOP)
             elif current_mode == PlayMode.RANDOM:
                 self._player.engine.set_play_mode(PlayMode.SEQUENTIAL)
-            self._shuffle_btn.setText("🔀")
+            self._update_button_icon(self._shuffle_btn, "shuffle.svg")
             self._update_button_style(self._shuffle_btn, active=False)
 
     def _update_button_style(self, button: QPushButton, active: bool):
@@ -741,6 +759,17 @@ class PlayerControls(QWidget):
             # Clear inline style to use default from stylesheet
             button.setStyleSheet("")
 
+    def _update_button_icon(self, button: QPushButton, icon_name: str):
+        """Update button icon from SVG file."""
+        icon_path = self._icons_dir / icon_name
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            button.setIcon(icon)
+            # Determine appropriate icon size based on button size
+            button_size = button.size()
+            icon_size = min(button_size.width(), button_size.height()) - 8
+            button.setIconSize(QSize(icon_size, icon_size))
+
     def _toggle_repeat(self):
         """Toggle repeat mode."""
         current_mode = self._player.engine.play_mode
@@ -748,33 +777,33 @@ class PlayerControls(QWidget):
         if current_mode == PlayMode.SEQUENTIAL:
             # Sequential -> Playlist Loop
             self._player.engine.set_play_mode(PlayMode.PLAYLIST_LOOP)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._repeat_btn.setChecked(True)
             self._update_button_style(self._repeat_btn, active=True)
         elif current_mode == PlayMode.PLAYLIST_LOOP:
             # Playlist Loop -> Track Loop
             self._player.engine.set_play_mode(PlayMode.LOOP)
-            self._repeat_btn.setText("🔂")
+            self._update_button_icon(self._repeat_btn, "repeat_once.svg")
         elif current_mode == PlayMode.LOOP:
             # Track Loop -> Sequential
             self._player.engine.set_play_mode(PlayMode.SEQUENTIAL)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._repeat_btn.setChecked(False)
             self._update_button_style(self._repeat_btn, active=False)
         elif current_mode == PlayMode.RANDOM:
             # Random -> Random + Playlist Loop
             self._player.engine.set_play_mode(PlayMode.RANDOM_LOOP)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._repeat_btn.setChecked(True)
             self._update_button_style(self._repeat_btn, active=True)
         elif current_mode == PlayMode.RANDOM_LOOP:
             # Random Loop -> Random + Track Loop
             self._player.engine.set_play_mode(PlayMode.RANDOM_TRACK_LOOP)
-            self._repeat_btn.setText("🔂")
+            self._update_button_icon(self._repeat_btn, "repeat_once.svg")
         elif current_mode == PlayMode.RANDOM_TRACK_LOOP:
             # Random Track Loop -> Random
             self._player.engine.set_play_mode(PlayMode.RANDOM)
-            self._repeat_btn.setText("🔁")
+            self._update_button_icon(self._repeat_btn, "repeat.svg")
             self._repeat_btn.setChecked(False)
             self._update_button_style(self._repeat_btn, active=False)
 
@@ -785,9 +814,9 @@ class PlayerControls(QWidget):
     def _on_state_changed(self, state: PlaybackState):
         """Handle player state change."""
         if state == PlaybackState.PLAYING:
-            self._play_pause_btn.setText("⏸")
+            self._update_button_icon(self._play_pause_btn, "pause.svg")
         else:
-            self._play_pause_btn.setText("▶")
+            self._update_button_icon(self._play_pause_btn, "play.svg")
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""

@@ -26,25 +26,45 @@ logger = logging.getLogger(__name__)
 
 
 class LyricsSearchThread(QThread):
-    """Thread for searching lyrics."""
+    """Thread for searching lyrics with progressive updates."""
 
     search_completed = Signal(list)  # Emits list of search results
     search_failed = Signal(str)  # Emits error message
+    search_progress = Signal(list, str)  # Emits (new_results, source_name) as each source completes
 
     def __init__(self, title: str, artist: str, limit: int = 10):
         super().__init__()
         self._title = title
         self._artist = artist
         self._limit = limit
+        self._is_cancelled = False
+
+    def cancel(self):
+        """Cancel the search."""
+        self._is_cancelled = True
+        self.terminate()
 
     def run(self):
-        """Search for songs."""
+        """Search for songs with progressive updates."""
         try:
-            results = LyricsService.search_songs(self._title, self._artist, self._limit)
-            self.search_completed.emit(results)
+            # Use progress callback for progressive updates
+            def progress_callback(results, source_name):
+                if not self._is_cancelled:
+                    self.search_progress.emit(results, source_name)
+
+            results = LyricsService.search_songs(
+                self._title,
+                self._artist,
+                self._limit,
+                progress_callback=progress_callback
+            )
+
+            if not self._is_cancelled:
+                self.search_completed.emit(results)
         except Exception as e:
-            logger.error(f"Error searching lyrics: {e}", exc_info=True)
-            self.search_failed.emit(f"{t('error')}: {str(e)}")
+            if not self._is_cancelled:
+                logger.error(f"Error searching lyrics: {e}", exc_info=True)
+                self.search_failed.emit(f"{t('error')}: {str(e)}")
 
 
 class LyricsDownloadDialog(QDialog):
@@ -201,7 +221,7 @@ class LyricsDownloadDialog(QDialog):
         button_layout = QHBoxLayout()
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
-        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.clicked.connect(self._on_cancel_clicked)
 
         self._download_btn = QPushButton(t("download"))
         self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
@@ -212,23 +232,25 @@ class LyricsDownloadDialog(QDialog):
         button_layout.addWidget(self._download_btn)
         layout.addLayout(button_layout)
 
+    def _on_cancel_clicked(self):
+        """Handle cancel button click."""
+        if self._search_thread and self._search_thread.isRunning():
+            self._search_thread.cancel()
+        self.reject()
+
     def _start_search(self):
-        """Start the search thread."""
+        """Start the search thread with progressive updates."""
         self._search_thread = LyricsSearchThread(self._track_title, self._track_artist)
         self._search_thread.search_completed.connect(self._on_search_completed)
         self._search_thread.search_failed.connect(self._on_search_failed)
+        self._search_thread.search_progress.connect(self._on_search_progress)
         self._search_thread.finished.connect(self._search_thread.deleteLater)
         self._search_thread.start()
 
-    def _on_search_completed(self, results: list):
-        """Handle search completion."""
-        self._progress_bar.setVisible(False)
-        self._status_label.setVisible(False)
-
-        if not results:
-            self._status_label.setVisible(True)
-            self._status_label.setText(t("no_results"))
-            return
+    def _on_search_progress(self, new_results: list, source_name: str):
+        """Handle progressive search updates from each source."""
+        # Update status to show which source completed
+        self._status_label.setText(f"{t('searching')}... {source_name} ✓")
 
         # Calculate match scores and sort by score descending
         track_info = TrackInfo(
@@ -239,7 +261,7 @@ class LyricsDownloadDialog(QDialog):
         )
 
         scored_results = []
-        for result in results:
+        for result in new_results:
             search_result = SearchResult(
                 title=result.get('title', ''),
                 artist=result.get('artist', ''),
@@ -258,17 +280,50 @@ class LyricsDownloadDialog(QDialog):
         # Sort by score descending (highest first)
         scored_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
 
-        # Populate song list
-        for result in scored_results:
+        # Add new results to the list (clear existing and rebuild to maintain sorting)
+        # Get all existing items
+        existing_results = []
+        for i in range(self._song_list.count()):
+            item = self._song_list.item(i)
+            existing_results.append(item.data(Qt.UserRole))
+
+        # Combine existing results with new results
+        all_results = existing_results + scored_results
+
+        # Remove duplicates (by source + id)
+        seen = set()
+        unique_results = []
+        for result in all_results:
+            key = (result.get('source', ''), result.get('id', ''))
+            if key not in seen:
+                seen.add(key)
+                unique_results.append(result)
+
+        # Sort all results by score
+        unique_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
+
+        # Clear and repopulate the list
+        self._song_list.clear()
+        for result in unique_results:
             item_text = self._format_result_text(result)
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, result)
             self._song_list.addItem(item)
 
-        # Auto-select first result
-        if self._song_list.count() > 0:
+        # Auto-select first result and enable download button
+        if self._song_list.count() > 0 and self._song_list.currentRow() < 0:
             self._song_list.setCurrentRow(0)
             self._download_btn.setEnabled(True)
+
+    def _on_search_completed(self, results: list):
+        """Handle final search completion."""
+        self._progress_bar.setVisible(False)
+        self._status_label.setVisible(False)
+
+        if not results and self._song_list.count() == 0:
+            self._status_label.setVisible(True)
+            self._status_label.setText(t("no_results"))
+            return
 
     def _on_search_failed(self, error_message: str):
         """Handle search failure."""

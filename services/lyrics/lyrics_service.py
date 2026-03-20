@@ -60,7 +60,8 @@ class LyricsService:
             return text
 
     @classmethod
-    def search_songs(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
+    def search_songs(cls, title: str, artist: str, limit: int = 10,
+                    progress_callback=None) -> List[dict]:
         """
         Search for songs online and return a list of candidates.
         Uses parallel searching for better performance.
@@ -69,6 +70,8 @@ class LyricsService:
             title: Track title
             artist: Track artist
             limit: Maximum number of results per source (total results will be larger)
+            progress_callback: Optional callback(progress_results, source_name) called
+                              as each source completes
 
         Returns:
             List of dicts with keys: 'id', 'title', 'artist', 'album', 'source'
@@ -83,21 +86,29 @@ class LyricsService:
             ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit)),
         ]
 
-        # Parallel search from multiple sources
+        # Parallel search from multiple sources with progressive updates
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks
             }
 
+            # Wait for each source independently (no overall timeout)
+            # Each source has its own timeout, so slow sources don't block fast ones
             for future in as_completed(futures):
                 source_name = futures[future]
                 try:
-                    source_results = future.result()
+                    source_results = future.result(timeout=3)  # Per-source 3s timeout
                     results.extend(source_results)
                     logger.debug(f"[LyricsService] {source_name}: found {len(source_results)} results")
+
+                    # Call progress callback if provided
+                    if progress_callback and source_results:
+                        progress_callback(source_results, source_name)
+
                 except Exception as e:
-                    logger.error(f"Error searching from {source_name}: {e}", exc_info=True)
+                    # Log but don't fail - other sources may have results
+                    logger.debug(f"[LyricsService] {source_name} search failed: {e}")
 
         # Return all results (user can see all sources)
         return results
@@ -118,7 +129,7 @@ class LyricsService:
             search_url,
             params=params,
             headers=cls.HEADERS,
-            timeout=5
+            timeout=3
         )
 
         if response.status_code != 200:
@@ -171,7 +182,7 @@ class LyricsService:
             search_url,
             params=params,
             headers=cls.HEADERS,
-            timeout=5
+            timeout=3
         )
 
         if response.status_code != 200:
@@ -218,7 +229,7 @@ class LyricsService:
             "pagesize": limit
         }
 
-        r = requests.get(search_url, params=params, headers=headers, timeout=5)
+        r = requests.get(search_url, params=params, headers=headers, timeout=3)
         data = r.json()
 
         candidates = data.get("candidates", [])
@@ -285,7 +296,7 @@ class LyricsService:
             response = requests.get(
                 api_url,
                 headers=cls.HEADERS,
-                timeout=5
+                timeout=3
             )
 
             if response.status_code == 200:
@@ -315,7 +326,7 @@ class LyricsService:
             response = requests.get(
                 lyrics_url,
                 headers=cls.HEADERS,
-                timeout=5
+                timeout=3
             )
 
             if response.status_code != 200:
@@ -353,7 +364,7 @@ class LyricsService:
             response = requests.get(
                 yrc_url,
                 headers=cls.HEADERS,
-                timeout=5
+                timeout=3
             )
 
             if response.status_code != 200:
@@ -398,7 +409,7 @@ class LyricsService:
             response = requests.get(
                 detail_url,
                 headers=cls.HEADERS,
-                timeout=5
+                timeout=3
             )
 
             if response.status_code != 200:
@@ -433,7 +444,7 @@ class LyricsService:
                 "charset": "utf8"
             }
 
-            r = requests.get(download_url, params=params, headers=headers, timeout=10)
+            r = requests.get(download_url, params=params, headers=headers, timeout=5)
             data = r.json()
 
             content = data.get("content")
@@ -491,7 +502,7 @@ class LyricsService:
                 search_url,
                 params=params,
                 headers=cls.HEADERS,
-                timeout=5
+                timeout=3
             )
 
             if response.status_code != 200:
@@ -632,20 +643,21 @@ class LyricsService:
             ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit=5)),
         ]
 
-        # Parallel search from multiple sources
+        # Parallel search from multiple sources without overall timeout
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(task[1]): task[0]
                 for task in search_tasks
             }
 
+            # Each source has its own 3s timeout, slow sources don't block fast ones
             for future in as_completed(futures):
                 source_name = futures[future]
                 try:
-                    source_results = future.result()
+                    source_results = future.result(timeout=3)  # Per-source 3s timeout
                     all_results.extend(source_results)
                 except Exception as e:
-                    logger.error(f"Error searching from {source_name}: {e}", exc_info=True)
+                    logger.debug(f"[LyricsService] {source_name} search failed: {e}")
 
         if not all_results:
             return ""
@@ -772,7 +784,7 @@ class LyricsService:
                 "pagesize": 10
             }
 
-            r = requests.get(search_url, params=params, headers=headers, timeout=10)
+            r = requests.get(search_url, params=params, headers=headers, timeout=5)
             data = r.json()
 
             candidates = data.get("candidates", [])
@@ -793,7 +805,7 @@ class LyricsService:
                 "charset": "utf8"
             }
 
-            r = requests.get(download_url, params=params, headers=headers, timeout=10)
+            r = requests.get(download_url, params=params, headers=headers, timeout=5)
             data = r.json()
 
             content = data.get("content")
