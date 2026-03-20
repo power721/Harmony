@@ -89,6 +89,14 @@ def main():
 
     qt_app.setFont(font)
 
+    # Load global stylesheet
+    try:
+        with open("ui/styles.qss", "r", encoding="utf-8") as f:
+            stylesheet = f.read()
+            qt_app.setStyleSheet(stylesheet)
+    except Exception as e:
+        logging.warning(f"Failed to load stylesheet: {e}")
+
     # Create application with dependency injection
     app = Application.create(qt_app)
 

@@ -239,3 +239,118 @@ QToolTip {
     padding: 4px 8px;
     border-radius: 4px;
 }
+
+/* Message Box (QMessageBox) */
+QMessageBox {
+    background-color: #282828;
+    color: #ffffff;
+}
+
+QMessageBox QLabel {
+    color: #ffffff;
+    background-color: transparent;
+}
+
+QMessageBox QPushButton {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 8px 16px;
+    min-width: 80px;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #4a4a4a;
+}
+
+QMessageBox QPushButton:pressed {
+    background-color: #2a2a2a;
+}
+
+QMessageBox QMessageBox. QPushButton {
+    min-width: 100px;
+    padding: 10px 20px;
+}
+
+/* Input Dialog */
+QInputDialog {
+    background-color: #282828;
+    color: #ffffff;
+}
+
+QInputDialog QLabel {
+    color: #ffffff;
+}
+
+QInputDialog QLineEdit {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QInputDialog QLineEdit:focus {
+    border: 1px solid #1db954;
+}
+
+QInputDialog QPushButton {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+QInputDialog QPushButton:hover {
+    background-color: #4a4a4a;
+}
+
+/* File Dialog */
+QFileDialog {
+    background-color: #282828;
+    color: #ffffff;
+}
+
+QFileDialog QLabel {
+    color: #ffffff;
+}
+
+QFileDialog QLineEdit {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QFileDialog QListView, QFileDialog QTreeView {
+    background-color: #2a2a2a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+}
+
+QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected {
+    background-color: #1db954;
+    color: #ffffff;
+}
+
+QFileDialog QPushButton {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+QFileDialog QPushButton:hover {
+    background-color: #4a4a4a;
+}
+
+/* Dialog Base */
+QDialog {
+    background-color: #282828;
+    color: #ffffff;
+}
