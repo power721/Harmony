@@ -42,7 +42,8 @@ class LyricsSearchThread(QThread):
     def cancel(self):
         """Cancel the search."""
         self._is_cancelled = True
-        self.terminate()
+        # Don't use terminate() - it's dangerous and can cause UI to freeze
+        # The flag will be checked in the run() method
 
     def run(self):
         """Search for songs with progressive updates."""
@@ -234,8 +235,10 @@ class LyricsDownloadDialog(QDialog):
 
     def _on_cancel_clicked(self):
         """Handle cancel button click."""
-        if self._search_thread and self._search_thread.isRunning():
+        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
             self._search_thread.cancel()
+            # Give the thread a moment to clean up
+            self._search_thread.wait(100)  # Wait up to 100ms
         self.reject()
 
     def _start_search(self):
@@ -392,8 +395,12 @@ class LyricsDownloadDialog(QDialog):
     def closeEvent(self, event):
         """Clean up on close."""
         if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.terminate()
-            self._search_thread.wait()
+            self._search_thread.cancel()
+            self._search_thread.wait(500)  # Wait up to 500ms for clean shutdown
+            # Force terminate if still running (shouldn't happen normally)
+            if self._search_thread.isRunning():
+                self._search_thread.terminate()
+                self._search_thread.wait(100)
         super().closeEvent(event)
 
     @staticmethod

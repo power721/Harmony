@@ -307,5 +307,12 @@
     "smart_deduplicate": "智能去重",
     "deduplicate_confirm": "删除重复版本（伴奏、live等），保留每首歌的最佳版本？",
     "deduplicate_success": "已移除 {removed} 个重复项，保留 {kept} 首歌曲",
-    "deduplicate_nothing": "未发现重复"
+    "deduplicate_nothing": "未发现重复",
+    "input_cookie": "手动输入Cookie",
+    "cookie_help": "从浏览器开发者工具中复制Cookie并粘贴到下方。格式：key1=value1; key2=value2",
+    "cookie_placeholder": "粘贴Cookie到这里...",
+    "validate_cookie": "验证Cookie",
+    "cookie_empty": "Cookie不能为空",
+    "cookie_invalid": "Cookie无效，请检查后重试",
+    "validating_cookie": "正在验证Cookie..."
 }

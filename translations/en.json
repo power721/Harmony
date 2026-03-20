@@ -307,5 +307,12 @@
     "smart_deduplicate": "Smart Deduplicate",
     "deduplicate_confirm": "Remove duplicate versions (instrumental, live, etc.) and keep only the best version of each song?",
     "deduplicate_success": "Removed {removed} duplicates, kept {kept} unique tracks",
-    "deduplicate_nothing": "No duplicates found"
+    "deduplicate_nothing": "No duplicates found",
+    "input_cookie": "Manual Cookie Input",
+    "cookie_help": "Copy the Cookie from browser developer tools and paste below. Format: key1=value1; key2=value2",
+    "cookie_placeholder": "Paste Cookie here...",
+    "validate_cookie": "Validate Cookie",
+    "cookie_empty": "Cookie cannot be empty",
+    "cookie_invalid": "Cookie is invalid, please check and try again",
+    "validating_cookie": "Validating Cookie..."
 }

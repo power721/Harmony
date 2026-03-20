@@ -355,6 +355,31 @@ class QuarkDriveService:
             return None, None
 
     @classmethod
+    def validate_cookie(cls, cookie_str: str) -> Optional[Dict[str, str]]:
+        """Validate cookie and get account info.
+
+        Args:
+            cookie_str: Cookie string to validate
+
+        Returns:
+            Dict with account info if valid, None if invalid
+        """
+        try:
+            # Test cookie by getting account info
+            account_info, _ = cls.get_account_info(cookie_str, '')
+
+            if account_info:
+                return {
+                    'account_email': account_info.get('nickname', ''),
+                    'access_token': cookie_str,
+                    'status': 'success'
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Quark cookie validation error: {e}", exc_info=True)
+            return None
+
+    @classmethod
     def download_file(cls, url: str, dest_path: str,
                       access_token: str = None) -> bool:
         """Download file from URL to destination"""

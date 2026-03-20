@@ -8,7 +8,8 @@ import qrcode
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QProgressBar)
+                               QPushButton, QProgressBar, QStackedWidget,
+                               QTextEdit, QLineEdit, QWidget)
 
 from services.cloud.quark_service import QuarkDriveService
 from system.i18n import t
@@ -34,7 +35,7 @@ class CloudLoginDialog(QDialog):
     def _setup_ui(self):
         """Setup the dialog UI"""
         self.setWindowTitle(t("cloud_drive") + " " + t("login"))
-        self.setMinimumSize(400, 500)
+        self.setMinimumSize(450, 520)
 
         # Apply dark theme styling
         self.setStyleSheet("""
@@ -69,26 +70,83 @@ class CloudLoginDialog(QDialog):
                 background-color: #1db954;
                 border-radius: 3px;
             }
+            QTextEdit, QLineEdit {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QTextEdit:focus, QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
         """)
 
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+
+        # Mode toggle buttons
+        mode_layout = QHBoxLayout()
+        mode_layout.setSpacing(10)
+
+        self._qr_mode_btn = QPushButton(t("scan_qr_code"))
+        self._qr_mode_btn.setCheckable(True)
+        self._qr_mode_btn.setChecked(True)
+        self._qr_mode_btn.clicked.connect(self._switch_to_qr_mode)
+
+        self._cookie_mode_btn = QPushButton(t("input_cookie"))
+        self._cookie_mode_btn.setCheckable(True)
+        self._cookie_mode_btn.clicked.connect(self._switch_to_cookie_mode)
+
+        mode_layout.addWidget(self._qr_mode_btn)
+        mode_layout.addWidget(self._cookie_mode_btn)
+        main_layout.addLayout(mode_layout)
+
+        # Stacked widget for different modes
+        self._stacked_widget = QStackedWidget()
+
+        # QR Code Mode
+        qr_widget = self._create_qr_widget()
+        self._stacked_widget.addWidget(qr_widget)
+
+        # Cookie Input Mode
+        cookie_widget = self._create_cookie_widget()
+        self._stacked_widget.addWidget(cookie_widget)
+
+        main_layout.addWidget(self._stacked_widget)
+
+        # Bottom buttons
+        button_layout = QHBoxLayout()
+
+        self._refresh_btn = QPushButton(t("refresh_qr"))
+        self._refresh_btn.clicked.connect(self._refresh_qr)
+        button_layout.addWidget(self._refresh_btn)
+
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        main_layout.addLayout(button_layout)
+        self.setLayout(main_layout)
+
+        # Setup polling timer
+        self._poll_timer.timeout.connect(self._poll_login_status)
+
+    def _create_qr_widget(self):
+        """Create QR code login widget"""
+        widget = QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        # Title
-        title = QLabel(t("scan_qr_code"))
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1db954;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
 
         # QR Code placeholder
         self._qr_label = QLabel()
         self._qr_label.setMinimumSize(250, 250)
         self._qr_label.setMaximumSize(250, 250)
         self._qr_label.setAlignment(Qt.AlignCenter)
-        self._qr_label.setScaledContents(False)  # Don't auto-scale, we'll do it manually
+        self._qr_label.setScaledContents(False)
         self._qr_label.setStyleSheet("border: 2px solid #404040; border-radius: 8px; background: white;")
-        layout.addWidget(self._qr_label)
+        layout.addWidget(self._qr_label, 0, Qt.AlignCenter)
 
         # Status label
         self._status_label = QLabel(t("generating_qr"))
@@ -102,22 +160,92 @@ class CloudLoginDialog(QDialog):
         self._progress.setValue(0)
         layout.addWidget(self._progress)
 
-        # Buttons
-        button_layout = QHBoxLayout()
+        widget.setLayout(layout)
+        return widget
 
-        refresh_btn = QPushButton(t("refresh_qr"))
-        refresh_btn.clicked.connect(self._refresh_qr)
-        button_layout.addWidget(refresh_btn)
+    def _create_cookie_widget(self):
+        """Create cookie input widget"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
 
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
+        # Title
+        title = QLabel(t("input_cookie"))
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1db954;")
+        layout.addWidget(title)
 
-        layout.addLayout(button_layout)
-        self.setLayout(layout)
+        # Help text
+        help_label = QLabel(t("cookie_help"))
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        layout.addWidget(help_label)
 
-        # Setup polling timer
-        self._poll_timer.timeout.connect(self._poll_login_status)
+        # Cookie input
+        self._cookie_input = QTextEdit()
+        self._cookie_input.setPlaceholderText(t("cookie_placeholder"))
+        self._cookie_input.setMaximumHeight(150)
+        layout.addWidget(self._cookie_input)
+
+        # Validate button
+        self._validate_btn = QPushButton(t("validate_cookie"))
+        self._validate_btn.clicked.connect(self._validate_cookie)
+        layout.addWidget(self._validate_btn)
+
+        # Cookie status label
+        self._cookie_status_label = QLabel()
+        self._cookie_status_label.setAlignment(Qt.AlignCenter)
+        self._cookie_status_label.setWordWrap(True)
+        self._cookie_status_label.setStyleSheet("color: #a0a0a0;")
+        layout.addWidget(self._cookie_status_label)
+
+        layout.addStretch()
+        widget.setLayout(layout)
+        return widget
+
+    def _switch_to_qr_mode(self):
+        """Switch to QR code mode"""
+        self._qr_mode_btn.setChecked(True)
+        self._cookie_mode_btn.setChecked(False)
+        self._stacked_widget.setCurrentIndex(0)
+        self._refresh_btn.setVisible(True)
+        self._poll_timer.start(2000) if self._qr_token else None
+
+    def _switch_to_cookie_mode(self):
+        """Switch to cookie input mode"""
+        self._qr_mode_btn.setChecked(False)
+        self._cookie_mode_btn.setChecked(True)
+        self._stacked_widget.setCurrentIndex(1)
+        self._refresh_btn.setVisible(False)
+        self._poll_timer.stop()
+
+    def _validate_cookie(self):
+        """Validate the entered cookie"""
+        cookie_str = self._cookie_input.toPlainText().strip()
+        if not cookie_str:
+            self._cookie_status_label.setText(t("cookie_empty"))
+            self._cookie_status_label.setStyleSheet("color: #ff5555;")
+            return
+
+        self._cookie_status_label.setText(t("validating_cookie"))
+        self._cookie_status_label.setStyleSheet("color: #a0a0a0;")
+        self._validate_btn.setEnabled(False)
+
+        # Validate in a timer to avoid blocking UI
+        QTimer.singleShot(100, lambda: self._do_validate_cookie(cookie_str))
+
+    def _do_validate_cookie(self, cookie_str: str):
+        """Perform cookie validation"""
+        result = QuarkDriveService.validate_cookie(cookie_str)
+        self._validate_btn.setEnabled(True)
+
+        if result and result.get('status') == 'success':
+            self._cookie_status_label.setText(t("login_successful"))
+            self._cookie_status_label.setStyleSheet("color: #1db954;")
+            self.login_success.emit(result)
+            QTimer.singleShot(1000, self.accept)
+        else:
+            self._cookie_status_label.setText(t("cookie_invalid"))
+            self._cookie_status_label.setStyleSheet("color: #ff5555;")
 
     def _start_login_flow(self):
         """Start the login flow by generating QR code"""
