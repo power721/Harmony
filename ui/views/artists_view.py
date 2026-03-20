@@ -335,7 +335,7 @@ class ArtistsView(QWidget):
         layout.setContentsMargins(20, 10, 20, 10)
 
         # Title
-        self._title_label = QLabel("🎤" + t("artists"))
+        self._title_label = QLabel(t("artists"))
         self._title_label.setStyleSheet("""
             QLabel {
                 color: #1db954;
@@ -599,7 +599,7 @@ class ArtistsView(QWidget):
     def refresh_ui(self):
         """Refresh UI texts after language change."""
         # Update title
-        self._title_label.setText("🎤" + t("artists"))
+        self._title_label.setText(t("artists"))
 
         # Update search placeholder
         self._search_input.setPlaceholderText(t("search"))

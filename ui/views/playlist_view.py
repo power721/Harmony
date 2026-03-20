@@ -180,7 +180,7 @@ class PlaylistView(QWidget):
         layout.setSpacing(10)
 
         # Title
-        self._playlist_list_title = QLabel("📋" + t("playlists"))
+        self._playlist_list_title = QLabel(t("playlists"))
         self._playlist_list_title.setStyleSheet("""
             color: #1db954;
             font-size: 20px;
@@ -435,7 +435,7 @@ class PlaylistView(QWidget):
     def _update_ui_texts(self):
         """Update UI texts after language change."""
         # Update playlist list title
-        self._playlist_list_title.setText("📋" + t("playlists"))
+        self._playlist_list_title.setText(t("playlists"))
 
         # Update playlist title label in content panel
         if not self._current_playlist_id:

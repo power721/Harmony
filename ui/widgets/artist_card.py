@@ -140,12 +140,12 @@ class ArtistCard(QWidget):
         """)
 
         # Download cover action
-        download_action = QAction("⬇️ 下载封面", self)
+        download_action = QAction("下载封面", self)
         download_action.triggered.connect(lambda: self.download_cover_requested.emit(self._artist))
         menu.addAction(download_action)
 
         # View artist action
-        view_action = QAction("👤 查看歌手", self)
+        view_action = QAction("查看歌手", self)
         view_action.triggered.connect(lambda: self.clicked.emit(self._artist))
         menu.addAction(view_action)
 

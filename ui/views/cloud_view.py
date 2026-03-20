@@ -35,6 +35,7 @@ from ui.widgets.cloud_login_dialog import CloudLoginDialog
 from utils import format_duration
 from system.i18n import t
 from system.event_bus import EventBus
+from ui.icons import IconName, get_icon
 
 
 class CloudDriveView(QWidget):
@@ -107,7 +108,7 @@ class CloudDriveView(QWidget):
         layout.setSpacing(10)
 
         # Title
-        self._account_list_title = QLabel("🛜" + t("cloud_drive"))
+        self._account_list_title = QLabel(t("cloud_drive"))
         self._account_list_title.setStyleSheet("""
             color: #1db954;
             font-size: 20px;
@@ -612,16 +613,16 @@ class CloudDriveView(QWidget):
                 name_item.setForeground(QBrush(QColor("#e0e0e0")))
 
                 if file.file_type == "folder":
-                    name_item.setText("📁 " + file.name)
+                    name_item.setText(f"📁 {file.name}")
                 elif is_currently_playing:
                     # Add play/pause icon for currently playing audio
                     if self._player and hasattr(self._player, 'engine'):
                         if self._player.engine.state == PlaybackState.PLAYING:
-                            name_item.setText("▶ " + file.name)
+                            name_item.setText(f"▶ {file.name}")
                         else:
-                            name_item.setText("⏸ " + file.name)
+                            name_item.setText(f"⏸ {file.name}")
                     else:
-                        name_item.setText("▶ " + file.name)
+                        name_item.setText(f"▶ {file.name}")
 
                     # Set bold and green color for playing file
                     font = name_item.font()
@@ -789,7 +790,7 @@ class CloudDriveView(QWidget):
             # Note: Position restoration would require seeking after playback starts
             # This depends on PlayerController/PlayerEngine implementation
         else:
-            self._status_label.setText(f"⚠️ 上次播放的文件不在当前文件夹")
+            self._status_label.setText("⚠️ 上次播放的文件不在当前文件夹")
 
         # Clear the restoration state
         self._last_playing_fid = ""
@@ -2055,7 +2056,7 @@ class CloudDriveView(QWidget):
     def refresh_ui(self):
         """Refresh UI texts after language change."""
         # Update account list title
-        self._account_list_title.setText("🛜" + t("cloud_drive"))
+        self._account_list_title.setText(t("cloud_drive"))
 
         # Update button texts
         self._add_account_btn.setText(t("add_account"))

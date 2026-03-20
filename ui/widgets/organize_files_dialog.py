@@ -71,7 +71,7 @@ class OrganizeFilesDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        self.setWindowTitle("📁" + t("organize_files"))
+        self.setWindowTitle(t("organize_files"))
         self.setMinimumSize(900, 600)
         self.resize(1000, 700)
 

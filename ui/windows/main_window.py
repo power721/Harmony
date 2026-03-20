@@ -37,6 +37,7 @@ from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from ui.icons import IconName, IconButton, set_button_icon
 from domain.track import Track
 from domain.playlist_item import PlaylistItem
 from domain.cloud import CloudProvider
@@ -316,7 +317,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(5)
 
         # Logo
-        logo_label = QLabel("🎵 Harmony")
+        logo_label = QLabel("Harmony")
         logo_label.setObjectName("logo")
         logo_label.setAlignment(Qt.AlignCenter)
 
@@ -349,20 +350,20 @@ class MainWindow(QMainWindow):
             }
         """
 
-        # Create navigation buttons with emoji font
+        # Create navigation buttons with SVG icons (using IconButton for color changes)
         nav_buttons = [
-            ("_nav_library", "🎼 " + t("library")),
-            ("_nav_albums", "💿 " + t("albums")),
-            ("_nav_artists", "🎤 " + t("artists")),
-            ("_nav_cloud", "🛜 " + t("cloud_drive")),
-            ("_nav_playlists", "📋 " + t("playlists")),
-            ("_nav_queue", "🎶 " + t("queue")),
-            ("_nav_favorites", "⭐ " + t("favorites")),
-            ("_nav_history", "🕐 " + t("history")),
+            ("_nav_library", IconName.MUSIC, t("library")),
+            ("_nav_albums", IconName.COMPACT_DISC, t("albums")),
+            ("_nav_artists", IconName.MICROPHONE, t("artists")),
+            ("_nav_cloud", IconName.CLOUD, t("cloud_drive")),
+            ("_nav_playlists", IconName.LIST, t("playlists")),
+            ("_nav_queue", IconName.QUEUE, t("queue")),
+            ("_nav_favorites", IconName.STAR, t("favorites")),
+            ("_nav_history", IconName.CLOCK, t("history")),
         ]
 
-        for attr_name, text in nav_buttons:
-            btn = QPushButton(text)
+        for attr_name, icon_name, text in nav_buttons:
+            btn = IconButton(icon_name, text, size=18)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
 
@@ -380,7 +381,7 @@ class MainWindow(QMainWindow):
         from system.i18n import get_language
 
         lang_text = "EN" if get_language() == "en" else "中文"
-        self._language_btn = QPushButton("🌐 " + lang_text)
+        self._language_btn = IconButton(IconName.GLOBE, lang_text, size=16)
         self._language_btn.setObjectName("languageBtn")
         self._language_btn.setCursor(Qt.PointingHandCursor)
         self._language_btn.setFixedHeight(32)
@@ -404,8 +405,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._language_btn)
 
         # AI Settings button
-        ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-        self._ai_settings_btn = QPushButton(f"🤖 AI {ai_status}")
+        self._ai_settings_btn = IconButton(IconName.ROBOT, "AI", size=16)
         self._ai_settings_btn.setObjectName("aiSettingsBtn")
         self._ai_settings_btn.setCursor(Qt.PointingHandCursor)
         self._ai_settings_btn.setFixedHeight(32)
@@ -970,7 +970,7 @@ class MainWindow(QMainWindow):
         self._config.set_language(new_lang)
 
         # Update button text
-        self._language_btn.setText("🌐 " + ("EN" if new_lang == "en" else "中文"))
+        self._language_btn.setText("EN" if new_lang == "en" else "中文")
 
         # Refresh the UI to apply translations
         self._refresh_ui_texts()
@@ -980,15 +980,15 @@ class MainWindow(QMainWindow):
         # Update window title
         self.setWindowTitle(t("app_title"))
 
-        # Update sidebar
-        self._nav_library.setText("🎼 " + t("library"))
-        self._nav_albums.setText("💿 " + t("albums"))
-        self._nav_artists.setText("🎤 " + t("artists"))
-        self._nav_cloud.setText("☁️ " + t("cloud_drive"))
-        self._nav_playlists.setText("📋 " + t("playlists"))
-        self._nav_queue.setText("🎶 " + t("queue"))
-        self._nav_favorites.setText("⭐ " + t("favorites"))
-        self._nav_history.setText("🕐 " + t("history"))
+        # Update sidebar navigation buttons (text only, icons stay the same)
+        self._nav_library.setText(t("library"))
+        self._nav_albums.setText(t("albums"))
+        self._nav_artists.setText(t("artists"))
+        self._nav_cloud.setText(t("cloud_drive"))
+        self._nav_playlists.setText(t("playlists"))
+        self._nav_queue.setText(t("queue"))
+        self._nav_favorites.setText(t("favorites"))
+        self._nav_history.setText(t("history"))
         self._add_music_btn.setText(t("add_music"))
 
         # Update lyrics panel
@@ -1009,8 +1009,12 @@ class MainWindow(QMainWindow):
         self._album_view.refresh_ui()
 
         # Update AI button status
-        ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-        self._ai_settings_btn.setText(f"🤖 AI {ai_status}")
+        self._update_ai_button_status()
+
+    def _update_ai_button_status(self):
+        """Update AI button with current status icon."""
+        status_icon = IconName.CHECK if self._config.get_ai_enabled() else IconName.TIMES
+        set_button_icon(self._ai_settings_btn, IconName.ROBOT, 16)
 
     def _show_ai_settings(self):
         """Show AI settings dialog."""
@@ -1018,8 +1022,7 @@ class MainWindow(QMainWindow):
         dialog = AISettingsDialog(self._config, self)
         if dialog.exec_():
             # Update AI button status after settings change
-            ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-            self._ai_settings_btn.setText(f"🤖 AI {ai_status}")
+            self._update_ai_button_status()
 
     def show_help(self):
         """Show help dialog."""

@@ -65,7 +65,7 @@ class QueueView(QWidget):
         header_layout.setContentsMargins(0, 10, 0, 10)
         header_layout.setSpacing(10)
 
-        self._title_label = QLabel("🎶" + t("play_queue"))
+        self._title_label = QLabel(t("play_queue"))
         self._title_label.setObjectName("queueTitle")
         self._title_label.setStyleSheet("""
             QLabel#queueTitle {
@@ -337,7 +337,7 @@ class QueueView(QWidget):
     def _update_ui_texts(self):
         """Update UI texts after language change."""
         # Update title
-        self._title_label.setText("🎶" + t("play_queue"))
+        self._title_label.setText(t("play_queue"))
 
         # Update deduplicate button
         self._dedup_btn.setText(t("smart_deduplicate"))
