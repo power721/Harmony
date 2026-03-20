@@ -1,5 +1,5 @@
 """
-AI Settings Dialog for configuring AI model API and AcoustID.
+General Settings Dialog for configuring AI, AcoustID, and QQ Music.
 """
 import logging
 
@@ -15,8 +15,8 @@ from system.i18n import t
 logger = logging.getLogger(__name__)
 
 
-class AISettingsDialog(QDialog):
-    """Dialog for configuring AI model API and AcoustID settings."""
+class GeneralSettingsDialog(QDialog):
+    """Dialog for configuring AI, AcoustID, and QQ Music settings."""
 
     def __init__(self, config_manager, parent=None):
         """
@@ -33,7 +33,7 @@ class AISettingsDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        self.setWindowTitle(t("ai_settings"))
+        self.setWindowTitle(t("settings"))
         self.setMinimumWidth(530)
 
         # Apply dark theme styling
@@ -227,6 +227,49 @@ class AISettingsDialog(QDialog):
         acoustid_layout.addStretch()
         tab_widget.addTab(acoustid_tab, t("acoustid_tab"))
 
+        # QQ Music Settings Tab
+        qqmusic_tab = QWidget()
+        qqmusic_layout = QVBoxLayout(qqmusic_tab)
+        qqmusic_layout.setSpacing(10)
+
+        # QQ Music instructions
+        qqmusic_instructions = QLabel(
+            f"<b>{t('qqmusic_login')}</b><br><br>"
+            f"{'登录后可使用本地API，速度更快！' if t('language') == '中文' else 'Use local API after login for faster access!'}"
+        )
+        qqmusic_instructions.setWordWrap(True)
+        qqmusic_layout.addWidget(qqmusic_instructions)
+
+        # QQ Music credential status
+        self._qqmusic_status_label = QLabel()
+        self._qqmusic_status_label.setWordWrap(True)
+        self._update_qqmusic_status()
+        qqmusic_layout.addWidget(self._qqmusic_status_label)
+
+        # QQ Music buttons
+        qqmusic_button_layout = QHBoxLayout()
+
+        self._qqmusic_qr_btn = QPushButton(t("qqmusic_qr_login"))
+        self._qqmusic_qr_btn.clicked.connect(self._open_qqmusic_qr_login)
+        qqmusic_button_layout.addWidget(self._qqmusic_qr_btn)
+
+        self._qqmusic_manual_btn = QPushButton(t("qqmusic_manual_login"))
+        self._qqmusic_manual_btn.clicked.connect(self._open_qqmusic_manual_login)
+        qqmusic_button_layout.addWidget(self._qqmusic_manual_btn)
+
+        qqmusic_layout.addLayout(qqmusic_button_layout)
+
+        # QQ Music hint
+        qqmusic_hint = QLabel(
+            f"<i>{t('qqmusic_login_hint')}</i>"
+        )
+        qqmusic_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        qqmusic_hint.setWordWrap(True)
+        qqmusic_layout.addWidget(qqmusic_hint)
+
+        qqmusic_layout.addStretch()
+        tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
+
         layout.addWidget(tab_widget)
 
         # Buttons
@@ -390,3 +433,41 @@ class AISettingsDialog(QDialog):
                 self, t("warning"),
                 t("acoustid_not_installed")
             )
+
+    def _update_qqmusic_status(self):
+        """Update QQ Music credential status display."""
+        credential = self._config.get_qqmusic_credential()
+        if credential:
+            musicid = credential.get('musicid', '')
+            if musicid:
+                self._qqmusic_status_label.setText(
+                    f"<span style='color: #1db954;'>✅ 已配置</span> (QQ号: {musicid})"
+                )
+                self._qqmusic_status_label.setStyleSheet("")
+            else:
+                self._qqmusic_status_label.setText(
+                    "<span style='color: #ffa500;'>⚠️ 配置不完整</span>"
+                )
+        else:
+            self._qqmusic_status_label.setText(
+                "<span style='color: #c0c0c0;'>❌ 未配置</span>"
+            )
+
+    def _open_qqmusic_manual_login(self):
+        """Open QQ Music manual login dialog."""
+        from ui.dialogs import QQMusicLoginDialog
+
+        dialog = QQMusicLoginDialog(self)
+        dialog.credentials_updated.connect(self._update_qqmusic_status)
+        dialog.exec_()
+
+    def _open_qqmusic_qr_login(self):
+        """Open QQ Music QR code login dialog."""
+        from ui.dialogs import QQMusicQRLoginDialog
+
+        dialog = QQMusicQRLoginDialog(self)
+        dialog.credentials_obtained.connect(self._update_qqmusic_status)
+        dialog.exec_()
+
+# Backward compatibility alias
+AISettingsDialog = GeneralSettingsDialog

@@ -2,7 +2,10 @@
 UI widgets module.
 """
 
-from .ai_settings_dialog import AISettingsDialog
+from .ai_settings_dialog import GeneralSettingsDialog
+# Backward compatibility
+AISettingsDialog = GeneralSettingsDialog
+
 from .album_card import AlbumCard
 from .album_cover_download_dialog import AlbumCoverDownloadDialog
 from .artist_card import ArtistCard
@@ -15,7 +18,8 @@ from .player_controls import PlayerControls
 from .track_cover_download_dialog import TrackCoverDownloadDialog, CoverDownloadDialog
 
 __all__ = [
-    'PlayerControls', 'LyricsWidget', 'CloudLoginDialog', 'AISettingsDialog',
+    'PlayerControls', 'LyricsWidget', 'CloudLoginDialog',
+    'GeneralSettingsDialog', 'AISettingsDialog',  # AISettingsDialog is alias for backward compatibility
     'EqualizerWidget', 'EqualizerPreset',
     'BaseCoverDownloadDialog', 'TrackCoverDownloadDialog', 'CoverDownloadDialog',
     'AlbumCard', 'ArtistCard', 'AlbumCoverDownloadDialog', 'ArtistCoverDownloadDialog',

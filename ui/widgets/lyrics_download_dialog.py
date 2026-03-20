@@ -346,7 +346,10 @@ class LyricsDownloadDialog(QDialog):
 
         # Only show album if it exists, is not empty, and is not "-"
         album = result.get('album', '')
-        if album and album.strip() and album.strip() != '-':
+        # Handle case where album might be a dict
+        if isinstance(album, dict):
+            album = album.get('name', '')
+        if album and isinstance(album, str) and album.strip() and album.strip() != '-':
             item_text += f" ({album})"
 
         # Add duration for LRCLIB and NetEase results (if available)

@@ -27,4 +27,7 @@ openai>=1.0.0
 # Audio fingerprinting (for track identification)
 pyacoustid>=1.2.0
 
+# Encryption for QQ Music
+pycryptodome>=3.19.0
+
 shiboken6

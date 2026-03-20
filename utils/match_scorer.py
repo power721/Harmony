@@ -158,7 +158,7 @@ class MatchScorer:
         return (best_result, best_score) if best_result else None
 
     @classmethod
-    def _title_score(cls, track_title: str, result_title: str) -> float:
+    def _title_score(cls, track_title: str, result_title) -> float:
         """
         Calculate title similarity score (0-100).
 
@@ -167,9 +167,25 @@ class MatchScorer:
         - Case-insensitive match: 95%
         - Normalized match (ignore punctuation, spaces): 90%
         - Partial match: 50-80%
+
+        Args:
+            track_title: Title from track (string)
+            result_title: Title from search result (string, dict, or list)
         """
         if not track_title or not result_title:
             return 0
+
+        # Handle dict - extract title
+        if isinstance(result_title, dict):
+            result_title = result_title.get('title', '') or result_title.get('name', '')
+            if not result_title:
+                return 0
+
+        # Handle list
+        if isinstance(result_title, list):
+            if not result_title:
+                return 0
+            result_title = str(result_title[0]) if result_title else ''
 
         # Exact match
         if track_title == result_title:
@@ -199,16 +215,26 @@ class MatchScorer:
         return cls._word_overlap_score(t_norm, r_norm)
 
     @classmethod
-    def _artist_score(cls, track_artist: str, result_artist: str) -> float:
+    def _artist_score(cls, track_artist: str, result_artist) -> float:
         """
         Calculate artist similarity score (0-100).
 
         Similar to title scoring but with some special handling:
         - Feat./& handling for multiple artists
         - Chinese/English artist name variations
+
+        Args:
+            track_artist: Artist name from track (string)
+            result_artist: Artist name from search result (string or list)
         """
         if not track_artist or not result_artist:
             return 0
+
+        # Handle list of artists - convert to comma-separated string
+        if isinstance(result_artist, list):
+            if not result_artist:
+                return 0
+            result_artist = ', '.join(str(a) for a in result_artist if a)
 
         # Exact match
         if track_artist == result_artist:
@@ -241,13 +267,29 @@ class MatchScorer:
         return cls._word_overlap_score(t_norm, r_norm)
 
     @classmethod
-    def _album_score(cls, track_album: str, result_album: str) -> float:
+    def _album_score(cls, track_album: str, result_album) -> float:
         """
         Calculate album similarity score (0-100).
+
+        Args:
+            track_album: Album name from track (string)
+            result_album: Album from search result (string, dict, or list)
         """
         if not track_album or not result_album:
             # No album info - don't penalize
             return 50
+
+        # Handle dict - extract album name
+        if isinstance(result_album, dict):
+            result_album = result_album.get('name', '') or result_album.get('title', '')
+            if not result_album:
+                return 50
+
+        # Handle list
+        if isinstance(result_album, list):
+            if not result_album:
+                return 50
+            result_album = ', '.join(str(a) for a in result_album if a)
 
         if track_album == result_album:
             return 100

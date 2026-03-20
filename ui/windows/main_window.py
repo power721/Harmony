@@ -53,7 +53,7 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
-from ui.widgets.ai_settings_dialog import AISettingsDialog
+from ui.widgets.ai_settings_dialog import GeneralSettingsDialog
 
 
 class MainWindow(QMainWindow):
@@ -403,14 +403,14 @@ class MainWindow(QMainWindow):
         self._language_btn.clicked.connect(self._toggle_language)
         layout.addWidget(self._language_btn)
 
-        # AI Settings button
-        ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-        self._ai_settings_btn = QPushButton(f"🤖 AI {ai_status}")
-        self._ai_settings_btn.setObjectName("aiSettingsBtn")
-        self._ai_settings_btn.setCursor(Qt.PointingHandCursor)
-        self._ai_settings_btn.setFixedHeight(32)
-        self._ai_settings_btn.setStyleSheet("""
-            QPushButton#aiSettingsBtn {
+        # General Settings button
+        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+        self._settings_btn = QPushButton(f"⚙️ {t('settings')} {settings_status}")
+        self._settings_btn.setObjectName("settingsBtn")
+        self._settings_btn.setCursor(Qt.PointingHandCursor)
+        self._settings_btn.setFixedHeight(32)
+        self._settings_btn.setStyleSheet("""
+            QPushButton#settingsBtn {
                 background-color: #2a2a2a;
                 color: #c0c0c0;
                 border: 2px solid #3a3a3a;
@@ -419,14 +419,14 @@ class MainWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: 500;
             }
-            QPushButton#aiSettingsBtn:hover {
+            QPushButton#settingsBtn:hover {
                 background-color: #3a3a3a;
                 border: 2px solid #1db954;
                 color: #1db954;
             }
         """)
-        self._ai_settings_btn.clicked.connect(self._show_ai_settings)
-        layout.addWidget(self._ai_settings_btn)
+        self._settings_btn.clicked.connect(self._show_settings)
+        layout.addWidget(self._settings_btn)
 
         # Add music button
         self._add_music_btn = QPushButton(t("add_music"))
@@ -1008,18 +1008,18 @@ class MainWindow(QMainWindow):
         self._artist_view.refresh_ui()
         self._album_view.refresh_ui()
 
-        # Update AI button status
-        ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-        self._ai_settings_btn.setText(f"🤖 AI {ai_status}")
+        # Update settings button status
+        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+        self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
 
-    def _show_ai_settings(self):
-        """Show AI settings dialog."""
+    def _show_settings(self):
+        """Show general settings dialog."""
 
-        dialog = AISettingsDialog(self._config, self)
+        dialog = GeneralSettingsDialog(self._config, self)
         if dialog.exec_():
-            # Update AI button status after settings change
-            ai_status = "✅" if self._config.get_ai_enabled() else "❌"
-            self._ai_settings_btn.setText(f"🤖 AI {ai_status}")
+            # Update settings button status after settings change
+            settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+            self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
 
     def show_help(self):
         """Show help dialog."""
