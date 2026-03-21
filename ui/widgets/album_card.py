@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QRect, QEasing
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 
 from domain.album import Album
+from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -145,12 +146,12 @@ class AlbumCard(QWidget):
         """)
 
         # Download cover action
-        download_action = QAction("下载封面", self)
+        download_action = QAction(t("download_cover_manual", "下载封面"), self)
         download_action.triggered.connect(lambda: self.download_cover_requested.emit(self._album))
         menu.addAction(download_action)
 
         # Play album action
-        play_action = QAction("播放专辑", self)
+        play_action = QAction(t("play_album", "播放专辑"), self)
         play_action.triggered.connect(lambda: self.clicked.emit(self._album))
         menu.addAction(play_action)
 
