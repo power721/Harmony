@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
     QStyle,
+    QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from typing import Optional
@@ -54,7 +55,7 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
-from ui.widgets.ai_settings_dialog import AISettingsDialog
+from ui.dialogs.settings_dialog import GeneralSettingsDialog
 
 
 class MainWindow(QMainWindow):
@@ -204,6 +205,8 @@ class MainWindow(QMainWindow):
 
         # Lyrics loading thread (for async loading)
         self._lyrics_thread: Optional[QThread] = None
+        # Lyrics load version - used to ignore stale thread results
+        self._lyrics_load_version: int = 0
         # Lyrics download thread (for downloading from online)
         self._lyrics_download_thread: Optional[QThread] = None
         self._lyrics_download_path: str = ""
@@ -404,13 +407,14 @@ class MainWindow(QMainWindow):
         self._language_btn.clicked.connect(self._toggle_language)
         layout.addWidget(self._language_btn)
 
-        # AI Settings button
-        self._ai_settings_btn = IconButton(IconName.ROBOT, "AI", size=16)
-        self._ai_settings_btn.setObjectName("aiSettingsBtn")
-        self._ai_settings_btn.setCursor(Qt.PointingHandCursor)
-        self._ai_settings_btn.setFixedHeight(32)
-        self._ai_settings_btn.setStyleSheet("""
-            QPushButton#aiSettingsBtn {
+        # General Settings button
+        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+        self._settings_btn = QPushButton(f"⚙️ {t('settings')} {settings_status}")
+        self._settings_btn.setObjectName("settingsBtn")
+        self._settings_btn.setCursor(Qt.PointingHandCursor)
+        self._settings_btn.setFixedHeight(32)
+        self._settings_btn.setStyleSheet("""
+            QPushButton#settingsBtn {
                 background-color: #2a2a2a;
                 color: #c0c0c0;
                 border: 2px solid #3a3a3a;
@@ -419,14 +423,14 @@ class MainWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: 500;
             }
-            QPushButton#aiSettingsBtn:hover {
+            QPushButton#settingsBtn:hover {
                 background-color: #3a3a3a;
                 border: 2px solid #1db954;
                 color: #1db954;
             }
         """)
-        self._ai_settings_btn.clicked.connect(self._show_ai_settings)
-        layout.addWidget(self._ai_settings_btn)
+        self._settings_btn.clicked.connect(self._show_settings)
+        layout.addWidget(self._settings_btn)
 
         # Add music button
         self._add_music_btn = QPushButton(t("add_music"))
@@ -514,10 +518,12 @@ class MainWindow(QMainWindow):
         self._albums_view.album_clicked.connect(self._on_album_clicked)
         self._albums_view.play_album.connect(self._play_tracks)
         self._albums_view.download_cover_requested.connect(self._on_download_album_cover)
+        self._albums_view.rename_album_requested.connect(self._on_rename_album)
 
         # Artists view connections
         self._artists_view.artist_clicked.connect(self._on_artist_clicked)
         self._artists_view.download_cover_requested.connect(self._on_download_artist_cover)
+        self._artists_view.rename_artist_requested.connect(self._on_rename_artist)
 
         # Artist view connections
         self._artist_view.play_tracks.connect(self._play_tracks)
@@ -729,7 +735,7 @@ class MainWindow(QMainWindow):
 
     def _on_download_album_cover(self, album):
         """Handle download album cover request."""
-        from ui.widgets.album_cover_download_dialog import AlbumCoverDownloadDialog
+        from ui.dialogs.album_cover_download_dialog import AlbumCoverDownloadDialog
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
@@ -781,7 +787,7 @@ class MainWindow(QMainWindow):
 
     def _on_download_artist_cover(self, artist):
         """Handle download artist cover request."""
-        from ui.widgets.artist_cover_download_dialog import ArtistCoverDownloadDialog
+        from ui.dialogs.artist_cover_download_dialog import ArtistCoverDownloadDialog
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
@@ -797,6 +803,50 @@ class MainWindow(QMainWindow):
             self._artists_view._list_view.viewport().update()
 
         dialog.cover_saved.connect(on_cover_saved)
+        dialog.exec()
+
+    def _on_rename_artist(self, artist):
+        """Handle rename artist request."""
+        from ui.dialogs.artist_rename_dialog import ArtistRenameDialog
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        dialog = ArtistRenameDialog(
+            artist,
+            bootstrap.library_service,
+            self
+        )
+
+        def on_artist_renamed(old_name, new_name):
+            # Refresh the artists view
+            self._artists_view.refresh()
+            # Clear cover cache
+            self._artists_view._delegate.clear_cache()
+            self._artists_view._list_view.viewport().update()
+
+        dialog.artist_renamed.connect(on_artist_renamed)
+        dialog.exec()
+
+    def _on_rename_album(self, album):
+        """Handle rename album request."""
+        from ui.dialogs.album_rename_dialog import AlbumRenameDialog
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        dialog = AlbumRenameDialog(
+            album,
+            bootstrap.library_service,
+            self
+        )
+
+        def on_album_renamed(old_name, artist, new_name):
+            # Refresh the albums view
+            self._albums_view.refresh()
+            # Clear cover cache
+            self._albums_view._delegate.clear_cache()
+            self._albums_view._list_view.viewport().update()
+
+        dialog.album_renamed.connect(on_album_renamed)
         dialog.exec()
 
     def _play_tracks(self, tracks):
@@ -1008,25 +1058,22 @@ class MainWindow(QMainWindow):
         self._artist_view.refresh_ui()
         self._album_view.refresh_ui()
 
-        # Update AI button status
-        self._update_ai_button_status()
+        # Update settings button status
+        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+        self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
 
-    def _update_ai_button_status(self):
-        """Update AI button with current status icon."""
-        status_icon = IconName.CHECK if self._config.get_ai_enabled() else IconName.TIMES
-        set_button_icon(self._ai_settings_btn, IconName.ROBOT, 16)
+    def _show_settings(self):
+        """Show general settings dialog."""
 
-    def _show_ai_settings(self):
-        """Show AI settings dialog."""
-
-        dialog = AISettingsDialog(self._config, self)
+        dialog = GeneralSettingsDialog(self._config, self)
         if dialog.exec_():
-            # Update AI button status after settings change
-            self._update_ai_button_status()
+            # Update settings button status after settings change
+            settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
+            self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
 
     def show_help(self):
         """Show help dialog."""
-        from ui.widgets.help_dialog import HelpDialog
+        from ui.dialogs.help_dialog import HelpDialog
 
         dialog = HelpDialog(self)
         dialog.exec_()
@@ -1193,24 +1240,45 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle(self._original_title)
 
     def _load_lyrics_async(self, path: str, title: str, artist: str):
-        """Load lyrics asynchronously."""
-        # Cancel previous lyrics loading if any
+        """Load lyrics asynchronously.
+
+        Uses version-based mechanism to avoid blocking UI.
+        Old threads are allowed to finish but their results are ignored.
+        """
+        # Increment version to invalidate any pending results
+        self._lyrics_load_version += 1
+        current_version = self._lyrics_load_version
+
+        # Request interruption on old thread (non-blocking)
         if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
             self._lyrics_thread.requestInterruption()
-            self._lyrics_thread.quit()
-            if not self._lyrics_thread.wait(500):  # Wait up to 500ms
-                self._lyrics_thread.terminate()  # Force terminate if not responding
-                self._lyrics_thread.wait()
+            # Don't wait - let it finish naturally and be cleaned up in finished handler
 
         # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
         self._lyrics_thread = LyricsLoader(path, title, artist)
+        # Store version with the thread for result validation
+        self._lyrics_thread._load_version = current_version
 
         # Connect signals
-        self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
+        self._lyrics_thread.lyrics_ready.connect(
+            lambda lyrics: self._on_lyrics_ready_v2(lyrics, current_version)
+        )
         self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
 
         # Start loading
         self._lyrics_thread.start()
+
+    def _on_lyrics_ready_v2(self, lyrics: str, version: int):
+        """Handle lyrics loaded asynchronously with version check."""
+        # Ignore if this is from an old thread
+        if version != self._lyrics_load_version:
+            logger.debug(f"[MainWindow] Ignoring stale lyrics result (version {version}, current {self._lyrics_load_version})")
+            return
+
+        if lyrics:
+            self._lyrics_view.set_lyrics(lyrics)
+        else:
+            self._lyrics_view.set_lyrics(t("no_lyrics"))
 
     def _on_lyrics_thread_finished(self):
         """Handle lyrics thread finished."""
@@ -1219,16 +1287,9 @@ class MainWindow(QMainWindow):
             self._lyrics_thread.deleteLater()
             self._lyrics_thread = None
 
-    def _on_lyrics_ready(self, lyrics: str):
-        """Handle lyrics loaded asynchronously."""
-        if lyrics:
-            self._lyrics_view.set_lyrics(lyrics)
-        else:
-            self._lyrics_view.set_lyrics(t("no_lyrics"))
-
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""
-        from ui.widgets.lyrics_download_dialog import LyricsDownloadDialog
+        from ui.dialogs.lyrics_download_dialog import LyricsDownloadDialog
 
         # Get current track
         current_item = self._playback.current_track
@@ -1801,13 +1862,81 @@ class MainWindow(QMainWindow):
 
     def _add_tracks_to_playlist(self, tracks: list):
         """Add Track objects to a playlist."""
-        from ui.widgets.add_to_playlist_dialog import AddToPlaylistDialog
+        from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
         from app.bootstrap import Bootstrap
+
+        # Get track IDs from Track objects
+        track_ids = [t.id for t in tracks if t.id]
+        if not track_ids:
+            return
 
         bootstrap = Bootstrap.instance()
         dialog = AddToPlaylistDialog(bootstrap.library_service, self)
-        dialog.set_tracks(tracks)
-        dialog.exec()
+
+        # Check if there are playlists
+        if not dialog.has_playlists():
+            dialog.deleteLater()
+            reply = QMessageBox.question(
+                self,
+                t("no_playlists"),
+                t("no_playlists_message"),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self._nav_playlists.click()
+            return
+
+        # If only one playlist, add directly without showing dialog
+        if dialog.has_single_playlist():
+            playlist_name = dialog.get_single_playlist()
+            dialog.deleteLater()
+            playlists = bootstrap.library_service.get_all_playlists()
+            playlist = next((p for p in playlists if p.name == playlist_name), None)
+            if playlist:
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
+
+                if duplicate_count == 0:
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                    QMessageBox.information(self, t("success"), msg)
+                elif added_count == 0:
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                    QMessageBox.warning(self, t("duplicate"), msg)
+                else:
+                    msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                    QMessageBox.information(self, t("partially_added"), msg)
+            return
+
+        dialog.set_track_ids(track_ids)
+
+        if dialog.exec() == QDialog.Accepted:
+            playlist_name = dialog.get_selected_playlist()
+            if playlist_name:
+                playlists = bootstrap.library_service.get_all_playlists()
+                playlist = next((p for p in playlists if p.name == playlist_name), None)
+                if playlist:
+                    added_count = 0
+                    duplicate_count = 0
+                    for track_id in track_ids:
+                        if self._db.add_track_to_playlist(playlist.id, track_id):
+                            added_count += 1
+                        else:
+                            duplicate_count += 1
+
+                    if duplicate_count == 0:
+                        msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                        QMessageBox.information(self, t("success"), msg)
+                    elif added_count == 0:
+                        msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                        QMessageBox.warning(self, t("duplicate"), msg)
+                    else:
+                        msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                        QMessageBox.information(self, t("partially_added"), msg)
 
     def _on_position_changed(self, position_ms):
         """Handle playback position change."""
@@ -2051,23 +2180,6 @@ class MainWindow(QMainWindow):
                     print(f"[DEBUG] Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
 
                     def restore_cloud_state():
-                        # Switch to cloud drive view
-                        # self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
-                        #
-                        # # Update sidebar selection
-                        # if hasattr(self, '_nav_cloud'):
-                        #     self._nav_cloud.setChecked(True)
-                        # if hasattr(self, '_nav_library'):
-                        #     self._nav_library.setChecked(False)
-                        # if hasattr(self, '_nav_playlists'):
-                        #     self._nav_playlists.setChecked(False)
-                        # if hasattr(self, '_nav_queue'):
-                        #     self._nav_queue.setChecked(False)
-                        # if hasattr(self, '_nav_favorites'):
-                        #     self._nav_favorites.setChecked(False)
-                        # if hasattr(self, '_nav_history'):
-                        #     self._nav_history.setChecked(False)
-
                         # Extract parent_id from last_fid_path
                         # last_fid_path is like "/fid1/fid2/fid3", we need the last segment
                         fid_path = account.last_fid_path or "0"

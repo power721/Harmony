@@ -360,7 +360,10 @@ class LyricsDownloadDialog(QDialog):
 
         # Only show album if it exists, is not empty, and is not "-"
         album = result.get('album', '')
-        if album and album.strip() and album.strip() != '-':
+        # Handle case where album might be a dict
+        if isinstance(album, dict):
+            album = album.get('name', '')
+        if album and isinstance(album, str) and album.strip() and album.strip() != '-':
             item_text += f" ({album})"
 
         # Add duration for LRCLIB and NetEase results (if available)
@@ -370,10 +373,12 @@ class LyricsDownloadDialog(QDialog):
             seconds = int(duration % 60)
             item_text += f" [{minutes}:{seconds:02d}]"
 
-        # Source name with YRC indicator
+        # Source name with YRC/QRC indicator
         source = result['source']
         if result.get('supports_yrc'):
             source = f"{source} YRC"  # Indicate YRC (word-by-word) support
+        elif result.get('supports_qrc'):
+            source = f"{source} QRC"  # Indicate QRC (word-by-word) support for QQ Music
         item_text += f" [{source}]"
 
         # Score at the end

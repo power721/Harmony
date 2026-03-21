@@ -49,6 +49,12 @@ class SettingKey:
     ACOUSTID_ENABLED = "acoustid.enabled"
     ACOUSTID_API_KEY = "acoustid.api_key"
 
+    # QQ Music settings
+    QQMUSIC_MUSICID = "qqmusic.musicid"
+    QQMUSIC_MUSICKEY = "qqmusic.musickey"
+    QQMUSIC_LOGIN_TYPE = "qqmusic.login_type"
+    QQMUSIC_CREDENTIAL = "qqmusic.credential"  # Full credential JSON
+
 
 class ConfigManager:
     """
@@ -484,3 +490,76 @@ class ConfigManager:
             api_key: AcoustID API key string
         """
         self.set(SettingKey.ACOUSTID_API_KEY, api_key)
+
+    # ===== QQ Music settings =====
+
+    def get_qqmusic_credential(self) -> Optional[dict]:
+        """
+        Get QQ Music credentials.
+
+        Returns:
+            Dict with credential data or None if not configured
+        """
+        # Try to get full credential JSON first
+        import json
+        credential_data = self.get(SettingKey.QQMUSIC_CREDENTIAL)
+        if credential_data:
+            # Handle both dict (already parsed) and string (JSON)
+            if isinstance(credential_data, dict):
+                cred = credential_data
+            else:
+                try:
+                    cred = json.loads(credential_data)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to parse QQ Music credential JSON: {e}")
+                    cred = None
+
+            if cred and cred.get('musicid') and cred.get('musickey'):
+                return cred
+
+        # Fallback to individual fields
+        musicid = self.get(SettingKey.QQMUSIC_MUSICID)
+        musickey = self.get(SettingKey.QQMUSIC_MUSICKEY)
+        login_type = self.get(SettingKey.QQMUSIC_LOGIN_TYPE, 2)
+
+        if musicid and musickey:
+            return {
+                'musicid': musicid,
+                'musickey': musickey,
+                'login_type': login_type
+            }
+        return None
+
+    def set_qqmusic_credential(self, credential: dict):
+        """
+        Set QQ Music credentials.
+
+        Args:
+            credential: Dict with credential data (can be full credential or just musicid/musickey)
+        """
+        import json
+
+        # Handle both full credential dict and simple credential
+        musicid = credential.get('musicid') or credential.get('str_musicid', '')
+        musickey = credential.get('musickey', '')
+        # Support both snake_case (login_type) and camelCase (loginType)
+        login_type = credential.get('login_type') or credential.get('loginType', 2)
+
+        # Save individual fields for backward compatibility
+        self.set(SettingKey.QQMUSIC_MUSICID, str(musicid) if musicid else '')
+        self.set(SettingKey.QQMUSIC_MUSICKEY, musickey)
+        self.set(SettingKey.QQMUSIC_LOGIN_TYPE, login_type)
+
+        # Save full credential JSON
+        try:
+            self.set(SettingKey.QQMUSIC_CREDENTIAL, json.dumps(credential, ensure_ascii=False))
+        except:
+            pass
+
+    def clear_qqmusic_credential(self):
+        """Clear QQ Music credentials."""
+        self.delete(SettingKey.QQMUSIC_MUSICID)
+        self.delete(SettingKey.QQMUSIC_MUSICKEY)
+        self.delete(SettingKey.QQMUSIC_LOGIN_TYPE)
+        self.delete(SettingKey.QQMUSIC_CREDENTIAL)

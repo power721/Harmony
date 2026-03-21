@@ -1274,7 +1274,12 @@ class CoverService:
                     # Calculate match score
                     score = self._calculate_artist_name_score(artist_name, name)
 
-                    cover_url = self.convert(cover_url)
+                    # Only convert if cover_url is valid, otherwise leave empty for lazy loading
+                    if cover_url:
+                        cover_url = self.convert(cover_url)
+                    else:
+                        cover_url = None  # Will be lazy loaded via singer_mid
+
                     results.append({
                         'name': name,
                         'id': singer_mid,

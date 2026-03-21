@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 
 from domain.artist import Artist
+from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class ArtistCard(QWidget):
         self._name_label.setWordWrap(True)
 
         # Song count
-        song_count_text = f"{self._artist.song_count} songs"
+        song_count_text = t("songs_count", "{count} songs").replace("{count}", str(self._artist.song_count))
         self._count_label = QLabel(song_count_text)
         self._count_label.setAlignment(Qt.AlignCenter)
         self._count_label.setStyleSheet("""
@@ -140,12 +141,12 @@ class ArtistCard(QWidget):
         """)
 
         # Download cover action
-        download_action = QAction("下载封面", self)
+        download_action = QAction(t("download_cover_manual", "下载封面"), self)
         download_action.triggered.connect(lambda: self.download_cover_requested.emit(self._artist))
         menu.addAction(download_action)
 
         # View artist action
-        view_action = QAction("查看歌手", self)
+        view_action = QAction(t("view_artist", "查看歌手"), self)
         view_action.triggered.connect(lambda: self.clicked.emit(self._artist))
         menu.addAction(view_action)
 

@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch, MagicMock
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 
-from ui.widgets import TrackCoverDownloadDialog, CoverDownloadDialog
+from ui.dialogs import TrackCoverDownloadDialog, CoverDownloadDialog
 from domain.track import Track
 from services.metadata import CoverService
 
@@ -98,7 +98,7 @@ class TestCoverDownloadDialog:
         assert hasattr(dialog, 'results_list')
         assert dialog.results_list is not None
 
-    @patch('ui.widgets.track_cover_download_dialog.CoverSearchThread')
+    @patch('ui.dialogs.track_cover_download_dialog.CoverSearchThread')
     def test_search_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
         """Test that search button starts search thread."""
         dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)

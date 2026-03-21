@@ -228,6 +228,7 @@ class ArtistsView(QWidget):
 
     artist_clicked = Signal(object)  # Emits Artist object
     download_cover_requested = Signal(object)  # Emits Artist object
+    rename_artist_requested = Signal(object)  # Emits Artist object
 
     MARGIN = 20
 
@@ -474,6 +475,13 @@ class ArtistsView(QWidget):
         view_action = QAction(t("view_details"), self)
         view_action.triggered.connect(lambda: self.artist_clicked.emit(artist))
         menu.addAction(view_action)
+
+        # Rename action
+        rename_action = QAction(t("rename"), self)
+        rename_action.triggered.connect(lambda: self.rename_artist_requested.emit(artist))
+        menu.addAction(rename_action)
+
+        menu.addSeparator()
 
         # Download cover action
         download_action = QAction(t("download_cover_manual"), self)

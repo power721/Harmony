@@ -270,3 +270,164 @@ class LibraryService:
     def get_artist_by_name(self, artist_name: str) -> Optional[Artist]:
         """Get a specific artist by name."""
         return self._track_repo.get_artist_by_name(artist_name)
+
+    def rename_artist(self, old_name: str, new_name: str) -> dict:
+        """
+        Rename an artist and update all associated tracks.
+
+        This will:
+        1. Update artist metadata in all audio files
+        2. Update database records
+        3. Rebuild albums/artists cache tables
+        4. Handle merge scenario if new_name already exists
+
+        Args:
+            old_name: Current artist name
+            new_name: New artist name
+
+        Returns:
+            Dict with 'updated_tracks', 'errors', 'merged' keys
+        """
+        if not old_name or not new_name:
+            return {'updated_tracks': 0, 'errors': ['Empty name provided'], 'merged': False}
+
+        if old_name == new_name:
+            return {'updated_tracks': 0, 'errors': ['Names are identical'], 'merged': False}
+
+        # Check if new_name already exists (merge scenario)
+        existing_artist = self._track_repo.get_artist_by_name(new_name)
+        is_merge = existing_artist is not None
+
+        # Get all tracks for the old artist
+        tracks = self._track_repo.get_artist_tracks(old_name)
+        if not tracks:
+            return {'updated_tracks': 0, 'errors': ['Artist not found'], 'merged': False}
+
+        updated_count = 0
+        errors = []
+
+        for track in tracks:
+            try:
+                # Update file metadata
+                success = MetadataService.save_metadata(
+                    track.path,
+                    title=track.title,
+                    artist=new_name,
+                    album=track.album
+                )
+
+                if success:
+                    # Update database
+                    updated_track = Track(
+                        id=track.id,
+                        path=track.path,
+                        title=track.title,
+                        artist=new_name,
+                        album=track.album,
+                        duration=track.duration,
+                        cover_path=track.cover_path,
+                        cloud_file_id=track.cloud_file_id
+                    )
+                    self._track_repo.update(updated_track)
+
+                    # Emit metadata_updated signal
+                    self._event_bus.metadata_updated.emit(track.id)
+                    updated_count += 1
+                else:
+                    errors.append(f"Failed to save metadata: {track.path}")
+            except Exception as e:
+                errors.append(f"Error processing {track.path}: {str(e)}")
+                logger.error(f"Error renaming artist for track {track.id}: {e}")
+
+        # Rebuild albums and artists cache tables
+        if updated_count > 0 and self._db:
+            self._db.rebuild_albums_artists()
+            # Notify UI to refresh
+            self._event_bus.tracks_added.emit(0)
+
+        return {
+            'updated_tracks': updated_count,
+            'errors': errors,
+            'merged': is_merge
+        }
+
+    def rename_album(self, old_name: str, artist: str, new_name: str) -> dict:
+        """
+        Rename an album and update all associated tracks.
+
+        This will:
+        1. Update album metadata in all audio files
+        2. Update database records
+        3. Rebuild albums/artists cache tables
+        4. Handle merge scenario if new_name already exists for this artist
+
+        Args:
+            old_name: Current album name
+            artist: Artist name (albums are identified by name + artist)
+            new_name: New album name
+
+        Returns:
+            Dict with 'updated_tracks', 'errors', 'merged' keys
+        """
+        if not old_name or not new_name:
+            return {'updated_tracks': 0, 'errors': ['Empty name provided'], 'merged': False}
+
+        if old_name == new_name:
+            return {'updated_tracks': 0, 'errors': ['Names are identical'], 'merged': False}
+
+        # Get all tracks for this album
+        tracks = self._track_repo.get_album_tracks(old_name, artist)
+        if not tracks:
+            return {'updated_tracks': 0, 'errors': ['Album not found'], 'merged': False}
+
+        # Check if new_name already exists for this artist (merge scenario)
+        existing_tracks = self._track_repo.get_album_tracks(new_name, artist)
+        is_merge = len(existing_tracks) > 0
+
+        updated_count = 0
+        errors = []
+
+        for track in tracks:
+            try:
+                # Update file metadata
+                success = MetadataService.save_metadata(
+                    track.path,
+                    title=track.title,
+                    artist=track.artist,
+                    album=new_name
+                )
+
+                if success:
+                    # Update database
+                    updated_track = Track(
+                        id=track.id,
+                        path=track.path,
+                        title=track.title,
+                        artist=track.artist,
+                        album=new_name,
+                        duration=track.duration,
+                        cover_path=track.cover_path,
+                        cloud_file_id=track.cloud_file_id
+                    )
+                    self._track_repo.update(updated_track)
+
+                    # Emit metadata_updated signal
+                    self._event_bus.metadata_updated.emit(track.id)
+                    updated_count += 1
+                else:
+                    errors.append(f"Failed to save metadata: {track.path}")
+            except Exception as e:
+                errors.append(f"Error processing {track.path}: {str(e)}")
+                logger.error(f"Error renaming album for track {track.id}: {e}")
+
+        # Rebuild albums and artists cache tables
+        if updated_count > 0 and self._db:
+            self._db.rebuild_albums_artists()
+            # Notify UI to refresh
+            self._event_bus.tracks_added.emit(0)
+
+        return {
+            'updated_tracks': updated_count,
+            'errors': errors,
+            'merged': is_merge
+        }

@@ -54,6 +54,9 @@ class Bootstrap:
         self._cover_service: Optional[CoverService] = None
         self._file_org_service: Optional["FileOrganizationService"] = None
 
+        # QQ Music client
+        self._qqmusic_client: Optional["QQMusicClient"] = None
+
     @classmethod
     def instance(cls) -> "Bootstrap":
         """Get singleton instance."""
@@ -178,4 +181,21 @@ class Bootstrap:
                 db_manager=self.db,
             )
         return self._file_org_service
+
+    # ===== QQ Music =====
+
+    @property
+    def qqmusic_client(self) -> "QQMusicClient":
+        """Get QQ Music client."""
+        if self._qqmusic_client is None:
+            from services.lyrics.qqmusic_lyrics import QQMusicClient
+            self._qqmusic_client = QQMusicClient()
+        return self._qqmusic_client
+
+    def refresh_qqmusic_client(self):
+        """Refresh QQ Music client (call after login)."""
+        from services.lyrics.qqmusic_lyrics import QQMusicClient
+        self._qqmusic_client = QQMusicClient()
+        logger.info("QQ Music client refreshed")
+        return self._qqmusic_client
 

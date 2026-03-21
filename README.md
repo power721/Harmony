@@ -17,6 +17,14 @@
 - **智能下载** - 自动下载云盘音乐到本地缓存
 - **混合播放** - 本地音乐和云盘音乐无缝切换
 
+### 🎧 QQ音乐集成
+- **本地扫码登录** - 支持 QQ 和微信两种登录方式
+- **二维码登录** - 自动生成二维码，手机扫码即可登录
+- **凭证管理** - 自动保存登录凭证
+- **多音质支持** - 支持多种音质（母带、全景声、无损、MP3）
+- **歌词获取** - 支持翻译歌词和逐字歌词
+- **封面获取** - 直接获取专辑封面和歌手图片 URL
+
 ### 📋 播放列表管理
 - **自定义播放列表** - 创建和管理播放列表
 - **播放队列** - 实时查看和管理当前播放队列
@@ -99,6 +107,8 @@ qrcode[pil]==8.2            # 二维码生成
 openai>=1.0.0               # AI 元数据增强
 opencc-python-reimplemented==0.1.7  # 繁简转换
 pyacoustid>=1.2.0           # 音频指纹识别
+qqmusic-api-python>=0.3.6   # QQ音乐 API（可选）
+pycryptodome>=3.19.0        # 加密解密（QQ音乐）
 shiboken6                   # Python-C++ 绑定
 ```
 
@@ -118,6 +128,15 @@ shiboken6                   # Python-C++ 绑定
 3. 使用手机夸克网盘 APP 扫描二维码登录
 4. 浏览云盘文件夹，点击音乐文件开始播放
 5. 音乐将自动下载到本地缓存目录
+
+### QQ音乐登录
+
+1. 进入设置 -> QQ音乐配置
+2. 点击"扫码登录"按钮
+3. 选择登录方式：QQ 或微信
+4. 使用手机 QQ 或微信扫描二维码
+5. 在手机上确认登录
+6. 登录成功后凭证会自动保存
 
 ### 播放控制
 
@@ -220,7 +239,12 @@ Harmony/
 │   │   └── cover_service.py
 │   ├── cloud/             # 云盘服务
 │   │   ├── quark_service.py
-│   │   └── download_service.py
+│   │   ├── download_service.py
+│   │   └── qqmusic/       # QQ音乐服务
+│   │       ├── qqmusic_service.py
+│   │       ├── client.py
+│   │       ├── crypto.py
+│   │       └── common.py
 │   └── ai/                # AI 服务
 │       ├── ai_metadata_service.py
 │       └── acoustid_service.py
@@ -248,8 +272,9 @@ Harmony/
 │       ├── cover_download_dialog.py
 │       ├── album_cover_download_dialog.py
 │       ├── artist_cover_download_dialog.py
-│       ├── ai_settings_dialog.py
+│       ├── settings_dialog.py
 │       ├── cloud_login_dialog.py
+│       ├── qqmusic_qr_login_dialog.py
 │       ├── equalizer_widget.py
 │       ├── help_dialog.py
 │       ├── album_card.py
@@ -435,6 +460,12 @@ A: 请确保：
 - 已成功登录夸克网盘账号
 - 网络连接正常
 - 云盘文件是支持的音频格式
+
+### Q: QQ音乐登录失败？
+A: 检查：
+- 网络连接是否正常
+- 是否安装了 `qqmusic-api-python` 依赖
+- 二维码是否已过期（有效期约 2 分钟）
 
 ### Q: 歌词无法显示？
 A: 检查：
