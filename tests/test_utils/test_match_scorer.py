@@ -32,7 +32,8 @@ class TestMatchScorer:
 
         score = MatchScorer.calculate_score(track, result)
         # Should match after normalization (normalized strings match)
-        assert score >= 80
+        # With duration weight=40, missing duration (50% score) reduces total
+        assert score >= 70
 
     def test_duration_match_within_tolerance(self):
         """Test duration match within tolerance."""
@@ -53,13 +54,13 @@ class TestMatchScorer:
         assert score < 95
 
     def test_no_duration_info(self):
-        """Test that missing duration doesn't penalize."""
+        """Test that missing duration doesn't penalize heavily."""
         track = TrackInfo(title="Song", artist="Artist", album="Album", duration=None)
         result = SearchResult(title="Song", artist="Artist", album="Album", duration=None, source="netease", id="1")
 
         score = MatchScorer.calculate_score(track, result)
-        # Should get 50% duration score (neutral)
-        assert score >= 85
+        # Should get 50% duration score (neutral), with new weights: 25+25+10+20=80
+        assert score >= 80
 
     def test_find_best_match(self):
         """Test finding best match from multiple results."""
@@ -124,8 +125,8 @@ class TestMatchScorer:
         score = MatchScorer.calculate_score(track, result)
         assert score == 100.0
 
-    def test_lyrics_mode_title_highest_weight(self):
-        """Test lyrics mode where title has highest weight."""
+    def test_lyrics_mode_duration_highest_weight(self):
+        """Test lyrics mode where duration has highest weight."""
         track = TrackInfo(title="SongA", artist="ArtistA", album="AlbumA", duration=180)
 
         # Result with matching title but wrong album
@@ -136,9 +137,9 @@ class TestMatchScorer:
         score1 = MatchScorer.calculate_score(track, result1, mode='lyrics')
         score2 = MatchScorer.calculate_score(track, result2, mode='lyrics')
 
-        # In lyrics mode, title match should win (title weight=40, album weight=15)
-        # result1: title=100, artist=100, album=50, duration=100 -> 40+30+7.5+15=92.5
-        # result2: title=0, artist=100, album=100, duration=100 -> 0+30+15+15=60
+        # In lyrics mode, title match should win (title weight=25, album weight=10)
+        # result1: title=100, artist=100, album=50, duration=100 -> 25+25+5+40=95
+        # result2: title=0, artist=100, album=100, duration=100 -> 0+25+10+40=75
         assert score1 > score2
 
     def test_cover_mode_album_highest_weight(self):
@@ -154,8 +155,8 @@ class TestMatchScorer:
         score2 = MatchScorer.calculate_score(track, result2, mode='cover')
 
         # In cover mode, album match should win (title weight=15, album weight=40)
-        # result1: title=100, artist=100, album=50, duration=100 -> 15+30+20+15=80
-        # result2: title=0, artist=100, album=100, duration=100 -> 0+30+40+15=85
+        # result1: title=100, artist=100, album=50, duration=100 -> 15+25+20+20=80
+        # result2: title=0, artist=100, album=100, duration=100 -> 0+25+40+20=85
         assert score2 > score1
 
     def test_find_best_match_with_mode(self):

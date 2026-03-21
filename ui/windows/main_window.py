@@ -1128,6 +1128,7 @@ class MainWindow(QMainWindow):
             artist = track_item.artist
             path = track_item.local_path
             is_cloud = track_item.is_cloud
+            needs_metadata = track_item.needs_metadata
         elif isinstance(track_item, int):
             # Handle case where track_item is just an ID
             track_id = track_item
@@ -1136,6 +1137,7 @@ class MainWindow(QMainWindow):
             artist = ""
             path = ""
             is_cloud = False
+            needs_metadata = False
         else:
             track_dict = track_item
             track_id = track_dict.get("id") if track_dict else None
@@ -1143,6 +1145,7 @@ class MainWindow(QMainWindow):
             artist = track_dict.get("artist", "") if track_dict else ""
             path = track_dict.get("path", "") if track_dict else ""
             is_cloud = not track_id or track_id < 0
+            needs_metadata = track_dict.get("needs_metadata", False) if track_dict else False
 
         # Sync selection in both library and queue views
         if track_id and track_id > 0:
@@ -1160,6 +1163,12 @@ class MainWindow(QMainWindow):
 
         # Skip loading lyrics for cloud files without local path
         if not path or path.strip() in ('', '.', '/'):
+            return
+
+        # Skip loading lyrics only if metadata is pending AND file is being downloaded
+        # If local_path exists, try to load lyrics (will retry after metadata update if needed)
+        if needs_metadata and is_cloud and not track_id:
+            logger.debug(f"[MainWindow] Skipping lyrics load, metadata pending for: {title}")
             return
 
         # Load lyrics asynchronously using LyricsLoader

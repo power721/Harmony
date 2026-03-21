@@ -40,32 +40,34 @@ class MatchScorer:
     Calculate match score between track info and search result.
 
     Scoring factors:
-    - Title similarity (0-40 points)
-    - Artist similarity (0-30 points)
-    - Album similarity (0-15 points)
-    - Duration match (0-15 points)
+    - Duration match (0-40 points) - highest weight
+    - Title similarity (0-25 points)
+    - Artist similarity (0-25 points)
+    - Album similarity (0-10 points)
 
     Total max score: 100 points
 
+    Duration tolerance: ±5 seconds for strict matching
+
     Match modes:
-    - 'lyrics': Title has highest weight (default for lyrics matching)
+    - 'lyrics': Duration has highest weight (default for lyrics matching)
     - 'cover': Album has highest weight (default for cover matching)
     """
 
-    # Default scoring weights (for lyrics mode - title highest)
-    TITLE_WEIGHT = 35
-    ARTIST_WEIGHT = 30
-    ALBUM_WEIGHT = 15
-    DURATION_WEIGHT = 20
+    # Default scoring weights (duration highest for better matching)
+    TITLE_WEIGHT = 25
+    ARTIST_WEIGHT = 25
+    ALBUM_WEIGHT = 10
+    DURATION_WEIGHT = 40
 
     # Weights for cover matching (album highest)
     COVER_TITLE_WEIGHT = 15
-    COVER_ARTIST_WEIGHT = 30
-    COVER_ALBUM_WEIGHT = 35
+    COVER_ARTIST_WEIGHT = 25
+    COVER_ALBUM_WEIGHT = 40
     COVER_DURATION_WEIGHT = 20
 
-    # Duration tolerance in seconds (±30 seconds)
-    DURATION_TOLERANCE = 30
+    # Duration tolerance in seconds (±5 seconds for stricter matching)
+    DURATION_TOLERANCE = 5
 
     @classmethod
     def calculate_score(cls, track: TrackInfo, result: SearchResult, mode: str = 'lyrics') -> float:

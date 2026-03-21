@@ -575,7 +575,20 @@ class LyricsService:
 
         # Fall back to online sources (only if enabled)
         if cls.ENABLE_ONLINE:
-            lyrics = cls._get_online_lyrics(title, artist, album, duration)
+            # If title looks like a filename, try to parse artist and title from it
+            search_title = title
+            search_artist = artist
+
+            from utils.helpers import is_filename_like, parse_filename_as_metadata
+            if is_filename_like(title) or (not artist and ' - ' in title):
+                parsed_artist, parsed_title = parse_filename_as_metadata(title)
+                if parsed_title:
+                    search_title = parsed_title
+                    if parsed_artist:
+                        search_artist = parsed_artist
+                    logger.info(f"[LyricsService] Parsed filename: '{title}' -> artist='{search_artist}', title='{search_title}'")
+
+            lyrics = cls._get_online_lyrics(search_title, search_artist, album, duration)
             if lyrics:
                 cls.save_lyrics(track_path, lyrics)
                 return lyrics

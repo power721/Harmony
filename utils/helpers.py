@@ -112,3 +112,70 @@ def format_count_message(key: str, count: int) -> str:
     plural_suffix = 's' if count > 1 else ''
 
     return template.format(count=count, s=plural_suffix)
+
+
+def parse_filename_as_metadata(filename: str) -> Tuple[str, str]:
+    """
+    Parse a filename to extract artist and title.
+
+    Common formats:
+    - "Artist - Title.flac"
+    - "Artist - Title (伴奏).flac"
+    - "Artist - Title[网站].flac"
+
+    Args:
+        filename: The filename (with or without extension)
+
+    Returns:
+        Tuple of (artist, title) - may be empty strings if parsing fails
+    """
+    import re
+    from pathlib import Path
+
+    # Remove extension if present
+    name = Path(filename).stem
+
+    # Pattern: "Artist - Title" with optional suffix like "(伴奏)" or "[网站]"
+    # Common separator: " - " or "-"
+    pattern = r'^(.+?)\s*-\s*(.+)$'
+    match = re.match(pattern, name)
+
+    if match:
+        artist = match.group(1).strip()
+        title = match.group(2).strip()
+
+        # Clean common suffixes from title
+        # Remove content in brackets like [putaojie.com], [www.xxx.com]
+        title = re.sub(r'\[[^\]]+\]', '', title).strip()
+        # Remove content in parentheses like (伴奏), (Inst.)
+        title = re.sub(r'\([^)]*\)', '', title).strip()
+
+        return artist, title
+
+    return "", name  # Return filename as title if no pattern match
+
+
+def is_filename_like(title: str) -> bool:
+    """
+    Check if a title looks like a filename rather than proper metadata.
+
+    Args:
+        title: The title to check
+
+    Returns:
+        True if it looks like a filename
+    """
+    if not title:
+        return False
+
+    # Common file extensions
+    extensions = ['.mp3', '.flac', '.m4a', '.wav', '.ogg', '.wma', '.ape', '.aac']
+    title_lower = title.lower()
+    if any(title_lower.endswith(ext) for ext in extensions):
+        return True
+
+    # Check for common filename patterns like [网站], (伴奏) at the end
+    if '[' in title and ']' in title:
+        return True
+
+    return False

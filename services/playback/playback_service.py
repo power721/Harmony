@@ -559,6 +559,12 @@ class PlaybackService(QObject):
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
 
+            # Re-emit track_changed with updated metadata for lyrics search
+            # This ensures lyrics are searched with correct title/artist from metadata
+            current_item = self._engine.current_playlist_item
+            if current_item and track:
+                self._event_bus.emit_track_change(current_item)
+
         # Save queue to persist the updated metadata
         self.save_queue()
 
