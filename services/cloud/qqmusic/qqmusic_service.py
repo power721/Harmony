@@ -322,11 +322,22 @@ class QQMusicService:
                 logger.warning(f"Playlist {playlist_id} returned empty result")
                 return None
 
-            logger.debug(f"Playlist result keys: {result.keys()}")
-            logger.debug(f"Playlist result: title={result.get('title')}, dissname={result.get('dissname')}, name={result.get('name')}")
+            logger.info(f"Playlist raw result: {result}")
 
-            # Parse response - new API format
-            all_songs = result.get('songlist', []) or result.get('songs', []) or result.get('data', {}).get('song', []) or []
+            # Check for nested data structure
+            # Some APIs return: { code: 0, data: { dissname: ..., songlist: ... } }
+            # Others return directly: { dissname: ..., songlist: ... }
+            if 'data' in result and isinstance(result.get('data'), dict):
+                inner_data = result.get('data', {})
+                if inner_data.get('dissname') or inner_data.get('songlist'):
+                    result = inner_data
+                    logger.info(f"Using nested data structure")
+
+            logger.info(f"Playlist dissname: {result.get('dissname')}")
+            logger.info(f"Playlist songlist count: {len(result.get('songlist', []))}")
+
+            # Parse response
+            all_songs = result.get('songlist', []) or result.get('songs', []) or []
             total_songs = len(all_songs)
 
             logger.info(f"Playlist {playlist_id} has {total_songs} songs")
@@ -336,24 +347,47 @@ class QQMusicService:
             end_idx = start_idx + page_size
             songs = all_songs[start_idx:end_idx]
 
-            # Get playlist name - try multiple fields
-            name = result.get('dissname', '') or result.get('title', '') or result.get('name', '')
+            # Get playlist info from dirinfo (for CgiGetDiss API)
+            dirinfo = result.get('dirinfo', {})
 
-            # Get creator - try multiple fields
+            # Get playlist name - try multiple locations
+            import re
+            name = ''
+            if dirinfo:
+                name = dirinfo.get('title', '')
+            if not name:
+                name = result.get('dissname', '') or result.get('title', '') or result.get('name', '')
+            if name:
+                name = re.sub(r'<[^>]+>', '', name)  # Remove HTML tags
+
+            # Get creator - try multiple locations
             creator = ''
-            creator_data = result.get('creator', {})
-            if isinstance(creator_data, dict):
-                creator = creator_data.get('name', '') or creator_data.get('nick', '')
-            elif isinstance(creator_data, str):
-                creator = creator_data
+            if dirinfo:
+                creator_data = dirinfo.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('nick', '') or creator_data.get('name', '')
+            if not creator:
+                creator_data = result.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('name', '') or creator_data.get('nick', '')
+                elif isinstance(creator_data, str):
+                    creator = creator_data
             if not creator:
                 creator = result.get('nick', '') or result.get('nickname', '')
 
+            # Get cover
+            cover = ''
+            if dirinfo:
+                cover = dirinfo.get('picurl', '') or dirinfo.get('picurl2', '')
+            if not cover:
+                cover = result.get('logo', '') or result.get('cover', '')
+
             return {
-                'id': result.get('tid', '') or result.get('dissid', '') or str(playlist_id),
+                'id': dirinfo.get('id', '') if dirinfo else '' or result.get('tid', '') or result.get('dissid', '') or str(playlist_id),
                 'name': name,
                 'creator': creator,
-                'cover': result.get('logo', '') or result.get('cover', ''),
+                'cover': cover,
+                'description': dirinfo.get('desc', '') if dirinfo else '',
                 'songs': songs,
                 'total': total_songs,
                 'page': page,

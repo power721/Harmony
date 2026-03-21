@@ -608,6 +608,10 @@ class OnlineDetailView(QWidget):
 
     def _display_playlist_detail(self, data: Dict):
         """Display playlist detail."""
+        logger.info(f"[OnlineDetailView] Playlist detail data keys: {data.keys()}")
+        logger.info(f"[OnlineDetailView] Playlist name: '{data.get('name', '')}'")
+        logger.info(f"[OnlineDetailView] Playlist creator: '{data.get('creator', '')}'")
+
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("creator", ""))
         self._extra_label.setText("")
