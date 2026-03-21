@@ -518,6 +518,7 @@ class MainWindow(QMainWindow):
         self._albums_view.album_clicked.connect(self._on_album_clicked)
         self._albums_view.play_album.connect(self._play_tracks)
         self._albums_view.download_cover_requested.connect(self._on_download_album_cover)
+        self._albums_view.rename_album_requested.connect(self._on_rename_album)
 
         # Artists view connections
         self._artists_view.artist_clicked.connect(self._on_artist_clicked)
@@ -824,6 +825,28 @@ class MainWindow(QMainWindow):
             self._artists_view._list_view.viewport().update()
 
         dialog.artist_renamed.connect(on_artist_renamed)
+        dialog.exec()
+
+    def _on_rename_album(self, album):
+        """Handle rename album request."""
+        from ui.dialogs.album_rename_dialog import AlbumRenameDialog
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        dialog = AlbumRenameDialog(
+            album,
+            bootstrap.library_service,
+            self
+        )
+
+        def on_album_renamed(old_name, artist, new_name):
+            # Refresh the albums view
+            self._albums_view.refresh()
+            # Clear cover cache
+            self._albums_view._delegate.clear_cache()
+            self._albums_view._list_view.viewport().update()
+
+        dialog.album_renamed.connect(on_album_renamed)
         dialog.exec()
 
     def _play_tracks(self, tracks):

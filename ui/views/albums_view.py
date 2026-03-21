@@ -225,6 +225,7 @@ class AlbumsView(QWidget):
     album_clicked = Signal(object)  # Emits Album object
     play_album = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
+    rename_album_requested = Signal(object)  # Emits Album object
 
     MARGIN = 20
 
@@ -473,6 +474,13 @@ class AlbumsView(QWidget):
         view_action = QAction(t("view_details"), self)
         view_action.triggered.connect(lambda: self.album_clicked.emit(album))
         menu.addAction(view_action)
+
+        # Rename action
+        rename_action = QAction(t("rename"), self)
+        rename_action.triggered.connect(lambda: self.rename_album_requested.emit(album))
+        menu.addAction(rename_action)
+
+        menu.addSeparator()
 
         # Download cover action
         download_action = QAction(t("download_cover_manual"), self)
