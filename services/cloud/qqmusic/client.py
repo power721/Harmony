@@ -388,7 +388,7 @@ class QQMusicClient:
             'song_mid': song_mid,
         }
 
-        return self._make_request('music.songInfo.SongInfoService', 'GetSongDetail', params)
+        return self._make_request('music.pf_song_detail_svr', 'get_song_detail_yqq', params)
 
     def get_lyric(self, song_mid: str, qrc: bool = True,
                   trans: bool = False, roma: bool = False) -> Dict:

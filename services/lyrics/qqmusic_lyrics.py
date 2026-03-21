@@ -306,6 +306,7 @@ class QQMusicClient:
         Get cover URL for a song or album.
 
         Uses QQ Music's direct image URL pattern when possible.
+        Supports fallback to vs (video screenshot) for covers.
 
         Args:
             mid: QQ Music song MID (will try to get album_mid)
@@ -324,10 +325,25 @@ class QQMusicClient:
             if self._should_use_local():
                 try:
                     result = self._local_client.get_song_detail(mid)
-                    if result and 'data' in result:
-                        album_mid = result['data'].get('album', {}).get('mid', '')
+                    # API returns track_info with album and vs fields
+                    track_info = result.get('track_info', {}) if result else {}
+                    if track_info:
+                        # Try album_mid first
+                        album_mid = track_info.get('album', {}).get('mid', '')
                         if album_mid:
                             return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{album_mid}.jpg"
+
+                        # Fallback to vs (video screenshot) for cover
+                        vs_array = track_info.get('vs', [])
+                        if vs_array:
+                            # Get first valid vs value
+                            for vs in vs_array:
+                                if vs and isinstance(vs, str) and len(vs) >= 3:
+                                    if ',' in vs:
+                                        # Handle comma-separated vs values
+                                        vs = vs.split(',')[0].strip()
+                                    if vs:
+                                        return f"https://y.qq.com/music/photo_new/T062R{size}x{size}M000{vs}.jpg"
                 except Exception as e:
                     logger.debug(f"Failed to get album info: {e}")
 
@@ -368,15 +384,23 @@ class QQMusicClient:
                                                   page_num=1, page_size=limit)
 
                 if result and 'body' in result:
-                    singers = result['body'].get('singer', {}).get('list', [])
+                    # singer can be either a list directly or {list: [...]}
+                    singer_data = result['body'].get('singer', [])
+                    if isinstance(singer_data, dict):
+                        singers = singer_data.get('list', [])
+                    else:
+                        singers = singer_data if isinstance(singer_data, list) else []
 
                     formatted = []
                     for singer in singers[:limit]:
+                        # Try both naming conventions (local API may differ from remote)
+                        singer_mid = singer.get('singer_mid') or singer.get('singerMID', '')
+                        singer_name = singer.get('singer_name') or singer.get('singerName', '')
                         formatted.append({
-                            'singerMID': singer.get('singer_mid', ''),
-                            'singerName': singer.get('singer_name', ''),
-                            'mid': singer.get('singer_mid', ''),
-                            'name': singer.get('singer_name', ''),
+                            'singerMID': singer_mid,
+                            'singerName': singer_name,
+                            'mid': singer_mid,
+                            'name': singer_name,
                         })
 
                     if formatted:
