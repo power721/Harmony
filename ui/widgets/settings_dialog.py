@@ -32,7 +32,6 @@ class VerifyLoginThread(QThread):
 
             client = QQMusicClient(self._credential)
             result = client.verify_login()
-            print(result)
             self.verified.emit(result['valid'], result['nick'], result['uin'])
         except Exception as e:
             logger.error(f"Verify login error: {e}")
@@ -458,10 +457,13 @@ class GeneralSettingsDialog(QDialog):
         credential = self._config.get_qqmusic_credential()
         if credential:
             musicid = credential.get('musicid', '')
+            login_type = credential.get('loginType', 2)
+            login_method = t("qqmusic_wx_login") if login_type == 1 else t("qqmusic_qq_login")
+
             if musicid:
                 # Show verifying status
                 self._qqmusic_status_label.setText(
-                    f"<span style='color: #a0a0a0;'>⏳ {t('qqmusic_verifying')}</span> ({t('qqmusic_qq_login')}: {musicid})"
+                    f"<span style='color: #a0a0a0;'>⏳ {t('qqmusic_verifying')}</span> ({login_method}: {musicid})"
                 )
                 self._qqmusic_logout_btn.setVisible(True)
 
@@ -472,7 +474,7 @@ class GeneralSettingsDialog(QDialog):
 
                 self._verify_thread = VerifyLoginThread(credential)
                 self._verify_thread.verified.connect(
-                    lambda valid, nick, uin: self._on_login_verified(valid, nick, uin, musicid)
+                    lambda valid, nick, uin: self._on_login_verified(valid, nick, uin, musicid, login_type)
                 )
                 self._verify_thread.start()
             else:
@@ -486,15 +488,17 @@ class GeneralSettingsDialog(QDialog):
             )
             self._qqmusic_logout_btn.setVisible(False)
 
-    def _on_login_verified(self, valid: bool, nick: str, uin: int, musicid: str):
+    def _on_login_verified(self, valid: bool, nick: str, uin: int, musicid: str, login_type: int = 2):
         """Handle login verification result."""
+        login_method = t("qqmusic_wx_login") if login_type == 1 else t("qqmusic_qq_login")
+
         if valid:
             self._qqmusic_status_label.setText(
-                f"<span style='color: #1db954;'>✅ {t('qqmusic_logged_in_status')}</span> ({nick}, {t('qqmusic_qq_login')}: {musicid})"
+                f"<span style='color: #1db954;'>✅ {t('qqmusic_logged_in_status')}</span> ({nick}, {login_method}: {musicid})"
             )
         else:
             self._qqmusic_status_label.setText(
-                f"<span style='color: #ff6b6b;'>❌ {t('qqmusic_login_expired')}</span> ({t('qqmusic_qq_login')}: {musicid})"
+                f"<span style='color: #ff6b6b;'>❌ {t('qqmusic_login_expired')}</span> ({login_method}: {musicid})"
             )
 
     def _qqmusic_logout(self):
