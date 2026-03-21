@@ -3,6 +3,7 @@ QQ Music API client.
 Handles direct communication with QQ Music servers.
 """
 
+import json
 import logging
 import time
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
@@ -129,10 +130,17 @@ class QQMusicClient:
         }
 
         try:
+            # Use same JSON serialization for both sign and request body
+            json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
             signature = generate_sign(request_data)
             url = f"{APIConfig.ENDPOINT}?sign={signature}"
 
-            response = self.session.post(url, json=request_data, timeout=30)
+            response = self.session.post(
+                url,
+                data=json_str.encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
             response.raise_for_status()
 
             data = response.json()
@@ -230,10 +238,17 @@ class QQMusicClient:
             }
         }
 
+        # Use same JSON serialization for both sign and request body
+        json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
         signature = generate_sign(request_data)
         url = f"{APIConfig.ENDPOINT}?sign={signature}"
 
-        response = self.session.post(url, json=request_data, timeout=30)
+        response = self.session.post(
+            url,
+            data=json_str.encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
         response.raise_for_status()
 
         data = response.json()

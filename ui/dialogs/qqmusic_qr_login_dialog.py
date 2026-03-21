@@ -60,16 +60,23 @@ class QRLoginThread(QThread):
                     # Use as_dict() for reliable extraction of all fields
                     try:
                         cred_dict = credential.as_dict()
+                        # Merge extra_fields into main dict (contains musickeyCreateTime, keyExpiresIn, etc.)
+                        if 'extra_fields' in cred_dict and isinstance(cred_dict['extra_fields'], dict):
+                            cred_dict.update(cred_dict.pop('extra_fields'))
+                        elif 'extra_fields' in cred_dict:
+                            cred_dict.pop('extra_fields', None)
                     except Exception:
                         # Fallback to manual extraction
                         cred_dict = {}
                         for attr in ['musicid', 'musickey', 'login_type', 'openid', 'refresh_token',
                                      'access_token', 'expired_at', 'unionid', 'str_musicid',
-                                     'refresh_key', 'encrypt_uin']:
+                                     'refresh_key', 'encrypt_uin', 'extra_fields']:
                             if hasattr(credential, attr):
                                 val = getattr(credential, attr, None)
                                 if attr == 'musicid' and val is not None:
                                     cred_dict[attr] = str(val)
+                                elif attr == 'extra_fields' and isinstance(val, dict):
+                                    cred_dict.update(val)
                                 else:
                                     cred_dict[attr] = val
 
@@ -80,6 +87,10 @@ class QRLoginThread(QThread):
                     # Add create time for refresh tracking
                     import time
                     cred_dict['musickey_createtime'] = int(time.time())
+
+                    # Map API response field names to our storage format
+                    if 'keyExpiresIn' in cred_dict:
+                        cred_dict['key_expires_in'] = cred_dict.pop('keyExpiresIn')
 
                     logger.info(f"Login success, musicid: {cred_dict.get('musicid')}, "
                                f"login_type: {cred_dict.get('login_type')}, "

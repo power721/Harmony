@@ -118,13 +118,25 @@ class QQMusicService:
             for attr in ['musicid', 'musickey', 'login_type', 'openid',
                          'refresh_token', 'access_token', 'expired_at',
                          'unionid', 'str_musicid', 'refresh_key',
-                         'encrypt_uin', 'extra_fields']:
+                         'encrypt_uin']:
                 if hasattr(cred, attr):
                     value = getattr(cred, attr)
                     if attr == 'musicid':
                         new_credential[attr] = str(value) if value else ''
                     else:
                         new_credential[attr] = value
+
+            # Merge extra_fields into main dict (contains musickeyCreateTime, keyExpiresIn, etc.)
+            if hasattr(cred, 'extra_fields') and isinstance(cred.extra_fields, dict):
+                new_credential.update(cred.extra_fields)
+                # Map API field names to our storage format
+                if 'keyExpiresIn' in new_credential:
+                    new_credential['key_expires_in'] = new_credential['keyExpiresIn']
+                if 'musickeyCreateTime' in new_credential:
+                    new_credential['musickey_createtime'] = new_credential['musickeyCreateTime']
+
+            # Add create time for refresh tracking
+            new_credential['musickey_createtime'] = int(time.time())
 
             logger.info(f"Credential refreshed successfully, new expired_at: {new_credential.get('expired_at')}")
             return new_credential
