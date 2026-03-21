@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
     QStyle,
+    QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from typing import Optional
@@ -1799,13 +1800,81 @@ class MainWindow(QMainWindow):
 
     def _add_tracks_to_playlist(self, tracks: list):
         """Add Track objects to a playlist."""
-        from ui.widgets.add_to_playlist_dialog import AddToPlaylistDialog
+        from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
         from app.bootstrap import Bootstrap
+
+        # Get track IDs from Track objects
+        track_ids = [t.id for t in tracks if t.id]
+        if not track_ids:
+            return
 
         bootstrap = Bootstrap.instance()
         dialog = AddToPlaylistDialog(bootstrap.library_service, self)
-        dialog.set_tracks(tracks)
-        dialog.exec()
+
+        # Check if there are playlists
+        if not dialog.has_playlists():
+            dialog.deleteLater()
+            reply = QMessageBox.question(
+                self,
+                t("no_playlists"),
+                t("no_playlists_message"),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self._nav_playlists.click()
+            return
+
+        # If only one playlist, add directly without showing dialog
+        if dialog.has_single_playlist():
+            playlist_name = dialog.get_single_playlist()
+            dialog.deleteLater()
+            playlists = bootstrap.library_service.get_all_playlists()
+            playlist = next((p for p in playlists if p.name == playlist_name), None)
+            if playlist:
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
+
+                if duplicate_count == 0:
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                    QMessageBox.information(self, t("success"), msg)
+                elif added_count == 0:
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                    QMessageBox.warning(self, t("duplicate"), msg)
+                else:
+                    msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                    QMessageBox.information(self, t("partially_added"), msg)
+            return
+
+        dialog.set_track_ids(track_ids)
+
+        if dialog.exec() == QDialog.Accepted:
+            playlist_name = dialog.get_selected_playlist()
+            if playlist_name:
+                playlists = bootstrap.library_service.get_all_playlists()
+                playlist = next((p for p in playlists if p.name == playlist_name), None)
+                if playlist:
+                    added_count = 0
+                    duplicate_count = 0
+                    for track_id in track_ids:
+                        if self._db.add_track_to_playlist(playlist.id, track_id):
+                            added_count += 1
+                        else:
+                            duplicate_count += 1
+
+                    if duplicate_count == 0:
+                        msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                        QMessageBox.information(self, t("success"), msg)
+                    elif added_count == 0:
+                        msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                        QMessageBox.warning(self, t("duplicate"), msg)
+                    else:
+                        msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                        QMessageBox.information(self, t("partially_added"), msg)
 
     def _on_position_changed(self, position_ms):
         """Handle playback position change."""

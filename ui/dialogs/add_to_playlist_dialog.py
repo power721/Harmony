@@ -1,0 +1,161 @@
+"""
+Dialog for adding tracks to a playlist.
+"""
+from PySide6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QListWidget,
+    QDialogButtonBox,
+    QPushButton,
+    QMessageBox,
+)
+from PySide6.QtCore import Qt
+
+from system.i18n import t
+
+
+class AddToPlaylistDialog(QDialog):
+    """Dialog for selecting a playlist to add tracks to."""
+
+    def __init__(self, library_service, parent=None):
+        """
+        Initialize the dialog.
+
+        Args:
+            library_service: Library service for database access
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        self._library_service = library_service
+        self._track_ids = []
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Setup the user interface."""
+        self.setWindowTitle(t("select_playlist"))
+        self.setMinimumWidth(400)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 13px;
+            }
+            QListWidget {
+                background-color: #181818;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 10px;
+                color: #ffffff;
+            }
+            QListWidget::item:selected {
+                background-color: #1db954;
+                color: #000000;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+
+        # Message label
+        self._label = QLabel(t("select_playlist"))
+        layout.addWidget(self._label)
+
+        # Playlist list
+        self._playlist_list = QListWidget()
+        self._playlist_list.setCurrentRow(0)
+        layout.addWidget(self._playlist_list)
+
+        # Buttons
+        self._buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self._buttons.accepted.connect(self.accept)
+        self._buttons.rejected.connect(self.reject)
+        layout.addWidget(self._buttons)
+
+        # Load playlists
+        self._load_playlists()
+
+    def _load_playlists(self):
+        """Load playlists from database."""
+        playlists = self._library_service.get_all_playlists()
+        for playlist in playlists:
+            self._playlist_list.addItem(playlist.name)
+        if self._playlist_list.count() > 0:
+            self._playlist_list.setCurrentRow(0)
+
+    def set_track_ids(self, track_ids: list):
+        """
+        Set the track IDs to add.
+
+        Args:
+            track_ids: List of track IDs
+        """
+        self._track_ids = track_ids
+        s = "s" if len(track_ids) > 1 else ""
+        self._label.setText(
+            t("add_to_playlist_message")
+            .replace("{count}", str(len(track_ids)))
+            .replace("{s}", s)
+        )
+
+    def set_tracks(self, tracks: list):
+        """
+        Set the tracks to add.
+
+        Args:
+            tracks: List of Track objects
+        """
+        track_ids = [t.id for t in tracks if t.id]
+        self.set_track_ids(track_ids)
+
+    def get_selected_playlist(self):
+        """Get the selected playlist name."""
+        selected_items = self._playlist_list.selectedItems()
+        if selected_items:
+            return selected_items[0].text()
+        return None
+
+    def get_track_ids(self):
+        """Get the track IDs to add."""
+        return self._track_ids
+
+    def has_playlists(self):
+        """Check if there are any playlists."""
+        return self._playlist_list.count() > 0
+
+    def has_single_playlist(self):
+        """Check if there is exactly one playlist."""
+        return self._playlist_list.count() == 1
+
+    def get_single_playlist(self):
+        """Get the single playlist name if there's only one."""
+        if self._playlist_list.count() == 1:
+            return self._playlist_list.item(0).text()
+        return None
+
+    def show_no_playlists_prompt(self):
+        """Show prompt when no playlists exist."""
+        reply = QMessageBox.question(
+            self,
+            t("no_playlists"),
+            t("no_playlists_message"),
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes

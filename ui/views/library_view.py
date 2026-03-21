@@ -1217,6 +1217,9 @@ class LibraryView(QWidget):
 
     def _add_to_playlist(self):
         """Add selected tracks to a playlist."""
+        from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
+        from app.bootstrap import Bootstrap
+
         # Get selected track IDs
         selected_items = self._tracks_table.selectedItems()
         if not selected_items:
@@ -1239,112 +1242,56 @@ class LibraryView(QWidget):
         if not track_ids:
             return
 
-        # Get all playlists
-        playlists = self._db.get_all_playlists()
+        # Get library service
+        bootstrap = Bootstrap.instance()
+        dialog = AddToPlaylistDialog(bootstrap.library_service, self)
 
-        if not playlists:
+        # Check if there are playlists
+        if not dialog.has_playlists():
+            dialog.deleteLater()
             reply = QMessageBox.question(
                 self,
                 t("no_playlists"),
                 t("no_playlists_message"),
                 QMessageBox.Yes | QMessageBox.No,
             )
-
             if reply == QMessageBox.Yes:
                 if hasattr(self, "window()") and self.window():
                     self.window()._nav_playlists.click()
             return
 
-        # If only one playlist, add directly
-        if len(playlists) == 1:
-            playlist = playlists[0]
-            added_count = 0
-            duplicate_count = 0
-            for track_id in track_ids:
-                if self._db.add_track_to_playlist(playlist.id, track_id):
-                    added_count += 1
-                else:
-                    duplicate_count += 1
+        # If only one playlist, add directly without showing dialog
+        if dialog.has_single_playlist():
+            playlist_name = dialog.get_single_playlist()
+            dialog.deleteLater()
+            playlists = bootstrap.library_service.get_all_playlists()
+            playlist = next((p for p in playlists if p.name == playlist_name), None)
+            if playlist:
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
 
-            if duplicate_count == 0:
-                msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
-                QMessageBox.information(self, t("success"), msg)
-            elif added_count == 0:
-                msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
-                QMessageBox.warning(self, t("duplicate"), msg)
-            else:
-                msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-                QMessageBox.information(self, t("partially_added"), msg)
+                if duplicate_count == 0:
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                    QMessageBox.information(self, t("success"), msg)
+                elif added_count == 0:
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                    QMessageBox.warning(self, t("duplicate"), msg)
+                else:
+                    msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                    QMessageBox.information(self, t("partially_added"), msg)
             return
 
-        # Create dialog to select playlist
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QListWidget,
-            QDialogButtonBox,
-        )
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("select_playlist"))
-        dialog.setMinimumWidth(400)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QListWidget {
-                background-color: #181818;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 10px;
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-        """)
-
-        layout = QVBoxLayout(dialog)
-
-        s = "s" if len(track_ids) > 1 else ""
-        label = QLabel(
-            t("add_to_playlist_message")
-            .replace("{count}", str(len(track_ids)))
-            .replace("{s}", s)
-        )
-        layout.addWidget(label)
-
-        playlist_list = QListWidget()
-        for playlist in playlists:
-            playlist_list.addItem(playlist.name)
-        playlist_list.setCurrentRow(0)
-        layout.addWidget(playlist_list)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
+        dialog.set_track_ids(track_ids)
 
         if dialog.exec() == QDialog.Accepted:
-            selected_items = playlist_list.selectedItems()
-            if selected_items:
-                playlist_name = selected_items[0].text()
+            playlist_name = dialog.get_selected_playlist()
+            if playlist_name:
+                playlists = bootstrap.library_service.get_all_playlists()
                 playlist = next((p for p in playlists if p.name == playlist_name), None)
                 if playlist:
                     added_count = 0
