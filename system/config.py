@@ -502,12 +502,21 @@ class ConfigManager:
         """
         # Try to get full credential JSON first
         import json
-        credential_json = self.get(SettingKey.QQMUSIC_CREDENTIAL)
-        if credential_json:
-            try:
-                return json.loads(credential_json)
-            except:
-                pass
+        credential_data = self.get(SettingKey.QQMUSIC_CREDENTIAL)
+        if credential_data:
+            # Handle both dict (already parsed) and string (JSON)
+            if isinstance(credential_data, dict):
+                cred = credential_data
+            else:
+                try:
+                    cred = json.loads(credential_data)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to parse QQ Music credential JSON: {e}")
+                    cred = None
+
+            if cred and cred.get('musicid') and cred.get('musickey'):
+                return cred
 
         # Fallback to individual fields
         musicid = self.get(SettingKey.QQMUSIC_MUSICID)

@@ -479,3 +479,73 @@ class QQMusicClient:
         params = {}
 
         return self._make_request('music.topList.TopListInfoService', 'GetTopList', params)
+
+    def verify_login(self) -> Dict[str, Any]:
+        """
+        Verify if current credential is valid by calling profile API.
+
+        Returns:
+            Dict with keys:
+                - valid: bool - whether login is valid
+                - nick: str - nickname if valid
+                - uin: int - user ID if valid
+        """
+        result = {
+            'valid': False,
+            'nick': '',
+            'uin': 0,
+        }
+
+        if not self.credential:
+            return result
+
+        try:
+            musicid = self.credential.get('musicid', '')
+
+            # Use profile homepage API to verify login
+            url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
+
+            # Build cookies from credential
+            cookies = {
+                'uin': str(musicid),
+                'qqmusic_key': self.credential.get('musickey', ''),
+                'qm_keyst': self.credential.get('musickey', ''),
+                'tmeLoginType': str(self.credential.get('login_type', 2)),
+            }
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+                'Referer': 'https://y.qq.com/',
+            }
+
+            params = {
+                'format': 'json',
+                'uin': musicid,
+                'cid': '205360838',
+                'reqfrom': '1',
+                'reqtype': '0',
+            }
+
+            response = self.session.get(
+                url,
+                params=params,
+                cookies=cookies,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            if data.get('code') == 0:
+                creator = data.get('data', {}).get('creator', {})
+                if creator:
+                    result['valid'] = True
+                    result['nick'] = creator.get('nick', '')
+                    result['uin'] = creator.get('uin', 0)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to verify login: {e}")
+            return result

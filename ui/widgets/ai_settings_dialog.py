@@ -2,8 +2,9 @@
 General Settings Dialog for configuring AI, AcoustID, and QQ Music.
 """
 import logging
+from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget, QWidget
@@ -13,6 +14,29 @@ from system.i18n import t
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+class VerifyLoginThread(QThread):
+    """Background thread for verifying QQ Music login status."""
+
+    verified = Signal(bool, str, int)  # valid, nick, uin
+
+    def __init__(self, credential: dict):
+        super().__init__()
+        self._credential = credential
+
+    def run(self):
+        """Verify login status."""
+        try:
+            from services.cloud.qqmusic import QQMusicClient
+
+            client = QQMusicClient(self._credential)
+            result = client.verify_login()
+            print(result)
+            self.verified.emit(result['valid'], result['nick'], result['uin'])
+        except Exception as e:
+            logger.error(f"Verify login error: {e}")
+            self.verified.emit(False, '', 0)
 
 
 class GeneralSettingsDialog(QDialog):
@@ -28,6 +52,7 @@ class GeneralSettingsDialog(QDialog):
         """
         super().__init__(parent)
         self._config = config_manager
+        self._verify_thread: Optional[VerifyLoginThread] = None
         self._setup_ui()
         self._load_settings()
 
@@ -243,7 +268,6 @@ class GeneralSettingsDialog(QDialog):
         # QQ Music credential status
         self._qqmusic_status_label = QLabel()
         self._qqmusic_status_label.setWordWrap(True)
-        self._update_qqmusic_status()
         qqmusic_layout.addWidget(self._qqmusic_status_label)
 
         # QQ Music buttons
@@ -253,19 +277,14 @@ class GeneralSettingsDialog(QDialog):
         self._qqmusic_qr_btn.clicked.connect(self._open_qqmusic_qr_login)
         qqmusic_button_layout.addWidget(self._qqmusic_qr_btn)
 
-        self._qqmusic_manual_btn = QPushButton(t("qqmusic_manual_login"))
-        self._qqmusic_manual_btn.clicked.connect(self._open_qqmusic_manual_login)
-        qqmusic_button_layout.addWidget(self._qqmusic_manual_btn)
+        self._qqmusic_logout_btn = QPushButton(t("qqmusic_clear"))
+        self._qqmusic_logout_btn.clicked.connect(self._qqmusic_logout)
+        qqmusic_button_layout.addWidget(self._qqmusic_logout_btn)
 
         qqmusic_layout.addLayout(qqmusic_button_layout)
 
-        # QQ Music hint
-        qqmusic_hint = QLabel(
-            f"<i>{t('qqmusic_login_hint')}</i>"
-        )
-        qqmusic_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
-        qqmusic_hint.setWordWrap(True)
-        qqmusic_layout.addWidget(qqmusic_hint)
+        # Update status after buttons are created
+        self._update_qqmusic_status()
 
         qqmusic_layout.addStretch()
         tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
@@ -440,26 +459,61 @@ class GeneralSettingsDialog(QDialog):
         if credential:
             musicid = credential.get('musicid', '')
             if musicid:
+                # Show verifying status
                 self._qqmusic_status_label.setText(
-                    f"<span style='color: #1db954;'>✅ 已配置</span> (QQ号: {musicid})"
+                    f"<span style='color: #a0a0a0;'>⏳ 验证中...</span> (QQ号: {musicid})"
                 )
-                self._qqmusic_status_label.setStyleSheet("")
+                self._qqmusic_logout_btn.setVisible(True)
+
+                # Start verification in background
+                if self._verify_thread:
+                    self._verify_thread.quit()
+                    self._verify_thread.wait()
+
+                self._verify_thread = VerifyLoginThread(credential)
+                self._verify_thread.verified.connect(
+                    lambda valid, nick, uin: self._on_login_verified(valid, nick, uin, musicid)
+                )
+                self._verify_thread.start()
             else:
                 self._qqmusic_status_label.setText(
                     "<span style='color: #ffa500;'>⚠️ 配置不完整</span>"
                 )
+                self._qqmusic_logout_btn.setVisible(False)
         else:
             self._qqmusic_status_label.setText(
                 "<span style='color: #c0c0c0;'>❌ 未配置</span>"
             )
+            self._qqmusic_logout_btn.setVisible(False)
 
-    def _open_qqmusic_manual_login(self):
-        """Open QQ Music manual login dialog."""
-        from ui.dialogs import QQMusicLoginDialog
+    def _on_login_verified(self, valid: bool, nick: str, uin: int, musicid: str):
+        """Handle login verification result."""
+        if valid:
+            self._qqmusic_status_label.setText(
+                f"<span style='color: #1db954;'>✅ 已登录</span> ({nick}, QQ号: {musicid})"
+            )
+        else:
+            self._qqmusic_status_label.setText(
+                f"<span style='color: #ff6b6b;'>❌ 登录已失效</span> (QQ号: {musicid})"
+            )
 
-        dialog = QQMusicLoginDialog(self)
-        dialog.credentials_updated.connect(self._update_qqmusic_status)
-        dialog.exec_()
+    def _qqmusic_logout(self):
+        """Clear QQ Music credentials (logout)."""
+        from app.bootstrap import Bootstrap
+
+        reply = QMessageBox.question(
+            self,
+            t("qqmusic_clear"),
+            t("qqmusic_clear_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self._config.clear_qqmusic_credential()
+            Bootstrap.instance().refresh_qqmusic_client()
+            self._update_qqmusic_status()
+            QMessageBox.information(self, t("success"), t("qqmusic_cleared"))
 
     def _open_qqmusic_qr_login(self):
         """Open QQ Music QR code login dialog."""
@@ -468,6 +522,13 @@ class GeneralSettingsDialog(QDialog):
         dialog = QQMusicQRLoginDialog(self)
         dialog.credentials_obtained.connect(self._update_qqmusic_status)
         dialog.exec_()
+
+    def closeEvent(self, event):
+        """Handle dialog close event."""
+        if self._verify_thread:
+            self._verify_thread.quit()
+            self._verify_thread.wait()
+        event.accept()
 
 # Backward compatibility alias
 AISettingsDialog = GeneralSettingsDialog

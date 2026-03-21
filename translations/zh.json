@@ -234,7 +234,6 @@
     "qqmusic_configured": "已配置",
     "qqmusic_not_configured": "未配置",
     "qqmusic_config_incomplete": "配置不完整",
-    "qqmusic_login_hint": "推荐使用扫码登录，快速便捷！<br>手动输入需要从浏览器获取Cookie。",
     "qqmusic_login_title": "QQ音乐扫码登录",
     "qqmusic_login_method": "登录方式：",
     "qqmusic_qq_login": "QQ登录",

@@ -55,7 +55,9 @@ class QQMusicClient:
             credential = config.get_qqmusic_credential()
 
             logger.debug(f"QQ Music credential check: musicid={credential.get('musicid') if credential else 'None'}, "
-                        f"has_musickey={bool(credential.get('musickey')) if credential else False}")
+                        f"has_musickey={bool(credential.get('musickey')) if credential else False}, "
+                        f"has_refresh_key={bool(credential.get('refresh_key')) if credential else False}, "
+                        f"has_refresh_token={bool(credential.get('refresh_token')) if credential else False}")
 
             if credential and credential.get('musicid') and credential.get('musickey'):
                 # Ensure musicid is a non-empty string

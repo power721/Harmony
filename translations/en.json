@@ -234,7 +234,6 @@
     "qqmusic_configured": "Configured",
     "qqmusic_not_configured": "Not Configured",
     "qqmusic_config_incomplete": "Incomplete Configuration",
-    "qqmusic_login_hint": "QR login is recommended for quick access!<br>Manual input requires cookies from browser.",
     "qqmusic_login_title": "QQ Music QR Login",
     "qqmusic_login_method": "Login Method:",
     "qqmusic_qq_login": "QQ Login",
