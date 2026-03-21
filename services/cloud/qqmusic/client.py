@@ -59,7 +59,7 @@ class QQMusicClient:
             f"uin={self.credential.get('musicid', '')}",
             f"qqmusic_key={self.credential.get('musickey', '')}",
             f"qm_keyst={self.credential.get('musickey', '')}",
-            f"tmeLoginType={self.credential.get('login_type', 2)}",
+            f"tmeLoginType={self.credential.get('login_type') or self.credential.get('loginType', 2)}",
         ]
         self.session.headers['Cookie'] = '; '.join(cookies)
 
@@ -78,8 +78,8 @@ class QQMusicClient:
             return False
 
         # Check expiration
-        create_time = self.credential.get('musickey_createtime', 0)
-        expires_in = self.credential.get('key_expires_in', 259200)  # Default 3 days
+        create_time = self.credential.get('musickey_createtime') or self.credential.get('musickeyCreateTime', 0)
+        expires_in = self.credential.get('key_expires_in') or self.credential.get('keyExpiresIn', 259200)  # Default 3 days
 
         if not create_time:
             return False

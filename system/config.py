@@ -543,7 +543,8 @@ class ConfigManager:
         # Handle both full credential dict and simple credential
         musicid = credential.get('musicid') or credential.get('str_musicid', '')
         musickey = credential.get('musickey', '')
-        login_type = credential.get('login_type', 2)
+        # Support both snake_case (login_type) and camelCase (loginType)
+        login_type = credential.get('login_type') or credential.get('loginType', 2)
 
         # Save individual fields for backward compatibility
         self.set(SettingKey.QQMUSIC_MUSICID, str(musicid) if musicid else '')

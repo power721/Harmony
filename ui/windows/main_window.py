@@ -2049,23 +2049,6 @@ class MainWindow(QMainWindow):
                     print(f"[DEBUG] Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
 
                     def restore_cloud_state():
-                        # Switch to cloud drive view
-                        # self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
-                        #
-                        # # Update sidebar selection
-                        # if hasattr(self, '_nav_cloud'):
-                        #     self._nav_cloud.setChecked(True)
-                        # if hasattr(self, '_nav_library'):
-                        #     self._nav_library.setChecked(False)
-                        # if hasattr(self, '_nav_playlists'):
-                        #     self._nav_playlists.setChecked(False)
-                        # if hasattr(self, '_nav_queue'):
-                        #     self._nav_queue.setChecked(False)
-                        # if hasattr(self, '_nav_favorites'):
-                        #     self._nav_favorites.setChecked(False)
-                        # if hasattr(self, '_nav_history'):
-                        #     self._nav_history.setChecked(False)
-
                         # Extract parent_id from last_fid_path
                         # last_fid_path is like "/fid1/fid2/fid3", we need the last segment
                         fid_path = account.last_fid_path or "0"

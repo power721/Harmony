@@ -92,7 +92,7 @@ class QQMusicService:
             cred = Credential(
                 musicid=int(self._credential.get('musicid', 0) or 0),
                 musickey=self._credential.get('musickey', ''),
-                login_type=self._credential.get('login_type', 2),
+                login_type=self._credential.get('login_type') or self._credential.get('loginType', 2),
                 openid=self._credential.get('openid', ''),
                 refresh_token=self._credential.get('refresh_token', ''),
                 access_token=self._credential.get('access_token', ''),
@@ -100,7 +100,7 @@ class QQMusicService:
                 unionid=self._credential.get('unionid', ''),
                 str_musicid=self._credential.get('str_musicid', ''),
                 refresh_key=self._credential.get('refresh_key', ''),
-                encrypt_uin=self._credential.get('encrypt_uin', ''),
+                encrypt_uin=self._credential.get('encrypt_uin') or self._credential.get('encryptUin', ''),
                 extra_fields=self._credential.get('extra_fields', ''),
             )
 

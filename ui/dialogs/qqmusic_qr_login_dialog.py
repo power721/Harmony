@@ -91,11 +91,16 @@ class QRLoginThread(QThread):
                     # Map API response field names to our storage format
                     if 'keyExpiresIn' in cred_dict:
                         cred_dict['key_expires_in'] = cred_dict.pop('keyExpiresIn')
+                    if 'loginType' in cred_dict:
+                        cred_dict['login_type'] = cred_dict.pop('loginType')
+                    if 'encryptUin' in cred_dict:
+                        cred_dict['encrypt_uin'] = cred_dict.pop('encryptUin')
 
                     logger.info(f"Login success, musicid: {cred_dict.get('musicid')}, "
                                f"login_type: {cred_dict.get('login_type')}, "
                                f"has_refresh_key: {bool(cred_dict.get('refresh_key'))}, "
-                               f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}")
+                               f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}, "
+                               f"encrypt_uin: {cred_dict.get('encrypt_uin')}")
                     self.login_success.emit(cred_dict)
             finally:
                 if self._loop and not self._loop.is_closed():
