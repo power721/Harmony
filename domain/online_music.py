@@ -89,6 +89,11 @@ class OnlineAlbum:
     cover_url: Optional[str] = None
     song_count: int = 0
     publish_date: Optional[str] = None
+    description: Optional[str] = None
+    company: Optional[str] = None
+    genre: Optional[str] = None
+    language: Optional[str] = None
+    album_type: Optional[str] = None
 
 
 @dataclass

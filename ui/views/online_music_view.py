@@ -38,6 +38,8 @@ from services.online import OnlineMusicService, OnlineDownloadService
 from system.i18n import t
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
+from ui.views.online_grid_view import OnlineGridView
+from ui.views.online_detail_view import OnlineDetailView
 from utils import format_duration
 
 logger = logging.getLogger(__name__)
@@ -170,6 +172,18 @@ class OnlineMusicView(QWidget):
         # Search results page
         self._results_page = self._create_results_page()
         self._stack.addWidget(self._results_page)
+
+        # Detail view page
+        self._detail_view = OnlineDetailView(
+            config_manager=self._config,
+            qqmusic_service=self._qqmusic_service,
+            parent=self
+        )
+        self._detail_view.back_requested.connect(self._on_back_from_detail)
+        # Connect play_all and add_all_to_queue signals
+        self._detail_view.play_all.connect(self._on_play_all_from_detail)
+        self._detail_view.add_all_to_queue.connect(self._on_add_all_to_queue_from_detail)
+        self._stack.addWidget(self._detail_view)
 
         layout.addWidget(self._stack)
 
@@ -330,7 +344,7 @@ class OnlineMusicView(QWidget):
         return widget
 
     def _create_results_page(self) -> QWidget:
-        """Create search results page."""
+        """Create search results page with different views for each type."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 10, 0, 0)
@@ -340,13 +354,45 @@ class OnlineMusicView(QWidget):
         self._results_info.setStyleSheet("color: #808080; font-size: 12px;")
         layout.addWidget(self._results_info)
 
+        # Stacked widget for different result types
+        self._results_stack = QStackedWidget()
+
+        # Songs page - table view
+        self._songs_page = self._create_songs_result_page()
+        self._results_stack.addWidget(self._songs_page)
+
+        # Singers page - grid view with circular avatars
+        self._singers_page = OnlineGridView(data_type="singer", parent=self)
+        self._singers_page.item_clicked.connect(self._on_artist_clicked)
+        self._results_stack.addWidget(self._singers_page)
+
+        # Albums page - grid view with rounded covers
+        self._albums_page = OnlineGridView(data_type="album", parent=self)
+        self._albums_page.item_clicked.connect(self._on_album_clicked)
+        self._results_stack.addWidget(self._albums_page)
+
+        # Playlists page - grid view with rounded covers
+        self._playlists_page = OnlineGridView(data_type="playlist", parent=self)
+        self._playlists_page.item_clicked.connect(self._on_playlist_clicked)
+        self._results_stack.addWidget(self._playlists_page)
+
+        layout.addWidget(self._results_stack)
+
+        # Pagination (only for songs)
+        pagination = self._create_pagination()
+        layout.addWidget(pagination)
+
+        return widget
+
+    def _create_songs_result_page(self) -> QWidget:
+        """Create songs result page with table."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
         # Results table
         self._results_table = self._create_songs_table()
         layout.addWidget(self._results_table)
-
-        # Pagination
-        pagination = self._create_pagination()
-        layout.addWidget(pagination)
 
         return widget
 
@@ -658,22 +704,32 @@ class OnlineMusicView(QWidget):
         if self._current_search_type == SearchType.SONG:
             self._current_tracks = result.tracks
             self._display_tracks(result.tracks)
+            self._results_stack.setCurrentWidget(self._songs_page)
         elif self._current_search_type == SearchType.SINGER:
             self._display_artists(result.artists)
+            self._results_stack.setCurrentWidget(self._singers_page)
         elif self._current_search_type == SearchType.ALBUM:
             self._display_albums(result.albums)
+            self._results_stack.setCurrentWidget(self._albums_page)
         elif self._current_search_type == SearchType.PLAYLIST:
             self._display_playlists(result.playlists)
+            self._results_stack.setCurrentWidget(self._playlists_page)
 
         # Update results info
         self._results_info.setText(
             f"{t('search_result')}: {result.total} {t('results')}"
         )
 
-        # Update pagination
+        # Update pagination (only for songs)
         self._page_label.setText(str(self._current_page))
         self._prev_btn.setEnabled(self._current_page > 1)
         self._next_btn.setEnabled(len(result.tracks) == 30)
+
+        # Hide pagination for non-song results
+        if self._current_search_type != SearchType.SONG:
+            self._prev_btn.parentWidget().hide()
+        else:
+            self._prev_btn.parentWidget().show()
 
     def _on_search_failed(self, error: str):
         """Handle search failure."""
@@ -706,46 +762,21 @@ class OnlineMusicView(QWidget):
             self._results_table.setItem(i, 4, QTableWidgetItem(duration_str))
 
     def _display_artists(self, artists: List[OnlineArtist]):
-        """Display artists in table."""
-        self._results_table.setRowCount(len(artists))
-        self._results_table.setColumnCount(4)
-        self._results_table.setHorizontalHeaderLabels([
-            t("name"), t("song_count"), t("album_count"), ""
-        ])
-
-        for i, artist in enumerate(artists):
-            self._results_table.setItem(i, 0, QTableWidgetItem(artist.name))
-            self._results_table.setItem(i, 1, QTableWidgetItem(str(artist.song_count)))
-            self._results_table.setItem(i, 2, QTableWidgetItem(str(artist.album_count)))
-            self._results_table.setItem(i, 3, QTableWidgetItem(""))
+        """Display artists in grid view."""
+        logger.info(f"[OnlineMusicView] Displaying {len(artists)} artists")
+        if artists:
+            first = artists[0]
+            logger.info(f"[OnlineMusicView] First artist - name: '{first.name}', mid: '{first.mid}', songs: {first.song_count}, albums: {first.album_count}, avatar: '{first.avatar_url}'")
+            logger.info(f"[OnlineMusicView] First artist object: {first}")
+        self._singers_page.load_data(artists)
 
     def _display_albums(self, albums: List[OnlineAlbum]):
-        """Display albums in table."""
-        self._results_table.setRowCount(len(albums))
-        self._results_table.setColumnCount(4)
-        self._results_table.setHorizontalHeaderLabels([
-            t("name"), t("artist"), t("song_count"), ""
-        ])
-
-        for i, album in enumerate(albums):
-            self._results_table.setItem(i, 0, QTableWidgetItem(album.name))
-            self._results_table.setItem(i, 1, QTableWidgetItem(album.singer_name))
-            self._results_table.setItem(i, 2, QTableWidgetItem(str(album.song_count)))
-            self._results_table.setItem(i, 3, QTableWidgetItem(""))
+        """Display albums in grid view."""
+        self._albums_page.load_data(albums)
 
     def _display_playlists(self, playlists: List[OnlinePlaylist]):
-        """Display playlists in table."""
-        self._results_table.setRowCount(len(playlists))
-        self._results_table.setColumnCount(4)
-        self._results_table.setHorizontalHeaderLabels([
-            t("title"), t("creator"), t("song_count"), ""
-        ])
-
-        for i, playlist in enumerate(playlists):
-            self._results_table.setItem(i, 0, QTableWidgetItem(playlist.title))
-            self._results_table.setItem(i, 1, QTableWidgetItem(playlist.creator))
-            self._results_table.setItem(i, 2, QTableWidgetItem(str(playlist.song_count)))
-            self._results_table.setItem(i, 3, QTableWidgetItem(""))
+        """Display playlists in grid view."""
+        self._playlists_page.load_data(playlists)
 
     def _on_tab_changed(self, index: int):
         """Handle tab change."""
@@ -761,6 +792,58 @@ class OnlineMusicView(QWidget):
         if self._current_keyword:
             self._current_page = 1
             self._do_search()
+
+    def _on_artist_clicked(self, artist: OnlineArtist):
+        """Handle artist click - show artist detail view."""
+        logger.info(f"Artist clicked: {artist.name}, mid: {artist.mid}")
+        self._detail_view.load_artist(artist.mid, artist.name)
+        self._stack.setCurrentWidget(self._detail_view)
+
+    def _on_album_clicked(self, album: OnlineAlbum):
+        """Handle album click - show album detail view."""
+        logger.info(f"Album clicked: {album.name}, mid: {album.mid}")
+        self._detail_view.load_album(album.mid, album.name, album.singer_name)
+        self._stack.setCurrentWidget(self._detail_view)
+
+    def _on_playlist_clicked(self, playlist: OnlinePlaylist):
+        """Handle playlist click - show playlist detail view."""
+        logger.info(f"Playlist clicked: {playlist.title}, id: {playlist.id}")
+        self._detail_view.load_playlist(playlist.id, playlist.title, playlist.creator)
+        self._stack.setCurrentWidget(self._detail_view)
+
+    def _on_back_from_detail(self):
+        """Handle back button clicked in detail view."""
+        # Return to search results page
+        self._stack.setCurrentWidget(self._results_page)
+
+    def _on_play_all_from_detail(self, tracks: List[OnlineTrack]):
+        """Handle play all from detail view."""
+        if not tracks:
+            return
+
+        # Play first track and add rest to queue
+        self._play_track(tracks[0])
+        for track in tracks[1:]:
+            metadata = {
+                "title": track.title,
+                "artist": track.singer_name,
+                "album": track.album_name,
+                "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
+            }
+            self.add_to_queue.emit(track.mid, metadata)
+
+    def _on_add_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
+        """Handle add all to queue from detail view."""
+        for track in tracks:
+            metadata = {
+                "title": track.title,
+                "artist": track.singer_name,
+                "album": track.album_name,
+                "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
+            }
+            self.add_to_queue.emit(track.mid, metadata)
 
     def _on_prev_page(self):
         """Go to previous page."""

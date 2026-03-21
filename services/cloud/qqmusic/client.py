@@ -465,19 +465,41 @@ class QQMusicClient:
 
     def get_album(self, album_mid: str) -> Dict:
         """
-        Get album information.
+        Get album basic information.
 
         Args:
             album_mid: Album MID
 
         Returns:
-            Album detail dictionary
+            Album detail dictionary with basicInfo, singer, company
         """
         params = {
-            'album_mid': album_mid,
+            'albumMid': album_mid,
         }
 
-        return self._make_request('music.album.AlbumInfoService', 'GetAlbumDetail', params)
+        return self._make_request('music.musichallAlbum.AlbumInfoServer', 'GetAlbumDetail', params)
+
+    def get_album_songs(self, album_mid: str, begin: int = 0, num: int = 999) -> Dict:
+        """
+        Get songs in an album.
+
+        Args:
+            album_mid: Album MID
+            begin: Start index (0-based)
+            num: Number of songs to return
+
+        Returns:
+            Dictionary with songList and totalNum
+        """
+        params = {
+            'albumMid': album_mid,
+            'albumID': 0,
+            'begin': begin,
+            'num': num,
+            'order': 2,
+        }
+
+        return self._make_request('music.musichallAlbum.AlbumSongList', 'GetAlbumSongList', params)
 
     def get_playlist(self, playlist_id: str) -> Dict:
         """
@@ -490,10 +512,11 @@ class QQMusicClient:
             Playlist detail dictionary
         """
         params = {
-            'playlist_id': playlist_id,
+            'disstid': int(playlist_id),
+            'song_num': 1000,  # Get up to 1000 songs
         }
 
-        return self._make_request('music.playlist.PlaylistInfoService', 'GetPlaylistDetail', params)
+        return self._make_request('music.srfDissInfo.DissInfo', 'CgiGetDiss', params)
 
     def get_singer(self, singer_mid: str) -> Dict:
         """
@@ -506,10 +529,10 @@ class QQMusicClient:
             Singer detail dictionary
         """
         params = {
-            'singer_mid': singer_mid,
+            'singer_mids': [singer_mid],
         }
 
-        return self._make_request('music.singer.SingerInfoService', 'GetSingerDetail', params)
+        return self._make_request('music.musichallSinger.SingerInfoInter', 'GetSingerDetail', params)
 
     def get_top_lists(self) -> Dict:
         """

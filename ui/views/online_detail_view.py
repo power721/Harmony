@@ -38,16 +38,17 @@ class DetailWorker(QThread):
 
     detail_loaded = Signal(str, object)  # (type, data)
 
-    def __init__(self, service: OnlineMusicService, detail_type: str, mid: str):
+    def __init__(self, service: OnlineMusicService, detail_type: str, mid: str, page: int = 1):
         super().__init__()
         self._service = service
         self._detail_type = detail_type
         self._mid = mid
+        self._page = page
 
     def run(self):
         try:
             if self._detail_type == "artist":
-                data = self._service.get_artist_detail(self._mid)
+                data = self._service.get_artist_detail(self._mid, page=self._page)
             elif self._detail_type == "album":
                 data = self._service.get_album_detail(self._mid)
             elif self._detail_type == "playlist":
@@ -91,6 +92,12 @@ class OnlineDetailView(QWidget):
         self._tracks: List[OnlineTrack] = []
         self._detail_worker: Optional[DetailWorker] = None
 
+        # Pagination state
+        self._current_page = 1
+        self._total_pages = 1
+        self._total_songs = 0
+        self._page_size = 50
+
         self._setup_ui()
         self._apply_styles()
 
@@ -111,6 +118,10 @@ class OnlineDetailView(QWidget):
         # Actions
         actions = self._create_actions()
         layout.addWidget(actions)
+
+        # Pagination
+        self._pagination_widget = self._create_pagination()
+        layout.addWidget(self._pagination_widget)
 
         # Songs table
         self._songs_table = self._create_songs_table()
@@ -153,7 +164,7 @@ class OnlineDetailView(QWidget):
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(10)
+        info_layout.setSpacing(8)
 
         # Type label
         self._type_label = QLabel()
@@ -165,10 +176,16 @@ class OnlineDetailView(QWidget):
         self._name_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
         info_layout.addWidget(self._name_label)
 
-        # Secondary info
+        # Secondary info (artist/creator)
         self._secondary_label = QLabel()
         self._secondary_label.setStyleSheet("color: #808080; font-size: 14px;")
         info_layout.addWidget(self._secondary_label)
+
+        # Extra info row (company, genre, language, etc.)
+        self._extra_label = QLabel()
+        self._extra_label.setStyleSheet("color: #666; font-size: 12px;")
+        self._extra_label.setWordWrap(True)
+        info_layout.addWidget(self._extra_label)
 
         # Stats
         self._stats_label = QLabel()
@@ -200,6 +217,38 @@ class OnlineDetailView(QWidget):
         layout.addWidget(self._add_queue_btn)
 
         layout.addStretch()
+
+        return widget
+
+    def _create_pagination(self) -> QWidget:
+        """Create pagination widget."""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Previous button
+        self._prev_page_btn = QPushButton("← " + t("previous_page"))
+        self._prev_page_btn.setFixedHeight(36)
+        self._prev_page_btn.setCursor(Qt.PointingHandCursor)
+        self._prev_page_btn.clicked.connect(self._on_prev_page)
+        layout.addWidget(self._prev_page_btn)
+
+        # Page label
+        self._page_label = QLabel("1 / 1")
+        self._page_label.setStyleSheet("color: #808080; padding: 0 15px;")
+        layout.addWidget(self._page_label)
+
+        # Next button
+        self._next_page_btn = QPushButton(t("next_page") + " →")
+        self._next_page_btn.setFixedHeight(36)
+        self._next_page_btn.setCursor(Qt.PointingHandCursor)
+        self._next_page_btn.clicked.connect(self._on_next_page)
+        layout.addWidget(self._next_page_btn)
+
+        layout.addStretch()
+
+        # Initially hidden
+        widget.hide()
 
         return widget
 
@@ -350,11 +399,13 @@ class OnlineDetailView(QWidget):
         """Load artist detail."""
         self._detail_type = "artist"
         self._mid = mid
+        self._current_page = 1  # Reset to first page
 
         # Set placeholder info
         self._type_label.setText(t("artist"))
         self._name_label.setText(name)
         self._secondary_label.setText("")
+        self._extra_label.setText("")
         self._stats_label.setText("")
 
         self._load_detail()
@@ -363,11 +414,13 @@ class OnlineDetailView(QWidget):
         """Load album detail."""
         self._detail_type = "album"
         self._mid = mid
+        self._current_page = 1  # Reset to first page
 
         # Set placeholder info
         self._type_label.setText(t("album"))
         self._name_label.setText(name)
         self._secondary_label.setText(singer_name)
+        self._extra_label.setText("")
         self._stats_label.setText("")
 
         self._load_detail()
@@ -376,11 +429,13 @@ class OnlineDetailView(QWidget):
         """Load playlist detail."""
         self._detail_type = "playlist"
         self._mid = playlist_id
+        self._current_page = 1  # Reset to first page
 
         # Set placeholder info
         self._type_label.setText(t("playlist"))
         self._name_label.setText(title)
         self._secondary_label.setText(creator)
+        self._extra_label.setText("")
         self._stats_label.setText("")
 
         self._load_detail()
@@ -393,7 +448,8 @@ class OnlineDetailView(QWidget):
         self._detail_worker = DetailWorker(
             self._service,
             self._detail_type,
-            self._mid
+            self._mid,
+            self._current_page
         )
         self._detail_worker.detail_loaded.connect(self._on_detail_loaded)
         self._detail_worker.start()
@@ -414,32 +470,172 @@ class OnlineDetailView(QWidget):
 
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
+        logger.info(f"[OnlineDetailView] Artist detail data: {data}")
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
+        self._extra_label.setText("")
+
+        # Load artist cover
+        avatar_url = data.get("avatar", "")
+        logger.info(f"[OnlineDetailView] Avatar URL: {avatar_url}")
+        if avatar_url:
+            self._load_cover(avatar_url)
 
         songs = data.get("songs", [])
+        total = data.get("total", len(songs))
+        page = data.get("page", 1)
+        page_size = data.get("page_size", 50)
+
+        # Update pagination state
+        self._total_songs = total
+        self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+        logger.info(f"[OnlineDetailView] Songs count: {len(songs)}, total: {total}, page: {page}/{self._total_pages}")
         self._tracks = self._parse_songs(songs)
-        self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+        logger.info(f"[OnlineDetailView] Parsed tracks count: {len(self._tracks)}")
+
+        # Display stats showing loaded vs total
+        if total > len(self._tracks):
+            self._stats_label.setText(f"{len(self._tracks)} / {total} {t('songs')}")
+        else:
+            self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Update pagination controls
+        self._update_pagination()
         self._display_songs(self._tracks)
+
+    def _update_pagination(self):
+        """Update pagination controls visibility and state."""
+        # Show pagination for any detail type with multiple pages
+        if self._total_pages > 1:
+            self._pagination_widget.show()
+            self._page_label.setText(f"{self._current_page} / {self._total_pages}")
+            self._prev_page_btn.setEnabled(self._current_page > 1)
+            self._next_page_btn.setEnabled(self._current_page < self._total_pages)
+        else:
+            self._pagination_widget.hide()
+
+    def _on_prev_page(self):
+        """Handle previous page button click."""
+        if self._current_page > 1:
+            self._current_page -= 1
+            self._load_detail()
+
+    def _on_next_page(self):
+        """Handle next page button click."""
+        if self._current_page < self._total_pages:
+            self._current_page += 1
+            self._load_detail()
+
+    def _load_cover(self, url: str):
+        """Load cover image from URL."""
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtCore import QThread, Signal
+        import requests
+
+        class CoverLoader(QThread):
+            loaded = Signal(QPixmap)
+
+            def __init__(self, url):
+                super().__init__()
+                self.url = url
+
+            def run(self):
+                try:
+                    response = requests.get(self.url, timeout=10)
+                    response.raise_for_status()
+                    pixmap = QPixmap()
+                    if pixmap.loadFromData(response.content):
+                        self.loaded.emit(pixmap)
+                except Exception as e:
+                    logger.debug(f"Failed to load cover: {e}")
+
+        if hasattr(self, '_cover_loader'):
+            self._cover_loader.terminate()
+
+        self._cover_loader = CoverLoader(url)
+        self._cover_loader.loaded.connect(lambda pixmap: self._cover_label.setPixmap(
+            pixmap.scaled(self._cover_label.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        ))
+        self._cover_loader.start()
 
     def _display_album_detail(self, data: Dict):
         """Display album detail."""
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("singer", ""))
 
+        # Extra info: company, genre, language, publish date
+        extra_parts = []
+        if data.get("publish_date"):
+            extra_parts.append(data.get("publish_date", "")[:10])
+        if data.get("company"):
+            extra_parts.append(data.get("company", ""))
+        if data.get("language"):
+            extra_parts.append(data.get("language", ""))
+        if data.get("album_type"):
+            extra_parts.append(data.get("album_type", ""))
+        self._extra_label.setText(" · ".join(extra_parts))
+
+        # Load album cover
+        cover_url = data.get("cover_url", "")
+        if not cover_url:
+            album_mid = data.get("mid", "")
+            if album_mid:
+                cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+        if cover_url:
+            self._load_cover(cover_url)
+
         songs = data.get("songs", [])
+        total = data.get("total", len(songs))
+        page = data.get("page", 1)
+        page_size = data.get("page_size", 50)
+
+        # Update pagination state
+        self._total_songs = total
+        self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
         self._tracks = self._parse_songs(songs)
-        self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Display stats
+        if total > len(self._tracks):
+            self._stats_label.setText(f"{len(self._tracks)} / {total} {t('songs')}")
+        else:
+            self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Update pagination controls
+        self._update_pagination()
         self._display_songs(self._tracks)
 
     def _display_playlist_detail(self, data: Dict):
         """Display playlist detail."""
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("creator", ""))
+        self._extra_label.setText("")
+
+        # Load playlist cover
+        cover_url = data.get("cover_url", "") or data.get("cover", "")
+        if cover_url:
+            self._load_cover(cover_url)
 
         songs = data.get("songs", [])
+        total = data.get("total", len(songs))
+        page = data.get("page", 1)
+        page_size = data.get("page_size", 50)
+
+        # Update pagination state
+        self._total_songs = total
+        self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
         self._tracks = self._parse_songs(songs)
-        self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Display stats
+        if total > len(self._tracks):
+            self._stats_label.setText(f"{len(self._tracks)} / {total} {t('songs')}")
+        else:
+            self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Update pagination controls
+        self._update_pagination()
         self._display_songs(self._tracks)
 
     def _parse_songs(self, songs: List[Dict]) -> List[OnlineTrack]:
@@ -448,29 +644,48 @@ class OnlineDetailView(QWidget):
 
         tracks = []
         for song in songs:
-            # Parse singers
+            # Parse singers - handle different formats
             singers = []
             singer_data = song.get("singer", [])
             if isinstance(singer_data, list):
                 for s in singer_data:
-                    singers.append(OnlineSinger(
-                        mid=s.get("mid", ""),
-                        name=s.get("name", "")
-                    ))
+                    if isinstance(s, dict):
+                        singers.append(OnlineSinger(
+                            mid=s.get("mid", ""),
+                            name=s.get("name", "")
+                        ))
+                    elif isinstance(s, str):
+                        singers.append(OnlineSinger(mid="", name=s))
+            elif isinstance(singer_data, dict):
+                singers.append(OnlineSinger(
+                    mid=singer_data.get("mid", ""),
+                    name=singer_data.get("name", "")
+                ))
+            elif isinstance(singer_data, str):
+                singers.append(OnlineSinger(mid="", name=singer_data))
 
-            # Parse album
-            album = AlbumInfo(
-                mid=song.get("albummid", ""),
-                name=song.get("albumname", "")
-            )
+            # Parse album - handle different formats
+            album_data = song.get("album")
+            if isinstance(album_data, dict):
+                album = AlbumInfo(
+                    mid=album_data.get("mid", ""),
+                    name=album_data.get("name", "")
+                )
+            elif isinstance(album_data, str):
+                album = AlbumInfo(mid="", name=album_data)
+            else:
+                album = AlbumInfo(
+                    mid=song.get("albummid", song.get("albumMid", "")),
+                    name=song.get("albumname", song.get("albumName", ""))
+                )
 
             track = OnlineTrack(
-                mid=song.get("mid", song.get("songmid", "")),
-                id=song.get("id", song.get("songid")),
-                title=song.get("name", song.get("songname", "")),
+                mid=song.get("mid", song.get("songmid", song.get("songMid", ""))),
+                id=song.get("id", song.get("songid", song.get("songId"))),
+                title=song.get("name", song.get("songname", song.get("songName", song.get("title", "")))),
                 singer=singers,
                 album=album,
-                duration=song.get("interval", 0)
+                duration=song.get("interval", song.get("duration", 0))
             )
             tracks.append(track)
 

@@ -273,55 +273,61 @@ class OnlineMusicService:
             logger.error(f"Get top list songs failed: {e}")
             return []
 
-    def get_artist_detail(self, singer_mid: str) -> Optional[Dict[str, Any]]:
+    def get_artist_detail(self, singer_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
         Get artist detail information.
 
         Args:
             singer_mid: Singer MID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Artist detail dict or None
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_singer_info(singer_mid)
+            return self._qqmusic.get_singer_info(singer_mid, page=page, page_size=page_size)
 
         # YGKing doesn't have artist detail API
         logger.warning("Artist detail not available without QQ Music credential")
         return None
 
-    def get_album_detail(self, album_mid: str) -> Optional[Dict[str, Any]]:
+    def get_album_detail(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
         Get album detail information.
 
         Args:
             album_mid: Album MID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Album detail dict or None
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_album_info(album_mid)
+            return self._qqmusic.get_album_info(album_mid, page=page, page_size=page_size)
 
         # YGKing doesn't have album detail API
         logger.warning("Album detail not available without QQ Music credential")
         return None
 
-    def get_playlist_detail(self, playlist_id: str) -> Optional[Dict[str, Any]]:
+    def get_playlist_detail(self, playlist_id: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
         Get playlist detail information.
 
         Args:
             playlist_id: Playlist ID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Playlist detail dict or None
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_playlist_info(playlist_id)
+            return self._qqmusic.get_playlist_info(playlist_id, page=page, page_size=page_size)
 
         # YGKing doesn't have playlist detail API
         logger.warning("Playlist detail not available without QQ Music credential")
