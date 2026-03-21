@@ -314,5 +314,22 @@
     "validate_cookie": "Validate Cookie",
     "cookie_empty": "Cookie cannot be empty",
     "cookie_invalid": "Cookie is invalid, please check and try again",
-    "validating_cookie": "Validating Cookie..."
+    "validating_cookie": "Validating Cookie...",
+    "update_cookie": "Update Cookie",
+    "cookie_updated": "Cookie updated",
+    "select_provider": "Select Provider",
+    "select_cloud_provider": "Select the cloud drive type to add",
+    "scan_with_baidu": "Scan with Baidu Drive app",
+    "baidu_drive": "Baidu Drive",
+    "quark_drive": "Quark Drive",
+    "baidu": "Baidu",
+    "quark": "Quark",
+    "normal_user": "Normal User",
+    "resume_play": "Resume playing",
+    "last_played_file_not_found": "Last played file not in current folder",
+    "resume_from": "Resume from {time}",
+    "member_vip": "VIP Member",
+    "member_svip": "Super VIP",
+    "member_premium": "Premium Member",
+    "member_normal": "Normal User"
 }
