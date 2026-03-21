@@ -54,7 +54,7 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
-from ui.widgets.settings_dialog import GeneralSettingsDialog
+from ui.dialogs.settings_dialog import GeneralSettingsDialog
 
 
 class MainWindow(QMainWindow):
@@ -730,7 +730,7 @@ class MainWindow(QMainWindow):
 
     def _on_download_album_cover(self, album):
         """Handle download album cover request."""
-        from ui.widgets.album_cover_download_dialog import AlbumCoverDownloadDialog
+        from ui.dialogs.album_cover_download_dialog import AlbumCoverDownloadDialog
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
@@ -782,7 +782,7 @@ class MainWindow(QMainWindow):
 
     def _on_download_artist_cover(self, artist):
         """Handle download artist cover request."""
-        from ui.widgets.artist_cover_download_dialog import ArtistCoverDownloadDialog
+        from ui.dialogs.artist_cover_download_dialog import ArtistCoverDownloadDialog
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
@@ -1024,7 +1024,7 @@ class MainWindow(QMainWindow):
 
     def show_help(self):
         """Show help dialog."""
-        from ui.widgets.help_dialog import HelpDialog
+        from ui.dialogs.help_dialog import HelpDialog
 
         dialog = HelpDialog(self)
         dialog.exec_()
@@ -1226,7 +1226,7 @@ class MainWindow(QMainWindow):
 
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""
-        from ui.widgets.lyrics_download_dialog import LyricsDownloadDialog
+        from ui.dialogs.lyrics_download_dialog import LyricsDownloadDialog
 
         # Get current track
         current_item = self._playback.current_track

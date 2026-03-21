@@ -2370,7 +2370,7 @@ class LibraryView(QWidget):
             return
 
         # Show cover download dialog
-        from ui.widgets import CoverDownloadDialog
+        from ui.dialogs import CoverDownloadDialog
         dialog = CoverDownloadDialog(tracks, self._cover_service, self)
         dialog.exec()
 
@@ -2419,7 +2419,7 @@ class LibraryView(QWidget):
             return
 
         # Show organize files dialog
-        from ui.widgets.organize_files_dialog import OrganizeFilesDialog
+        from ui.dialogs.organize_files_dialog import OrganizeFilesDialog
         dialog = OrganizeFilesDialog(tracks, app.bootstrap.file_org_service, self._config, self)
         if dialog.exec() == QDialog.Accepted:
             # Refresh the view after organization

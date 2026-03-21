@@ -34,8 +34,8 @@ from typing import List, Optional
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
-from ui.widgets.cloud_login_dialog import CloudLoginDialog
-from ui.widgets.provider_select_dialog import ProviderSelectDialog
+from ui.dialogs.cloud_login_dialog import CloudLoginDialog
+from ui.dialogs.provider_select_dialog import ProviderSelectDialog
 from utils import format_duration
 from system.i18n import t
 from system.event_bus import EventBus
@@ -2308,7 +2308,7 @@ class CloudDriveView(QWidget):
                 return True
 
             # Show cover download dialog with custom save callback
-            from ui.widgets import CoverDownloadDialog
+            from ui.dialogs import CoverDownloadDialog
             dialog = CoverDownloadDialog([pseudo_track], self._cover_service, self, save_cover_callback)
             dialog.exec()
 

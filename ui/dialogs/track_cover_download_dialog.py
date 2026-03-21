@@ -15,7 +15,7 @@ from domain.track import Track
 from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
-from ui.widgets.base_cover_download_dialog import (
+from ui.dialogs.base_cover_download_dialog import (
     BaseCoverDownloadDialog, CoverDownloadThread, QQMusicCoverFetchThread
 )
 
