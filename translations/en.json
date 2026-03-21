@@ -331,5 +331,6 @@
     "member_vip": "VIP Member",
     "member_svip": "Super VIP",
     "member_premium": "Premium Member",
-    "member_normal": "Normal User"
+    "member_normal": "Normal User",
+    "open_in_cloud_drive": "🌐 Open in Cloud Drive"
 }

@@ -331,5 +331,6 @@
     "member_vip": "VIP会员",
     "member_svip": "超级VIP",
     "member_premium": "高级会员",
-    "member_normal": "普通用户"
+    "member_normal": "普通用户",
+    "open_in_cloud_drive": "🌐 打开网盘文件"
 }

@@ -399,60 +399,77 @@ class CloudDriveView(QWidget):
         accounts = self._db.get_cloud_accounts()
         self._populate_account_list(accounts)
 
-        # Auto-select the first account to restore last session
+        # Restore last selected account
         if accounts and not self._current_account:
-            # Select the first account in the list
-            first_item = self._account_list.item(0)
-            if first_item:
-                account = first_item.data(Qt.UserRole)
-                if account:
-                    self._account_list.setCurrentItem(first_item)
-                    self._current_account = account
+            # Try to restore from saved account ID
+            saved_account_id = self._config_manager.get_cloud_account_id() if self._config_manager else None
+            target_account = None
+            target_item = None
 
-                    # Restore last saved folder path
-                    saved_path = account.last_folder_path if account.last_folder_path else "/"
-                    self._path_label.setText(saved_path)
+            if saved_account_id:
+                # Find the saved account in the list
+                for i in range(self._account_list.count()):
+                    item = self._account_list.item(i)
+                    account = item.data(Qt.UserRole)
+                    if account and account.id == saved_account_id:
+                        target_account = account
+                        target_item = item
+                        break
 
-                    # For Baidu, use path directly; for Quark, use fid_path
-                    if account.provider == "baidu":
-                        # Baidu uses directory path
-                        self._current_parent_id = saved_path
-                        self._fid_path = saved_path.strip("/").split("/") if saved_path != "/" else []
-                    else:
-                        # Quark uses fid_path
-                        if account.last_fid_path and account.last_fid_path != "0":
-                            # Parse fid_path string like "/fid1/fid2/fid3" into list
-                            self._fid_path = account.last_fid_path.strip("/").split("/")
-                            if self._fid_path == [""]:
-                                self._fid_path = []
-                        else:
+            # Fall back to first account if saved not found
+            if not target_account:
+                target_item = self._account_list.item(0)
+                if target_item:
+                    target_account = target_item.data(Qt.UserRole)
+
+            if target_account and target_item:
+                self._account_list.setCurrentItem(target_item)
+                self._current_account = target_account
+
+                # Restore last saved folder path
+                saved_path = target_account.last_folder_path if target_account.last_folder_path else "/"
+                self._path_label.setText(saved_path)
+
+                # For Baidu, use path directly; for Quark, use fid_path
+                if target_account.provider == "baidu":
+                    # Baidu uses directory path
+                    self._current_parent_id = saved_path
+                    self._fid_path = saved_path.strip("/").split("/") if saved_path != "/" else []
+                else:
+                    # Quark uses fid_path
+                    if target_account.last_fid_path and target_account.last_fid_path != "0":
+                        # Parse fid_path string like "/fid1/fid2/fid3" into list
+                        self._fid_path = target_account.last_fid_path.strip("/").split("/")
+                        if self._fid_path == [""]:
                             self._fid_path = []
-
-                        # Current folder ID is the last item in fid_path, or "0" if empty
-                        if self._fid_path:
-                            self._current_parent_id = self._fid_path[-1]
-                        else:
-                            self._current_parent_id = "0"
-
-                    # Clear navigation history
-                    self._navigation_history.clear()
-
-                    # Enable back button if not at root
-                    if account.provider == "baidu":
-                        can_go_back = saved_path != "/"
                     else:
-                        can_go_back = len(self._fid_path) > 0
-                    self._back_btn.setEnabled(can_go_back)
+                        self._fid_path = []
 
-                    # Store last playing state for later restoration (but don't auto-restore)
-                    self._last_playing_fid = account.last_playing_fid
-                    self._last_position = account.last_position
+                    # Current folder ID is the last item in fid_path, or "0" if empty
+                    if self._fid_path:
+                        self._current_parent_id = self._fid_path[-1]
+                    else:
+                        self._current_parent_id = "0"
 
-                    # Load files for the restored folder
-                    self._update_file_view()
+                # Clear navigation history
+                self._navigation_history.clear()
 
-                    # NOTE: Playback restoration is handled by MainWindow._restore_playback_state()
-                    # Do not auto-restore here to avoid conflicts
+                # Enable back button if not at root
+                if target_account.provider == "baidu":
+                    can_go_back = saved_path != "/"
+                else:
+                    can_go_back = len(self._fid_path) > 0
+                self._back_btn.setEnabled(can_go_back)
+
+                # Store last playing state for later restoration (but don't auto-restore)
+                self._last_playing_fid = target_account.last_playing_fid
+                self._last_position = target_account.last_position
+
+                # Load files for the restored folder
+                self._update_file_view()
+
+                # NOTE: Playback restoration is handled by MainWindow._restore_playback_state()
+                # Do not auto-restore here to avoid conflicts
 
     def _populate_account_list(self, accounts: List[CloudAccount]):
         """Populate the account list widget."""
@@ -1375,6 +1392,10 @@ class CloudDriveView(QWidget):
             open_action.setEnabled(False)
             open_action.setText(f"{t('open_file_location')} ({t('download_first')})")
 
+        # Open in cloud drive action - open browser to view file in cloud
+        open_cloud_action = menu.addAction(t("open_in_cloud_drive"))
+        open_cloud_action.triggered.connect(lambda: self._open_in_cloud_drive(file))
+
         menu.exec_(QCursor.pos())
 
     def _download_file(self, file: CloudFile):
@@ -1490,7 +1511,7 @@ class CloudDriveView(QWidget):
                     break
 
             # Refresh the table to show download status
-            self._refresh_file_list()
+            self._load_files()
         else:
             self._status_label.setText(f"{t('download_failed')}: {file.name}")
 
@@ -2141,6 +2162,48 @@ class CloudDriveView(QWidget):
         except Exception as e:
             logger.error(f"Failed to open file location for {file_path}: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"Failed to open file location: {e}")
+
+    def _open_in_cloud_drive(self, file: CloudFile):
+        """Open the file in cloud drive web interface."""
+        import webbrowser
+        from urllib.parse import quote
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self._current_account:
+            return
+
+        try:
+            provider = self._current_account.provider
+
+            if provider == "baidu":
+                # Baidu: file.metadata contains full path like "/我的音乐/test.mp3"
+                # URL format: https://pan.baidu.com/disk/main#/index?category=all&path=<encoded_path>
+                file_path = file.metadata if file.metadata else f"/{file.name}"
+                # Get parent directory
+                parent_path = "/".join(file_path.rsplit("/", 1)[:-1]) or "/"
+                encoded_path = quote(parent_path, safe="")
+                url = f"https://pan.baidu.com/disk/main#/index?category=all&path={encoded_path}"
+
+            elif provider == "quark":
+                # Quark: use _fid_path to build hierarchical path
+                # URL format: https://pan.quark.cn/list#/list/all/fid1/fid2/fid3
+                # _fid_path contains the folder hierarchy we navigated through
+                if self._fid_path:
+                    # Build path: /fid1/fid2/fid3
+                    path_str = "/".join(self._fid_path)
+                    url = f"https://pan.quark.cn/list#/list/all/{path_str}"
+                else:
+                    # Root level
+                    url = "https://pan.quark.cn/list#/list/all"
+            else:
+                QMessageBox.warning(self, t("error"), f"Unsupported provider: {provider}")
+                return
+
+            webbrowser.open(url)
+
+        except Exception as e:
+            logger.error(f"Failed to open cloud drive for {file.name}: {e}", exc_info=True)
+            QMessageBox.warning(self, t("error"), f"Failed to open cloud drive: {e}")
 
     def _download_cover(self, file: CloudFile):
         """Download cover art for a cloud file."""
