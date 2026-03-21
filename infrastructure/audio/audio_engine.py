@@ -220,6 +220,61 @@ class PlayerEngine(QObject):
             item.local_path = local_path
             item.needs_download = False
 
+    def update_playlist_item(
+        self,
+        cloud_file_id: str,
+        local_path: str = None,
+        track_id: int = None,
+        title: str = None,
+        artist: str = None,
+        album: str = None,
+        duration: float = None,
+        cover_path: str = None,
+        needs_download: bool = False,
+        needs_metadata: bool = False
+    ) -> Optional[int]:
+        """
+        Update a playlist item by cloud_file_id.
+
+        This method modifies the internal playlist directly (not a copy),
+        ensuring changes are persisted when save_queue() is called.
+
+        Args:
+            cloud_file_id: Cloud file ID to find the item
+            local_path: New local path
+            track_id: Track ID from database
+            title: Track title
+            artist: Track artist
+            album: Track album
+            duration: Track duration
+            cover_path: Path to cover art
+            needs_download: Whether file needs download
+            needs_metadata: Whether metadata needs extraction
+
+        Returns:
+            Index of updated item, or None if not found
+        """
+        for i, item in enumerate(self._playlist):
+            if item.cloud_file_id == cloud_file_id:
+                if local_path is not None:
+                    item.local_path = local_path
+                if track_id is not None:
+                    item.track_id = track_id
+                if title is not None:
+                    item.title = title
+                if artist is not None:
+                    item.artist = artist
+                if album is not None:
+                    item.album = album
+                if duration is not None:
+                    item.duration = duration
+                if cover_path is not None:
+                    item.cover_path = cover_path
+                item.needs_download = needs_download
+                item.needs_metadata = needs_metadata
+                return i
+        return None
+
     def play(self):
         """Start or resume playback."""
         if self._current_index < 0 and self._playlist:

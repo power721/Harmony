@@ -1682,6 +1682,8 @@ class LibraryView(QWidget):
                             artist=save_artist,
                             album=save_album,
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         success_count += 1
 
                     # Update progress
@@ -1720,6 +1722,8 @@ class LibraryView(QWidget):
                         artist=new_artist,
                         album=new_album,
                     )
+                    # Emit metadata_updated signal to update play_queue
+                    EventBus.instance().metadata_updated.emit(track_ids[0])
                     QMessageBox.information(self, t("success"), t("media_saved"))
                     # Refresh only the updated row
                     self._refresh_tracks_in_table(track_ids)
@@ -2094,6 +2098,8 @@ class LibraryView(QWidget):
                             artist=enhanced.get('artist'),
                             album=enhanced.get('album')
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         enhanced_count += 1
                         enhanced_track_ids.append(track_id)
                     else:
@@ -2280,6 +2286,8 @@ class LibraryView(QWidget):
                             artist=enhanced.get('artist'),
                             album=enhanced.get('album')
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         success_count += 1
                         identified_track_ids.append(track_id)
                         logger.info(

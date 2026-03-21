@@ -561,7 +561,7 @@ class PlayerControls(QWidget):
                 logger.error(f"[PlayerControls] Error checking track by path: {e}")
 
         if should_reload:
-            # Reload from database to get latest cover_path
+            # Reload from database to get latest metadata
             if current_path and hasattr(self._player, 'db'):
                 try:
                     track = self._player.db.get_track_by_path(current_path)
@@ -577,8 +577,12 @@ class PlayerControls(QWidget):
                             "cover_path": track.cover_path,
                             "source_type": "local",
                         }
+                        # Update title and artist labels
+                        self._title_label.setText(track.title or t("unknown"))
+                        self._artist_label.setText(track.artist or t("unknown"))
                         logger.info(
-                            f"[PlayerControls] Metadata updated for current track {track_id}, reloading cover with cover_path={track.cover_path}")
+                            f"[PlayerControls] Metadata updated for current track {track_id}, "
+                            f"title={track.title}, artist={track.artist}, cover_path={track.cover_path}")
                         QTimer.singleShot(100, lambda: self._load_cover_art_async(updated_track))
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")

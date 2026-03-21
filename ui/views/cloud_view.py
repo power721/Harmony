@@ -1978,6 +1978,8 @@ class CloudDriveView(QWidget):
                         track = db.get_track_by_cloud_file_id(file.file_id)
                         if track and track.id:
                             db.update_track(track.id, artist=artist or None, album=album or None)
+                            # Emit metadata_updated signal to update play_queue
+                            EventBus.instance().metadata_updated.emit(track.id)
                             logger.info(
                                 f"[CloudView] Updated database track {track.id} with metadata: artist={artist}, album={album}")
 
