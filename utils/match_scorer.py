@@ -187,6 +187,7 @@ class MatchScorer:
             result_title: Title from search result (string, dict, or list)
         """
         if not track_title or not result_title:
+            logger.debug(f"Title score 0: track_title='{track_title}', result_title='{result_title}'")
             return 0
 
         # Handle dict - extract title

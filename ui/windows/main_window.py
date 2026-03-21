@@ -54,7 +54,7 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
-from ui.widgets.ai_settings_dialog import GeneralSettingsDialog
+from ui.widgets.settings_dialog import GeneralSettingsDialog
 
 
 class MainWindow(QMainWindow):

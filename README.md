@@ -248,7 +248,7 @@ Harmony/
 │       ├── cover_download_dialog.py
 │       ├── album_cover_download_dialog.py
 │       ├── artist_cover_download_dialog.py
-│       ├── ai_settings_dialog.py
+│       ├── settings_dialog.py
 │       ├── cloud_login_dialog.py
 │       ├── equalizer_widget.py
 │       ├── help_dialog.py

@@ -30,4 +30,6 @@ pyacoustid>=1.2.0
 # Encryption for QQ Music
 pycryptodome>=3.19.0
 
+qqmusic-api-python==0.3.6
+
 shiboken6

@@ -2,7 +2,7 @@
 UI widgets module.
 """
 
-from .ai_settings_dialog import GeneralSettingsDialog
+from .settings_dialog import GeneralSettingsDialog
 # Backward compatibility
 AISettingsDialog = GeneralSettingsDialog
 

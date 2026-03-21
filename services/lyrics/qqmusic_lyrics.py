@@ -146,28 +146,37 @@ class QQMusicClient:
             try:
                 result = self._local_client.search(keyword, search_type='song',
                                                   page_num=1, page_size=limit)
-
                 if result and 'body' in result:
                     songs = result['body'].get('item_song', [])
 
                     formatted = []
-                    for song in songs[:limit]:
-                        singer_info = song.get('singer', {})
+                    for i, song in enumerate(songs[:limit]):
+                        singer_info = song.get('singer')
                         if isinstance(singer_info, list) and singer_info:
-                            singer_name = singer_info[0].get('name', '')
-                            singer_mid = singer_info[0].get('mid', '')
+                            singer_name = singer_info[0].get('name', '') if isinstance(singer_info[0], dict) else ''
+                            singer_mid = singer_info[0].get('mid', '') if isinstance(singer_info[0], dict) else ''
+                        elif isinstance(singer_info, dict):
+                            singer_name = singer_info.get('name', '')
+                            singer_mid = singer_info.get('mid', '')
                         else:
-                            singer_name = singer_info.get('name', '') if isinstance(singer_info, dict) else ''
+                            singer_name = str(singer_info) if singer_info else ''
                             singer_mid = ''
 
-                        album_info = song.get('album', {})
-                        album_name = album_info.get('name', '') if isinstance(album_info, dict) else ''
-                        album_mid = album_info.get('mid', '') if isinstance(album_info, dict) else ''
+                        album_info = song.get('album')
+                        if isinstance(album_info, dict):
+                            album_name = album_info.get('name', '')
+                            album_mid = album_info.get('mid', '')
+                        else:
+                            album_name = str(album_info) if album_info else ''
+                            album_mid = ''
+
+                        song_mid = song.get('mid', '') or song.get('songmid', '')
+                        song_name = song.get('name', '') or song.get('title', '') or song.get('songname', '')
 
                         formatted.append({
-                            'mid': song.get('songmid', ''),
-                            'name': song.get('songname', ''),
-                            'title': song.get('songname', ''),
+                            'mid': song_mid,
+                            'name': song_name,
+                            'title': song_name,
                             'singer': singer_name,
                             'singer_mid': singer_mid,
                             'album': album_name,
@@ -176,7 +185,6 @@ class QQMusicClient:
                         })
 
                     if formatted:
-                        logger.debug(f"QQ Music search via local API: {len(formatted)} results")
                         return formatted
 
             except Exception as e:
@@ -448,8 +456,13 @@ def search_from_qqmusic(title: str, artist: str, limit: int = 10) -> List[dict]:
         # Duration in seconds
         duration = song.get('interval', 0)
 
+        # Get song mid (unique identifier)
+        song_mid = song.get('mid', '')
+        if not song_mid:
+            logger.warning(f"QQ Music song missing mid: {song.get('name', '')} - {artist_name}")
+
         results.append({
-            'id': song.get('mid', ''),
+            'id': song_mid,
             'title': song.get('name', '') or song.get('title', ''),
             'artist': artist_name,
             'album': album_name,

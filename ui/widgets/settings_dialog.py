@@ -260,7 +260,7 @@ class GeneralSettingsDialog(QDialog):
         # QQ Music instructions
         qqmusic_instructions = QLabel(
             f"<b>{t('qqmusic_login')}</b><br><br>"
-            f"{'登录后可使用本地API，速度更快！' if t('language') == '中文' else 'Use local API after login for faster access!'}"
+            f"{t('qqmusic_faster_api_hint')}"
         )
         qqmusic_instructions.setWordWrap(True)
         qqmusic_layout.addWidget(qqmusic_instructions)
@@ -461,7 +461,7 @@ class GeneralSettingsDialog(QDialog):
             if musicid:
                 # Show verifying status
                 self._qqmusic_status_label.setText(
-                    f"<span style='color: #a0a0a0;'>⏳ 验证中...</span> (QQ号: {musicid})"
+                    f"<span style='color: #a0a0a0;'>⏳ {t('qqmusic_verifying')}</span> ({t('qqmusic_qq_login')}: {musicid})"
                 )
                 self._qqmusic_logout_btn.setVisible(True)
 
@@ -477,12 +477,12 @@ class GeneralSettingsDialog(QDialog):
                 self._verify_thread.start()
             else:
                 self._qqmusic_status_label.setText(
-                    "<span style='color: #ffa500;'>⚠️ 配置不完整</span>"
+                    f"<span style='color: #ffa500;'>⚠️ {t('qqmusic_incomplete_config')}</span>"
                 )
                 self._qqmusic_logout_btn.setVisible(False)
         else:
             self._qqmusic_status_label.setText(
-                "<span style='color: #c0c0c0;'>❌ 未配置</span>"
+                f"<span style='color: #c0c0c0;'>❌ {t('qqmusic_not_configured_status')}</span>"
             )
             self._qqmusic_logout_btn.setVisible(False)
 
@@ -490,11 +490,11 @@ class GeneralSettingsDialog(QDialog):
         """Handle login verification result."""
         if valid:
             self._qqmusic_status_label.setText(
-                f"<span style='color: #1db954;'>✅ 已登录</span> ({nick}, QQ号: {musicid})"
+                f"<span style='color: #1db954;'>✅ {t('qqmusic_logged_in_status')}</span> ({nick}, {t('qqmusic_qq_login')}: {musicid})"
             )
         else:
             self._qqmusic_status_label.setText(
-                f"<span style='color: #ff6b6b;'>❌ 登录已失效</span> (QQ号: {musicid})"
+                f"<span style='color: #ff6b6b;'>❌ {t('qqmusic_login_expired')}</span> ({t('qqmusic_qq_login')}: {musicid})"
             )
 
     def _qqmusic_logout(self):

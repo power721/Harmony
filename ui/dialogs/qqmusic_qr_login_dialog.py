@@ -104,11 +104,11 @@ class QRLoginThread(QThread):
 
         except ImportError:
             if self._running:
-                self.login_failed.emit("qqmusic_api库未安装")
+                self.login_failed.emit(t("qqmusic_api_not_installed"))
         except Exception as e:
             logger.error(f"QR login error: {e}")
             if self._running:
-                self.login_failed.emit(f"登录失败: {str(e)}")
+                self.login_failed.emit(t("qqmusic_login_failed_detail").format(error=str(e)))
 
     def wait_for_stop(self, timeout_ms: int = 2000):
         """Stop the thread and wait for it to finish."""
@@ -122,8 +122,8 @@ class QRLoginThread(QThread):
         from PIL import Image
 
         # Get QR code
-        app_name = "微信" if is_wechat else "QQ"
-        self.status_update.emit("正在获取二维码...")
+        app_name = t("qqmusic_wx_login").replace("登录", "").strip() if is_wechat else "QQ"
+        self.status_update.emit(t("qqmusic_fetching_qr"))
         qr = await get_qrcode(login_type)
 
         # Check if still running
@@ -135,7 +135,7 @@ class QRLoginThread(QThread):
         self.qr_code_ready.emit(qr.data)
 
         # Poll for login status
-        self.status_update.emit(f"请使用手机{app_name}扫描二维码登录...")
+        self.status_update.emit(t("qqmusic_scan_with_app").format(app=app_name))
 
         poll_count = 0
         max_polls = 120  # 2 minutes
@@ -148,13 +148,13 @@ class QRLoginThread(QThread):
                     return None
 
                 if event == QRCodeLoginEvents.SCAN:
-                    self.status_update.emit("等待扫码...")
+                    self.status_update.emit(t("qqmusic_waiting_scan"))
 
                 elif event == QRCodeLoginEvents.CONF:
-                    self.status_update.emit("已扫码，请在手机上确认登录...")
+                    self.status_update.emit(t("qqmusic_scan_confirmed"))
 
                 elif event == QRCodeLoginEvents.DONE:
-                    self.status_update.emit("登录成功！")
+                    self.status_update.emit(t("qqmusic_logging_in"))
                     return credential
 
                 elif event == QRCodeLoginEvents.TIMEOUT:
@@ -187,7 +187,7 @@ class QQMusicQRLoginDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("QQ音乐扫码登录")
+        self.setWindowTitle(t("qqmusic_login_title"))
         self.setMinimumWidth(450)
         self.setMinimumHeight(600)
         self.resize(460, 680)
@@ -385,7 +385,7 @@ class QQMusicQRLoginDialog(QDialog):
         self._progress_bar.show()
         self._refresh_button.setEnabled(False)
         self._qr_label.clear()
-        self._status_label.setText("正在获取二维码...")
+        self._status_label.setText(t("qqmusic_fetching_qr"))
 
         # Create new thread
         thread = QRLoginThread(self._login_type)
@@ -451,7 +451,7 @@ class QQMusicQRLoginDialog(QDialog):
 
         except Exception as e:
             logger.error(f"Failed to display QR code: {e}")
-            self._qr_label.setText(f"二维码显示失败\n{str(e)}")
+            self._qr_label.setText(f"{t('qqmusic_qr_display_failed')}\n{str(e)}")
 
     @Slot(dict)
     def _on_login_success(self, credential: dict):
@@ -488,26 +488,26 @@ class QQMusicQRLoginDialog(QDialog):
     def _on_login_failed(self, error: str):
         """Handle login failed event."""
         self._progress_bar.hide()
-        self._status_label.setText("登录失败")
-        QMessageBox.warning(self, "登录失败", error)
+        self._status_label.setText(t("qqmusic_login_failed"))
+        QMessageBox.warning(self, t("qqmusic_login_failed"), error)
 
     @Slot()
     def _on_login_refused(self):
         """Handle login refused event."""
         self._progress_bar.hide()
-        self._status_label.setText("用户取消登录")
-        QMessageBox.information(self, "取消", "您已取消登录")
+        self._status_label.setText(t("qqmusic_user_cancelled"))
+        QMessageBox.information(self, t("cancel"), t("qqmusic_you_cancelled"))
 
     @Slot()
     def _on_login_timeout(self):
         """Handle login timeout event."""
         self._progress_bar.hide()
-        self._status_label.setText("二维码已过期")
+        self._status_label.setText(t("qqmusic_qr_expired"))
         self._refresh_button.setEnabled(True)
         QMessageBox.information(
             self,
-            "超时",
-            "二维码已过期，请点击刷新按钮重新生成"
+            t("qqmusic_qr_expired"),
+            t("qqmusic_qr_timeout_refresh")
         )
 
     @Slot(str)

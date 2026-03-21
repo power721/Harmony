@@ -373,10 +373,12 @@ class LyricsDownloadDialog(QDialog):
             seconds = int(duration % 60)
             item_text += f" [{minutes}:{seconds:02d}]"
 
-        # Source name with YRC indicator
+        # Source name with YRC/QRC indicator
         source = result['source']
         if result.get('supports_yrc'):
             source = f"{source} YRC"  # Indicate YRC (word-by-word) support
+        elif result.get('supports_qrc'):
+            source = f"{source} QRC"  # Indicate QRC (word-by-word) support for QQ Music
         item_text += f" [{source}]"
 
         # Score at the end
