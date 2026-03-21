@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, Slot
 from PySide6.QtGui import QPixmap, QImage
 
-from system.i18n import t
+from system.i18n import t, get_language
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +366,7 @@ class QQMusicQRLoginDialog(QDialog):
     def _update_instructions(self):
         """Update instructions based on login type."""
         app_name = "WeChat" if self._login_type == 'wx' else "QQ"
-        if t("language") == "中文":
+        if get_language() == "zh":
             app_name = "微信" if self._login_type == 'wx' else "QQ"
         self._instructions_label.setText(t("qqmusic_instructions").format(app=app_name))
 
