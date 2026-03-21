@@ -13,6 +13,7 @@ from .help_dialog import HelpDialog
 from .organize_files_dialog import OrganizeFilesDialog
 from .lyrics_download_dialog import LyricsDownloadDialog
 from .track_cover_download_dialog import TrackCoverDownloadDialog, CoverDownloadDialog
+from .artist_rename_dialog import ArtistRenameDialog
 
 __all__ = [
     'QQMusicQRLoginDialog',
@@ -27,4 +28,5 @@ __all__ = [
     'LyricsDownloadDialog',
     'TrackCoverDownloadDialog',
     'CoverDownloadDialog',
+    'ArtistRenameDialog',
 ]

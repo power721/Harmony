@@ -344,3 +344,118 @@ class TestLibraryService:
         result = library_service.scan_directory("/empty", recursive=True)
 
         assert result == 0
+
+    # ===== Artist Operations Tests =====
+
+    def test_rename_artist_empty_old_name(self, library_service):
+        """Test rename with empty old name."""
+        result = library_service.rename_artist("", "New Artist")
+
+        assert result['updated_tracks'] == 0
+        assert 'Empty name provided' in result['errors']
+
+    def test_rename_artist_empty_new_name(self, library_service):
+        """Test rename with empty new name."""
+        result = library_service.rename_artist("Old Artist", "")
+
+        assert result['updated_tracks'] == 0
+        assert 'Empty name provided' in result['errors']
+
+    def test_rename_artist_identical_names(self, library_service):
+        """Test rename with identical names."""
+        result = library_service.rename_artist("Same Name", "Same Name")
+
+        assert result['updated_tracks'] == 0
+        assert 'Names are identical' in result['errors']
+
+    def test_rename_artist_not_found(self, library_service, mock_track_repo):
+        """Test rename when artist not found."""
+        mock_track_repo.get_artist_tracks.return_value = []
+
+        result = library_service.rename_artist("Nonexistent", "New Name")
+
+        assert result['updated_tracks'] == 0
+        assert 'Artist not found' in result['errors']
+
+    @patch("services.library.library_service.MetadataService")
+    def test_rename_artist_success(
+        self, mock_metadata_service, library_service, mock_track_repo, mock_event_bus
+    ):
+        """Test successful artist rename."""
+        # Setup tracks
+        tracks = [
+            Track(id=1, path="/music/song1.mp3", title="Song 1", artist="Old Artist"),
+            Track(id=2, path="/music/song2.mp3", title="Song 2", artist="Old Artist"),
+        ]
+        mock_track_repo.get_artist_tracks.return_value = tracks
+        mock_track_repo.get_artist_by_name.return_value = None  # New name doesn't exist
+
+        # Mock metadata save
+        mock_metadata_service.save_metadata.return_value = True
+
+        # Mock database manager
+        mock_db = Mock()
+        mock_db.rebuild_albums_artists.return_value = {'albums': 1, 'artists': 1}
+        library_service._db = mock_db
+
+        result = library_service.rename_artist("Old Artist", "New Artist")
+
+        assert result['updated_tracks'] == 2
+        assert result['merged'] is False
+        assert len(result['errors']) == 0
+        assert mock_metadata_service.save_metadata.call_count == 2
+        assert mock_track_repo.update.call_count == 2
+
+    @patch("services.library.library_service.MetadataService")
+    def test_rename_artist_merge(
+        self, mock_metadata_service, library_service, mock_track_repo
+    ):
+        """Test artist rename with merge."""
+        from domain.artist import Artist
+
+        # Setup tracks
+        tracks = [Track(id=1, path="/music/song.mp3", title="Song", artist="Old Artist")]
+        mock_track_repo.get_artist_tracks.return_value = tracks
+
+        # New name already exists
+        existing_artist = Artist(name="Existing Artist", song_count=5)
+        mock_track_repo.get_artist_by_name.return_value = existing_artist
+
+        # Mock metadata save
+        mock_metadata_service.save_metadata.return_value = True
+
+        # Mock database manager
+        mock_db = Mock()
+        mock_db.rebuild_albums_artists.return_value = {'albums': 1, 'artists': 1}
+        library_service._db = mock_db
+
+        result = library_service.rename_artist("Old Artist", "Existing Artist")
+
+        assert result['updated_tracks'] == 1
+        assert result['merged'] is True
+
+    @patch("services.library.library_service.MetadataService")
+    def test_rename_artist_partial_failure(
+        self, mock_metadata_service, library_service, mock_track_repo
+    ):
+        """Test artist rename with some failures."""
+        # Setup tracks
+        tracks = [
+            Track(id=1, path="/music/song1.mp3", title="Song 1", artist="Old Artist"),
+            Track(id=2, path="/music/song2.mp3", title="Song 2", artist="Old Artist"),
+        ]
+        mock_track_repo.get_artist_tracks.return_value = tracks
+        mock_track_repo.get_artist_by_name.return_value = None
+
+        # First succeeds, second fails
+        mock_metadata_service.save_metadata.side_effect = [True, False]
+
+        # Mock database manager
+        mock_db = Mock()
+        mock_db.rebuild_albums_artists.return_value = {'albums': 1, 'artists': 1}
+        library_service._db = mock_db
+
+        result = library_service.rename_artist("Old Artist", "New Artist")
+
+        assert result['updated_tracks'] == 1
+        assert len(result['errors']) == 1

@@ -205,6 +205,8 @@ class MainWindow(QMainWindow):
 
         # Lyrics loading thread (for async loading)
         self._lyrics_thread: Optional[QThread] = None
+        # Lyrics load version - used to ignore stale thread results
+        self._lyrics_load_version: int = 0
         # Lyrics download thread (for downloading from online)
         self._lyrics_download_thread: Optional[QThread] = None
         self._lyrics_download_path: str = ""
@@ -520,6 +522,7 @@ class MainWindow(QMainWindow):
         # Artists view connections
         self._artists_view.artist_clicked.connect(self._on_artist_clicked)
         self._artists_view.download_cover_requested.connect(self._on_download_artist_cover)
+        self._artists_view.rename_artist_requested.connect(self._on_rename_artist)
 
         # Artist view connections
         self._artist_view.play_tracks.connect(self._play_tracks)
@@ -799,6 +802,28 @@ class MainWindow(QMainWindow):
             self._artists_view._list_view.viewport().update()
 
         dialog.cover_saved.connect(on_cover_saved)
+        dialog.exec()
+
+    def _on_rename_artist(self, artist):
+        """Handle rename artist request."""
+        from ui.dialogs.artist_rename_dialog import ArtistRenameDialog
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        dialog = ArtistRenameDialog(
+            artist,
+            bootstrap.library_service,
+            self
+        )
+
+        def on_artist_renamed(old_name, new_name):
+            # Refresh the artists view
+            self._artists_view.refresh()
+            # Clear cover cache
+            self._artists_view._delegate.clear_cache()
+            self._artists_view._list_view.viewport().update()
+
+        dialog.artist_renamed.connect(on_artist_renamed)
         dialog.exec()
 
     def _play_tracks(self, tracks):
@@ -1192,24 +1217,45 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle(self._original_title)
 
     def _load_lyrics_async(self, path: str, title: str, artist: str):
-        """Load lyrics asynchronously."""
-        # Cancel previous lyrics loading if any
+        """Load lyrics asynchronously.
+
+        Uses version-based mechanism to avoid blocking UI.
+        Old threads are allowed to finish but their results are ignored.
+        """
+        # Increment version to invalidate any pending results
+        self._lyrics_load_version += 1
+        current_version = self._lyrics_load_version
+
+        # Request interruption on old thread (non-blocking)
         if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
             self._lyrics_thread.requestInterruption()
-            self._lyrics_thread.quit()
-            if not self._lyrics_thread.wait(500):  # Wait up to 500ms
-                self._lyrics_thread.terminate()  # Force terminate if not responding
-                self._lyrics_thread.wait()
+            # Don't wait - let it finish naturally and be cleaned up in finished handler
 
         # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
         self._lyrics_thread = LyricsLoader(path, title, artist)
+        # Store version with the thread for result validation
+        self._lyrics_thread._load_version = current_version
 
         # Connect signals
-        self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
+        self._lyrics_thread.lyrics_ready.connect(
+            lambda lyrics: self._on_lyrics_ready_v2(lyrics, current_version)
+        )
         self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
 
         # Start loading
         self._lyrics_thread.start()
+
+    def _on_lyrics_ready_v2(self, lyrics: str, version: int):
+        """Handle lyrics loaded asynchronously with version check."""
+        # Ignore if this is from an old thread
+        if version != self._lyrics_load_version:
+            logger.debug(f"[MainWindow] Ignoring stale lyrics result (version {version}, current {self._lyrics_load_version})")
+            return
+
+        if lyrics:
+            self._lyrics_view.set_lyrics(lyrics)
+        else:
+            self._lyrics_view.set_lyrics(t("no_lyrics"))
 
     def _on_lyrics_thread_finished(self):
         """Handle lyrics thread finished."""
@@ -1217,13 +1263,6 @@ class MainWindow(QMainWindow):
         if sender and sender == self._lyrics_thread:
             self._lyrics_thread.deleteLater()
             self._lyrics_thread = None
-
-    def _on_lyrics_ready(self, lyrics: str):
-        """Handle lyrics loaded asynchronously."""
-        if lyrics:
-            self._lyrics_view.set_lyrics(lyrics)
-        else:
-            self._lyrics_view.set_lyrics(t("no_lyrics"))
 
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""
