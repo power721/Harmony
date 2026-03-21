@@ -343,7 +343,7 @@ class QQMusicService:
         Get music top lists.
 
         Returns:
-            List of top list dictionaries
+            List of top list dictionaries with id and title
         """
         try:
             result = self.client.get_top_lists()
@@ -358,7 +358,7 @@ class QQMusicService:
                 for top_list in group.get('toplist', []):
                     top_lists.append({
                         'id': top_list.get('topId', ''),
-                        'name': top_list.get('title', ''),
+                        'title': top_list.get('title', ''),
                         'type': top_list.get('type', 0),
                     })
 
@@ -366,6 +366,75 @@ class QQMusicService:
 
         except Exception as e:
             logger.error(f"Get top lists failed: {e}", exc_info=True)
+            return []
+
+    def get_top_list_songs(self, top_id: int, num: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get songs from a specific top list.
+
+        Args:
+            top_id: Top list ID
+            num: Number of songs to return
+
+        Returns:
+            List of song dictionaries
+        """
+        try:
+            result = self.client.get_top_list_detail(top_id, num)
+
+            if not result:
+                return []
+
+            # Songs can be in different locations:
+            # - result.song (some APIs)
+            # - result.data.song (unsigned endpoint)
+            # - result.list (signed endpoint)
+            songs = result.get('song', [])
+            if not songs:
+                inner_data = result.get('data', {})
+                if isinstance(inner_data, dict):
+                    songs = inner_data.get('song', [])
+            if not songs:
+                songs = result.get('list', [])
+
+            logger.debug(f"get_top_list_songs: top_id={top_id}, found {len(songs)} songs")
+
+            tracks = []
+
+            for song in songs:
+                # Handle singer data - can be singerName (string) or singer (list/dict)
+                singer_info = song.get('singer', song.get('singerName', ''))
+                if isinstance(singer_info, str):
+                    singer_name = singer_info
+                elif isinstance(singer_info, list) and singer_info:
+                    singer_name = singer_info[0].get('name', '')
+                elif isinstance(singer_info, dict):
+                    singer_name = singer_info.get('name', '')
+                else:
+                    singer_name = ''
+
+                # Handle album data - can be albumName (string) or album (dict)
+                album_info = song.get('album', {})
+                if isinstance(album_info, str):
+                    album_name = album_info
+                elif isinstance(album_info, dict):
+                    album_name = album_info.get('name', '')
+                else:
+                    album_name = song.get('albumName', '')
+
+                track = {
+                    'mid': song.get('songmid', '') or song.get('mid', ''),
+                    'title': song.get('songname', '') or song.get('title', ''),
+                    'singer': singer_name,
+                    'album': album_name,
+                    'duration': song.get('interval', 0),
+                }
+                tracks.append(track)
+
+            return tracks
+
+        except Exception as e:
+            logger.error(f"Get top list songs failed: {e}", exc_info=True)
             return []
 
     def set_credential(self, credential: Dict[str, Any]):

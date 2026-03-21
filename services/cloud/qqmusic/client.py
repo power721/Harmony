@@ -214,7 +214,7 @@ class QQMusicClient:
 
         return params
 
-    def _make_request(self, module: str, method: str, params: Dict, _retry: bool = False) -> Dict:
+    def _make_request(self, module: str, method: str, params: Dict, _retry: bool = False, use_sign: bool = False) -> Dict:
         """
         Make API request.
 
@@ -223,6 +223,7 @@ class QQMusicClient:
             method: Method name
             params: Request parameters
             _retry: Internal flag to prevent infinite retry loop
+            use_sign: Whether to use signed endpoint
 
         Returns:
             Response data
@@ -238,15 +239,39 @@ class QQMusicClient:
             }
         }
 
-        # Use same JSON serialization for both sign and request body
-        json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
-        signature = generate_sign(request_data)
-        url = f"{APIConfig.ENDPOINT}?sign={signature}"
+        # Build headers with Cookie if credential exists
+        headers = {
+            'Content-Type': 'application/json',
+            'Referer': 'https://y.qq.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Origin': 'https://y.qq.com',
+        }
+
+        # Add Cookie header if credential exists
+        if self.credential:
+            cookies = [
+                f"uin={self.credential.get('musicid', '')}",
+                f"qqmusic_key={self.credential.get('musickey', '')}",
+                f"qm_keyst={self.credential.get('musickey', '')}",
+                f"tmeLoginType={self.credential.get('login_type') or self.credential.get('loginType', 2)}",
+            ]
+            headers['Cookie'] = '; '.join(cookies)
+
+        if use_sign:
+            # Use signed endpoint
+            json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
+            signature = generate_sign(request_data)
+            url = f"{APIConfig.ENDPOINT_SIGNED}?sign={signature}"
+            data_to_send = json_str.encode('utf-8')
+        else:
+            # Use unsigned endpoint (works for most APIs)
+            url = APIConfig.ENDPOINT
+            data_to_send = json.dumps(request_data).encode('utf-8')
 
         response = self.session.post(
             url,
-            data=json_str.encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
+            data=data_to_send,
+            headers=headers,
             timeout=30
         )
         response.raise_for_status()
@@ -266,9 +291,11 @@ class QQMusicClient:
                 if not _retry and self._try_refresh_credential():
                     # Retry with new credential
                     return self._make_request(module, method, params, _retry=True)
-                logger.debug("QQ Music API requires login credential")
+                logger.debug(f"QQ Music API requires login credential for {module}.{method}, has_credential={bool(self.credential)}")
+                if self.credential:
+                    logger.debug(f"  Credential musicid={self.credential.get('musicid')}, has_key={bool(self.credential.get('musickey'))}")
             else:
-                logger.error(f"API error: {code}")
+                logger.error(f"API error: {code} for {module}.{method}")
             return {}
 
         return result.get('data', result)
@@ -489,11 +516,31 @@ class QQMusicClient:
         Get music top lists.
 
         Returns:
-            Top lists dictionary
+            Top lists dictionary with group structure
         """
         params = {}
 
-        return self._make_request('music.topList.TopListInfoService', 'GetTopList', params)
+        # Use same module as JS: music.musicToplist.Toplist with GetAll
+        return self._make_request('music.musicToplist.Toplist', 'GetAll', params)
+
+    def get_top_list_detail(self, top_id: int, num: int = 100) -> Dict:
+        """
+        Get songs from a specific top list.
+
+        Args:
+            top_id: Top list ID
+            num: Number of songs to return
+
+        Returns:
+            Top list detail with songs
+        """
+        params = {
+            'topId': top_id,
+            'num': num,
+            'offset': 0,
+        }
+
+        return self._make_request('music.musicToplist.Toplist', 'GetDetail', params)
 
     def verify_login(self) -> Dict[str, Any]:
         """

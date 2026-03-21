@@ -34,6 +34,7 @@ class TestEventBus:
         # Download signals
         assert hasattr(bus, "download_progress")
         assert hasattr(bus, "download_completed")
+        assert hasattr(bus, "online_track_metadata_loaded")
 
         # UI signals
         assert hasattr(bus, "lyrics_loaded")
@@ -166,3 +167,17 @@ class TestEventBus:
 
         mock_progress.assert_called_once_with("file_id", 50, 100)
         mock_completed.assert_called_once_with("file_id", "/path/to/file")
+
+    def test_online_track_metadata_loaded_signal(self):
+        """Test online_track_metadata_loaded signal."""
+        from system.event_bus import EventBus
+
+        bus = EventBus.instance()
+        mock_handler = Mock()
+
+        bus.online_track_metadata_loaded.connect(mock_handler)
+
+        metadata = {"title": "Test Song", "artist": "Test Artist"}
+        bus.online_track_metadata_loaded.emit("song_mid_123", metadata)
+
+        mock_handler.assert_called_once_with("song_mid_123", metadata)

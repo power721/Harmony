@@ -1,0 +1,430 @@
+"""
+Online music service.
+Provides unified interface for online music search and browsing.
+"""
+
+import logging
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
+
+import requests
+
+from domain.online_music import (
+    OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
+    SearchResult, SearchType
+)
+from .adapter import OnlineMusicAdapter, ApiSource
+
+if TYPE_CHECKING:
+    from system.config import ConfigManager
+
+logger = logging.getLogger(__name__)
+
+
+class OnlineMusicService:
+    """
+    Service for online music search and browsing.
+
+    Uses api.ygking.top by default, falls back to QQ Music local API
+    if credential is available.
+    """
+
+    # API endpoints
+    YGKING_BASE_URL = "https://api.ygking.top"
+
+    def __init__(self, config_manager: Optional["ConfigManager"] = None,
+                 qqmusic_service=None):
+        """
+        Initialize online music service.
+
+        Args:
+            config_manager: ConfigManager for QQ Music credential
+            qqmusic_service: Optional QQMusicService instance
+        """
+        self._config = config_manager
+        self._qqmusic = qqmusic_service
+        self._http_client = requests.Session()
+        self._http_client.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        })
+
+    def _has_qqmusic_credential(self) -> bool:
+        """Check if QQ Music credential is available."""
+        if not self._config:
+            return False
+
+        credential = self._config.get("qqmusic.credential")
+        if not credential:
+            # Fallback to individual fields
+            musicid = self._config.get("qqmusic.musicid")
+            musickey = self._config.get("qqmusic.musickey")
+            return bool(musicid and musickey)
+
+        return True
+
+    def search(
+        self,
+        keyword: str,
+        search_type: str = SearchType.SONG,
+        page: int = 1,
+        page_size: int = 50
+    ) -> SearchResult:
+        """
+        Search for music.
+
+        Args:
+            keyword: Search keyword
+            search_type: Type of search (song/singer/album/playlist)
+            page: Page number (1-based)
+            page_size: Number of results per page
+
+        Returns:
+            SearchResult object
+        """
+        # Prefer QQ Music local API if credential is available
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._search_qqmusic(keyword, search_type, page, page_size)
+
+        # Use YGKing API
+        return self._search_ygking(keyword, search_type, page, page_size)
+
+    def _search_ygking(
+        self,
+        keyword: str,
+        search_type: str,
+        page: int,
+        page_size: int
+    ) -> SearchResult:
+        """Search using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/search"
+            params = {
+                "keyword": keyword,
+                "type": search_type,
+                "num": page_size,
+                "page": page,
+            }
+
+            response = self._http_client.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            return OnlineMusicAdapter.normalize_search_result(
+                ApiSource.YGKING,
+                data,
+                search_type,
+                keyword,
+                page,
+                page_size
+            )
+
+        except Exception as e:
+            logger.error(f"YGKing search failed: {e}")
+            return SearchResult(
+                keyword=keyword,
+                search_type=search_type,
+                page=page,
+                page_size=page_size
+            )
+
+    def _search_qqmusic(
+        self,
+        keyword: str,
+        search_type: str,
+        page: int,
+        page_size: int
+    ) -> SearchResult:
+        """Search using QQ Music local API."""
+        try:
+            result = self._qqmusic.client.search(
+                keyword,
+                search_type=search_type,
+                page_num=page,
+                page_size=page_size
+            )
+
+            return OnlineMusicAdapter.normalize_search_result(
+                ApiSource.QQMUSIC,
+                result,
+                search_type,
+                keyword,
+                page,
+                page_size
+            )
+
+        except Exception as e:
+            logger.error(f"QQ Music search failed: {e}, falling back to YGKing")
+            return self._search_ygking(keyword, search_type, page, page_size)
+
+    def get_top_lists(self) -> List[Dict[str, Any]]:
+        """
+        Get music top list / ranking list.
+
+        Returns:
+            List of top lists with id and name
+        """
+        # Prefer QQ Music local API if credential is available
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._get_top_lists_qqmusic()
+
+        return self._get_top_lists_ygking()
+
+    def _get_top_lists_qqmusic(self) -> List[Dict[str, Any]]:
+        """Get top lists using QQ Music local API."""
+        try:
+            result = self._qqmusic.get_top_lists()
+            if result:
+                logger.debug(f"Got {len(result)} top lists from QQ Music local API")
+                return result
+            # Empty result, fallback to YGKing
+            logger.debug("QQ Music returned empty top lists, falling back to YGKing")
+            return self._get_top_lists_ygking()
+        except Exception as e:
+            logger.error(f"QQ Music get top lists failed: {e}, falling back to YGKing")
+            return self._get_top_lists_ygking()
+
+    def _get_top_lists_ygking(self) -> List[Dict[str, Any]]:
+        """Get top lists using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/top"
+            response = self._http_client.get(url, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") == 0:
+                # YGKing returns group[].toplist[] structure
+                groups = data.get("data", {}).get("group", [])
+                top_lists = []
+                for group in groups:
+                    for top_list in group.get("toplist", []):
+                        top_lists.append({
+                            'id': top_list.get('topId', ''),
+                            'title': top_list.get('title', ''),
+                        })
+                return top_lists
+
+            return []
+
+        except Exception as e:
+            logger.error(f"Get top lists failed: {e}")
+            return self._get_default_top_lists()
+
+    def _get_default_top_lists(self) -> List[Dict[str, Any]]:
+        """Get default top lists as fallback."""
+        return [
+            {"id": 4, "title": "巅峰榜·流行指数"},
+            {"id": 26, "title": "巅峰榜·热歌"},
+            {"id": 27, "title": "巅峰榜·新歌"},
+            {"id": 62, "title": "巅峰榜·网络歌曲"},
+        ]
+
+    def get_top_list_songs(self, top_id: int, num: int = 100) -> List[OnlineTrack]:
+        """
+        Get songs from a specific top list.
+
+        Args:
+            top_id: Top list ID (e.g., 4 for 流行指数, 26 for 热歌)
+            num: Number of songs to return
+
+        Returns:
+            List of OnlineTrack objects
+        """
+        # Prefer QQ Music local API (GetDetail works without login)
+        if self._qqmusic:
+            return self._get_top_list_songs_qqmusic(top_id, num)
+
+        return self._get_top_list_songs_ygking(top_id, num)
+
+    def _get_top_list_songs_qqmusic(self, top_id: int, num: int) -> List[OnlineTrack]:
+        """Get top list songs using QQ Music local API."""
+        try:
+            songs = self._qqmusic.get_top_list_songs(top_id, num)
+            if songs:
+                logger.debug(f"Got {len(songs)} songs from QQ Music local API for top_id={top_id}")
+                return OnlineMusicAdapter._parse_qqmusic_tracks(songs)
+            # Empty result, fallback to YGKing
+            logger.debug(f"QQ Music returned empty songs for top_id={top_id}, falling back to YGKing")
+            return self._get_top_list_songs_ygking(top_id, num)
+        except Exception as e:
+            logger.error(f"QQ Music get top list songs failed: {e}, falling back to YGKing")
+            return self._get_top_list_songs_ygking(top_id, num)
+
+    def _get_top_list_songs_ygking(self, top_id: int, num: int) -> List[OnlineTrack]:
+        """Get top list songs using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/top"
+            params = {
+                "id": top_id,
+                "num": num,
+            }
+
+            response = self._http_client.get(url, params=params, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") == 0:
+                # YGKing returns data.data.song[] structure
+                songs = data.get("data", {}).get("data", {}).get("song", [])
+                return OnlineMusicAdapter._parse_ygking_top_songs(songs)
+
+            return []
+
+        except Exception as e:
+            logger.error(f"Get top list songs failed: {e}")
+            return []
+
+    def get_artist_detail(self, singer_mid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get artist detail information.
+
+        Args:
+            singer_mid: Singer MID
+
+        Returns:
+            Artist detail dict or None
+        """
+        # Prefer QQ Music API for detail
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._qqmusic.get_singer_info(singer_mid)
+
+        # YGKing doesn't have artist detail API
+        logger.warning("Artist detail not available without QQ Music credential")
+        return None
+
+    def get_album_detail(self, album_mid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get album detail information.
+
+        Args:
+            album_mid: Album MID
+
+        Returns:
+            Album detail dict or None
+        """
+        # Prefer QQ Music API for detail
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._qqmusic.get_album_info(album_mid)
+
+        # YGKing doesn't have album detail API
+        logger.warning("Album detail not available without QQ Music credential")
+        return None
+
+    def get_playlist_detail(self, playlist_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get playlist detail information.
+
+        Args:
+            playlist_id: Playlist ID
+
+        Returns:
+            Playlist detail dict or None
+        """
+        # Prefer QQ Music API for detail
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._qqmusic.get_playlist_info(playlist_id)
+
+        # YGKing doesn't have playlist detail API
+        logger.warning("Playlist detail not available without QQ Music credential")
+        return None
+
+    def get_playback_url(self, song_mid: str, quality: str = "320") -> Optional[str]:
+        """
+        Get playback URL for a song.
+
+        Args:
+            song_mid: Song MID
+            quality: Audio quality (master/flac/320/128)
+
+        Returns:
+            Playback URL or None
+        """
+        # Prefer QQ Music local API if credential is available
+        if self._has_qqmusic_credential() and self._qqmusic:
+            # Try different qualities in order
+            quality_fallback = ["320", "128", "flac"]
+            start_index = quality_fallback.index(quality) if quality in quality_fallback else 0
+
+            for q in quality_fallback[start_index:]:
+                url = self._qqmusic.get_playback_url(song_mid, q)
+                if url:
+                    return url
+
+            logger.debug(f"No playback URL via QQ Music local API for {song_mid}, trying remote API")
+
+        # Use remote API (api.ygking.top) as fallback or when not logged in
+        return self._get_playback_url_remote(song_mid, quality)
+
+    def _get_playback_url_remote(self, song_mid: str, quality: str = "320") -> Optional[str]:
+        """Get playback URL from remote API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/song/url"
+            params = {
+                "mid": song_mid,
+                "quality": quality,
+            }
+
+            response = self._http_client.get(url, params=params, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") == 0:
+                urls = data.get("data", {})
+                if song_mid in urls and urls[song_mid]:
+                    return urls[song_mid]
+
+            logger.warning(f"No playback URL available for {song_mid}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Get playback URL from remote failed: {e}")
+            return None
+
+    def get_lyrics(self, song_mid: str) -> Dict[str, Optional[str]]:
+        """
+        Get lyrics for a song.
+
+        Args:
+            song_mid: Song MID
+
+        Returns:
+            Dict with lyric, qrc, trans keys
+        """
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._qqmusic.get_lyrics(song_mid)
+
+        return {"lyric": None, "qrc": None, "trans": None}
+
+    def get_song_detail(self, song_mid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed song information.
+
+        Args:
+            song_mid: Song MID
+
+        Returns:
+            Dict with song details or None
+        """
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/song/detail"
+            params = {"mid": song_mid}
+
+            response = self._http_client.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") == 0:
+                song_data = data.get("data", {})
+                return {
+                    "title": song_data.get("title", ""),
+                    "artist": ", ".join(s.get("name", "") for s in song_data.get("singer", [])),
+                    "album": song_data.get("album", {}).get("name", "") if song_data.get("album") else "",
+                    "duration": song_data.get("interval", 0),
+                    "genre": song_data.get("genre"),
+                    "language": song_data.get("language"),
+                    "publish_date": song_data.get("publish_date"),
+                }
+
+        except Exception as e:
+            logger.debug(f"Failed to get song detail: {e}")
+
+        return None

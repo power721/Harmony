@@ -210,8 +210,16 @@ class PlaylistItem:
         """
         from domain.playback import PlayQueueItem
 
-        source_type = "local" if self.is_local else "cloud"
-        cloud_type = self.source_type.value if self.is_cloud else ""
+        # Determine source_type string
+        if self.source_type == CloudProvider.LOCAL:
+            source_type = "local"
+            cloud_type = ""
+        elif self.source_type == CloudProvider.ONLINE:
+            source_type = "online"
+            cloud_type = "QQ"  # QQ Music source
+        else:
+            source_type = "cloud"
+            cloud_type = self.source_type.value
 
         return PlayQueueItem(
             position=position,
@@ -241,8 +249,11 @@ class PlaylistItem:
         """
         from pathlib import Path
 
+        # Determine source_type
         source_type = CloudProvider.LOCAL
-        if item.source_type == "cloud" and item.cloud_type:
+        if item.source_type == "online":
+            source_type = CloudProvider.ONLINE
+        elif item.source_type == "cloud" and item.cloud_type:
             source_type = CloudProvider(item.cloud_type)
 
         # Try to get metadata from database
@@ -252,12 +263,12 @@ class PlaylistItem:
         album = item.album
         duration = item.duration
         track_id = item.track_id
-        needs_metadata = bool(item.cloud_file_id)  # Cloud files may need metadata
+        needs_metadata = False
 
         if db:
             try:
                 # For local tracks, get by track_id
-                if item.track_id:
+                if item.track_id and item.source_type == "local":
                     track = db.get_track(item.track_id)
                     if track:
                         cover_path = track.cover_path
@@ -265,7 +276,11 @@ class PlaylistItem:
                         artist = track.artist or artist
                         album = track.album or album
                         duration = track.duration or duration
-                        needs_metadata = False  # Track exists with metadata
+                        needs_metadata = False
+                # For online tracks, metadata is already stored in queue
+                elif item.source_type == "online":
+                    # Online tracks already have metadata in the queue item
+                    needs_metadata = False
                 # For cloud files, get by cloud_file_id
                 elif item.cloud_file_id:
                     track = db.get_track_by_cloud_file_id(item.cloud_file_id)
@@ -276,7 +291,7 @@ class PlaylistItem:
                         album = track.album or album
                         duration = track.duration or duration
                         track_id = track.id
-                        needs_metadata = False  # Track exists with metadata
+                        needs_metadata = False
                 # For local files without track_id, try to find by path
                 elif item.local_path and not item.cloud_file_id:
                     track = db.get_track_by_path(item.local_path)
@@ -287,23 +302,21 @@ class PlaylistItem:
                         album = track.album or album
                         duration = track.duration or duration
                         track_id = track.id
-                        needs_metadata = False  # Track exists with metadata
+                        needs_metadata = False
             except Exception:
                 pass  # Ignore errors, use item values
 
         # Determine the correct local_path to use
-        # Always prioritize the latest path from database if track_id exists
-        # This ensures that after file organization, the queue uses the new paths
         local_path = item.local_path
-        if db and track_id:
+        if db and track_id and item.source_type == "local":
             try:
-                # For tracks with track_id (local or downloaded cloud files), get the latest path
+                # For tracks with track_id (local), get the latest path
                 track = db.get_track(track_id)
                 if track and track.path:
                     local_path = track.path
             except Exception:
                 pass  # Fallback to item.local_path
-        elif db and item.cloud_file_id and not local_path:
+        elif db and item.cloud_file_id and item.source_type == "cloud":
             try:
                 # For cloud files without local_path, try to get from cloud_files table
                 cloud_file = db.get_cloud_file_by_file_id(item.cloud_file_id)
@@ -312,24 +325,28 @@ class PlaylistItem:
             except Exception:
                 pass  # Ignore errors, local_path will remain empty
 
-        # Check if local file actually exists for cloud files
-        # If file was deleted, we need to re-download
+        # Check if local file actually exists
         file_exists = local_path and Path(local_path).exists()
 
-        # Only clear path and set needs_download for cloud files
-        if item.cloud_file_id and not file_exists:
-            needs_download = True
-            final_local_path = ""
-        else:
-            needs_download = bool(item.cloud_file_id and not local_path)
-            final_local_path = local_path
+        # Determine needs_download
+        needs_download = False
+        if item.source_type == "online":
+            # Online tracks need download if file doesn't exist
+            needs_download = not file_exists
+            if not file_exists:
+                local_path = ""
+        elif item.source_type == "cloud":
+            # Cloud files need download if no local path
+            if item.cloud_file_id and not file_exists:
+                needs_download = True
+                local_path = ""
 
         return cls(
             source_type=source_type,
             track_id=track_id,
             cloud_file_id=item.cloud_file_id,
             cloud_account_id=item.cloud_account_id,
-            local_path=final_local_path,
+            local_path=local_path,
             title=title,
             artist=artist,
             album=album,

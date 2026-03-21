@@ -255,3 +255,44 @@ class TestPlaylistItem:
         assert playlist_item.source_type == CloudProvider.QUARK
         assert playlist_item.cloud_file_id == "quark_123"
         assert playlist_item.cloud_account_id == 1
+
+    def test_to_play_queue_item_online(self):
+        """Test converting online PlaylistItem to PlayQueueItem."""
+        item = PlaylistItem(
+            source_type=CloudProvider.ONLINE,
+            cloud_file_id="song_mid_123",
+            local_path="/cache/online/song.mp3",
+            title="Online Song",
+            artist="Online Artist",
+            album="Online Album",
+            duration=200.0,
+        )
+        queue_item = item.to_play_queue_item(position=0)
+
+        assert queue_item.source_type == "online"
+        assert queue_item.cloud_type == "QQ"
+        assert queue_item.cloud_file_id == "song_mid_123"
+        assert queue_item.title == "Online Song"
+        assert queue_item.artist == "Online Artist"
+
+    def test_from_play_queue_item_online(self):
+        """Test creating from PlayQueueItem for online track."""
+        from domain.playback import PlayQueueItem
+
+        queue_item = PlayQueueItem(
+            position=1,
+            source_type="online",
+            cloud_type="QQ",
+            cloud_file_id="song_mid_123",
+            local_path="/cache/online/song.mp3",
+            title="Online Song",
+            artist="Online Artist",
+            album="Online Album",
+            duration=200.0,
+        )
+        playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
+
+        assert playlist_item.source_type == CloudProvider.ONLINE
+        assert playlist_item.cloud_file_id == "song_mid_123"
+        assert playlist_item.title == "Online Song"
+        assert playlist_item.artist == "Online Artist"

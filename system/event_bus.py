@@ -77,6 +77,9 @@ class EventBus(QObject):
     # Emitted when a track needs to be downloaded (PlaylistItem)
     track_needs_download = Signal(object)
 
+    # Emitted when online track metadata is loaded (song_mid, metadata_dict)
+    online_track_metadata_loaded = Signal(str, dict)
+
     # ===== UI Events =====
 
     # Emitted when lyrics are loaded (lyrics_text)

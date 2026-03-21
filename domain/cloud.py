@@ -11,6 +11,7 @@ from typing import Optional
 class CloudProvider(Enum):
     """Cloud storage provider enumeration."""
     LOCAL = "local"  # Local music files
+    ONLINE = "online"  # Online music (QQ Music, etc.)
     QUARK = "quark"  # Quark cloud drive
     BAIDU = "baidu"  # Baidu cloud drive
     # Future extensions: ONEDRIVE, GOOGLE_DRIVE, DROPBOX, etc.
