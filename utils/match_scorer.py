@@ -69,6 +69,14 @@ class MatchScorer:
     # Duration tolerance in seconds (±5 seconds for stricter matching)
     DURATION_TOLERANCE = 5
 
+    # Source priority for tie-breaking (lower number = higher priority)
+    SOURCE_PRIORITY = {
+        'qqmusic': 0,  # QQ Music first
+        'netease': 1,
+        'kugou': 2,
+        'lrclib': 3,
+    }
+
     @classmethod
     def calculate_score(cls, track: TrackInfo, result: SearchResult, mode: str = 'lyrics') -> float:
         """
@@ -132,6 +140,7 @@ class MatchScorer:
 
         best_result = None
         best_score = 0
+        best_priority = 99  # Lower is better
 
         for result in results:
             # Convert dict to SearchResult if needed
@@ -149,13 +158,16 @@ class MatchScorer:
                 )
 
             score = cls.calculate_score(track, result, mode)
+            priority = cls.SOURCE_PRIORITY.get(result.source, 99)
 
-            if score > best_score or (score == best_score and result.source == 'qqmusic'):
+            # Better score wins, or same score with higher priority (lower number)
+            if score > best_score or (score == best_score and priority < best_priority):
                 best_score = score
                 best_result = result
+                best_priority = priority
 
         if best_result:
-            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f})")
+            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f}, source: {best_result.source})")
 
         return (best_result, best_score) if best_result else None
 

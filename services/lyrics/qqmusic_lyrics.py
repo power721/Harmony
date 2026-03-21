@@ -21,7 +21,7 @@ class QQMusicClient:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
-    def __init__(self, timeout: int = 3):
+    def __init__(self, timeout: int = 5):
         self.session = requests.Session()
         self.timeout = timeout
 

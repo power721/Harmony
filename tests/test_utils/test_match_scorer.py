@@ -175,3 +175,34 @@ class TestMatchScorer:
         # In cover mode, result2 should win (album match)
         best_cover, _ = MatchScorer.find_best_match(track, results, mode='cover')
         assert best_cover.id == "2"
+
+    def test_source_priority_tie_breaker(self):
+        """Test that QQ Music has higher priority when scores are equal."""
+        track = TrackInfo(title="Song", artist="Artist", album="Album", duration=180)
+
+        # Same track from different sources with identical scores
+        results = [
+            SearchResult(title="Song", artist="Artist", album="Album", duration=180, source="lrclib", id="1"),
+            SearchResult(title="Song", artist="Artist", album="Album", duration=180, source="kugou", id="2"),
+            SearchResult(title="Song", artist="Artist", album="Album", duration=180, source="netease", id="3"),
+            SearchResult(title="Song", artist="Artist", album="Album", duration=180, source="qqmusic", id="4"),
+        ]
+
+        best, score = MatchScorer.find_best_match(track, results)
+        # QQ Music should be selected despite same score
+        assert best.source == "qqmusic"
+        assert best.id == "4"
+
+    def test_source_priority_with_different_scores(self):
+        """Test that higher score still wins over source priority."""
+        track = TrackInfo(title="SongA", artist="Artist", album="Album", duration=180)
+
+        results = [
+            SearchResult(title="SongB", artist="Artist", album="Album", duration=180, source="qqmusic", id="1"),
+            SearchResult(title="SongA", artist="Artist", album="Album", duration=180, source="netease", id="2"),
+        ]
+
+        best, score = MatchScorer.find_best_match(track, results)
+        # NetEase should win because it has higher score (exact title match)
+        assert best.source == "netease"
+        assert best.id == "2"

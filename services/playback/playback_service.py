@@ -959,9 +959,39 @@ class PlaybackService(QObject):
             cover_path: Path to the extracted cover art, or None
         """
         from services.metadata.metadata_service import MetadataService
+        from services.lyrics.lyrics_service import LyricsService
+        from utils.helpers import is_filename_like
 
+        # Extract metadata from downloaded file
+        metadata = MetadataService.extract_metadata(local_path)
+        new_title = metadata.get("title", Path(local_path).stem)
+        new_artist = metadata.get("artist", "")
+        new_album = metadata.get("album", "")
+        new_duration = metadata.get("duration", 0)
+
+        # Check if track already exists
         existing = self._db.get_track_by_cloud_file_id(file_id)
         if existing:
+            # Check if existing metadata needs update (e.g., title looks like filename or artist is empty)
+            needs_update = False
+            if is_filename_like(existing.title) or not existing.artist:
+                needs_update = True
+
+            if needs_update and (new_artist or not is_filename_like(new_title)):
+                # Update existing track with better metadata
+                self._db.update_track(
+                    existing.id,
+                    title=new_title if not is_filename_like(new_title) else None,
+                    artist=new_artist if new_artist else None,
+                    album=new_album if new_album else None,
+                )
+                logger.info(f"[PlaybackService] Updated track {existing.id} metadata: {new_title} - {new_artist}")
+
+                # Delete old lyrics file if metadata was wrong (will re-download with correct metadata)
+                if LyricsService.lyrics_file_exists(local_path):
+                    LyricsService.delete_lyrics(local_path)
+                    logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+
             return existing.cover_path
 
         existing_by_path = self._db.get_track_by_path(local_path)
@@ -973,15 +1003,37 @@ class PlaybackService(QObject):
                 (file_id, existing_by_path.id)
             )
             conn.commit()
+
+            # Also update metadata if needed
+            if is_filename_like(existing_by_path.title) or not existing_by_path.artist:
+                if new_artist or not is_filename_like(new_title):
+                    self._db.update_track(
+                        existing_by_path.id,
+                        title=new_title if not is_filename_like(new_title) else None,
+                        artist=new_artist if new_artist else None,
+                        album=new_album if new_album else None,
+                    )
+
+                    # Delete old lyrics file if metadata was wrong
+                    if LyricsService.lyrics_file_exists(local_path):
+                        LyricsService.delete_lyrics(local_path)
+                        logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+
             return existing_by_path.cover_path
 
-        # Step 1: Extract metadata from downloaded file
-        metadata = MetadataService.extract_metadata(local_path)
+        # Create new track
+        title = new_title
+        artist = new_artist
+        album = new_album
+        duration = new_duration
 
-        title = metadata.get("title", Path(local_path).stem)
-        artist = metadata.get("artist", "")
-        album = metadata.get("album", "")
-        duration = metadata.get("duration", 0)
+        # Check if lyrics file exists with wrong metadata and delete it
+        # This happens when lyrics were downloaded before metadata was extracted
+        if LyricsService.lyrics_file_exists(local_path):
+            # If we now have proper artist info, old lyrics (downloaded with filename as title) should be deleted
+            if artist and not is_filename_like(title):
+                LyricsService.delete_lyrics(local_path)
+                logger.info(f"[PlaybackService] Deleted old lyrics file for new track (metadata now available)")
 
         cover_path = None
         if self._cover_service:

@@ -98,7 +98,7 @@ class LyricsService:
             for future in as_completed(futures):
                 source_name = futures[future]
                 try:
-                    source_results = future.result(timeout=3)  # Per-source 3s timeout
+                    source_results = future.result(timeout=6)  # Per-source 6s timeout
                     results.extend(source_results)
                     logger.debug(f"[LyricsService] {source_name}: found {len(source_results)} results")
 
@@ -663,11 +663,11 @@ class LyricsService:
                 for task in search_tasks
             }
 
-            # Each source has its own 3s timeout, slow sources don't block fast ones
+            # Each source has its own timeout, slow sources don't block fast ones
             for future in as_completed(futures):
                 source_name = futures[future]
                 try:
-                    source_results = future.result(timeout=3)  # Per-source 3s timeout
+                    source_results = future.result(timeout=6)  # Per-source 6s timeout
                     all_results.extend(source_results)
                 except Exception as e:
                     logger.debug(f"[LyricsService] {source_name} search failed: {e}")
