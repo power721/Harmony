@@ -46,9 +46,23 @@ class CoverService:
         Returns:
             Path to the cover image, or None
         """
+        # If title looks like a filename, try to parse artist and title from it
+        search_title = title
+        search_artist = artist
+        search_album = album
+
+        from utils.helpers import is_filename_like, parse_filename_as_metadata
+        if is_filename_like(title) or (not artist and ' - ' in title):
+            parsed_artist, parsed_title = parse_filename_as_metadata(title)
+            if parsed_title:
+                search_title = parsed_title
+                if parsed_artist:
+                    search_artist = parsed_artist
+                logger.info(f"[CoverService] Parsed filename: '{title}' -> artist='{search_artist}', title='{search_title}'")
+
         # First check cached/downloaded covers (higher priority for user-downloaded covers)
-        cache_key = self._get_cache_key(artist, album or title)
-        logger.info(f"[CoverService] get_cover: cache_key={cache_key}, artist={artist}, album={album}, title={title}")
+        cache_key = self._get_cache_key(search_artist, search_album or search_title)
+        logger.info(f"[CoverService] get_cover: cache_key={cache_key}, artist={search_artist}, album={search_album}, title={search_title}")
         cached_cover = self._get_cached_cover(cache_key)
         logger.info(f"[CoverService] cached_cover={cached_cover}")
         if cached_cover and cached_cover.exists():
@@ -68,7 +82,7 @@ class CoverService:
 
         # Try online sources with smart matching
         logger.info(f"[CoverService] No cover found, trying online sources")
-        return self._fetch_online_cover(title, artist, album, cache_key, duration)
+        return self._fetch_online_cover(search_title, search_artist, search_album, cache_key, duration)
 
     def _extract_embedded_cover(self, track_path: str) -> Optional[str]:
         """

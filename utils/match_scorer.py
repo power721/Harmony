@@ -40,32 +40,42 @@ class MatchScorer:
     Calculate match score between track info and search result.
 
     Scoring factors:
-    - Title similarity (0-40 points)
-    - Artist similarity (0-30 points)
-    - Album similarity (0-15 points)
-    - Duration match (0-15 points)
+    - Duration match (0-40 points) - highest weight
+    - Title similarity (0-25 points)
+    - Artist similarity (0-25 points)
+    - Album similarity (0-10 points)
 
     Total max score: 100 points
 
+    Duration tolerance: ±5 seconds for strict matching
+
     Match modes:
-    - 'lyrics': Title has highest weight (default for lyrics matching)
+    - 'lyrics': Duration has highest weight (default for lyrics matching)
     - 'cover': Album has highest weight (default for cover matching)
     """
 
-    # Default scoring weights (for lyrics mode - title highest)
-    TITLE_WEIGHT = 35
-    ARTIST_WEIGHT = 30
-    ALBUM_WEIGHT = 15
-    DURATION_WEIGHT = 20
+    # Default scoring weights (duration highest for better matching)
+    TITLE_WEIGHT = 25
+    ARTIST_WEIGHT = 25
+    ALBUM_WEIGHT = 10
+    DURATION_WEIGHT = 40
 
     # Weights for cover matching (album highest)
     COVER_TITLE_WEIGHT = 15
-    COVER_ARTIST_WEIGHT = 30
-    COVER_ALBUM_WEIGHT = 35
+    COVER_ARTIST_WEIGHT = 25
+    COVER_ALBUM_WEIGHT = 40
     COVER_DURATION_WEIGHT = 20
 
-    # Duration tolerance in seconds (±30 seconds)
-    DURATION_TOLERANCE = 30
+    # Duration tolerance in seconds (±5 seconds for stricter matching)
+    DURATION_TOLERANCE = 5
+
+    # Source priority for tie-breaking (lower number = higher priority)
+    SOURCE_PRIORITY = {
+        'qqmusic': 0,  # QQ Music first
+        'netease': 1,
+        'kugou': 2,
+        'lrclib': 3,
+    }
 
     @classmethod
     def calculate_score(cls, track: TrackInfo, result: SearchResult, mode: str = 'lyrics') -> float:
@@ -130,6 +140,7 @@ class MatchScorer:
 
         best_result = None
         best_score = 0
+        best_priority = 99  # Lower is better
 
         for result in results:
             # Convert dict to SearchResult if needed
@@ -147,13 +158,16 @@ class MatchScorer:
                 )
 
             score = cls.calculate_score(track, result, mode)
+            priority = cls.SOURCE_PRIORITY.get(result.source, 99)
 
-            if score > best_score or (score == best_score and result.source == 'qqmusic'):
+            # Better score wins, or same score with higher priority (lower number)
+            if score > best_score or (score == best_score and priority < best_priority):
                 best_score = score
                 best_result = result
+                best_priority = priority
 
         if best_result:
-            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f})")
+            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f}, source: {best_result.source})")
 
         return (best_result, best_score) if best_result else None
 

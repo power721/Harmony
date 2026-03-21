@@ -109,6 +109,41 @@ class PlaybackService(QObject):
         service.download_completed.connect(self._event_bus.download_completed.emit)
         service.download_error.connect(self._event_bus.download_error.emit)
 
+        # Connect to metadata_updated to update play_queue
+        self._event_bus.metadata_updated.connect(self._on_metadata_updated)
+
+    def _on_metadata_updated(self, track_id: int):
+        """Handle metadata update from manual edit - update play_queue."""
+        # Get updated track from database
+        track = self._db.get_track(track_id)
+        if not track:
+            return
+
+        # Update all playlist items with this track_id
+        updated = False
+        is_current_track = False
+        for i, item in enumerate(self._engine._playlist):
+            if item.track_id == track_id:
+                item.title = track.title or item.title
+                item.artist = track.artist or item.artist
+                item.album = track.album or item.album
+                item.duration = track.duration or item.duration
+                item.cover_path = track.cover_path
+                updated = True
+                # Check if this is the current playing track
+                if i == self._engine.current_index:
+                    is_current_track = True
+
+        # Save queue if any item was updated
+        if updated:
+            self.save_queue()
+
+        # If current track was updated, emit signal to refresh UI
+        if is_current_track:
+            current_item = self._engine.current_playlist_item
+            if current_item:
+                self._event_bus.emit_track_change(current_item)
+
     def _restore_settings(self):
         """Restore saved settings from config."""
         saved_mode_int = self._config.get_play_mode()
@@ -498,29 +533,39 @@ class PlaybackService(QObject):
         # Get track from database to retrieve metadata
         track = self._db.get_track_by_cloud_file_id(cloud_file_id)
 
-        # Update playlist items with metadata
-        items = self._engine.playlist_items
-        for i, item in enumerate(items):
-            if item.cloud_file_id == cloud_file_id:
-                item.local_path = local_path
-                item.needs_download = False
-                item.cover_path = cover_path
+        # Update playlist item directly in engine's internal list
+        if track:
+            updated_index = self._engine.update_playlist_item(
+                cloud_file_id=cloud_file_id,
+                local_path=local_path,
+                track_id=track.id,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                duration=track.duration,
+                cover_path=cover_path,
+                needs_download=False,
+                needs_metadata=False
+            )
+        else:
+            updated_index = self._engine.update_playlist_item(
+                cloud_file_id=cloud_file_id,
+                local_path=local_path,
+                cover_path=cover_path,
+                needs_download=False
+            )
 
-                # Update metadata from database track
-                if track:
-                    item.track_id = track.id  # Update track_id for file organization
-                    item.title = track.title or item.title
-                    item.artist = track.artist or item.artist
-                    item.album = track.album or item.album
-                    item.duration = track.duration or item.duration
-                    item.needs_metadata = False
+        # Play if this is current track
+        if updated_index is not None and updated_index == self._engine.current_index:
+            self._engine.play_after_download(updated_index, local_path)
 
-                # Play if this is current track
-                if i == self._engine.current_index:
-                    self._engine.play_after_download(i, local_path)
-                break
+            # Re-emit track_changed with updated metadata for lyrics search
+            # This ensures lyrics are searched with correct title/artist from metadata
+            current_item = self._engine.current_playlist_item
+            if current_item and track:
+                self._event_bus.emit_track_change(current_item)
 
-        # Save queue to persist the updated local_path
+        # Save queue to persist the updated metadata
         self.save_queue()
 
         # Preload next cloud track
@@ -914,9 +959,39 @@ class PlaybackService(QObject):
             cover_path: Path to the extracted cover art, or None
         """
         from services.metadata.metadata_service import MetadataService
+        from services.lyrics.lyrics_service import LyricsService
+        from utils.helpers import is_filename_like
 
+        # Extract metadata from downloaded file
+        metadata = MetadataService.extract_metadata(local_path)
+        new_title = metadata.get("title", Path(local_path).stem)
+        new_artist = metadata.get("artist", "")
+        new_album = metadata.get("album", "")
+        new_duration = metadata.get("duration", 0)
+
+        # Check if track already exists
         existing = self._db.get_track_by_cloud_file_id(file_id)
         if existing:
+            # Check if existing metadata needs update (e.g., title looks like filename or artist is empty)
+            needs_update = False
+            if is_filename_like(existing.title) or not existing.artist:
+                needs_update = True
+
+            if needs_update and (new_artist or not is_filename_like(new_title)):
+                # Update existing track with better metadata
+                self._db.update_track(
+                    existing.id,
+                    title=new_title if not is_filename_like(new_title) else None,
+                    artist=new_artist if new_artist else None,
+                    album=new_album if new_album else None,
+                )
+                logger.info(f"[PlaybackService] Updated track {existing.id} metadata: {new_title} - {new_artist}")
+
+                # Delete old lyrics file if metadata was wrong (will re-download with correct metadata)
+                if LyricsService.lyrics_file_exists(local_path):
+                    LyricsService.delete_lyrics(local_path)
+                    logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+
             return existing.cover_path
 
         existing_by_path = self._db.get_track_by_path(local_path)
@@ -928,15 +1003,37 @@ class PlaybackService(QObject):
                 (file_id, existing_by_path.id)
             )
             conn.commit()
+
+            # Also update metadata if needed
+            if is_filename_like(existing_by_path.title) or not existing_by_path.artist:
+                if new_artist or not is_filename_like(new_title):
+                    self._db.update_track(
+                        existing_by_path.id,
+                        title=new_title if not is_filename_like(new_title) else None,
+                        artist=new_artist if new_artist else None,
+                        album=new_album if new_album else None,
+                    )
+
+                    # Delete old lyrics file if metadata was wrong
+                    if LyricsService.lyrics_file_exists(local_path):
+                        LyricsService.delete_lyrics(local_path)
+                        logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+
             return existing_by_path.cover_path
 
-        # Step 1: Extract metadata from downloaded file
-        metadata = MetadataService.extract_metadata(local_path)
+        # Create new track
+        title = new_title
+        artist = new_artist
+        album = new_album
+        duration = new_duration
 
-        title = metadata.get("title", Path(local_path).stem)
-        artist = metadata.get("artist", "")
-        album = metadata.get("album", "")
-        duration = metadata.get("duration", 0)
+        # Check if lyrics file exists with wrong metadata and delete it
+        # This happens when lyrics were downloaded before metadata was extracted
+        if LyricsService.lyrics_file_exists(local_path):
+            # If we now have proper artist info, old lyrics (downloaded with filename as title) should be deleted
+            if artist and not is_filename_like(title):
+                LyricsService.delete_lyrics(local_path)
+                logger.info(f"[PlaybackService] Deleted old lyrics file for new track (metadata now available)")
 
         cover_path = None
         if self._cover_service:

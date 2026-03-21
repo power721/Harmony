@@ -280,8 +280,19 @@ class LyricsDownloadDialog(QDialog):
             result['_score'] = score
             scored_results.append(result)
 
-        # Sort by score descending (highest first)
-        scored_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
+        # Define source priority (lower number = higher priority)
+        source_priority = {
+            'qqmusic': 0,  # QQ Music first
+            'netease': 1,
+            'kugou': 2,
+            'lrclib': 3,
+        }
+
+        # Sort by score descending, then by source priority (QQ Music first for same score)
+        scored_results.sort(key=lambda x: (
+            -x.get('_score', 0),  # Negative for descending score
+            source_priority.get(x.get('source', ''), 99)  # Lower priority number first
+        ))
 
         # Add new results to the list (clear existing and rebuild to maintain sorting)
         # Get all existing items
@@ -302,8 +313,11 @@ class LyricsDownloadDialog(QDialog):
                 seen.add(key)
                 unique_results.append(result)
 
-        # Sort all results by score
-        unique_results.sort(key=lambda x: x.get('_score', 0), reverse=True)
+        # Sort all results by score, then by source priority
+        unique_results.sort(key=lambda x: (
+            -x.get('_score', 0),
+            source_priority.get(x.get('source', ''), 99)
+        ))
 
         # Clear and repopulate the list
         self._song_list.clear()

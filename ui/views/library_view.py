@@ -39,6 +39,7 @@ from utils import format_duration, format_count_message
 from system.i18n import t
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from ui.icons import IconName, get_icon
 
 
 class LibraryView(QWidget):
@@ -93,7 +94,7 @@ class LibraryView(QWidget):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(20, 10, 20, 10)
 
-        self._title_label = QLabel("🎼" + t("library"))
+        self._title_label = QLabel(t("library"))
         self._title_label.setObjectName("libraryTitle")
         self._title_label.setStyleSheet("""
             QLabel#libraryTitle {
@@ -306,7 +307,7 @@ class LibraryView(QWidget):
         layout.addWidget(self._tracks_table)
 
         # Status bar
-        self._status_label = QLabel("📚 " + t("no_tracks"))
+        self._status_label = QLabel(t("no_tracks"))
         self._status_label.setStyleSheet(
             "color: #808080; font-size: 13px; padding: 8px 0px;"
         )
@@ -339,11 +340,11 @@ class LibraryView(QWidget):
 
         # Update title based on current view
         if self._current_view == "all":
-            self._title_label.setText("🎼" + t("library"))
+            self._title_label.setText(t("library"))
         elif self._current_view == "favorites":
-            self._title_label.setText("⭐ " + t("favorites"))
+            self._title_label.setText(t("favorites"))
         elif self._current_view == "history":
-            self._title_label.setText("🕐 " + t("history"))
+            self._title_label.setText(t("history"))
 
         # Reload data
         if self._current_view == "all":
@@ -359,7 +360,7 @@ class LibraryView(QWidget):
         self._view_search_texts[self._current_view] = self._search_input.text()
 
         self._current_view = "all"
-        self._title_label.setText("🎼" + t("library"))
+        self._title_label.setText(t("library"))
 
         # 恢复 Library 视图的搜索文本
         saved_text = self._view_search_texts.get("all", "")
@@ -383,7 +384,7 @@ class LibraryView(QWidget):
         self._view_search_texts[self._current_view] = self._search_input.text()
 
         self._current_view = "favorites"
-        self._title_label.setText("⭐" + t("favorites"))
+        self._title_label.setText(t("favorites"))
 
         # 恢复 Favorites 视图的搜索文本
         saved_text = self._view_search_texts.get("favorites", "")
@@ -402,7 +403,7 @@ class LibraryView(QWidget):
         self._view_search_texts[self._current_view] = self._search_input.text()
 
         self._current_view = "history"
-        self._title_label.setText("🕐" + t("history"))
+        self._title_label.setText(t("history"))
 
         # 恢复 History 视图的搜索文本
         saved_text = self._view_search_texts.get("history", "")
@@ -622,7 +623,7 @@ class LibraryView(QWidget):
 
                 # Favorite indicator (check if actually favorited)
                 is_fav = self._db.is_favorite(track.id)
-                fav_text = "⭐" if is_fav else ""
+                fav_text = "★" if is_fav else ""
                 fav_item = QTableWidgetItem(fav_text)
                 fav_item.setForeground(
                     QBrush(QColor("#ffd700" if is_fav else "#505050"))
@@ -1207,7 +1208,7 @@ class LibraryView(QWidget):
 
     def _update_favorite_cell(self, row: int, is_favorite: bool):
         """Update the favorite indicator in a specific row."""
-        fav_text = "⭐" if is_favorite else ""
+        fav_text = "★" if is_favorite else ""
         fav_item = QTableWidgetItem(fav_text)
         fav_item.setForeground(
             QBrush(QColor("#ffd700" if is_favorite else "#505050"))
@@ -1681,6 +1682,8 @@ class LibraryView(QWidget):
                             artist=save_artist,
                             album=save_album,
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         success_count += 1
 
                     # Update progress
@@ -1719,6 +1722,8 @@ class LibraryView(QWidget):
                         artist=new_artist,
                         album=new_album,
                     )
+                    # Emit metadata_updated signal to update play_queue
+                    EventBus.instance().metadata_updated.emit(track_ids[0])
                     QMessageBox.information(self, t("success"), t("media_saved"))
                     # Refresh only the updated row
                     self._refresh_tracks_in_table(track_ids)
@@ -2093,6 +2098,8 @@ class LibraryView(QWidget):
                             artist=enhanced.get('artist'),
                             album=enhanced.get('album')
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         enhanced_count += 1
                         enhanced_track_ids.append(track_id)
                     else:
@@ -2279,6 +2286,8 @@ class LibraryView(QWidget):
                             artist=enhanced.get('artist'),
                             album=enhanced.get('album')
                         )
+                        # Emit metadata_updated signal to update play_queue
+                        EventBus.instance().metadata_updated.emit(track_id)
                         success_count += 1
                         identified_track_ids.append(track_id)
                         logger.info(

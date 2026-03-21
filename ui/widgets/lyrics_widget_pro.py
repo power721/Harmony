@@ -262,65 +262,58 @@ class LyricsWidget(QWidget):
     # =====================================================
 
     def _draw_current_line(self, p, line: LyricLine, y, progress):
-        """
-        绘制当前行，支持逐字高亮。
-        如果有逐字数据，使用逐字高亮；否则使用行级别进度高亮。
-        """
+
         text = line.text
         words = line.words
+
+        # 👉 如果没有逐字 → 自动生成
+        if not words:
+            next_line = None
+            if self.current_index < len(self.engine.lines) - 1:
+                next_line = self.engine.lines[self.current_index + 1]
+
+            words = self._build_fake_words(line, next_line)
 
         metrics = QFontMetrics(self.font_current)
         text_width = metrics.horizontalAdvance(text)
         x = self.width() / 2 - text_width / 2
 
-        # 如果有逐字歌词，使用逐字高亮
-        if words:
-            self._draw_word_by_word(p, text, words, x, y, metrics)
-            return
+        # ✅ 统一走逐字渲染（关键）
+        self._draw_word_by_word(p, text, words, x, y, metrics)
 
-        # 否则使用行级别进度高亮
-        rect = QRectF(x, y - 30, text_width, 60)
+    def _build_fake_words(self, line: LyricLine, next_line: LyricLine):
+        """
+        把普通 LRC 拆成“伪逐字歌词”
+        """
 
-        # 未唱部分
-        p.setFont(self.font_current)
-        p.setPen(QColor(180, 180, 180))
+        text = line.text
 
-        p.drawText(rect, Qt.AlignCenter, text)
+        # 👉 中文按字，英文按词（更自然）
+        if " " in text:
+            units = text.split(" ")
+            joiner = " "
+        else:
+            units = list(text)
+            joiner = ""
 
-        clip = QRectF(x, y - 30, text_width * progress, 60)
+        start = line.time
+        end = next_line.time if next_line else start + 3
 
-        p.save()
+        total = max(0.1, end - start)
+        duration = total / max(len(units), 1)
 
-        p.setClipRect(clip)
+        words = []
+        current_time = start
 
-        gradient = QLinearGradient(
-            x - self.gradient_shift,
-            0,
-            x + text_width - self.gradient_shift,
-            0
-        )
+        for u in units:
+            words.append(LyricWord(
+                text=u + joiner,  # 保留空格
+                time=current_time,
+                duration=duration
+            ))
+            current_time += duration
 
-        gradient.setColorAt(0.0, QColor("#00F5FF"))
-        gradient.setColorAt(0.3, QColor("#00C3FF"))
-        gradient.setColorAt(0.6, QColor("#7A5CFF"))
-        gradient.setColorAt(1.0, QColor("#FF4D9D"))
-
-        path = QPainterPath()
-        path.addText(x, y + 12, self.font_current, text)
-
-        # glow
-        for i in range(6, 0, -1):
-
-            glow = QPen(QColor(80, 80, 255, 30), i * 2)
-
-            p.setPen(glow)
-            p.drawPath(path)
-
-        p.setPen(QPen(QBrush(gradient), 2))
-
-        p.drawPath(path)
-
-        p.restore()
+        return words
 
     def _draw_word_by_word(self, p, text: str, words: List[LyricWord], x: float, y: float, metrics: QFontMetrics):
         """

@@ -22,6 +22,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from utils import format_time
+from ui.icons import IconName, get_icon, IconColor
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -150,7 +151,9 @@ class PlayerControls(QWidget):
         layout.addStretch()
 
         # Favorite button
-        self._favorite_btn = QPushButton("☆")
+        self._favorite_btn = QPushButton()
+        self._favorite_btn.setIcon(get_icon(IconName.STAR_OUTLINE, IconColor.DEFAULT))
+        self._favorite_btn.setIconSize(QSize(24, 24))
         self._favorite_btn.setObjectName("favoriteBtn")
         self._favorite_btn.setFixedSize(40, 40)
         self._favorite_btn.setCursor(Qt.PointingHandCursor)
@@ -173,7 +176,7 @@ class PlayerControls(QWidget):
         self._current_time_label = QLabel("0:00")
         self._current_time_label.setObjectName("timeLabel")
         self._current_time_label.setStyleSheet("color: #b3b3b3; font-size: 11px;")
-        self._current_time_label.setFixedWidth(40)
+        self._current_time_label.setFixedWidth(32)
 
         self._progress_slider = ClickableSlider(Qt.Horizontal)
         self._progress_slider.setObjectName("progressSlider")
@@ -184,7 +187,7 @@ class PlayerControls(QWidget):
         self._total_time_label = QLabel("0:00")
         self._total_time_label.setObjectName("timeLabel")
         self._total_time_label.setStyleSheet("color: #b3b3b3; font-size: 11px;")
-        self._total_time_label.setFixedWidth(40)
+        self._total_time_label.setFixedWidth(32)
 
         progress_layout.addWidget(self._current_time_label)
         progress_layout.addWidget(self._progress_slider)
@@ -199,7 +202,7 @@ class PlayerControls(QWidget):
         # Shuffle button
         self._shuffle_btn = self._create_control_button("shuffle.svg")
         self._shuffle_btn.setCheckable(True)
-        self._shuffle_btn.setFixedSize(40, 40)
+        self._shuffle_btn.setFixedSize(32, 32)
         self._shuffle_btn.setToolTip(t("shuffle"))
         controls_layout.addWidget(self._shuffle_btn)
 
@@ -207,19 +210,19 @@ class PlayerControls(QWidget):
 
         # Previous button
         self._prev_btn = self._create_control_button("previous.svg")
-        self._prev_btn.setFixedSize(40, 40)
+        self._prev_btn.setFixedSize(32, 32)
         self._prev_btn.setToolTip(t("previous"))
         controls_layout.addWidget(self._prev_btn)
 
         # Play/Pause button
         self._play_pause_btn = self._create_control_button("play.svg")
-        self._play_pause_btn.setFixedSize(40, 40)
+        self._play_pause_btn.setFixedSize(32, 32)
         self._play_pause_btn.setToolTip(t("play_pause"))
         controls_layout.addWidget(self._play_pause_btn)
 
         # Next button
         self._next_btn = self._create_control_button("next.svg")
-        self._next_btn.setFixedSize(40, 40)
+        self._next_btn.setFixedSize(32, 32)
         self._next_btn.setToolTip(t("next"))
         controls_layout.addWidget(self._next_btn)
 
@@ -228,7 +231,7 @@ class PlayerControls(QWidget):
         # Repeat button
         self._repeat_btn = self._create_control_button("repeat.svg")
         self._repeat_btn.setCheckable(True)
-        self._repeat_btn.setFixedSize(40, 40)
+        self._repeat_btn.setFixedSize(32, 32)
         self._repeat_btn.setToolTip(t("repeat"))
         controls_layout.addWidget(self._repeat_btn)
 
@@ -244,7 +247,9 @@ class PlayerControls(QWidget):
         layout.addStretch()
 
         # Volume button (mute/unmute)
-        self._volume_btn = QPushButton("🔊")
+        self._volume_btn = QPushButton()
+        self._volume_btn.setIcon(get_icon(IconName.VOLUME_HIGH, IconColor.DEFAULT))
+        self._volume_btn.setIconSize(QSize(20, 20))
         self._volume_btn.setObjectName("volumeBtn")
         self._volume_btn.setFixedSize(35, 35)
         self._volume_btn.setCursor(Qt.PointingHandCursor)
@@ -280,24 +285,6 @@ class PlayerControls(QWidget):
             icon = QIcon(str(icon_path))
             btn.setIcon(icon)
             btn.setIconSize(QSize(24, 24))  # Set icon size
-        else:
-            # Fallback to emoji if icon not found
-            btn.setText("❌")
-
-        return btn
-
-    def _create_icon_button(self, icon_name: str, size: int = 35) -> QPushButton:
-        """Create a button with SVG icon for volume/favorite buttons."""
-        btn = QPushButton()
-        btn.setFixedSize(size, size)
-        btn.setCursor(Qt.PointingHandCursor)
-
-        # Load SVG icon
-        icon_path = self._icons_dir / icon_name
-        if icon_path.exists():
-            icon = QIcon(str(icon_path))
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(size - 8, size - 8))  # Icon slightly smaller than button
         else:
             # Fallback to emoji if icon not found
             btn.setText("❌")
@@ -510,11 +497,12 @@ class PlayerControls(QWidget):
     def _update_volume_button(self, value: int):
         """Update volume button icon based on value."""
         if value == 0:
-            self._volume_btn.setText("🔇")
+            self._volume_btn.setIcon(get_icon(IconName.VOLUME_OFF, IconColor.DEFAULT))
         elif value < 50:
-            self._volume_btn.setText("🔉")
+            self._volume_btn.setIcon(get_icon(IconName.VOLUME_LOW, IconColor.DEFAULT))
         else:
-            self._volume_btn.setText("🔊")
+            self._volume_btn.setIcon(get_icon(IconName.VOLUME_HIGH, IconColor.DEFAULT))
+        self._volume_btn.setIconSize(QSize(20, 20))
 
     def _toggle_mute(self):
         """Toggle mute."""
@@ -573,7 +561,7 @@ class PlayerControls(QWidget):
                 logger.error(f"[PlayerControls] Error checking track by path: {e}")
 
         if should_reload:
-            # Reload from database to get latest cover_path
+            # Reload from database to get latest metadata
             if current_path and hasattr(self._player, 'db'):
                 try:
                     track = self._player.db.get_track_by_path(current_path)
@@ -589,8 +577,12 @@ class PlayerControls(QWidget):
                             "cover_path": track.cover_path,
                             "source_type": "local",
                         }
+                        # Update title and artist labels
+                        self._title_label.setText(track.title or t("unknown"))
+                        self._artist_label.setText(track.artist or t("unknown"))
                         logger.info(
-                            f"[PlayerControls] Metadata updated for current track {track_id}, reloading cover with cover_path={track.cover_path}")
+                            f"[PlayerControls] Metadata updated for current track {track_id}, "
+                            f"title={track.title}, artist={track.artist}, cover_path={track.cover_path}")
                         QTimer.singleShot(100, lambda: self._load_cover_art_async(updated_track))
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
@@ -676,15 +668,13 @@ class PlayerControls(QWidget):
     def _update_favorite_button_style(self, is_favorite: bool):
         """Update favorite button style based on favorite status."""
         if is_favorite:
-            # Red style for favorited tracks
+            # Filled star in red for favorited tracks
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_FILLED, "#ffffff"))
             self._favorite_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #ff4444;
                     border: 2px solid #ff4444;
-                    color: #ffffff;
                     border-radius: 20px;
-                    font-size: 28px;
-                    font-weight: bold;
                 }
                 QPushButton:hover {
                     background-color: #ff6666;
@@ -692,21 +682,20 @@ class PlayerControls(QWidget):
                 }
             """)
         else:
-            # Default style (clear to use stylesheet)
+            # Outline star for non-favorite
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_OUTLINE, "#b3b3b3"))
             self._favorite_btn.setStyleSheet("""
                 QPushButton {
                     background: transparent;
                     border: 2px solid #b3b3b3;
-                    color: #b3b3b3;
                     border-radius: 20px;
-                    font-size: 28px;
-                    font-weight: bold;
                 }
                 QPushButton:hover {
                     border-color: #ff4444;
-                    color: #ff4444;
+                    background: rgba(255, 68, 68, 0.1);
                 }
             """)
+        self._favorite_btn.setIconSize(QSize(24, 24))
 
     def _toggle_shuffle(self):
         """Toggle shuffle mode."""
@@ -759,15 +748,12 @@ class PlayerControls(QWidget):
             # Clear inline style to use default from stylesheet
             button.setStyleSheet("")
 
-    def _update_button_icon(self, button: QPushButton, icon_name: str):
+    def _update_button_icon(self, button: QPushButton, icon_name: str, icon_size: int = 24):
         """Update button icon from SVG file."""
         icon_path = self._icons_dir / icon_name
         if icon_path.exists():
             icon = QIcon(str(icon_path))
             button.setIcon(icon)
-            # Determine appropriate icon size based on button size
-            button_size = button.size()
-            icon_size = min(button_size.width(), button_size.height()) - 8
             button.setIconSize(QSize(icon_size, icon_size))
 
     def _toggle_repeat(self):

@@ -30,6 +30,7 @@ from domain.track import Track
 from infrastructure.database import DatabaseManager
 from services.playback import PlaybackService
 from system.i18n import t
+from system.event_bus import EventBus
 from utils import format_duration
 
 
@@ -180,7 +181,7 @@ class PlaylistView(QWidget):
         layout.setSpacing(10)
 
         # Title
-        self._playlist_list_title = QLabel("📋" + t("playlists"))
+        self._playlist_list_title = QLabel(t("playlists"))
         self._playlist_list_title.setStyleSheet("""
             color: #1db954;
             font-size: 20px;
@@ -435,7 +436,7 @@ class PlaylistView(QWidget):
     def _update_ui_texts(self):
         """Update UI texts after language change."""
         # Update playlist list title
-        self._playlist_list_title.setText("📋" + t("playlists"))
+        self._playlist_list_title.setText(t("playlists"))
 
         # Update playlist title label in content panel
         if not self._current_playlist_id:
@@ -816,6 +817,8 @@ class PlaylistView(QWidget):
                 self._db.update_track(
                     track_id, title=new_title, artist=new_artist, album=new_album
                 )
+                # Emit metadata_updated signal to update play_queue
+                EventBus.instance().metadata_updated.emit(track_id)
                 QMessageBox.information(self, t("success"), t("media_saved"))
                 if self._current_playlist_id:
                     self._load_playlist(self._current_playlist_id)

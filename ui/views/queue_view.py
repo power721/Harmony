@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from domain.playback import PlaybackState
 from services.playback import PlaybackService
 from system.i18n import t
+from system.event_bus import EventBus
 from utils.helpers import format_duration
 from utils.dedup import deduplicate_playlist_items, get_version_summary
 
@@ -65,7 +66,7 @@ class QueueView(QWidget):
         header_layout.setContentsMargins(0, 10, 0, 10)
         header_layout.setSpacing(10)
 
-        self._title_label = QLabel("🎶" + t("play_queue"))
+        self._title_label = QLabel(t("play_queue"))
         self._title_label.setObjectName("queueTitle")
         self._title_label.setStyleSheet("""
             QLabel#queueTitle {
@@ -337,7 +338,7 @@ class QueueView(QWidget):
     def _update_ui_texts(self):
         """Update UI texts after language change."""
         # Update title
-        self._title_label.setText("🎶" + t("play_queue"))
+        self._title_label.setText(t("play_queue"))
 
         # Update deduplicate button
         self._dedup_btn.setText(t("smart_deduplicate"))
@@ -775,6 +776,8 @@ class QueueView(QWidget):
                 self._db.update_track(
                     track_id, title=new_title, artist=new_artist, album=new_album
                 )
+                # Emit metadata_updated signal to update play_queue
+                EventBus.instance().metadata_updated.emit(track_id)
                 QMessageBox.information(self, t("success"), t("media_saved"))
                 self.refresh()
             else:

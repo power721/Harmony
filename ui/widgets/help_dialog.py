@@ -95,7 +95,7 @@ class HelpDialog(QDialog):
         info_group = QGroupBox(t("about"))
         info_layout = QVBoxLayout(info_group)
 
-        app_name = QLabel("🎵 Harmony")
+        app_name = QLabel("Harmony")
         app_name.setStyleSheet("font-size: 24px; font-weight: bold; color: #1db954;")
         app_name.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(app_name)
@@ -157,7 +157,7 @@ class HelpDialog(QDialog):
         tools_layout = QVBoxLayout(tools_group)
 
         # Rebuild database button
-        rebuild_btn = QPushButton("🔧 " + t("rebuild_db"))
+        rebuild_btn = QPushButton(t("rebuild_db"))
         rebuild_btn.setObjectName("rebuildBtn")
         rebuild_btn.setCursor(Qt.PointingHandCursor)
         rebuild_btn.clicked.connect(self._rebuild_database)

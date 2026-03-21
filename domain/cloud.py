@@ -12,6 +12,7 @@ class CloudProvider(Enum):
     """Cloud storage provider enumeration."""
     LOCAL = "local"  # Local music files
     QUARK = "quark"  # Quark cloud drive
+    BAIDU = "baidu"  # Baidu cloud drive
     # Future extensions: ONEDRIVE, GOOGLE_DRIVE, DROPBOX, etc.
 
 

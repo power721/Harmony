@@ -58,7 +58,7 @@ logging.basicConfig(
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QIcon, QFontDatabase
+from PySide6.QtGui import QFont, QIcon
 
 from app import Application
 from ui import MainWindow
@@ -76,8 +76,6 @@ def main():
     qt_app.setApplicationName('Harmony')
     qt_app.setOrganizationName('HarmonyPlayer')
     qt_app.setWindowIcon(QIcon("icon.png"))
-    # QFontDatabase.addApplicationFont("fonts/Inter-Regular.ttf")
-    # QFontDatabase.addApplicationFont("fonts/SourceHanSansSC-Regular.otf")
 
     # Set default font
     font = QFont()

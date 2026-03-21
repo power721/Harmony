@@ -36,6 +36,7 @@ class QQMusicClient:
         Args:
             timeout: Request timeout in seconds
         """
+        self.session = requests.Session()
         self.timeout = timeout
         self._local_client = None
         self._has_credentials = False

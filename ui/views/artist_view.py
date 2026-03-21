@@ -267,7 +267,7 @@ class ArtistView(QWidget):
         layout.setSpacing(16)
 
         # Section title - same style as library view
-        self._albums_title_label = QLabel("💿" + t("albums"))
+        self._albums_title_label = QLabel(t("albums"))
         self._albums_title_label.setStyleSheet("""
             QLabel {
                 color: #1db954;
@@ -785,7 +785,7 @@ class ArtistView(QWidget):
         self._shuffle_btn.setText(t("shuffle"))
 
         # Update albums section title
-        self._albums_title_label.setText("💿 " + t("albums"))
+        self._albums_title_label.setText(t("albums"))
 
         # Update tracks section title
         self._tracks_title_label.setText(t("all_tracks"))

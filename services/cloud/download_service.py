@@ -46,6 +46,7 @@ class CloudDownloadWorker(QThread):
         """Download the file."""
         import time
         from services.cloud.quark_service import QuarkDriveService
+        from services.cloud.baidu_service import BaiduDriveService
         from utils.helpers import sanitize_filename
 
         start_time = time.time()
@@ -72,10 +73,18 @@ class CloudDownloadWorker(QThread):
                     self.download_completed.emit(file_id, str(local_path))
                     return
 
-            # Get download URL
-            result = QuarkDriveService.get_download_url(
-                self._account.access_token, file_id
-            )
+            # Select service based on provider
+            service = BaiduDriveService if self._account.provider == "baidu" else QuarkDriveService
+
+            # Get download URL (pass file path for Baidu)
+            if self._account.provider == "baidu":
+                result = service.get_download_url(
+                    self._account.access_token, file_id, self._cloud_file.metadata
+                )
+            else:
+                result = service.get_download_url(
+                    self._account.access_token, file_id
+                )
 
             if isinstance(result, tuple):
                 url, updated_token = result
@@ -89,8 +98,8 @@ class CloudDownloadWorker(QThread):
             if self._cancelled:
                 return
 
-            # Download the file
-            success = self._download_file(url, str(local_path))
+            # Download the file with correct headers for provider
+            success = self._download_file(url, str(local_path), service)
 
             if self._cancelled:
                 # Clean up partial download
@@ -108,16 +117,27 @@ class CloudDownloadWorker(QThread):
             logger.error(f"[CloudDownloadWorker] Error: {e}", exc_info=True)
             self.download_error.emit(file_id, str(e))
 
-    def _download_file(self, url: str, dest_path: str) -> bool:
+    def _download_file(self, url: str, dest_path: str, service) -> bool:
         """Download file from URL to destination."""
         import requests
 
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": "https://pan.quark.cn/",
-                "Cookie": self._account.access_token
-            }
+            # Use service's download_file method if available
+            if hasattr(service, 'download_file'):
+                return service.download_file(url, dest_path, self._account.access_token)
+
+            # Fallback: build headers based on provider
+            if self._account.provider == "baidu":
+                headers = {
+                    "User-Agent": "netdisk",
+                    "Referer": "https://pan.baidu.com/",
+                }
+            else:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Referer": "https://pan.quark.cn/",
+                    "Cookie": self._account.access_token
+                }
 
             response = requests.get(url, headers=headers, timeout=60, stream=True)
 
