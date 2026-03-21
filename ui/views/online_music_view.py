@@ -790,6 +790,7 @@ class OnlineMusicView(QWidget):
             "artist": track.singer_name,
             "album": track.album_name,
             "duration": track.duration,
+            "album_mid": track.album.mid if track.album else "",
         }
 
         # Check cache
@@ -843,6 +844,7 @@ class OnlineMusicView(QWidget):
                 "artist": track.singer_name,
                 "album": track.album_name,
                 "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
             }
             self.play_online_track.emit(song_mid, local_path, metadata)
         else:
@@ -935,6 +937,7 @@ class OnlineMusicView(QWidget):
                 "artist": track.singer_name,
                 "album": track.album_name,
                 "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
             })
 
     def _add_selected_to_queue(self, tracks: List[OnlineTrack]):
@@ -945,6 +948,7 @@ class OnlineMusicView(QWidget):
                 "artist": track.singer_name,
                 "album": track.album_name,
                 "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
             })
 
     def _load_top_lists(self):

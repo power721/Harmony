@@ -467,6 +467,21 @@ class LyricsService:
             return ""
 
     @classmethod
+    def get_lyrics_by_qqmusic_mid(cls, song_mid: str) -> str:
+        """
+        Get lyrics directly from QQ Music by song mid.
+
+        This is used for online QQ Music tracks where we already have the song_mid.
+
+        Args:
+            song_mid: QQ Music song MID
+
+        Returns:
+            Lyrics content (QRC or LRC format) or empty string
+        """
+        return cls._download_qqmusic_lyrics(song_mid)
+
+    @classmethod
     def _download_qqmusic_lyrics(cls, mid: str) -> str:
         """
         Download lyrics from QQ Music by song mid.

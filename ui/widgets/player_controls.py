@@ -865,6 +865,29 @@ class PlayerControls(QWidget):
                     logger.debug(f"[PlayerControls] Found cover_path in track_dict: {cover_path}")
                     return cover_path
 
+            # Check if this is an online QQ Music track
+            source_type = track_dict.get("source_type", "")
+            cloud_file_id = track_dict.get("cloud_file_id", "")
+            is_online = source_type == "online"
+
+            if is_online and cloud_file_id:
+                # For online QQ Music tracks, get cover directly by song_mid
+                logger.debug(f"[PlayerControls] Getting cover for online track: song_mid={cloud_file_id}")
+                try:
+                    cover_service = self._player.cover_service
+                    if cover_service:
+                        cover_path = cover_service.get_online_cover(
+                            song_mid=cloud_file_id,
+                            album_mid=None,  # We don't have album_mid in track_dict yet
+                            artist=track_dict.get("artist", ""),
+                            title=track_dict.get("title", "")
+                        )
+                        if cover_path:
+                            logger.debug(f"[PlayerControls] Got online cover: {cover_path}")
+                            return cover_path
+                except Exception as e:
+                    logger.error(f"[PlayerControls] Error getting online cover: {e}")
+
             # Fall back to getting cover (embedded, cached, or online)
             path = track_dict.get("path", "")
             title = track_dict.get("title", "")

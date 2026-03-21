@@ -18,6 +18,7 @@ class LyricsLoader(QThread):
 
     Loads lyrics in a background thread to prevent UI blocking.
     Supports both local .lrc files and online sources.
+    For online QQ Music tracks, uses song_mid to get lyrics directly.
 
     Signals:
         lyrics_ready: Emitted when lyrics are loaded (str)
@@ -29,7 +30,8 @@ class LyricsLoader(QThread):
     error_occurred = Signal(str)
     loading_started = Signal()
 
-    def __init__(self, path: str, title: str, artist: str, parent=None):
+    def __init__(self, path: str, title: str, artist: str, parent=None,
+                 song_mid: str = None, is_online: bool = False):
         """
         Initialize the lyrics loader.
 
@@ -38,11 +40,15 @@ class LyricsLoader(QThread):
             title: Track title
             artist: Track artist
             parent: Optional parent QObject
+            song_mid: QQ Music song MID (for online tracks)
+            is_online: Whether this is an online QQ Music track
         """
         super().__init__(parent)
         self._path = path
         self._title = title
         self._artist = artist
+        self._song_mid = song_mid
+        self._is_online = is_online
 
     def run(self):
         """Load lyrics in background thread."""
@@ -57,8 +63,15 @@ class LyricsLoader(QThread):
         self.loading_started.emit()
 
         try:
-            lyrics = LyricsService.get_lyrics(self._path, self._title, self._artist)
-            elapsed = time.time() - start_time
+            # For online QQ Music tracks, get lyrics directly by song_mid
+            if self._is_online and self._song_mid:
+                logger.debug(f"[LyricsLoader] Getting lyrics for online track: song_mid={self._song_mid}")
+                lyrics = LyricsService.get_lyrics_by_qqmusic_mid(self._song_mid)
+                elapsed = time.time() - start_time
+                logger.debug(f"[LyricsLoader] Got lyrics in {elapsed:.2f}s")
+            else:
+                # For local tracks, use the normal flow
+                lyrics = LyricsService.get_lyrics(self._path, self._title, self._artist)
 
             # Check for interruption before emitting
             if self.isInterruptionRequested():

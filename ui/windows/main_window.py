@@ -1271,10 +1271,15 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
+        from domain.cloud import CloudProvider
+
         # Reset lyric line tracking
         self._current_lyric_line = None
 
         # Convert to dict for backward compatibility
+        song_mid = None
+        is_online = False
+
         if isinstance(track_item, PlaylistItem):
             track_dict = track_item.to_dict()
             track_id = track_item.track_id
@@ -1283,6 +1288,8 @@ class MainWindow(QMainWindow):
             path = track_item.local_path
             is_cloud = track_item.is_cloud
             needs_metadata = track_item.needs_metadata
+            song_mid = track_item.cloud_file_id
+            is_online = track_item.source_type == CloudProvider.ONLINE
         elif isinstance(track_item, int):
             # Handle case where track_item is just an ID
             track_id = track_item
@@ -1300,6 +1307,10 @@ class MainWindow(QMainWindow):
             path = track_dict.get("path", "") if track_dict else ""
             is_cloud = not track_id or track_id < 0
             needs_metadata = track_dict.get("needs_metadata", False) if track_dict else False
+            # Check if online track from dict
+            source_type = track_dict.get("source_type", "")
+            is_online = source_type == "online" or source_type == CloudProvider.ONLINE.value
+            song_mid = track_dict.get("cloud_file_id")
 
         # Sync selection in both library and queue views
         if track_id and track_id > 0:
@@ -1314,6 +1325,12 @@ class MainWindow(QMainWindow):
 
         # Save current track title for window title update
         self._current_track_title = f"{title} - {artist}" if artist else title
+
+        # For online tracks, always try to load lyrics (even without local path)
+        if is_online and song_mid:
+            logger.debug(f"[MainWindow] Loading lyrics for online track: song_mid={song_mid}")
+            self._load_lyrics_async(path, title, artist, song_mid=song_mid, is_online=True)
+            return
 
         # Skip loading lyrics for cloud files without local path
         if not path or path.strip() in ('', '.', '/'):
@@ -1346,11 +1363,19 @@ class MainWindow(QMainWindow):
             if self._original_title:
                 self.setWindowTitle(self._original_title)
 
-    def _load_lyrics_async(self, path: str, title: str, artist: str):
+    def _load_lyrics_async(self, path: str, title: str, artist: str,
+                           song_mid: str = None, is_online: bool = False):
         """Load lyrics asynchronously.
 
         Uses version-based mechanism to avoid blocking UI.
         Old threads are allowed to finish but their results are ignored.
+
+        Args:
+            path: Path to the audio file
+            title: Track title
+            artist: Track artist
+            song_mid: QQ Music song MID (for online tracks)
+            is_online: Whether this is an online QQ Music track
         """
         # Increment version to invalidate any pending results
         self._lyrics_load_version += 1
@@ -1362,7 +1387,7 @@ class MainWindow(QMainWindow):
             # Don't wait - let it finish naturally and be cleaned up in finished handler
 
         # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
-        self._lyrics_thread = LyricsLoader(path, title, artist)
+        self._lyrics_thread = LyricsLoader(path, title, artist, song_mid=song_mid, is_online=is_online)
         # Store version with the thread for result validation
         self._lyrics_thread._load_version = current_version
 
