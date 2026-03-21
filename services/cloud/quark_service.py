@@ -170,7 +170,7 @@ class QuarkDriveService:
                 '_size': '2000',
                 '_fetch_total': 'true',
                 '_fetch_sub_dirs': '1',
-                '_sort': 'file_type:asc,updated_at:desc'
+                '_sort': 'file_type:asc,file_name:asc'
             }
 
             headers = cls.HEADERS.copy()
@@ -336,7 +336,6 @@ class QuarkDriveService:
                     'nickname': nickname,
                     'member_type': member_type,
                     'is_vip': is_vip,
-                    'vip_type': 'VIP' if is_vip else '普通用户',
                     'created_at': created_at,
                     'exp_at': exp_at,
                     'total_capacity': total_capacity,

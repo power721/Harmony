@@ -25,13 +25,17 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QSplitter,
+    QDialog,
+    QTextEdit,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtGui import QCursor, QColor, QBrush
 from typing import List, Optional
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.quark_service import QuarkDriveService
+from services.cloud.baidu_service import BaiduDriveService
 from ui.widgets.cloud_login_dialog import CloudLoginDialog
+from ui.widgets.provider_select_dialog import ProviderSelectDialog
 from utils import format_duration
 from system.i18n import t
 from system.event_bus import EventBus
@@ -128,7 +132,7 @@ class CloudDriveView(QWidget):
         self._account_list = QListWidget()
         self._account_list.setObjectName("accountList")
         self._account_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        self._account_list.setAlternatingRowColors(True)
+        # self._account_list.setAlternatingRowColors(True)
         self._account_list.setFocusPolicy(Qt.NoFocus)
         self._account_list.setCursor(Qt.PointingHandCursor)
         self._account_list.itemClicked.connect(self._on_account_selected)
@@ -391,27 +395,51 @@ class CloudDriveView(QWidget):
 
     def _load_accounts(self):
         """Load available cloud accounts and auto-select the last used account."""
-        accounts = self._db.get_cloud_accounts(provider="quark")
+        # Load all accounts from all providers
+        accounts = self._db.get_cloud_accounts()
         self._populate_account_list(accounts)
 
-        # Auto-select the first account to restore last session
+        # Restore last selected account
         if accounts and not self._current_account:
-            # Select the first account in the list
-            first_item = self._account_list.item(0)
-            if first_item:
-                account = first_item.data(Qt.UserRole)
-                if account:
-                    self._account_list.setCurrentItem(first_item)
-                    self._current_account = account
+            # Try to restore from saved account ID
+            saved_account_id = self._config_manager.get_cloud_account_id() if self._config_manager else None
+            target_account = None
+            target_item = None
 
-                    # Restore last saved folder path
-                    saved_path = account.last_folder_path if account.last_folder_path else "/"
-                    self._path_label.setText(saved_path)
+            if saved_account_id:
+                # Find the saved account in the list
+                for i in range(self._account_list.count()):
+                    item = self._account_list.item(i)
+                    account = item.data(Qt.UserRole)
+                    if account and account.id == saved_account_id:
+                        target_account = account
+                        target_item = item
+                        break
 
-                    # Restore fid_path
-                    if account.last_fid_path and account.last_fid_path != "0":
+            # Fall back to first account if saved not found
+            if not target_account:
+                target_item = self._account_list.item(0)
+                if target_item:
+                    target_account = target_item.data(Qt.UserRole)
+
+            if target_account and target_item:
+                self._account_list.setCurrentItem(target_item)
+                self._current_account = target_account
+
+                # Restore last saved folder path
+                saved_path = target_account.last_folder_path if target_account.last_folder_path else "/"
+                self._path_label.setText(saved_path)
+
+                # For Baidu, use path directly; for Quark, use fid_path
+                if target_account.provider == "baidu":
+                    # Baidu uses directory path
+                    self._current_parent_id = saved_path
+                    self._fid_path = saved_path.strip("/").split("/") if saved_path != "/" else []
+                else:
+                    # Quark uses fid_path
+                    if target_account.last_fid_path and target_account.last_fid_path != "0":
                         # Parse fid_path string like "/fid1/fid2/fid3" into list
-                        self._fid_path = account.last_fid_path.strip("/").split("/")
+                        self._fid_path = target_account.last_fid_path.strip("/").split("/")
                         if self._fid_path == [""]:
                             self._fid_path = []
                     else:
@@ -423,29 +451,35 @@ class CloudDriveView(QWidget):
                     else:
                         self._current_parent_id = "0"
 
-                    # Clear navigation history
-                    self._navigation_history.clear()
+                # Clear navigation history
+                self._navigation_history.clear()
 
-                    # Enable back button if not at root
+                # Enable back button if not at root
+                if target_account.provider == "baidu":
+                    can_go_back = saved_path != "/"
+                else:
                     can_go_back = len(self._fid_path) > 0
-                    self._back_btn.setEnabled(can_go_back)
+                self._back_btn.setEnabled(can_go_back)
 
-                    # Store last playing state for later restoration (but don't auto-restore)
-                    self._last_playing_fid = account.last_playing_fid
-                    self._last_position = account.last_position
+                # Store last playing state for later restoration (but don't auto-restore)
+                self._last_playing_fid = target_account.last_playing_fid
+                self._last_position = target_account.last_position
 
-                    # Load files for the restored folder
-                    self._update_file_view()
+                # Load files for the restored folder
+                self._update_file_view()
 
-                    # NOTE: Playback restoration is handled by MainWindow._restore_playback_state()
-                    # Do not auto-restore here to avoid conflicts
+                # NOTE: Playback restoration is handled by MainWindow._restore_playback_state()
+                # Do not auto-restore here to avoid conflicts
 
     def _populate_account_list(self, accounts: List[CloudAccount]):
         """Populate the account list widget."""
         self._account_list.clear()
 
         for account in accounts:
-            item = QListWidgetItem(account.account_name)
+            # Add provider prefix to display name
+            provider_label = t("baidu") if account.provider == "baidu" else t("quark")
+            display_name = f"[{provider_label}] {account.account_name}"
+            item = QListWidgetItem(display_name)
             item.setData(Qt.UserRole, account)
 
             # Set as selected if it's the current account
@@ -470,26 +504,32 @@ class CloudDriveView(QWidget):
             saved_path = account.last_folder_path if account.last_folder_path else "/"
             self._path_label.setText(saved_path)
 
-            # Restore fid_path
-            if account.last_fid_path and account.last_fid_path != "0":
-                # Parse fid_path string like "/fid1/fid2/fid3" into list
-                self._fid_path = account.last_fid_path.strip("/").split("/")
-                if self._fid_path == [""]:
+            # For Baidu, use path directly; for Quark, use fid_path
+            if account.provider == "baidu":
+                # Baidu uses directory path
+                self._current_parent_id = saved_path
+                self._fid_path = saved_path.strip("/").split("/") if saved_path != "/" else []
+            else:
+                # Quark uses fid_path
+                if account.last_fid_path and account.last_fid_path != "0":
+                    # Parse fid_path string like "/fid1/fid2/fid3" into list
+                    self._fid_path = account.last_fid_path.strip("/").split("/")
+                    if self._fid_path == [""]:
+                        self._fid_path = []
+                else:
                     self._fid_path = []
-            else:
-                self._fid_path = []
 
-            # Current folder ID is the last item in fid_path, or "0" if empty
-            if self._fid_path:
-                self._current_parent_id = self._fid_path[-1]
-            else:
-                self._current_parent_id = "0"
+                # Current folder ID is the last item in fid_path, or "0" if empty
+                if self._fid_path:
+                    self._current_parent_id = self._fid_path[-1]
+                else:
+                    self._current_parent_id = "0"
 
             # Clear navigation history when switching accounts
             self._navigation_history.clear()
 
             # Enable back button if not at root
-            can_go_back = len(self._fid_path) > 0
+            can_go_back = len(self._fid_path) > 0 or (saved_path != "/" if account.provider == "baidu" else False)
             self._back_btn.setEnabled(can_go_back)
 
             # Store last playing state for potential manual restoration
@@ -517,21 +557,30 @@ class CloudDriveView(QWidget):
 
     def _add_account(self):
         """Add a new cloud account."""
-        dialog = CloudLoginDialog(self)
-        dialog.login_success.connect(self._on_login_success)
+        # Show provider selection dialog first
+        select_dialog = ProviderSelectDialog(self)
+        if select_dialog.exec() != QDialog.Accepted:
+            return
+
+        provider = select_dialog.get_selected_provider()
+        if not provider:
+            return
+
+        dialog = CloudLoginDialog(provider, self)
+        dialog.login_success.connect(lambda info: self._on_login_success(info, provider))
         dialog.exec()
 
-    def _on_login_success(self, account_info: dict):
+    def _on_login_success(self, account_info: dict, provider: str = "quark"):
         """Handle successful login."""
         account_id = self._db.create_cloud_account(
-            provider="quark",
-            account_name=account_info.get("account_email", "Quark Account"),
+            provider=provider,
+            account_name=account_info.get("account_email", f"{provider.capitalize()} Account"),
             account_email=account_info.get("account_email", ""),
             access_token=account_info.get("access_token", ""),
         )
 
-        # Reload accounts
-        accounts = self._db.get_cloud_accounts(provider="quark")
+        # Reload all accounts
+        accounts = self._db.get_cloud_accounts()
         self._populate_account_list(accounts)
 
         # Select the new account
@@ -552,9 +601,15 @@ class CloudDriveView(QWidget):
 
         self._status_label.setText(t("loading_files"))
 
+        # Select service based on provider
+        service = BaiduDriveService if self._current_account.provider == "baidu" else QuarkDriveService
+
+        # For Baidu, use directory path instead of parent_id
+        dir_path = self._current_parent_id if self._current_account.provider == "baidu" else self._current_parent_id
+
         # Get files from service (returns tuple: files, updated_token)
-        result = QuarkDriveService.get_file_list(
-            self._current_account.access_token, self._current_parent_id
+        result = service.get_file_list(
+            self._current_account.access_token, dir_path
         )
 
         # Handle tuple return value
@@ -670,12 +725,12 @@ class CloudDriveView(QWidget):
 
         if file.file_type == "folder":
             # Navigate into folder
-            self._navigate_to_folder(file.file_id, file.name)
+            self._navigate_to_folder(file)
         elif file.file_type == "audio":
             # Play audio file
             self._play_audio_file(file)
 
-    def _navigate_to_folder(self, folder_id: str, folder_name: str):
+    def _navigate_to_folder(self, file: CloudFile):
         """Navigate to a folder."""
         # Save current parent_id for history
         parent_id = self._current_parent_id
@@ -684,17 +739,23 @@ class CloudDriveView(QWidget):
         # Save to navigation history
         self._navigation_history.append((parent_id, current_path))
 
-        # Build fid_path: append current folder ID to the path
-        self._fid_path.append(folder_id)
-        fid_path_str = "/" + "/".join(self._fid_path)
+        # Build new path for display
+        if current_path == "/":
+            new_path = f"/{file.name}"
+        else:
+            new_path = f"{current_path}/{file.name}"
 
-        self._current_parent_id = folder_id
+        # For Baidu, use the full path from metadata; for Quark, use file_id
+        if self._current_account and self._current_account.provider == "baidu":
+            # Use the full path stored in metadata for Baidu
+            folder_path = file.metadata if file.metadata else new_path
+            self._current_parent_id = folder_path
+        else:
+            # Build fid_path: append current folder ID to the path
+            self._fid_path.append(file.file_id)
+            self._current_parent_id = file.file_id
 
         # Update path label
-        if current_path == "/":
-            new_path = f"/{folder_name}"
-        else:
-            new_path = f"{current_path}/{folder_name}"
         self._path_label.setText(new_path)
 
         self._back_btn.setEnabled(True)
@@ -704,12 +765,15 @@ class CloudDriveView(QWidget):
 
     def _navigate_back(self):
         """Navigate to previous folder in history."""
+        # For Baidu, use path-based navigation
+        is_baidu = self._current_account and self._current_account.provider == "baidu"
+
         if self._navigation_history:
             # Pop the previous state from navigation history
             parent_id, path = self._navigation_history.pop()
 
-            # Update fid_path: remove the last folder ID
-            if self._fid_path:
+            # Update fid_path for Quark: remove the last folder ID
+            if not is_baidu and self._fid_path:
                 self._fid_path.pop()
 
             # Navigate to previous folder
@@ -717,13 +781,37 @@ class CloudDriveView(QWidget):
             self._path_label.setText(path)
 
             # Update back button state
-            self._back_btn.setEnabled(len(self._navigation_history) > 0 or len(self._fid_path) > 0)
+            if is_baidu:
+                self._back_btn.setEnabled(path != "/")
+            else:
+                self._back_btn.setEnabled(len(self._navigation_history) > 0 or len(self._fid_path) > 0)
 
             # Don't save to database - only save when playing a file
             self._load_files()
 
+        elif is_baidu:
+            # Baidu path-based back navigation
+            current_path = self._path_label.text()
+            if current_path != "/":
+                # Calculate parent path
+                path_parts = current_path.rstrip("/").split("/")
+                if len(path_parts) > 1:
+                    parent_path = "/".join(path_parts[:-1])
+                    if not parent_path:
+                        parent_path = "/"
+                else:
+                    parent_path = "/"
+
+                self._current_parent_id = parent_path
+                self._path_label.setText(parent_path)
+                self._back_btn.setEnabled(parent_path != "/")
+                self._load_files()
+            else:
+                # Already at root
+                self._back_btn.setEnabled(False)
+
         elif len(self._fid_path) > 0:
-            # History is empty but we have fid_path - use it to go back
+            # Quark history is empty but we have fid_path - use it to go back
 
             # Remove the last folder from fid_path
             self._fid_path.pop()
@@ -782,7 +870,7 @@ class CloudDriveView(QWidget):
                 break
 
         if file_to_play:
-            self._status_label.setText(f"🎵 恢复播放: {file_to_play.name}")
+            self._status_label.setText(f"🎵 {t('resume_play')}: {file_to_play.name}")
 
             # Play the file (will start from saved position)
             self._play_audio_file(file_to_play)
@@ -790,7 +878,7 @@ class CloudDriveView(QWidget):
             # Note: Position restoration would require seeking after playback starts
             # This depends on PlayerController/PlayerEngine implementation
         else:
-            self._status_label.setText("⚠️ 上次播放的文件不在当前文件夹")
+            self._status_label.setText(f"⚠️ {t('last_played_file_not_found')}")
 
         # Clear the restoration state
         self._last_playing_fid = ""
@@ -872,8 +960,9 @@ class CloudDriveView(QWidget):
                 actual_start_position = 0.0
 
             if actual_start_position > 0:
+                time_str = f"{int(actual_start_position // 60)}:{int(actual_start_position % 60):02d}"
                 self._status_label.setText(
-                    f"🎵 恢复播放: {file.name} (从 {int(actual_start_position // 60)}:{int(actual_start_position % 60):02d} 开始)")
+                    f"🎵 {t('resume_play')}: {file.name} ({t('resume_from', time=time_str)})")
 
             self._db.update_cloud_account_playing_state(
                 self._current_account.id,
@@ -966,6 +1055,7 @@ class CloudDriveView(QWidget):
             self._config_manager,
             self,
             db_local_path,
+            self._current_account.provider,
         )
         download_thread.finished.connect(
             lambda path: self._on_file_downloaded(
@@ -1302,6 +1392,10 @@ class CloudDriveView(QWidget):
             open_action.setEnabled(False)
             open_action.setText(f"{t('open_file_location')} ({t('download_first')})")
 
+        # Open in cloud drive action - open browser to view file in cloud
+        open_cloud_action = menu.addAction(t("open_in_cloud_drive"))
+        open_cloud_action.triggered.connect(lambda: self._open_in_cloud_drive(file))
+
         menu.exec_(QCursor.pos())
 
     def _download_file(self, file: CloudFile):
@@ -1373,6 +1467,7 @@ class CloudDriveView(QWidget):
             self._current_audio_files,
             self._config_manager,
             self,
+            provider=self._current_account.provider,
         )
         download_thread.finished.connect(
             lambda path: self._on_download_only_completed(path, file)
@@ -1416,7 +1511,7 @@ class CloudDriveView(QWidget):
                     break
 
             # Refresh the table to show download status
-            self._refresh_file_list()
+            self._load_files()
         else:
             self._status_label.setText(f"{t('download_failed')}: {file.name}")
 
@@ -1459,6 +1554,10 @@ class CloudDriveView(QWidget):
         change_dir_action = menu.addAction("📁 " + t("change_download_dir"))
         change_dir_action.triggered.connect(lambda: self._change_download_dir())
 
+        # Add update cookie action
+        update_cookie_action = menu.addAction("🔑 " + t("update_cookie"))
+        update_cookie_action.triggered.connect(lambda: self._update_account_cookie(account))
+
         menu.addSeparator()
 
         # Add delete action
@@ -1471,8 +1570,11 @@ class CloudDriveView(QWidget):
         """Get and display account information."""
         self._status_label.setText(f"{t('loading')} {t('account_info')}...")
 
+        # Select service based on provider
+        service = BaiduDriveService if account.provider == "baidu" else QuarkDriveService
+
         # Get account info from service (returns tuple: info, updated_token)
-        result = QuarkDriveService.get_account_info(
+        result = service.get_account_info(
             account.access_token, account.account_email
         )
 
@@ -1503,6 +1605,20 @@ class CloudDriveView(QWidget):
         dialog = QMessageBox(self)
         dialog.setWindowTitle(t("account_info"))
 
+        # Translate member type
+        member_type = account_info.get("member_type", "unknown")
+        is_vip = account_info.get("is_vip", False)
+        if member_type in ("vip", "VIP"):
+            member_type_display = t("member_vip")
+        elif member_type in ("svip", "SUPER_VIP"):
+            member_type_display = t("member_svip")
+        elif member_type in ("premium",):
+            member_type_display = t("member_premium")
+        elif is_vip:
+            member_type_display = t("member_vip")
+        else:
+            member_type_display = t("member_normal")
+
         # Format timestamps
         created_at_str = self._format_timestamp(account_info.get("created_at"))
         exp_at_str = self._format_timestamp(account_info.get("exp_at"))
@@ -1525,7 +1641,7 @@ class CloudDriveView(QWidget):
         # Build info text
         info_text = f"""
 {t("account_name")}: {account_info.get("nickname", account.account_name)}
-{t("member_type")}: {account_info.get("member_type", "unknown")}
+{t("member_type")}: {member_type_display}
 {t("account_created")}: {created_at_str}
 {t("vip_expires")}: {exp_at_str}
 {t("storage_used")}: {used_capacity_str} / {total_capacity_str} ({usage_str})
@@ -1583,6 +1699,129 @@ class CloudDriveView(QWidget):
         except Exception as e:
             logger.error(f"Error formatting capacity: {e}", exc_info=True)
             return "N/A"
+
+    def _update_account_cookie(self, account: CloudAccount):
+        """Update cookie for an account."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("update_cookie"))
+        dialog.setMinimumWidth(400)
+        dialog.setMinimumHeight(250)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+            }
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+            }
+            QTextEdit {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QTextEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #e0e0e0;
+            }
+            QPushButton[role="cancel"]:hover {
+                background-color: #505050;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+
+        # Help text
+        help_label = QLabel(t("cookie_help"))
+        help_label.setWordWrap(True)
+        help_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        layout.addWidget(help_label)
+
+        # Cookie input
+        cookie_input = QTextEdit()
+        cookie_input.setPlaceholderText(t("cookie_placeholder"))
+        cookie_input.setPlainText(account.access_token)
+        cookie_input.setMaximumHeight(120)
+        layout.addWidget(cookie_input)
+
+        # Status label
+        status_label = QLabel()
+        status_label.setAlignment(Qt.AlignCenter)
+        status_label.setStyleSheet("color: #a0a0a0;")
+        layout.addWidget(status_label)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        validate_btn = QPushButton(t("validate_cookie"))
+        validate_btn.clicked.connect(lambda: _do_validate())
+        btn_layout.addWidget(validate_btn)
+
+        layout.addLayout(btn_layout)
+
+        def _do_validate():
+            cookie_str = cookie_input.toPlainText().strip()
+            if not cookie_str:
+                status_label.setText(t("cookie_empty"))
+                status_label.setStyleSheet("color: #ff5555;")
+                return
+
+            status_label.setText(t("validating_cookie"))
+            status_label.setStyleSheet("color: #a0a0a0;")
+            validate_btn.setEnabled(False)
+
+            # Validate in timer to avoid blocking UI
+            QTimer.singleShot(100, lambda: _validate_and_update(cookie_str))
+
+        def _validate_and_update(cookie_str: str):
+            service = BaiduDriveService if account.provider == "baidu" else QuarkDriveService
+            result = service.validate_cookie(cookie_str)
+            validate_btn.setEnabled(True)
+
+            if result and result.get('status') == 'success':
+                # Update account in database
+                self._db.update_cloud_account_token(account.id, cookie_str)
+                account.access_token = cookie_str
+
+                # Update account name if changed
+                if result.get('account_email'):
+                    account.account_name = result['account_email']
+
+                status_label.setText(t("cookie_updated"))
+                status_label.setStyleSheet("color: #1db954;")
+
+                QTimer.singleShot(1000, dialog.accept)
+
+                # Refresh account list
+                accounts = self._db.get_cloud_accounts()
+                self._populate_account_list(accounts)
+            else:
+                status_label.setText(t("cookie_invalid"))
+                status_label.setStyleSheet("color: #ff5555;")
+
+        dialog.exec_()
 
     def _delete_account(self, account: CloudAccount):
         """Delete a cloud account."""
@@ -1923,6 +2162,48 @@ class CloudDriveView(QWidget):
         except Exception as e:
             logger.error(f"Failed to open file location for {file_path}: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"Failed to open file location: {e}")
+
+    def _open_in_cloud_drive(self, file: CloudFile):
+        """Open the file in cloud drive web interface."""
+        import webbrowser
+        from urllib.parse import quote
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self._current_account:
+            return
+
+        try:
+            provider = self._current_account.provider
+
+            if provider == "baidu":
+                # Baidu: file.metadata contains full path like "/我的音乐/test.mp3"
+                # URL format: https://pan.baidu.com/disk/main#/index?category=all&path=<encoded_path>
+                file_path = file.metadata if file.metadata else f"/{file.name}"
+                # Get parent directory
+                parent_path = "/".join(file_path.rsplit("/", 1)[:-1]) or "/"
+                encoded_path = quote(parent_path, safe="")
+                url = f"https://pan.baidu.com/disk/main#/index?category=all&path={encoded_path}"
+
+            elif provider == "quark":
+                # Quark: use _fid_path to build hierarchical path
+                # URL format: https://pan.quark.cn/list#/list/all/fid1/fid2/fid3
+                # _fid_path contains the folder hierarchy we navigated through
+                if self._fid_path:
+                    # Build path: /fid1/fid2/fid3
+                    path_str = "/".join(self._fid_path)
+                    url = f"https://pan.quark.cn/list#/list/all/{path_str}"
+                else:
+                    # Root level
+                    url = "https://pan.quark.cn/list#/list/all"
+            else:
+                QMessageBox.warning(self, t("error"), f"Unsupported provider: {provider}")
+                return
+
+            webbrowser.open(url)
+
+        except Exception as e:
+            logger.error(f"Failed to open cloud drive for {file.name}: {e}", exc_info=True)
+            QMessageBox.warning(self, t("error"), f"Failed to open cloud drive: {e}")
 
     def _download_cover(self, file: CloudFile):
         """Download cover art for a cloud file."""
@@ -2398,6 +2679,7 @@ class CloudFileDownloadThread(QThread):
             config_manager=None,
             parent=None,
             db_local_path: str = None,
+            provider: str = "quark",
     ):
         super().__init__(parent)
         self._access_token = access_token
@@ -2406,6 +2688,7 @@ class CloudFileDownloadThread(QThread):
         self._audio_files = audio_files or []
         self._config_manager = config_manager
         self._db_local_path = db_local_path
+        self._provider = provider
         pass  # Thread created
 
     def run(self):
@@ -2475,10 +2758,17 @@ class CloudFileDownloadThread(QThread):
                 self.file_exists.emit(str(local_file_path))
                 return
 
-        # Get download URL
-        result = QuarkDriveService.get_download_url(
-            self._access_token, self._file.file_id
-        )
+        # Get download URL - select service based on provider
+        service = BaiduDriveService if self._provider == "baidu" else QuarkDriveService
+        # For Baidu, pass file path (metadata) for mediainfo API
+        if self._provider == "baidu":
+            result = service.get_download_url(
+                self._access_token, self._file.file_id, self._file.metadata
+            )
+        else:
+            result = service.get_download_url(
+                self._access_token, self._file.file_id
+            )
 
         # Handle tuple return value
         if isinstance(result, tuple):
@@ -2504,7 +2794,8 @@ class CloudFileDownloadThread(QThread):
 
             # Download to persistent location
             download_start = time.time()
-            success = QuarkDriveService.download_file(
+            service = BaiduDriveService if self._provider == "baidu" else QuarkDriveService
+            success = service.download_file(
                 url, str(local_file_path), self._access_token
             )
 

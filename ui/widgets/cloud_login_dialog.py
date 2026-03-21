@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QTextEdit, QLineEdit, QWidget)
 
 from services.cloud.quark_service import QuarkDriveService
+from services.cloud.baidu_service import BaiduDriveService
 from system.i18n import t
 
 # Configure logging
@@ -23,8 +24,10 @@ class CloudLoginDialog(QDialog):
 
     login_success = Signal(dict)  # Emits account info on success
 
-    def __init__(self, parent=None):
+    def __init__(self, provider: str = "quark", parent=None):
         super().__init__(parent)
+        self._provider = provider
+        self._service = BaiduDriveService if provider == "baidu" else QuarkDriveService
         self._qr_token = None
         self._qr_url = None  # Store QR URL for redisplay
         self._poll_timer = QTimer(self)
@@ -34,7 +37,8 @@ class CloudLoginDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI"""
-        self.setWindowTitle(t("cloud_drive") + " " + t("login"))
+        provider_name = t("baidu_drive") if self._provider == "baidu" else t("quark_drive")
+        self.setWindowTitle(provider_name + " " + t("login"))
         self.setMinimumSize(450, 520)
 
         # Apply dark theme styling
@@ -235,7 +239,7 @@ class CloudLoginDialog(QDialog):
 
     def _do_validate_cookie(self, cookie_str: str):
         """Perform cookie validation"""
-        result = QuarkDriveService.validate_cookie(cookie_str)
+        result = self._service.validate_cookie(cookie_str)
         self._validate_btn.setEnabled(True)
 
         if result and result.get('status') == 'success':
@@ -249,9 +253,10 @@ class CloudLoginDialog(QDialog):
 
     def _start_login_flow(self):
         """Start the login flow by generating QR code"""
-        qr_data = QuarkDriveService.generate_qr_code()
+        qr_data = self._service.generate_qr_code()
         if qr_data:
-            self._qr_token = qr_data['token']
+            # Baidu uses 'sign', Quark uses 'token'
+            self._qr_token = qr_data.get('sign') or qr_data.get('token')
             self._qr_url = qr_data['qr_url']
             self._display_qr_code(self._qr_url)
             self._start_polling()
@@ -291,7 +296,8 @@ class CloudLoginDialog(QDialog):
             )
 
             self._qr_label.setPixmap(scaled_pixmap)
-            self._status_label.setText(t("scan_with_quark"))
+            scan_text = t("scan_with_baidu") if self._provider == "baidu" else t("scan_with_quark")
+            self._status_label.setText(scan_text)
         except Exception as e:
             logger.error(f"Error generating QR code: {e}", exc_info=True)
             self._status_label.setText(t("qr_code_error") + f": {e}")
@@ -308,7 +314,7 @@ class CloudLoginDialog(QDialog):
         self._progress.setValue(self._poll_attempts)
 
         # Do a single poll attempt each timer tick
-        result = QuarkDriveService.poll_login_status(
+        result = self._service.poll_login_status(
             self._qr_token,
             max_attempts=1,  # Single attempt per timer tick
             poll_interval=0  # No delay, we use QTimer for timing
