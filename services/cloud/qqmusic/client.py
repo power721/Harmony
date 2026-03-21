@@ -542,6 +542,27 @@ class QQMusicClient:
 
         return self._make_request('music.musicToplist.Toplist', 'GetDetail', params)
 
+    def query_songs_by_ids(self, song_ids: List[int]) -> List[Dict]:
+        """
+        Query song info by ids to get mids.
+
+        Args:
+            song_ids: List of song ids
+
+        Returns:
+            List of song info with mids
+        """
+        params = {
+            'ids': song_ids,
+            'types': [0] * len(song_ids),
+            'modify_stamp': [0] * len(song_ids),
+            'ctx': 0,
+            'client': 1,
+        }
+
+        result = self._make_request('music.trackInfo.UniformRuleCtrl', 'CgiGetTrackInfo', params)
+        return result.get('tracks', [])
+
     def verify_login(self) -> Dict[str, Any]:
         """
         Verify if current credential is valid by calling profile API.
