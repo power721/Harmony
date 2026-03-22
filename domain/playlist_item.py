@@ -112,9 +112,21 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
-        source_type = CloudProvider.LOCAL
-        if data.get("cloud_file_id"):
-            source_type = CloudProvider.QUARK
+        # Determine source_type from saved value or infer from other fields
+        source_type_str = data.get("source_type")
+        if source_type_str:
+            try:
+                source_type = CloudProvider(source_type_str)
+            except ValueError:
+                # Fallback to inference if invalid value
+                source_type = CloudProvider.LOCAL
+                if data.get("cloud_file_id"):
+                    source_type = CloudProvider.QUARK
+        else:
+            # Legacy: infer from other fields
+            source_type = CloudProvider.LOCAL
+            if data.get("cloud_file_id"):
+                source_type = CloudProvider.QUARK
 
         return cls(
             source_type=source_type,
