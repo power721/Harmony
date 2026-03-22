@@ -770,6 +770,11 @@ class OnlineMusicView(QWidget):
         self._prev_btn.setEnabled(False)
         self._next_btn.setEnabled(False)
 
+        # Clear all result pages (not just songs)
+        self._singers_page.clear()
+        self._albums_page.clear()
+        self._playlists_page.clear()
+
         self._do_search()
 
     def _on_search_text_changed(self, text: str):
