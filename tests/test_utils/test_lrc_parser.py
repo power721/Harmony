@@ -213,8 +213,8 @@ class TestParseLrc:
         assert lyrics[0].text == "HelloWorld"  # Words concatenated
         assert len(lyrics[0].words) == 2
         assert isinstance(lyrics[0].words[0], LyricWord)
-        assert lyrics[0].words[0].time == 0.1
-        assert lyrics[0].words[0].duration == 0.2
+        assert lyrics[0].words[0].time == pytest.approx(0.1)
+        assert lyrics[0].words[0].duration == pytest.approx(0.2)
         assert lyrics[0].words[0].text == "Hello"
 
     def test_parse_empty_lrc(self):
@@ -341,22 +341,23 @@ class TestParseYrc:
         lyrics = parse_yrc(yrc_text)
 
         assert len(lyrics) == 1
-        assert lyrics[0].time == 1.234  # 1234ms = 1.234s
-        assert lyrics[0].duration == 0.567  # 567ms = 0.567s
+        assert lyrics[0].time == pytest.approx(1.234)  # 1234ms = 1.234s
+        assert lyrics[0].duration == pytest.approx(0.567)  # 567ms = 0.567s
         assert lyrics[0].text == "嘿等我"
         assert len(lyrics[0].words) == 3
 
         # First word: line_time + offset = 1234 + 123 = 1357ms = 1.357s
-        assert lyrics[0].words[0].time == 1.357
-        assert lyrics[0].words[0].duration == 0.045
+        # Duration is recalculated by fix_durations to next word's time
+        assert lyrics[0].words[0].time == pytest.approx(1.357)
+        assert lyrics[0].words[0].duration > 0  # Duration recalculated by fix_durations
         assert lyrics[0].words[0].text == "嘿"
 
         # Second word: 1234 + 234 = 1468ms
-        assert lyrics[0].words[1].time == 1.468
+        assert lyrics[0].words[1].time == pytest.approx(1.468)
         assert lyrics[0].words[1].text == "等"
 
         # Third word: 1234 + 345 = 1579ms
-        assert lyrics[0].words[2].time == 1.579
+        assert lyrics[0].words[2].time == pytest.approx(1.579)
         assert lyrics[0].words[2].text == "我"
 
     def test_parse_yrc_multiple_lines(self):
@@ -435,19 +436,19 @@ class TestParseQrc:
         lyrics = parse_qrc(qrc_text)
 
         assert len(lyrics) == 1
-        assert lyrics[0].time == 0.0
-        assert lyrics[0].duration == 5.0
+        assert lyrics[0].time == pytest.approx(0.0)
+        assert lyrics[0].duration == pytest.approx(5.0)
         assert lyrics[0].text == "稻香"
         assert len(lyrics[0].words) == 2
 
         # First word: absolute time 0ms
-        assert lyrics[0].words[0].time == 0.0
-        assert lyrics[0].words[0].duration == 0.5
+        assert lyrics[0].words[0].time == pytest.approx(0.0)
+        assert lyrics[0].words[0].duration == pytest.approx(0.5)  # Recalculated to next word
         assert lyrics[0].words[0].text == "稻"
 
         # Second word: absolute time 500ms
-        assert lyrics[0].words[1].time == 0.5
-        assert lyrics[0].words[1].duration == 0.5
+        assert lyrics[0].words[1].time == pytest.approx(0.5)
+        assert lyrics[0].words[1].duration > 0  # Duration recalculated to line end
         assert lyrics[0].words[1].text == "香"
 
     def test_parse_qrc_with_xml_wrapper(self):

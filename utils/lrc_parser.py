@@ -48,6 +48,7 @@ YRC_LINE_RE = re.compile(r"\[(\d+),(\d+)\]")
 YRC_WORD_RE = re.compile(r"\((\d+),(\d+),\d+\)([^(]+)")
 
 QRC_LINE_RE = re.compile(r"\[(\d+),(\d+)\]")
+QRC_WORD_RE = re.compile(r"(.*?)\((\d+),(\d+)\)")
 QRC_XML_RE = re.compile(r"<QrcInfos>")
 
 
@@ -176,6 +177,9 @@ def parse_words(text: str):
 # =========================
 
 def parse_yrc(text: str) -> List[LyricLine]:
+    if not text:
+        return []
+
     lyrics = []
 
     for line in text.splitlines():
@@ -222,6 +226,8 @@ def parse_yrc(text: str) -> List[LyricLine]:
 # =========================
 
 def parse_qrc(text: str) -> List[LyricLine]:
+    if not text:
+        return []
 
     if "<QrcInfos>" in text:
         text = extract_qrc_xml(text)
@@ -245,7 +251,7 @@ def parse_qrc(text: str) -> List[LyricLine]:
         words = []
         full = []
 
-        for wm in re.finditer(r"(.*?)\((\d+),(\d+)\)", content):
+        for wm in QRC_WORD_RE.finditer(content):
             ch = wm.group(1)
             offset = int(wm.group(2))
             dur = int(wm.group(3))
@@ -306,7 +312,7 @@ def detect_and_parse(text: str) -> List[LyricLine]:
         logger.info("[lrc_parser] 检测到 QRC XML 格式，使用 QRC 解析器")
         return parse_qrc(text)
 
-    if re.search(r"(.*?)\((\d+),(\d+)\)", text) and not YRC_WORD_RE.search(text):
+    if QRC_WORD_RE.search(text) and not YRC_WORD_RE.search(text):
         logger.info("[lrc_parser] 检测到 QRC 格式，使用 QRC 解析器")
         return parse_qrc(text)
 
@@ -375,7 +381,7 @@ def detect_format(text: str) -> str:
     # 特征：字(offset,duration)
     # ⚠️ 必须排除 YRC
     # =========================
-    if re.search(r"(.*?)\((\d+),(\d+)\)", text):
+    if QRC_WORD_RE.search(text):
         return "qrc"
 
     # =========================
