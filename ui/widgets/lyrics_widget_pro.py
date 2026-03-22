@@ -348,6 +348,50 @@ class LyricsWidget(QWidget):
         return QColor(r, g, b)
 
 
+    # =====================================================
+    # 鼠标
+    # =====================================================
+
+    def mouseMoveEvent(self, e):
+
+        lines = self.engine.lines
+
+        if not lines:
+            return
+
+        center_y = self.height() / 2
+
+        for i in range(len(lines)):
+
+            y = center_y + (i * self.line_height - self.scroll_y)
+
+            rect = QRectF(0, y - 30, self.width(), 60)
+
+            if rect.contains(e.pos()):
+
+                self.hover_index = i
+
+                self.setCursor(Qt.PointingHandCursor)
+
+                self.update()
+
+                return
+
+        self.hover_index = -1
+
+        self.unsetCursor()
+
+    def mousePressEvent(self, e):
+
+        if e.button() == Qt.LeftButton and self.hover_index >= 0:
+
+            t = self.engine.lines[self.hover_index].time * 1000
+
+            self.seekRequested.emit(int(t))
+
+        super().mousePressEvent(e)
+
+
 # =========================================================
 # Demo
 # =========================================================
