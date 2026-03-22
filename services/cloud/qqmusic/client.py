@@ -592,6 +592,27 @@ class QQMusicClient:
 
         return self._make_request('musichall.song_list_server', 'GetSingerSongList', params)
 
+    def get_album_list(self, singer_mid: str, number: int = 10, begin: int = 0) -> Dict:
+        """
+        获取歌手的专辑列表.
+
+        Args:
+            singer_mid: 歌手 MID
+            number: 返回专辑数量
+            begin: 分页起始位置
+
+        Returns:
+            专辑列表字典
+        """
+        params = {
+            'singerMid': singer_mid,
+            'order': 1,  # 1 = 按时间排序
+            'number': number,
+            'begin': begin,
+        }
+
+        return self._make_request('music.musichallAlbum.AlbumListServer', 'GetAlbumList', params)
+
     def get_top_lists(self) -> Dict:
         """
         Get music top lists.

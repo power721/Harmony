@@ -342,6 +342,69 @@ class OnlineMusicService:
             logger.error(f"Get artist detail from YGKing failed: {e}")
             return None
 
+    def get_artist_albums(self, singer_mid: str, number: int = 10, begin: int = 0) -> Dict[str, Any]:
+        """
+        Get artist's album list.
+
+        Args:
+            singer_mid: Singer MID
+            number: Number of albums to return
+            begin: Pagination start position
+
+        Returns:
+            Dict with 'albums' list and 'total' count
+        """
+        logger.debug(f"get_artist_albums: singer_mid={singer_mid}, number={number}, begin={begin}")
+        # Prefer QQ Music API if credential is available
+        if self._has_qqmusic_credential() and self._qqmusic:
+            result = self._qqmusic.get_singer_albums(singer_mid, number=number, begin=begin)
+            if result and result.get('albums'):
+                logger.debug(f"get_artist_albums: QQ Music returned {len(result['albums'])} albums, total={result.get('total', 0)}")
+                return result
+            logger.debug("QQ Music returned no artist albums")
+
+        # Use YGKing API fallback
+        logger.debug("get_artist_albums: Using YGKing API fallback")
+        return self._get_artist_albums_ygking(singer_mid, number, begin)
+
+    def _get_artist_albums_ygking(self, singer_mid: str, number: int, begin: int) -> Dict[str, Any]:
+        """Get artist albums by searching albums with singer name."""
+        try:
+            # First get singer name from singer_mid
+            singer_detail = self._get_artist_detail_ygking(singer_mid)
+            if not singer_detail:
+                logger.warning(f"Cannot get singer detail for {singer_mid}")
+                return {'albums': [], 'total': 0}
+
+            singer_name = singer_detail.get('name', '')
+            if not singer_name:
+                logger.warning(f"Singer name not found for {singer_mid}")
+                return {'albums': [], 'total': 0}
+
+            # Search albums by singer name
+            page = (begin // number) + 1 if number > 0 else 1
+            search_result = self._search_ygking(singer_name, SearchType.ALBUM, page, number)
+
+            albums = []
+            for album in search_result.albums:
+                # Filter albums that belong to this singer
+                if album.singer_mid == singer_mid or singer_name in album.singer_name:
+                    albums.append({
+                        "mid": album.mid,
+                        "name": album.name,
+                        "singer_mid": singer_mid,
+                        "singer_name": album.singer_name,
+                        "cover_url": album.cover_url,
+                        "song_count": album.song_count,
+                        "publish_date": album.publish_date,
+                    })
+
+            return {'albums': albums, 'total': search_result.total}
+
+        except Exception as e:
+            logger.error(f"Get artist albums from YGKing failed: {e}")
+            return {'albums': [], 'total': 0}
+
     def get_album_detail(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
         Get album detail information.

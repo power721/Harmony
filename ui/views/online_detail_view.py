@@ -20,9 +20,11 @@ from PySide6.QtWidgets import (
     QFrame,
     QMenu,
     QMessageBox,
+    QGridLayout,
+    QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QCursor, QColor, QBrush
+from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
+from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
 
 from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist
 from services.online import OnlineMusicService, OnlineDownloadService
@@ -63,6 +65,216 @@ class DetailWorker(QThread):
             logger.error(f"Failed to load detail: {e}")
 
 
+class AlbumListWorker(QThread):
+    """Background worker for loading artist albums."""
+
+    albums_loaded = Signal(list, int)  # (albums list, total count)
+
+    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0):
+        super().__init__()
+        self._service = service
+        self._singer_mid = singer_mid
+        self._number = number
+        self._begin = begin
+
+    def run(self):
+        try:
+            logger.debug(f"AlbumListWorker: Loading albums for singer_mid={self._singer_mid}, number={self._number}, begin={self._begin}")
+            result = self._service.get_artist_albums(self._singer_mid, number=self._number, begin=self._begin)
+            albums = result.get('albums', [])
+            total = result.get('total', 0)
+            logger.debug(f"AlbumListWorker: Got {len(albums)} albums, total={total}")
+            self.albums_loaded.emit(albums, total)
+        except Exception as e:
+            logger.error(f"Failed to load artist albums: {e}", exc_info=True)
+            self.albums_loaded.emit([], 0)
+
+
+class AlbumCoverLoader(QThread):
+    """Background worker for loading album cover images."""
+
+    cover_loaded = Signal(QPixmap)
+
+    def __init__(self, url: str, size: int):
+        super().__init__()
+        self._url = url
+        self._size = size
+
+    def run(self):
+        try:
+            import requests
+            response = requests.get(self._url, timeout=10)
+            response.raise_for_status()
+            pixmap = QPixmap()
+            if pixmap.loadFromData(response.content):
+                scaled = pixmap.scaled(
+                    self._size, self._size,
+                    Qt.KeepAspectRatioByExpanding,
+                    Qt.SmoothTransformation
+                )
+                self.cover_loaded.emit(scaled)
+        except Exception as e:
+            logger.debug(f"Error loading album cover: {e}")
+
+
+class OnlineAlbumCard(QWidget):
+    """Card widget for displaying online album information."""
+
+    clicked = Signal(object)  # Emits OnlineAlbum object
+
+    COVER_SIZE = 150
+    CARD_WIDTH = 150
+    CARD_HEIGHT = 200
+    BORDER_RADIUS = 8
+
+    def __init__(self, album_data: Dict[str, Any], parent=None):
+        super().__init__(parent)
+        self._album_data = album_data
+        self._album = OnlineAlbum(
+            mid=album_data.get("mid", ""),
+            name=album_data.get("name", ""),
+            singer_mid=album_data.get("singer_mid", ""),
+            singer_name=album_data.get("singer_name", ""),
+            cover_url=album_data.get("cover_url", ""),
+            song_count=album_data.get("song_count", 0),
+            publish_date=album_data.get("publish_date", ""),
+        )
+        self._is_hovering = False
+        self._cover_loaded = False
+
+        self._setup_ui()
+        self._set_default_cover()
+        QTimer.singleShot(10, self._load_cover)
+
+    def _setup_ui(self):
+        """Set up the card UI."""
+        self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
+        self.setCursor(Qt.PointingHandCursor)
+
+        # Main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        # Cover container
+        self._cover_container = QFrame()
+        self._cover_container.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
+        self._cover_container.setStyleSheet(f"""
+            QFrame {{
+                background-color: #2a2a2a;
+                border-radius: {self.BORDER_RADIUS}px;
+            }}
+        """)
+
+        # Cover label
+        self._cover_label = QLabel(self._cover_container)
+        self._cover_label.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
+        self._cover_label.setAlignment(Qt.AlignCenter)
+        self._cover_label.setStyleSheet(f"""
+            QLabel {{
+                border-radius: {self.BORDER_RADIUS}px;
+            }}
+        """)
+
+        # Info container
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(4, 0, 4, 0)
+        info_layout.setSpacing(2)
+
+        # Album name
+        self._name_label = QLabel(self._album.name or "Unknown")
+        self._name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._name_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """)
+        self._name_label.setWordWrap(True)
+        self._name_label.setMaximumHeight(32)
+
+        info_layout.addWidget(self._name_label)
+        info_layout.addStretch()
+
+        layout.addWidget(self._cover_container, 0, Qt.AlignHCenter)
+        layout.addWidget(info_widget)
+
+    def _load_cover(self, force: bool = False):
+        """Load album cover image asynchronously."""
+        if self._cover_loaded and not force:
+            return
+
+        cover_url = self._album.cover_url
+        if not cover_url:
+            return
+
+        # Create a worker thread for loading cover
+        self._cover_loader = AlbumCoverLoader(cover_url, self.COVER_SIZE)
+        self._cover_loader.cover_loaded.connect(self._on_cover_loaded)
+        self._cover_loader.start()
+
+    def _on_cover_loaded(self, pixmap: QPixmap):
+        """Handle cover loaded."""
+        if not pixmap.isNull():
+            self._cover_label.setPixmap(pixmap)
+            self._cover_loaded = True
+
+    def _set_default_cover(self):
+        """Set default cover when no cover is available."""
+        pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+        pixmap.fill(QColor("#3d3d3d"))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QColor("#666666"))
+        font = QFont()
+        font.setPixelSize(48)
+        painter.setFont(font)
+        painter.drawText(
+            QRect(0, 0, self.COVER_SIZE, self.COVER_SIZE),
+            Qt.AlignCenter, "\u266B"
+        )
+        painter.end()
+
+        self._cover_label.setPixmap(pixmap)
+
+    def enterEvent(self, event):
+        """Handle mouse enter for hover effect."""
+        self._is_hovering = True
+        self._cover_container.setStyleSheet(f"""
+            QFrame {{
+                background-color: #2a2a2a;
+                border-radius: {self.BORDER_RADIUS}px;
+                border: 2px solid #1db954;
+            }}
+        """)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Handle mouse leave for hover effect."""
+        self._is_hovering = False
+        self._cover_container.setStyleSheet(f"""
+            QFrame {{
+                background-color: #2a2a2a;
+                border-radius: {self.BORDER_RADIUS}px;
+            }}
+        """)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse click."""
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self._album)
+        super().mousePressEvent(event)
+
+    def get_album(self) -> OnlineAlbum:
+        """Get the album object."""
+        return self._album
+
+
 class OnlineDetailView(QWidget):
     """Detail view for artist, album, or playlist."""
 
@@ -70,6 +282,7 @@ class OnlineDetailView(QWidget):
     play_all = Signal(list)  # List of OnlineTrack
     insert_all_to_queue = Signal(list)
     add_all_to_queue = Signal(list)
+    album_clicked = Signal(object)  # OnlineAlbum
 
     def __init__(
         self,
@@ -96,6 +309,11 @@ class OnlineDetailView(QWidget):
         self._cover_url = ""  # Store actual cover URL for full-size display
         self._tracks: List[OnlineTrack] = []
         self._detail_worker: Optional[DetailWorker] = None
+        self._album_list_worker: Optional[AlbumListWorker] = None
+        self._album_cards: List[OnlineAlbumCard] = []
+        self._albums_loaded = 0  # Track how many albums have been loaded
+        self._albums_total = 0  # Total album count from API
+        self._albums_append = False  # Flag for append mode
 
         # Pagination state
         self._current_page = 1
@@ -120,17 +338,13 @@ class OnlineDetailView(QWidget):
         self._info_section = self._create_info_section()
         layout.addWidget(self._info_section)
 
-        # Actions
-        actions = self._create_actions()
-        layout.addWidget(actions)
+        # Albums section (for artist detail)
+        self._albums_section = self._create_albums_section()
+        layout.addWidget(self._albums_section)
 
-        # Pagination
-        self._pagination_widget = self._create_pagination()
-        layout.addWidget(self._pagination_widget)
-
-        # Songs table
-        self._songs_table = self._create_songs_table()
-        layout.addWidget(self._songs_table, 1)  # Give table stretch priority
+        # Songs section (title + table)
+        self._songs_section = self._create_songs_section()
+        layout.addWidget(self._songs_section, 1)  # Give stretch priority
 
     def _create_header(self) -> QWidget:
         """Create header with back button."""
@@ -263,6 +477,135 @@ class OnlineDetailView(QWidget):
         widget.hide()
 
         return widget
+
+    def _create_albums_section(self) -> QWidget:
+        """Create albums grid section for artist detail."""
+        section = QWidget()
+        section.setStyleSheet("background-color: #1a1a1a;")
+        section_layout = QVBoxLayout(section)
+        section_layout.setContentsMargins(0, 8, 0, 8)
+        section_layout.setSpacing(12)
+
+        # Header with title and load more button
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Section title
+        self._albums_title_label = QLabel(t("albums"))
+        self._albums_title_label.setStyleSheet("""
+            QLabel {
+                color: #1db954;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 4px 0;
+            }
+        """)
+        header_layout.addWidget(self._albums_title_label)
+
+        header_layout.addStretch()
+
+        # Load more button
+        self._load_more_albums_btn = QPushButton(t("load_more"))
+        self._load_more_albums_btn.setCursor(Qt.PointingHandCursor)
+        self._load_more_albums_btn.setFixedHeight(28)
+        self._load_more_albums_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #1db954;
+                border: 1px solid #1db954;
+                border-radius: 14px;
+                padding: 4px 16px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: #1db954;
+                color: #000000;
+            }
+        """)
+        self._load_more_albums_btn.clicked.connect(self._on_load_more_albums)
+        header_layout.addWidget(self._load_more_albums_btn)
+
+        section_layout.addWidget(header_widget)
+
+        # Albums container with horizontal scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(False)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setFixedHeight(210)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:horizontal {
+                background-color: #1e1e1e;
+                height: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #3d3d3d;
+                border-radius: 4px;
+                min-width: 30px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #4d4d4d;
+            }
+            QScrollBar::add-line, QScrollBar::sub-line {
+                width: 0px;
+            }
+        """)
+
+        # Albums container
+        self._albums_container = QWidget()
+        self._albums_container.setStyleSheet("background-color: transparent;")
+        self._albums_container.setMinimumHeight(200)
+        self._albums_layout = QHBoxLayout(self._albums_container)
+        self._albums_layout.setContentsMargins(0, 0, 0, 0)
+        self._albums_layout.setSpacing(16)
+        self._albums_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        scroll_area.setWidget(self._albums_container)
+        section_layout.addWidget(scroll_area)
+
+        # Initially hidden
+        section.hide()
+
+        return section
+
+    def _create_songs_section(self) -> QWidget:
+        """Create songs section with title and table."""
+        section = QWidget()
+        section_layout = QVBoxLayout(section)
+        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setSpacing(8)
+
+        # Section title
+        self._songs_title_label = QLabel(t("songs"))
+        self._songs_title_label.setStyleSheet("""
+            QLabel {
+                color: #1db954;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 4px 0;
+            }
+        """)
+        section_layout.addWidget(self._songs_title_label)
+
+        # Actions
+        actions = self._create_actions()
+        section_layout.addWidget(actions)
+
+        # Pagination
+        self._pagination_widget = self._create_pagination()
+        section_layout.addWidget(self._pagination_widget)
+
+        # Songs table
+        self._songs_table = self._create_songs_table()
+        section_layout.addWidget(self._songs_table, 1)
+
+        return section
 
     def _create_songs_table(self) -> QTableWidget:
         """Create songs table."""
@@ -420,6 +763,9 @@ class OnlineDetailView(QWidget):
         self._extra_label.setText("")
         self._stats_label.setText("")
 
+        # Show albums section for artist
+        self._albums_section.show()
+
         self._load_detail()
 
     def load_album(self, mid: str, name: str = "", singer_name: str = ""):
@@ -435,6 +781,9 @@ class OnlineDetailView(QWidget):
         self._extra_label.setText("")
         self._stats_label.setText("")
 
+        # Hide albums section for album detail
+        self._albums_section.hide()
+
         self._load_detail()
 
     def load_playlist(self, playlist_id: str, title: str = "", creator: str = ""):
@@ -449,6 +798,9 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setText(creator)
         self._extra_label.setText("")
         self._stats_label.setText("")
+
+        # Hide albums section for playlist detail
+        self._albums_section.hide()
 
         self._load_detail()
 
@@ -505,15 +857,23 @@ class OnlineDetailView(QWidget):
 
         self._tracks = self._parse_songs(songs)
 
-        # Display stats showing loaded vs total
+        # Display stats showing loaded vs total songs and album count
+        album_count = data.get("album_count", 0)
+        stats_parts = []
         if total > len(self._tracks):
-            self._stats_label.setText(f"{len(self._tracks)} / {total} {t('songs')}")
+            stats_parts.append(f"{len(self._tracks)} / {total} {t('songs')}")
         else:
-            self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+            stats_parts.append(f"{total} {t('songs')}")
+        if album_count > 0:
+            stats_parts.append(f"{album_count} {t('albums')}")
+        self._stats_label.setText(" · ".join(stats_parts))
 
         # Update pagination controls
         self._update_pagination()
         self._display_songs(self._tracks)
+
+        # Load artist albums
+        self._load_artist_albums()
 
     def _update_pagination(self):
         """Update pagination controls visibility and state."""
@@ -525,6 +885,25 @@ class OnlineDetailView(QWidget):
             self._next_page_btn.setEnabled(self._current_page < self._total_pages)
         else:
             self._pagination_widget.hide()
+
+    def _update_artist_stats(self):
+        """Update artist stats label with song and album counts."""
+        if self._detail_type != "artist":
+            return
+
+        stats_parts = []
+        # Song count
+        total = self._total_songs
+        if total > len(self._tracks):
+            stats_parts.append(f"{len(self._tracks)} / {total} {t('songs')}")
+        else:
+            stats_parts.append(f"{total} {t('songs')}")
+
+        # Album count
+        if self._albums_total > 0:
+            stats_parts.append(f"{self._albums_total} {t('albums')}")
+
+        self._stats_label.setText(" · ".join(stats_parts))
 
     def _on_prev_page(self):
         """Handle previous page button click."""
@@ -815,6 +1194,96 @@ class OnlineDetailView(QWidget):
             duration_str = format_duration(song.duration) if song.duration else ""
             self._songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
 
+    def _load_artist_albums(self, append: bool = False):
+        """Load artist albums in background.
+
+        Args:
+            append: If True, append to existing albums; otherwise replace
+        """
+        if self._detail_type != "artist" or not self._mid:
+            self._albums_section.hide()
+            return
+
+        if self._album_list_worker and self._album_list_worker.isRunning():
+            self._album_list_worker.terminate()
+
+        begin = self._albums_loaded if append else 0
+        number = 10
+
+        # Store append flag for callback
+        self._albums_append = append
+
+        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin)
+        self._album_list_worker.albums_loaded.connect(self._on_albums_loaded, Qt.QueuedConnection)
+        self._album_list_worker.start()
+
+    def _on_albums_loaded(self, albums: List[Dict[str, Any]], total: int = 0):
+        """Handle artist albums loaded.
+
+        Args:
+            albums: List of album data
+            total: Total album count from API
+        """
+        append = getattr(self, '_albums_append', False)
+        logger.debug(f"_on_albums_loaded: {len(albums) if albums else 0} albums, total={total}, append={append}")
+
+        if not append:
+            # Clear existing cards
+            for card in self._album_cards:
+                self._albums_layout.removeWidget(card)
+                card.deleteLater()
+            self._album_cards.clear()
+            self._albums_loaded = 0
+            # Store total count and update stats display
+            self._albums_total = total
+            self._update_artist_stats()
+
+        if not albums:
+            if not append:
+                self._albums_section.hide()
+            self._load_more_albums_btn.hide()
+            return
+
+        # Create album cards
+        for album_data in albums:
+            card = OnlineAlbumCard(album_data)
+            card.clicked.connect(self._on_album_card_clicked)
+            self._albums_layout.addWidget(card)
+            self._album_cards.append(card)
+            logger.debug(f"Created card for album: {album_data.get('name', 'Unknown')}")
+
+        # Update loaded count - add to existing if appending
+        self._albums_loaded += len(albums)
+
+        # Update container width
+        total_width = len(self._album_cards) * (OnlineAlbumCard.CARD_WIDTH + 16)
+        self._albums_container.setFixedWidth(max(total_width, self.width()))
+        self._albums_container.setMinimumHeight(200)
+
+        # Force layout update
+        self._albums_layout.update()
+        self._albums_container.updateGeometry()
+
+        logger.debug(f"_on_albums_loaded: total_width={total_width}, container_size={self._albums_container.size()}")
+
+        # Show/hide load more button based on whether there are more albums
+        if self._albums_loaded < self._albums_total:
+            self._load_more_albums_btn.show()
+        else:
+            self._load_more_albums_btn.hide()
+
+        self._albums_section.show()
+        self._albums_section.raise_()  # Bring to front
+        logger.debug(f"_on_albums_loaded: albums_section shown, visible={self._albums_section.isVisible()}, geometry={self._albums_section.geometry()}")
+
+    def _on_load_more_albums(self):
+        """Handle load more albums button click."""
+        self._load_artist_albums(append=True)
+
+    def _on_album_card_clicked(self, album: OnlineAlbum):
+        """Handle album card click."""
+        self.album_clicked.emit(album)
+
     def _on_play_all(self):
         """Play all tracks."""
         if self._tracks:
@@ -928,6 +1397,14 @@ class OnlineDetailView(QWidget):
             self._prev_page_btn.setText("← " + t("previous_page"))
         if hasattr(self, '_next_page_btn'):
             self._next_page_btn.setText(t("next_page") + " →")
+
+        # Update albums section title
+        if hasattr(self, '_albums_title_label'):
+            self._albums_title_label.setText(t("albums"))
+
+        # Update songs section title
+        if hasattr(self, '_songs_title_label'):
+            self._songs_title_label.setText(t("songs"))
 
         # Update table headers
         if hasattr(self, '_songs_table'):

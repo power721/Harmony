@@ -256,6 +256,8 @@ class OnlineMusicView(QWidget):
         self._detail_view.play_all.connect(self._on_play_all_from_detail)
         self._detail_view.insert_all_to_queue.connect(self._on_insert_all_to_queue_from_detail)
         self._detail_view.add_all_to_queue.connect(self._on_add_all_to_queue_from_detail)
+        # Connect album click from artist detail view
+        self._detail_view.album_clicked.connect(self._on_album_clicked)
         self._stack.addWidget(self._detail_view)
 
         layout.addWidget(self._stack)

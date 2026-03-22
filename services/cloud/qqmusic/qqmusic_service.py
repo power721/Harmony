@@ -522,6 +522,7 @@ class QQMusicService:
                 'name': singer_name,
                 'desc': ex_info.get('desc', ''),
                 'avatar': avatar,
+                'album_count': basic_info.get('album_total', 0),
                 'songs': songs,
                 'total': total_songs,
                 'page': page,
@@ -531,6 +532,53 @@ class QQMusicService:
         except Exception as e:
             logger.error(f"Get singer info failed: {e}", exc_info=True)
             return None
+
+    def get_singer_albums(self, singer_mid: str, number: int = 10, begin: int = 0) -> Dict[str, Any]:
+        """
+        Get singer's album list.
+
+        Args:
+            singer_mid: Singer MID
+            number: Number of albums to return
+            begin: Pagination start position
+
+        Returns:
+            Dict with 'albums' list and 'total' count
+        """
+        try:
+            logger.debug(f"get_singer_albums: singer_mid={singer_mid}, number={number}, begin={begin}")
+            result = self.client.get_album_list(singer_mid, number=number, begin=begin)
+
+            if not result:
+                logger.debug("get_singer_albums: client.get_album_list returned empty")
+                return {'albums': [], 'total': 0}
+
+            albums = []
+            album_list = result.get('albumList', [])
+            total = result.get('total', 0)
+            logger.debug(f"get_singer_albums: Got {len(album_list)} albums from API, total={total}")
+
+            for album in album_list:
+                album_mid = album.get('albumMid', '') or album.get('mid', '')
+                cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else ''
+
+                albums.append({
+                    'mid': album_mid,
+                    'name': album.get('albumName', '') or album.get('name', ''),
+                    'singer_mid': singer_mid,
+                    'singer_name': album.get('singerName', ''),
+                    'cover_url': cover_url,
+                    'song_count': album.get('totalNum', 0),
+                    'publish_date': album.get('publishDate', ''),
+                    'album_type': album.get('albumType', ''),
+                })
+
+            logger.debug(f"get_singer_albums: Returning {len(albums)} albums, total={total}")
+            return {'albums': albums, 'total': total}
+
+        except Exception as e:
+            logger.error(f"Get singer albums failed: {e}", exc_info=True)
+            return {'albums': [], 'total': 0}
 
     def get_top_lists(self) -> List[Dict[str, Any]]:
         """
