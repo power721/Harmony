@@ -59,7 +59,7 @@ class GeneralSettingsDialog(QDialog):
     def _setup_ui(self):
         """Setup the dialog UI."""
         self.setWindowTitle(t("settings"))
-        self.setMinimumWidth(530)
+        self.setMinimumWidth(550)
 
         # Apply dark theme styling
         self.setStyleSheet("""
@@ -325,6 +325,142 @@ class GeneralSettingsDialog(QDialog):
         qqmusic_layout.addStretch()
         tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
 
+        # Cache Cleanup Settings Tab
+        cache_tab = QWidget()
+        cache_layout = QVBoxLayout(cache_tab)
+        cache_layout.setSpacing(10)
+
+        # Current cache info
+        cache_info_group = QGroupBox(t("cache_current_info"))
+        cache_info_layout = QVBoxLayout()
+        self._cache_info_label = QLabel(t("loading"))
+        self._cache_info_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        cache_info_layout.addWidget(self._cache_info_label)
+
+        # Add button to open cache directory
+        open_cache_btn = QPushButton(t("cache_open_directory"))
+        open_cache_btn.clicked.connect(self._open_cache_directory)
+        cache_info_layout.addWidget(open_cache_btn)
+
+        cache_info_group.setLayout(cache_info_layout)
+        cache_layout.addWidget(cache_info_group)
+
+        # Cleanup strategy
+        strategy_group = QGroupBox(t("cache_cleanup_title"))
+        strategy_layout = QVBoxLayout()
+        strategy_layout.setSpacing(10)
+
+        # Strategy selector
+        strategy_selector_layout = QHBoxLayout()
+        strategy_label = QLabel(t("cache_cleanup_strategy"))
+        strategy_label.setMinimumWidth(120)
+        self._strategy_combo = QComboBox()
+        self._strategy_combo.addItem(t("cache_cleanup_manual"), "manual")
+        self._strategy_combo.addItem(t("cache_cleanup_time"), "time")
+        self._strategy_combo.addItem(t("cache_cleanup_size"), "size")
+        self._strategy_combo.addItem(t("cache_cleanup_count"), "count")
+        self._strategy_combo.addItem(t("cache_cleanup_disabled"), "disabled")
+        self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
+        strategy_selector_layout.addWidget(strategy_label)
+        strategy_selector_layout.addWidget(self._strategy_combo)
+        strategy_layout.addLayout(strategy_selector_layout)
+
+        # Auto cleanup checkbox
+        self._auto_cleanup_checkbox = QCheckBox(t("cache_auto_cleanup"))
+        self._auto_cleanup_checkbox.setStyleSheet("font-weight: bold;")
+        self._auto_cleanup_checkbox.stateChanged.connect(self._on_auto_cleanup_changed)
+        strategy_layout.addWidget(self._auto_cleanup_checkbox)
+
+        # Settings for each strategy
+        settings_grid_layout = QHBoxLayout()
+
+        # Time threshold (for time-based strategy)
+        time_layout = QVBoxLayout()
+        time_label_layout = QHBoxLayout()
+        time_label = QLabel(t("cache_time_threshold"))
+        time_label.setStyleSheet("font-size: 11px; color: #c0c0c0;")
+        self._time_threshold_input = QLineEdit()
+        self._time_threshold_input.setPlaceholderText("30")
+        self._time_threshold_input.setMaximumWidth(80)
+        time_days_label = QLabel(t("cache_days"))
+        time_days_label.setStyleSheet("font-size: 11px; color: #a0a0a0;")
+        time_label_layout.addWidget(time_label)
+        time_label_layout.addStretch()
+        time_label_layout.addWidget(self._time_threshold_input)
+        time_label_layout.addWidget(time_days_label)
+        time_layout.addLayout(time_label_layout)
+        settings_grid_layout.addLayout(time_layout)
+
+        # Size threshold (for size-based strategy)
+        size_layout = QVBoxLayout()
+        size_label_layout = QHBoxLayout()
+        size_label = QLabel(t("cache_size_threshold"))
+        size_label.setStyleSheet("font-size: 11px; color: #c0c0c0;")
+        self._size_threshold_input = QLineEdit()
+        self._size_threshold_input.setPlaceholderText("1000")
+        self._size_threshold_input.setMaximumWidth(80)
+        size_mb_label = QLabel("MB")
+        size_mb_label.setStyleSheet("font-size: 11px; color: #a0a0a0;")
+        size_label_layout.addWidget(size_label)
+        size_label_layout.addStretch()
+        size_label_layout.addWidget(self._size_threshold_input)
+        size_label_layout.addWidget(size_mb_label)
+        size_layout.addLayout(size_label_layout)
+        settings_grid_layout.addLayout(size_layout)
+
+        # Count threshold (for count-based strategy)
+        count_layout = QVBoxLayout()
+        count_label_layout = QHBoxLayout()
+        count_label = QLabel(t("cache_count_threshold"))
+        count_label.setStyleSheet("font-size: 11px; color: #c0c0c0;")
+        self._count_threshold_input = QLineEdit()
+        self._count_threshold_input.setPlaceholderText("100")
+        self._count_threshold_input.setMaximumWidth(80)
+        count_files_label = QLabel(t("cache_files"))
+        count_files_label.setStyleSheet("font-size: 11px; color: #a0a0a0;")
+        count_label_layout.addWidget(count_label)
+        count_label_layout.addStretch()
+        count_label_layout.addWidget(self._count_threshold_input)
+        count_label_layout.addWidget(count_files_label)
+        count_layout.addLayout(count_label_layout)
+        settings_grid_layout.addLayout(count_layout)
+
+        strategy_layout.addLayout(settings_grid_layout)
+
+        # Interval settings
+        interval_layout = QHBoxLayout()
+        interval_label = QLabel(t("cache_cleanup_interval"))
+        interval_label.setMinimumWidth(120)
+        self._interval_input = QLineEdit()
+        self._interval_input.setPlaceholderText("1")
+        self._interval_input.setMaximumWidth(80)
+        interval_hours_label = QLabel(t("cache_interval_hours").replace("{hours}", ""))
+        interval_layout.addWidget(interval_label)
+        interval_layout.addWidget(self._interval_input)
+        interval_layout.addWidget(interval_hours_label)
+        interval_layout.addStretch()
+        strategy_layout.addLayout(interval_layout)
+
+        # Hint label
+        cache_hint = QLabel(t("cache_settings_hint"))
+        cache_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        cache_hint.setWordWrap(True)
+        strategy_layout.addWidget(cache_hint)
+
+        strategy_group.setLayout(strategy_layout)
+        cache_layout.addWidget(strategy_group)
+
+        # Manual cleanup button
+        manual_cleanup_layout = QHBoxLayout()
+        self._cleanup_now_btn = QPushButton(t("cache_cleanup_now"))
+        self._cleanup_now_btn.clicked.connect(self._cleanup_now)
+        manual_cleanup_layout.addWidget(self._cleanup_now_btn)
+        manual_cleanup_layout.addStretch()
+        cache_layout.addLayout(manual_cleanup_layout)
+
+        cache_layout.addStretch()
+        tab_widget.addTab(cache_tab, t("cache_tab"))
+
         layout.addWidget(tab_widget)
 
         # Buttons
@@ -355,6 +491,29 @@ class GeneralSettingsDialog(QDialog):
         """Handle AcoustID enable checkbox state change."""
         enabled = state == Qt.Checked or state is True or state == 2
         self._acoustid_api_key_input.setEnabled(enabled)
+
+    def _on_strategy_changed(self, index):
+        """Handle strategy combo box change."""
+        strategy = self._strategy_combo.itemData(index)
+
+        # Enable/disable threshold inputs based on strategy
+        time_enabled = (strategy == "time")
+        size_enabled = (strategy == "size")
+        count_enabled = (strategy == "count")
+        interval_enabled = (strategy in ("time", "size", "count"))
+
+        self._time_threshold_input.setEnabled(time_enabled)
+        self._size_threshold_input.setEnabled(size_enabled)
+        self._count_threshold_input.setEnabled(count_enabled)
+        self._interval_input.setEnabled(interval_enabled and self._auto_cleanup_checkbox.isChecked())
+        self._cleanup_now_btn.setEnabled(strategy != "disabled")
+
+    def _on_auto_cleanup_changed(self, state):
+        """Handle auto cleanup checkbox state change."""
+        enabled = state == Qt.Checked or state is True or state == 2
+        strategy = self._strategy_combo.currentData()
+        interval_enabled = enabled and (strategy in ("time", "size", "count"))
+        self._interval_input.setEnabled(interval_enabled)
 
     def _load_settings(self):
         """Load settings from config."""
@@ -400,6 +559,30 @@ class GeneralSettingsDialog(QDialog):
         # QQ Music download directory setting
         download_dir = self._config.get_online_music_download_dir()
         self._download_dir_input.setText(download_dir)
+
+        # Cache cleanup settings
+        strategy = self._config.get_cache_cleanup_strategy()
+        for i in range(self._strategy_combo.count()):
+            if self._strategy_combo.itemData(i) == strategy:
+                self._strategy_combo.setCurrentIndex(i)
+                break
+
+        auto_enabled = self._config.get_cache_cleanup_auto_enabled()
+        self._auto_cleanup_checkbox.blockSignals(True)
+        self._auto_cleanup_checkbox.setChecked(auto_enabled)
+        self._auto_cleanup_checkbox.blockSignals(False)
+
+        self._time_threshold_input.setText(str(self._config.get_cache_cleanup_time_days()))
+        self._size_threshold_input.setText(str(self._config.get_cache_cleanup_size_mb()))
+        self._count_threshold_input.setText(str(self._config.get_cache_cleanup_count()))
+        self._interval_input.setText(str(self._config.get_cache_cleanup_interval_hours()))
+
+        # Update cache info display
+        self._update_cache_info()
+
+        # Set initial enabled states
+        self._on_strategy_changed(self._strategy_combo.currentIndex())
+        self._on_auto_cleanup_changed(auto_enabled)
 
     def _save_settings(self):
         """Save settings to config."""
@@ -449,6 +632,39 @@ class GeneralSettingsDialog(QDialog):
         if not download_dir:
             download_dir = "data/online_cache"
         self._config.set_online_music_download_dir(download_dir)
+
+        # Save cache cleanup settings
+        strategy = self._strategy_combo.currentData()
+        self._config.set_cache_cleanup_strategy(strategy)
+
+        auto_enabled = self._auto_cleanup_checkbox.isChecked()
+        self._config.set_cache_cleanup_auto_enabled(auto_enabled)
+
+        # Save threshold values
+        try:
+            time_days = int(self._time_threshold_input.text()) if self._time_threshold_input.text() else 30
+            size_mb = int(self._size_threshold_input.text()) if self._size_threshold_input.text() else 1000
+            count = int(self._count_threshold_input.text()) if self._count_threshold_input.text() else 100
+            interval = int(self._interval_input.text()) if self._interval_input.text() else 1
+
+            # Validate values
+            if time_days < 0:
+                raise ValueError("Days must be >= 0")
+            if size_mb < 0:
+                raise ValueError("Size must be >= 0")
+            if count < 0:
+                raise ValueError("Count must be >= 0")
+            if interval < 1:
+                raise ValueError("Interval must be >= 1")
+
+            self._config.set_cache_cleanup_time_days(time_days)
+            self._config.set_cache_cleanup_size_mb(size_mb)
+            self._config.set_cache_cleanup_count(count)
+            self._config.set_cache_cleanup_interval_hours(interval)
+
+        except ValueError as e:
+            QMessageBox.warning(self, t("warning"), f"Invalid cache cleanup settings: {e}")
+            return
 
         QMessageBox.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
@@ -610,6 +826,107 @@ class GeneralSettingsDialog(QDialog):
             except ValueError:
                 # On Windows, can't get relative path between different drives
                 self._download_dir_input.setText(directory)
+
+    def _open_cache_directory(self):
+        """Open the cache directory in file explorer."""
+        try:
+            from app.bootstrap import Bootstrap
+
+            download_service = Bootstrap.instance().online_download_service
+            if not download_service:
+                QMessageBox.warning(self, t("warning"), "Download service not available")
+                return
+
+            cache_dir = download_service._download_dir
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir, exist_ok=True)
+
+            # Open directory based on platform
+            import subprocess
+            import platform
+
+            system = platform.system()
+            if system == "Windows":
+                os.startfile(cache_dir)
+            elif system == "Darwin":  # macOS
+                subprocess.run(["open", cache_dir])
+            else:  # Linux
+                subprocess.run(["xdg-open", cache_dir])
+
+        except Exception as e:
+            logger.error(f"Failed to open cache directory: {e}")
+            QMessageBox.critical(self, t("error"), f"Failed to open directory: {e}")
+
+    def _update_cache_info(self):
+        """Update cache information display."""
+        try:
+            from app.bootstrap import Bootstrap
+
+            cache_cleaner = Bootstrap.instance().cache_cleaner_service
+            if not cache_cleaner:
+                return
+
+            info = cache_cleaner.get_cache_info()
+            file_count = info["file_count"]
+            total_size = info["total_size"]
+
+            # Format size
+            if total_size < 1024:
+                size_str = f"{total_size} B"
+            elif total_size < 1024 * 1024:
+                size_str = f"{total_size / 1024:.1f} KB"
+            elif total_size < 1024 * 1024 * 1024:
+                size_str = f"{total_size / (1024 * 1024):.1f} MB"
+            else:
+                size_str = f"{total_size / (1024 * 1024 * 1024):.1f} GB"
+
+            self._cache_info_label.setText(
+                f"{file_count} {t('cache_files')} • {size_str} {t('cache_size')}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update cache info: {e}")
+            self._cache_info_label.setText(t("loading"))
+
+    def _cleanup_now(self):
+        """Execute manual cache cleanup."""
+        try:
+            from app.bootstrap import Bootstrap
+
+            cache_cleaner = Bootstrap.instance().cache_cleaner_service
+            if not cache_cleaner:
+                QMessageBox.warning(self, t("warning"), "Cache cleaner service not available")
+                return
+
+            # Get current strategy (use manual to override auto cleanup)
+            result = cache_cleaner.cleanup(strategy=None)
+
+            files_deleted = result["files_deleted"]
+            space_freed = result["space_freed"]
+
+            # Format size
+            if space_freed < 1024:
+                space_str = f"{space_freed} B"
+            elif space_freed < 1024 * 1024:
+                space_str = f"{space_freed / 1024:.1f} KB"
+            elif space_freed < 1024 * 1024 * 1024:
+                space_str = f"{space_freed / (1024 * 1024):.1f} MB"
+            else:
+                space_str = f"{space_freed / (1024 * 1024 * 1024):.1f} GB"
+
+            if files_deleted == 0:
+                QMessageBox.information(self, t("success"), t("cache_no_cleanup_needed"))
+            else:
+                QMessageBox.information(
+                    self, t("success"),
+                    t("cache_cleanup_result").format(files=files_deleted, space=space_str)
+                )
+
+            # Update cache info
+            self._update_cache_info()
+
+        except Exception as e:
+            logger.error(f"Manual cleanup failed: {e}")
+            QMessageBox.critical(self, t("error"), f"Cleanup failed: {e}")
 
     def closeEvent(self, event):
         """Handle dialog close event."""

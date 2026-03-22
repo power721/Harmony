@@ -59,6 +59,9 @@ class Bootstrap:
         # QQ Music client
         self._qqmusic_client: Optional["QQMusicClient"] = None
 
+        # Services
+        self._cache_cleaner_service: Optional["CacheCleanerService"] = None
+
     @classmethod
     def instance(cls) -> "Bootstrap":
         """Get singleton instance."""
@@ -225,4 +228,17 @@ class Bootstrap:
                 online_music_service=self.online_music_service
             )
         return self._online_download_service
+
+    @property
+    def cache_cleaner_service(self) -> "CacheCleanerService":
+        """Get cache cleaner service."""
+        if self._cache_cleaner_service is None:
+            from services.online.cache_cleaner_service import CacheCleanerService
+            self._cache_cleaner_service = CacheCleanerService(
+                config_manager=self.config,
+                download_service=self.online_download_service,
+                event_bus=self.event_bus,
+                queue_service=self.queue_service
+            )
+        return self._cache_cleaner_service
 

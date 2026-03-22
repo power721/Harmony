@@ -110,8 +110,19 @@ class Application(QObject):
             Exit code
         """
         self.initialized.emit()
+
+        # Start cache cleaner service
+        cache_cleaner = self._bootstrap.cache_cleaner_service
+        if cache_cleaner:
+            cache_cleaner.start()
+
         return self._qt_app.exec()
 
     def quit(self):
         """Quit the application."""
+        # Stop cache cleaner service
+        cache_cleaner = self._bootstrap.cache_cleaner_service
+        if cache_cleaner:
+            cache_cleaner.stop()
+
         self._qt_app.quit()

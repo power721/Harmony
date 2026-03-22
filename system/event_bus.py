@@ -127,6 +127,17 @@ class EventBus(QObject):
     # Emitted when cloud account token is updated (account_id)
     cloud_token_updated = Signal(int)
 
+    # ===== Cache Cleanup Events =====
+
+    # Emitted when cache cleanup starts
+    cache_cleanup_started = Signal()
+
+    # Emitted when cache cleanup completes (result dict with stats)
+    cache_cleanup_completed = Signal(dict)
+
+    # Emitted when cache cleanup encounters an error (error_message)
+    cache_cleanup_error = Signal(str)
+
     # Singleton instance
     _instance: Optional["EventBus"] = None
 

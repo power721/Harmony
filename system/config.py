@@ -59,6 +59,15 @@ class SettingKey:
     QQMUSIC_CREDENTIAL = "qqmusic.credential"  # Full credential JSON
     QQMUSIC_QUALITY = "qqmusic.quality"  # Audio quality setting
 
+    # Cache cleanup settings
+    CACHE_CLEANUP_STRATEGY = "cache.cleanup_strategy"  # "time", "size", "count", "manual", "disabled"
+    CACHE_CLEANUP_TIME_DAYS = "cache.cleanup_time_days"  # int: days
+    CACHE_CLEANUP_SIZE_MB = "cache.cleanup_size_mb"  # int: MB
+    CACHE_CLEANUP_COUNT = "cache.cleanup_count"  # int: file count
+    CACHE_CLEANUP_AUTO_ENABLED = "cache.cleanup_auto_enabled"  # bool
+    CACHE_CLEANUP_INTERVAL_HOURS = "cache.cleanup_interval_hours"  # int
+    CACHE_CLEANUP_LAST_RUN = "cache.cleanup_last_run"  # timestamp
+
 
 class ConfigManager:
     """
@@ -605,3 +614,131 @@ class ConfigManager:
             quality: Quality string (master/atmos/flac/320/128)
         """
         self.set(SettingKey.QQMUSIC_QUALITY, quality)
+
+    # ===== Cache cleanup settings =====
+
+    def get_cache_cleanup_strategy(self) -> str:
+        """
+        Get cache cleanup strategy.
+
+        Returns:
+            Strategy string: "time", "size", "count", "manual", or "disabled" (default "manual")
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_STRATEGY, "manual")
+
+    def set_cache_cleanup_strategy(self, strategy: str):
+        """
+        Set cache cleanup strategy.
+
+        Args:
+            strategy: Strategy string ("time", "size", "count", "manual", or "disabled")
+        """
+        self.set(SettingKey.CACHE_CLEANUP_STRATEGY, strategy)
+
+    def get_cache_cleanup_time_days(self) -> int:
+        """
+        Get cache cleanup time threshold in days.
+
+        Returns:
+            Days threshold (default 30)
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_TIME_DAYS, 30)
+
+    def set_cache_cleanup_time_days(self, days: int):
+        """
+        Set cache cleanup time threshold.
+
+        Args:
+            days: Number of days
+        """
+        self.set(SettingKey.CACHE_CLEANUP_TIME_DAYS, days)
+
+    def get_cache_cleanup_size_mb(self) -> int:
+        """
+        Get cache cleanup size threshold in MB.
+
+        Returns:
+            Size threshold in MB (default 1000)
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_SIZE_MB, 1000)
+
+    def set_cache_cleanup_size_mb(self, size_mb: int):
+        """
+        Set cache cleanup size threshold.
+
+        Args:
+            size_mb: Size threshold in MB
+        """
+        self.set(SettingKey.CACHE_CLEANUP_SIZE_MB, size_mb)
+
+    def get_cache_cleanup_count(self) -> int:
+        """
+        Get cache cleanup file count threshold.
+
+        Returns:
+            File count threshold (default 100)
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_COUNT, 100)
+
+    def set_cache_cleanup_count(self, count: int):
+        """
+        Set cache cleanup file count threshold.
+
+        Args:
+            count: Maximum number of files
+        """
+        self.set(SettingKey.CACHE_CLEANUP_COUNT, count)
+
+    def get_cache_cleanup_auto_enabled(self) -> bool:
+        """
+        Get whether automatic cache cleanup is enabled.
+
+        Returns:
+            True if auto cleanup is enabled (default False)
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_AUTO_ENABLED, False)
+
+    def set_cache_cleanup_auto_enabled(self, enabled: bool):
+        """
+        Set whether automatic cache cleanup is enabled.
+
+        Args:
+            enabled: True to enable auto cleanup
+        """
+        self.set(SettingKey.CACHE_CLEANUP_AUTO_ENABLED, enabled)
+
+    def get_cache_cleanup_interval_hours(self) -> int:
+        """
+        Get cache cleanup check interval in hours.
+
+        Returns:
+            Interval in hours (default 1)
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_INTERVAL_HOURS, 1)
+
+    def set_cache_cleanup_interval_hours(self, hours: int):
+        """
+        Set cache cleanup check interval.
+
+        Args:
+            hours: Interval in hours
+        """
+        self.set(SettingKey.CACHE_CLEANUP_INTERVAL_HOURS, hours)
+
+    def get_cache_cleanup_last_run(self) -> Optional[int]:
+        """
+        Get last cache cleanup run timestamp.
+
+        Returns:
+            Unix timestamp or None
+        """
+        return self.get(SettingKey.CACHE_CLEANUP_LAST_RUN)
+
+    def set_cache_cleanup_last_run(self, timestamp: int):
+        """
+        Set last cache cleanup run timestamp.
+
+        Args:
+            timestamp: Unix timestamp
+        """
+        self.set(SettingKey.CACHE_CLEANUP_LAST_RUN, timestamp)
