@@ -1075,9 +1075,9 @@ class OnlineMusicView(QWidget):
         if not tracks:
             return
 
-        # Play first track and add rest to queue
-        self._play_track(tracks[0])
-        for track in tracks[1:]:
+        # Build list of (song_mid, metadata) for all tracks
+        tracks_data = []
+        for track in tracks:
             metadata = {
                 "title": track.title,
                 "artist": track.singer_name,
@@ -1085,7 +1085,10 @@ class OnlineMusicView(QWidget):
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
             }
-            self.add_to_queue.emit(track.mid, metadata)
+            tracks_data.append((track.mid, metadata))
+
+        # Emit signal to play all tracks, starting from first
+        self.play_online_tracks.emit(0, tracks_data)
 
     def _on_add_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle add all to queue from detail view."""

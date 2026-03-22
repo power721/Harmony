@@ -4,10 +4,19 @@ Track domain model - Core track entity.
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 # Type alias for track ID
 TrackId = int
+
+
+class TrackSource(str, Enum):
+    """Track source enumeration."""
+    LOCAL = "Local"      # 本地歌曲
+    QUARK = "QUARK"      # 夸克网盘
+    BAIDU = "BAIDU"      # 百度网盘
+    QQ = "QQ"            # QQ音乐（网络歌曲）
 
 
 @dataclass
@@ -26,6 +35,7 @@ class Track:
     cover_path: Optional[str] = None
     created_at: Optional[datetime] = None
     cloud_file_id: Optional[str] = None  # Cloud file ID if downloaded from cloud
+    source: TrackSource = TrackSource.LOCAL  # Track source: Local, QUARK, BAIDU, QQ
 
     def __post_init__(self):
         if self.created_at is None:

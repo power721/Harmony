@@ -87,11 +87,12 @@ class SqliteTrackRepository:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                           INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id, source)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            """, (
                                track.path, track.title, track.artist, track.album,
-                               track.duration, track.cover_path, track.cloud_file_id
+                               track.duration, track.cover_path, track.cloud_file_id,
+                               track.source.value if hasattr(track, 'source') and track.source else 'Local'
                            ))
             conn.commit()
             return cursor.lastrowid
@@ -113,11 +114,14 @@ class SqliteTrackRepository:
                            album         = ?,
                            duration      = ?,
                            cover_path    = ?,
-                           cloud_file_id = ?
+                           cloud_file_id = ?,
+                           source        = ?
                        WHERE id = ?
                        """, (
                            track.path, track.title, track.artist, track.album,
-                           track.duration, track.cover_path, track.cloud_file_id, track.id
+                           track.duration, track.cover_path, track.cloud_file_id,
+                           track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                           track.id
                        ))
         conn.commit()
         return cursor.rowcount > 0
@@ -142,6 +146,14 @@ class SqliteTrackRepository:
 
     def _row_to_track(self, row: sqlite3.Row) -> Track:
         """Convert a database row to a Track object."""
+        from domain.track import TrackSource
+        # Get source value from row, default to Local if not present
+        source_value = row["source"] if "source" in row.keys() else "Local"
+        try:
+            source = TrackSource(source_value) if source_value else TrackSource.LOCAL
+        except ValueError:
+            source = TrackSource.LOCAL  # Fallback for invalid values
+
         return Track(
             id=row["id"],
             path=row["path"],
@@ -151,6 +163,7 @@ class SqliteTrackRepository:
             duration=row["duration"] or 0.0,
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],
+            source=source,
         )
 
     # ===== Album Operations =====

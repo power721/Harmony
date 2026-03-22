@@ -11,7 +11,7 @@ from domain.cloud import CloudAccount, CloudFile
 from domain.history import PlayHistory
 from domain.playback import PlayQueueItem
 from domain.playlist import Playlist
-from domain.track import Track
+from domain.track import Track, TrackSource
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -71,6 +71,10 @@ class DatabaseManager:
                            TEXT,
                            cloud_file_id
                            TEXT,
+                           source
+                           TEXT
+                           DEFAULT
+                           'Local',
                            created_at
                            TIMESTAMP
                            DEFAULT
@@ -559,9 +563,30 @@ class DatabaseManager:
 
         conn.commit()
 
+    def _get_track_source_from_row(self, row) -> TrackSource:
+        """
+        Helper to get TrackSource from database row.
+
+        Handles missing 'source' column for backward compatibility.
+        """
+        if "source" not in row.keys() or not row["source"]:
+            return TrackSource.LOCAL
+        try:
+            return TrackSource(row["source"])
+        except ValueError:
+            # Invalid source value, fallback to Local
+            return TrackSource.LOCAL
+
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
-        # Migration 1: Add cloud file support to favorites table
+        # Migration 1: Add source column to tracks table
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = [col[1] for col in cursor.fetchall()]
+        if 'source' not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN source TEXT DEFAULT 'Local'")
+            logger.info("[Database] Added 'source' column to tracks table")
+
+        # Migration 2: Add cloud file support to favorites table
         cursor.execute("PRAGMA table_info(favorites)")
         columns = [col[1] for col in cursor.fetchall()]
 
@@ -694,8 +719,8 @@ class DatabaseManager:
         cursor.execute(
             """
             INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 track.path,
@@ -706,6 +731,7 @@ class DatabaseManager:
                 track.cover_path,
                 track.created_at or datetime.now(),
                 track.cloud_file_id,
+                track.source.value if hasattr(track, 'source') and track.source else 'Local',
             ),
         )
 
@@ -731,6 +757,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"],
+                source=self._get_track_source_from_row(row),
             )
         return None
 
@@ -753,6 +780,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"],
+                source=self._get_track_source_from_row(row),
             )
         return None
 
@@ -775,6 +803,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"],
+                source=self._get_track_source_from_row(row),
             )
         return None
 
@@ -798,6 +827,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"],
+                source=self._get_track_source_from_row(row),
             )
             for row in rows
         ]
@@ -876,6 +906,7 @@ class DatabaseManager:
                     cover_path=row["cover_path"],
                     created_at=datetime.fromisoformat(row["created_at"]),
                     cloud_file_id=row["cloud_file_id"],
+                    source=self._get_track_source_from_row(row),
                 )
                 for row in rows
             ]
@@ -923,6 +954,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"],
+                source=self._get_track_source_from_row(row),
             )
             for row in rows
         ]
@@ -1075,6 +1107,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                source=self._get_track_source_from_row(row),
             )
             for row in rows
         ]
@@ -1361,6 +1394,7 @@ class DatabaseManager:
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
                 cloud_file_id=row["cloud_file_id"] if "cloud_file_id" in row.keys() else None,
+                source=self._get_track_source_from_row(row),
             )
             for row in rows
         ]

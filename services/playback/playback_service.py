@@ -13,7 +13,7 @@ from PySide6.QtCore import QObject, Signal
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
-from domain.track import Track
+from domain.track import Track, TrackSource
 from infrastructure.audio import PlayerEngine
 from infrastructure.database import DatabaseManager
 from system.config import ConfigManager
@@ -872,6 +872,18 @@ class PlaybackService(QObject):
                         self.save_queue()
                 else:
                     # Create a new Track record for this cloud file
+                    from domain.track import TrackSource
+                    from domain.cloud import CloudProvider
+
+                    # Map CloudProvider to TrackSource
+                    source_map = {
+                        CloudProvider.LOCAL: TrackSource.LOCAL,
+                        CloudProvider.ONLINE: TrackSource.QQ,
+                        CloudProvider.QUARK: TrackSource.QUARK,
+                        CloudProvider.BAIDU: TrackSource.BAIDU,
+                    }
+                    source = source_map.get(item.source_type, TrackSource.LOCAL)
+
                     new_track = Track(
                         path=item.local_path,
                         title=item.title,
@@ -879,6 +891,7 @@ class PlaybackService(QObject):
                         album=item.album,
                         duration=item.duration,
                         cloud_file_id=item.cloud_file_id,
+                        source=source,
                     )
                     track_id = self._db.add_track(new_track)
 
@@ -1079,7 +1092,7 @@ class PlaybackService(QObject):
             return existing.id
 
         # Create new track
-        from domain.track import Track
+        from domain.track import Track, TrackSource
         track = Track(
             path=local_path,
             title=title,
@@ -1087,6 +1100,7 @@ class PlaybackService(QObject):
             album=album,
             duration=duration,
             cloud_file_id=song_mid,  # Store song_mid as cloud_file_id
+            source=TrackSource.QQ,  # Online music from QQ
         )
 
         track_id = self._db.add_track(track)
@@ -1324,6 +1338,7 @@ class PlaybackService(QObject):
             duration=duration,
             cloud_file_id=file_id,
             cover_path=cover_path,
+            source=TrackSource.QQ,  # Online music from QQ
         )
 
         self._db.add_track(track)

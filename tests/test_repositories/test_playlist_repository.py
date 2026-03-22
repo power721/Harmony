@@ -33,6 +33,7 @@ def temp_db():
             duration REAL,
             cover_path TEXT,
             cloud_file_id TEXT,
+            source TEXT DEFAULT 'Local',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
