@@ -431,35 +431,51 @@ class QQMusicClient:
         Returns:
             Lyrics dictionary
         """
+        # Use musichallSong.PlayLyricInfo API (more reliable than music.lyric.GetLyric)
         params = {
-            'song_mid': song_mid,
+            'crypt': 1,
+            'ct': 11,
+            'cv': 13020508,
+            'lrc_t': 0,
+            'qrc': 1 if qrc else 0,
+            'qrc_t': 0,
+            'roma': 1 if roma else 0,
+            'roma_t': 0,
+            'trans': 1 if trans else 0,
+            'trans_t': 0,
+            'type': 1,
+            'songMid': song_mid,
         }
 
-        result = self._make_request('music.lyric.GetLyric', 'GetLyric', params)
+        result = self._make_request('music.musichallSong.PlayLyricInfo', 'GetPlayLyricInfo', params)
 
         # Parse lyric content
         if not result:
             return {}
 
         lyric_data = {}
+        from .tripledes import qrc_decrypt
 
-        # Regular lyrics
-        if 'lyric' in result:
-            lyric_data['lyric'] = result['lyric']
+        def decrypt_if_str(value):
+            """Decrypt value if it's a non-empty string, otherwise return empty."""
+            if isinstance(value, str) and value:
+                return qrc_decrypt(value)
+            return ""
+
+        # Regular lyrics (encrypted with crypt=1)
+        lyric_data['lyric'] = decrypt_if_str(result.get('lyric'))
 
         # QRC (word-by-word) lyrics
-        if qrc and 'qrc' in result:
-            from .crypto import qrc_decrypt
-            lyric_data['qrc'] = qrc_decrypt(result['qrc'])
+        if qrc:
+            lyric_data['qrc'] = decrypt_if_str(result.get('qrc'))
 
         # Translation
-        if trans and 'trans' in result:
-            lyric_data['trans'] = result['trans']
+        if trans:
+            lyric_data['trans'] = decrypt_if_str(result.get('trans'))
 
         # Romanization
-        if roma and 'roma' in result:
-            from .crypto import qrc_decrypt
-            lyric_data['roma'] = qrc_decrypt(result['roma'])
+        if roma:
+            lyric_data['roma'] = decrypt_if_str(result.get('roma'))
 
         return lyric_data
 
