@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from domain.playback import PlaybackState, PlayMode
 from services.playback import PlaybackService
 from system.i18n import t
+from ui.widgets.mini_lyrics_widget import MiniLyricsWidget
 from ui.widgets.player_controls import ClickableSlider
 from utils import format_time
 
@@ -37,6 +38,7 @@ class MiniPlayer(QWidget):
 
     closed = Signal()  # Signal when mini player is closed
     _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
+    _lyrics_loaded = Signal(str)  # Signal for lyrics loaded in background thread
 
     def __init__(self, player: PlaybackService, parent=None):
         """
@@ -63,13 +65,13 @@ class MiniPlayer(QWidget):
             Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(350, 120)
+        self.setFixedSize(350, 150)
 
     def _setup_ui(self):
         """Setup the user interface."""
         # Main container widget
         container = QWidget(self)
-        container.setGeometry(0, 0, 350, 120)
+        container.setGeometry(0, 0, 350, 150)
 
         # Create rounded rectangle background
         container.setStyleSheet("""
@@ -112,6 +114,13 @@ class MiniPlayer(QWidget):
         # self._title_label.setWordWrap(True)
         info_layout.addWidget(self._title_label)
 
+        self._album_label = QLabel("")
+        self._album_label.setStyleSheet("""
+            color: #b3b3b3;
+            font-size: 11px;
+        """)
+        # info_layout.addWidget(self._album_label)
+
         self._artist_label = QLabel("")
         self._artist_label.setStyleSheet("""
             color: #b3b3b3;
@@ -145,6 +154,11 @@ class MiniPlayer(QWidget):
         top_layout.addWidget(self._close_btn)
 
         layout.addLayout(top_layout)
+
+        self.lyrics = MiniLyricsWidget()
+        self.lyrics.setMinimumHeight(40)
+        self.lyrics.setMinimumWidth(140)
+        layout.addWidget(self.lyrics)
 
         # Progress bar
         self._progress_slider = ClickableSlider(Qt.Horizontal)
@@ -258,6 +272,9 @@ class MiniPlayer(QWidget):
 
         # Connect cover loaded signal
         self._cover_loaded.connect(self._show_cover)
+
+        # Connect lyrics loaded signal
+        self._lyrics_loaded.connect(self._show_lyrics)
 
         # Initialize with current track info
         self._initialize_current_track()
@@ -397,6 +414,7 @@ class MiniPlayer(QWidget):
                 self._progress_slider.setValue(value)
             # Always update time display
             self._current_time.setText(format_time(position_ms / 1000))
+            self.lyrics.update_position(position_ms / 1000)
 
     def _on_duration_changed(self, duration_ms: int):
         """Handle duration change."""
@@ -408,9 +426,11 @@ class MiniPlayer(QWidget):
         if track_dict:
             # Update UI immediately
             title = track_dict.get("title", t("unknown"))
+            album = track_dict.get("album", "")
             artist = track_dict.get("artist", "")
             self._title_label.setText(title)
             self._artist_label.setText(artist)
+            self._album_label.setText(album)
 
             # Save current track title and update window title if playing
             if artist:
@@ -423,12 +443,17 @@ class MiniPlayer(QWidget):
 
             # Load cover asynchronously to avoid blocking
             self._load_cover_async(track_dict)
+
+            # Load lyrics asynchronously
+            self._load_lyrics_async(track_dict)
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")
+            self._album_label.setText("")
             self._current_track_title = ""
             self.setWindowTitle(t("app_title"))
             self._set_default_cover()
+            self.lyrics.set_lyrics("")
 
     def _load_cover_async(self, track_dict: dict):
         """Load cover art in background thread."""
@@ -507,6 +532,54 @@ class MiniPlayer(QWidget):
         pixmap = QPixmap(50, 50)
         pixmap.fill(QColor("#404040"))
         self._cover_label.setPixmap(pixmap)
+
+    def _load_lyrics_async(self, track_dict: dict):
+        """Load lyrics in background thread."""
+
+        def load_lyrics():
+            from services.lyrics.lyrics_service import LyricsService
+
+            path = track_dict.get("path", "")
+            title = track_dict.get("title", "")
+            artist = track_dict.get("artist", "")
+            album = track_dict.get("album", "")
+
+            # Check if this is an online QQ Music track with song_mid
+            source_type = track_dict.get("source_type", "")
+            cloud_file_id = track_dict.get("cloud_file_id", "")
+            is_online = source_type == "online"
+
+            if is_online and cloud_file_id:
+                # For online QQ Music tracks, get lyrics by song_mid
+                logger.debug(f"[MiniPlayer] Getting lyrics for online track: song_mid={cloud_file_id}")
+                try:
+                    lyrics = LyricsService.get_lyrics_by_qqmusic_mid(cloud_file_id)
+                    if lyrics:
+                        logger.debug(f"[MiniPlayer] Got online lyrics: {len(lyrics)} chars")
+                        return lyrics
+                except Exception as e:
+                    logger.error(f"[MiniPlayer] Error getting online lyrics: {e}")
+
+            # For local files or cloud files, use standard lyrics loading
+            needs_download = track_dict.get("needs_download", False)
+            is_cloud = track_dict.get("is_cloud", False)
+            skip_online = needs_download or (is_cloud and not path)
+
+            return LyricsService.get_lyrics(path, title, artist, album)
+
+        def worker():
+            lyrics = load_lyrics()
+            # Use signal for thread-safe UI update
+            self._lyrics_loaded.emit(lyrics or "")
+
+        # Run in thread
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
+        thread.start()
+
+    def _show_lyrics(self, lyrics: str):
+        """Show lyrics (called via signal from background thread)."""
+        self.lyrics.set_lyrics(lyrics)
 
     def mousePressEvent(self, event):
         """Handle mouse press for dragging."""
