@@ -120,6 +120,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free disk space (aggressive)
+        run: |
+          echo "Before cleanup:"
+          df -h
+
+          # 删除 Xcode（最大头）
+          sudo rm -rf /Applications/Xcode*.app
+
+          # 删除 iOS 模拟器
+          sudo rm -rf /Library/Developer/CoreSimulator
+
+          # 删除 Android
+          sudo rm -rf /usr/local/lib/android
+
+          # 删除 Homebrew 缓存
+          sudo rm -rf /opt/homebrew
+
+          # 删除 toolcache（⚠️ 很关键）
+          sudo rm -rf /Users/runner/hostedtoolcache
+
+          # pip cache
+          rm -rf ~/.cache/pip
+
+          echo "After cleanup:"
+          df -h
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -172,6 +198,11 @@ jobs:
 
           # Create DMG
           hdiutil create -volname "Harmony" -srcfolder dist/Harmony.app -ov -format UDZO dist/Harmony-${{ env.APP_VERSION }}.dmg
+
+      - name: Cleanup before DMG
+        run: |
+          rm -rf build/
+          rm -rf __pycache__
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
