@@ -514,12 +514,14 @@ class QQMusicClient:
 
         return self._make_request('music.musichallAlbum.AlbumInfoServer', 'GetAlbumDetail', params)
 
-    def get_album_songs(self, album_mid: str, begin: int = 0, num: int = 999) -> Dict:
+    def get_album_songs(self, album_mid: str = '', album_id: int = 0,
+                         begin: int = 0, num: int = 50) -> Dict:
         """
         Get songs in an album.
 
         Args:
             album_mid: Album MID
+            album_id: Album ID (optional, use if MID not available)
             begin: Start index (0-based)
             num: Number of songs to return
 
@@ -528,10 +530,10 @@ class QQMusicClient:
         """
         params = {
             'albumMid': album_mid,
-            'albumID': 0,
+            'albumID': album_id,
             'begin': begin,
             'num': num,
-            'order': 2,
+            'order': 2,  # 2 = 按曲目顺序排序
         }
 
         return self._make_request('music.musichallAlbum.AlbumSongList', 'GetAlbumSongList', params)

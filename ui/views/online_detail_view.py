@@ -38,21 +38,23 @@ class DetailWorker(QThread):
 
     detail_loaded = Signal(str, object)  # (type, data)
 
-    def __init__(self, service: OnlineMusicService, detail_type: str, mid: str, page: int = 1):
+    def __init__(self, service: OnlineMusicService, detail_type: str, mid: str,
+                 page: int = 1, page_size: int = 30):
         super().__init__()
         self._service = service
         self._detail_type = detail_type
         self._mid = mid
         self._page = page
+        self._page_size = page_size
 
     def run(self):
         try:
             if self._detail_type == "artist":
-                data = self._service.get_artist_detail(self._mid, page=self._page)
+                data = self._service.get_artist_detail(self._mid, page=self._page, page_size=self._page_size)
             elif self._detail_type == "album":
-                data = self._service.get_album_detail(self._mid)
+                data = self._service.get_album_detail(self._mid, page=self._page, page_size=self._page_size)
             elif self._detail_type == "playlist":
-                data = self._service.get_playlist_detail(self._mid)
+                data = self._service.get_playlist_detail(self._mid, page=self._page, page_size=self._page_size)
             else:
                 data = None
 
@@ -98,7 +100,7 @@ class OnlineDetailView(QWidget):
         self._current_page = 1
         self._total_pages = 1
         self._total_songs = 0
-        self._page_size = 50
+        self._page_size = 30  # QQ Music API max per page
 
         self._setup_ui()
         self._apply_styles()
@@ -458,7 +460,8 @@ class OnlineDetailView(QWidget):
             self._service,
             self._detail_type,
             self._mid,
-            self._current_page
+            self._current_page,
+            self._page_size
         )
         self._detail_worker.detail_loaded.connect(self._on_detail_loaded)
         self._detail_worker.start()
@@ -496,6 +499,7 @@ class OnlineDetailView(QWidget):
 
         # Update pagination state
         self._total_songs = total
+        self._page_size = page_size  # Update page_size from response
         self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
         self._tracks = self._parse_songs(songs)
@@ -687,6 +691,7 @@ class OnlineDetailView(QWidget):
 
         # Update pagination state
         self._total_songs = total
+        self._page_size = page_size  # Update page_size from response
         self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
         self._tracks = self._parse_songs(songs)
@@ -720,6 +725,7 @@ class OnlineDetailView(QWidget):
 
         # Update pagination state
         self._total_songs = total
+        self._page_size = page_size  # Update page_size from response
         self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
         self._tracks = self._parse_songs(songs)

@@ -318,8 +318,9 @@ class QQMusicService:
                 logger.warning(f"Album {album_mid} returned empty result")
                 return None
 
-            # Get album songs
-            songs_result = self.client.get_album_songs(album_mid)
+            # Get album songs with pagination
+            begin = (page - 1) * page_size
+            songs_result = self.client.get_album_songs(album_mid, begin=begin, num=page_size)
 
             # Use adapter to parse
             result = OnlineMusicAdapter.parse_album_detail(basic_result, songs_result)
@@ -327,14 +328,6 @@ class QQMusicService:
             if not result:
                 return None
 
-            # Pagination
-            songs = result.get('songs', [])
-            total_songs = result.get('total', len(songs))
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-
-            result['songs'] = songs[start_idx:end_idx]
-            result['total'] = total_songs
             result['page'] = page
             result['page_size'] = page_size
 
@@ -521,6 +514,9 @@ class QQMusicService:
 
                 logger.info(f"Page {page}: Got {len(songs)} songs for {singer_name}")
 
+            # Use actual returned count as page_size (API may limit to 30)
+            actual_page_size = len(songs) if songs else page_size
+
             return {
                 'mid': basic_info.get('singer_mid', singer_mid),
                 'name': singer_name,
@@ -529,7 +525,7 @@ class QQMusicService:
                 'songs': songs,
                 'total': total_songs,
                 'page': page,
-                'page_size': page_size,
+                'page_size': actual_page_size,
             }
 
         except Exception as e:
