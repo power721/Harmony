@@ -251,15 +251,14 @@ class OnlineDownloadService:
         # Supplement with online API if available
         online_metadata = self._fetch_online_metadata(song_mid)
         if online_metadata:
-            print(online_metadata)
             # Use online data to fill missing fields
-            if not metadata.get("title") and online_metadata.get("title"):
+            if online_metadata.get("title"):
                 metadata["title"] = online_metadata["title"]
-            if not metadata.get("artist") and online_metadata.get("artist"):
+            if online_metadata.get("artist"):
                 metadata["artist"] = online_metadata["artist"]
-            if not metadata.get("album") and online_metadata.get("album"):
+            if online_metadata.get("album"):
                 metadata["album"] = online_metadata["album"]
-            if not metadata.get("duration") and online_metadata.get("duration"):
+            if online_metadata.get("duration"):
                 metadata["duration"] = online_metadata["duration"]
             # Add online-only fields
             if online_metadata.get("genre"):
@@ -268,6 +267,8 @@ class OnlineDownloadService:
                 metadata["language"] = online_metadata["language"]
             if online_metadata.get("publish_date"):
                 metadata["publish_date"] = online_metadata["publish_date"]
+            print(metadata)
+            MetadataService.save_metadata(local_path, metadata["title"], metadata["artist"], metadata["album"])
 
         return metadata if metadata else None
 
