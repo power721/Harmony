@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QMenu,
     QApplication,
+    QPushButton,
 )
 from PySide6.QtCore import (
     Qt, Signal,
@@ -390,6 +391,7 @@ class OnlineGridView(QWidget):
     """
 
     item_clicked = Signal(object)  # Emits OnlineItem object
+    load_more_requested = Signal()  # Emitted when "load more" button is clicked
 
     def __init__(self, data_type: str, parent=None):
         """
@@ -469,6 +471,29 @@ class OnlineGridView(QWidget):
         layout.addWidget(self._list_view)
         self._list_view.hide()  # Hide until data is loaded
 
+        # Load more button
+        self._load_more_btn = QPushButton()
+        self._load_more_btn.setText("加载更多")
+        self._load_more_btn.setCursor(Qt.PointingHandCursor)
+        self._load_more_btn.setFixedHeight(40)
+        self._load_more_btn.setStyleSheet("""
+            QPushButton {
+                background: #2a2a2a;
+                color: #1db954;
+                border: 1px solid #1db954;
+                border-radius: 20px;
+                font-size: 14px;
+                padding: 0 20px;
+            }
+            QPushButton:hover {
+                background: #1db954;
+                color: white;
+            }
+        """)
+        self._load_more_btn.clicked.connect(self._on_load_more_clicked)
+        self._load_more_btn.hide()
+        layout.addWidget(self._load_more_btn)
+
         # Loading indicator
         self._loading = self._create_loading_indicator()
         layout.addWidget(self._loading)
@@ -517,6 +542,10 @@ class OnlineGridView(QWidget):
         if item:
             self.item_clicked.emit(item)
 
+    def _on_load_more_clicked(self):
+        """Handle load more button click."""
+        self.load_more_requested.emit()
+
     def load_data(self, items: List[OnlineItem]):
         """
         Load data into the view with lazy loading.
@@ -545,6 +574,44 @@ class OnlineGridView(QWidget):
         self._list_view.show()
         logger.info(f"[OnlineGridView] Data loaded, list view visible: {self._list_view.isVisible()}")
 
+    def append_data(self, items: List[OnlineItem]):
+        """
+        Append more items to existing data (for load more functionality).
+
+        Args:
+            items: Additional items to append
+        """
+        if not items:
+            return
+
+        logger.info(f"[OnlineGridView] Appending {len(items)} items to existing {len(self._items)} items")
+        self._items.extend(items)
+        self._model.set_items(self._items)
+        self._loading.hide()
+        self._list_view.show()
+
+    def set_has_more(self, has_more: bool):
+        """
+        Set whether there are more items to load.
+
+        Args:
+            has_more: True if more items can be loaded
+        """
+        if has_more:
+            self._load_more_btn.show()
+        else:
+            self._load_more_btn.hide()
+
+    def show_loading(self):
+        """Show loading indicator."""
+        self._loading.show()
+        self._list_view.hide()
+        self._load_more_btn.hide()
+
+    def hide_loading(self):
+        """Hide loading indicator."""
+        self._loading.hide()
+
     def clear(self):
         """Clear all data from the view."""
         self._items.clear()
@@ -552,6 +619,7 @@ class OnlineGridView(QWidget):
         self._pending_data = None
         self._model.clear()
         self._delegate.clear_cache()
+        self._load_more_btn.hide()
 
     def refresh_ui(self):
         """Refresh UI (for language changes)."""

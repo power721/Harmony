@@ -287,11 +287,56 @@ class OnlineMusicService:
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_singer_info(singer_mid, page=page, page_size=page_size)
+            result = self._qqmusic.get_singer_info(singer_mid, page=page, page_size=page_size)
+            if result:
+                return result
+            logger.debug(f"QQ Music returned no artist detail, falling back to YGKing")
 
-        # YGKing doesn't have artist detail API
-        logger.warning("Artist detail not available without QQ Music credential")
-        return None
+        # Use YGKing API
+        return self._get_artist_detail_ygking(singer_mid, page, page_size)
+
+    def _get_artist_detail_ygking(self, singer_mid: str, page: int, page_size: int) -> Optional[Dict[str, Any]]:
+        """Get artist detail using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/singer"
+            params = {"mid": singer_mid}
+
+            response = self._http_client.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            result = OnlineMusicAdapter.parse_ygking_singer_detail(data)
+            if not result:
+                return None
+
+            # YGKing singer API doesn't return songs, search by singer name
+            singer_name = result.get("name", "")
+            if singer_name:
+                search_result = self._search_ygking(singer_name, SearchType.SONG, page, page_size)
+                result['songs'] = [
+                    {
+                        'mid': t.mid,
+                        'id': t.id,
+                        'name': t.title,
+                        'title': t.title,
+                        'singer': [{'mid': s.mid, 'name': s.name} for s in t.singer],
+                        'album': {'mid': t.album.mid, 'name': t.album.name} if t.album else {},
+                        'albummid': t.album.mid if t.album else "",
+                        'albumname': t.album.name if t.album else "",
+                        'interval': t.duration,
+                    }
+                    for t in search_result.tracks
+                ]
+                result['total'] = search_result.total
+
+            result['page'] = page
+            result['page_size'] = page_size
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Get artist detail from YGKing failed: {e}")
+            return None
 
     def get_album_detail(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
@@ -307,11 +352,83 @@ class OnlineMusicService:
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_album_info(album_mid, page=page, page_size=page_size)
+            result = self._qqmusic.get_album_info(album_mid, page=page, page_size=page_size)
+            if result:
+                return result
+            logger.debug(f"QQ Music returned no album detail, falling back to YGKing")
 
-        # YGKing doesn't have album detail API
-        logger.warning("Album detail not available without QQ Music credential")
-        return None
+        # Use YGKing API
+        return self._get_album_detail_ygking(album_mid, page, page_size)
+
+    def _get_album_detail_ygking(self, album_mid: str, page: int, page_size: int) -> Optional[Dict[str, Any]]:
+        """Get album detail using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/album"
+            params = {"mid": album_mid}
+
+            response = self._http_client.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            result = OnlineMusicAdapter.parse_ygking_album_detail(data)
+            if result:
+                # If YGKing API doesn't return songs, use search API
+                songs = result.get('songs', [])
+                if not songs:
+                    album_name = result.get('name', '')
+                    singer_name = result.get('singer', '')
+                    if album_name:
+                        # Search by album name + singer name
+                        keyword = f"{album_name} {singer_name}".strip()
+                        search_result = self._search_ygking(keyword, SearchType.SONG, page, page_size)
+                        # Filter songs by album_mid
+                        songs = [
+                            {
+                                'mid': t.mid,
+                                'id': t.id,
+                                'name': t.title,
+                                'title': t.title,
+                                'singer': [{'mid': s.mid, 'name': s.name} for s in t.singer],
+                                'album': {'mid': t.album.mid, 'name': t.album.name} if t.album else {},
+                                'albummid': t.album.mid if t.album else "",
+                                'albumname': t.album.name if t.album else "",
+                                'interval': t.duration,
+                            }
+                            for t in search_result.tracks
+                            if t.album and t.album.mid == album_mid
+                        ]
+                        # If no exact match, use all search results
+                        if not songs:
+                            songs = [
+                                {
+                                    'mid': t.mid,
+                                    'id': t.id,
+                                    'name': t.title,
+                                    'title': t.title,
+                                    'singer': [{'mid': s.mid, 'name': s.name} for s in t.singer],
+                                    'album': {'mid': t.album.mid, 'name': t.album.name} if t.album else {},
+                                    'albummid': t.album.mid if t.album else "",
+                                    'albumname': t.album.name if t.album else "",
+                                    'interval': t.duration,
+                                }
+                                for t in search_result.tracks
+                            ]
+                        result['total'] = len(songs)
+
+                # Apply pagination
+                total = result.get('total', len(songs))
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                result['songs'] = songs[start_idx:end_idx]
+                result['total'] = total
+                result['page'] = page
+                result['page_size'] = page_size
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Get album detail from YGKing failed: {e}")
+            return None
 
     def get_playlist_detail(self, playlist_id: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
@@ -327,11 +444,41 @@ class OnlineMusicService:
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_playlist_info(playlist_id, page=page, page_size=page_size)
+            result = self._qqmusic.get_playlist_info(playlist_id, page=page, page_size=page_size)
+            if result:
+                return result
+            logger.debug(f"QQ Music returned no playlist detail, falling back to YGKing")
 
-        # YGKing doesn't have playlist detail API
-        logger.warning("Playlist detail not available without QQ Music credential")
-        return None
+        # Use YGKing API
+        return self._get_playlist_detail_ygking(playlist_id, page, page_size)
+
+    def _get_playlist_detail_ygking(self, playlist_id: str, page: int, page_size: int) -> Optional[Dict[str, Any]]:
+        """Get playlist detail using YGKing API."""
+        try:
+            url = f"{self.YGKING_BASE_URL}/api/playlist"
+            params = {"id": playlist_id}
+
+            response = self._http_client.get(url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            result = OnlineMusicAdapter.parse_ygking_playlist_detail(data)
+            if result:
+                # Apply pagination
+                songs = result.get('songs', [])
+                total = result.get('total', len(songs))
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                result['songs'] = songs[start_idx:end_idx]
+                result['total'] = total
+                result['page'] = page
+                result['page_size'] = page_size
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Get playlist detail from YGKing failed: {e}")
+            return None
 
     def get_playback_url(self, song_mid: str, quality: str = "320") -> Optional[str]:
         """

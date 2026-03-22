@@ -137,6 +137,11 @@ class OnlineMusicView(QWidget):
         self._top_list_worker: Optional[TopListWorker] = None
         self._selected_top_id: Optional[int] = None
 
+        # State for non-song search (load more)
+        self._grid_page = 1  # Current page for grid views (singer/album/playlist)
+        self._grid_total = 0  # Total results for current grid search
+        self._grid_page_size = 30  # Page size for grid views
+
         # Event bus
         self._event_bus = EventBus.instance()
 
@@ -364,16 +369,19 @@ class OnlineMusicView(QWidget):
         # Singers page - grid view with circular avatars
         self._singers_page = OnlineGridView(data_type="singer", parent=self)
         self._singers_page.item_clicked.connect(self._on_artist_clicked)
+        self._singers_page.load_more_requested.connect(self._on_load_more_artists)
         self._results_stack.addWidget(self._singers_page)
 
         # Albums page - grid view with rounded covers
         self._albums_page = OnlineGridView(data_type="album", parent=self)
         self._albums_page.item_clicked.connect(self._on_album_clicked)
+        self._albums_page.load_more_requested.connect(self._on_load_more_albums)
         self._results_stack.addWidget(self._albums_page)
 
         # Playlists page - grid view with rounded covers
         self._playlists_page = OnlineGridView(data_type="playlist", parent=self)
         self._playlists_page.item_clicked.connect(self._on_playlist_clicked)
+        self._playlists_page.load_more_requested.connect(self._on_load_more_playlists)
         self._results_stack.addWidget(self._playlists_page)
 
         layout.addWidget(self._results_stack)
@@ -658,6 +666,7 @@ class OnlineMusicView(QWidget):
 
         self._current_keyword = keyword
         self._current_page = 1
+        self._grid_page = 1  # Reset grid page for new search
         self._tabs.show()
 
         # Immediately switch to results page and show searching state
@@ -674,8 +683,14 @@ class OnlineMusicView(QWidget):
         self._search_input.clear()
         self._current_keyword = ""
         self._current_page = 1
+        self._grid_page = 1
+        self._grid_total = 0
         self._current_tracks = []
         self._tabs.hide()
+        # Clear grid views
+        self._singers_page.clear()
+        self._albums_page.clear()
+        self._playlists_page.clear()
         # Switch to top list page
         self._stack.setCurrentWidget(self._top_list_page)
 
@@ -706,13 +721,16 @@ class OnlineMusicView(QWidget):
             self._display_tracks(result.tracks)
             self._results_stack.setCurrentWidget(self._songs_page)
         elif self._current_search_type == SearchType.SINGER:
-            self._display_artists(result.artists)
+            self._grid_total = result.total
+            self._display_artists(result.artists, is_append=False)
             self._results_stack.setCurrentWidget(self._singers_page)
         elif self._current_search_type == SearchType.ALBUM:
-            self._display_albums(result.albums)
+            self._grid_total = result.total
+            self._display_albums(result.albums, is_append=False)
             self._results_stack.setCurrentWidget(self._albums_page)
         elif self._current_search_type == SearchType.PLAYLIST:
-            self._display_playlists(result.playlists)
+            self._grid_total = result.total
+            self._display_playlists(result.playlists, is_append=False)
             self._results_stack.setCurrentWidget(self._playlists_page)
 
         # Update results info
@@ -761,22 +779,53 @@ class OnlineMusicView(QWidget):
             duration_str = format_duration(track.duration) if track.duration else ""
             self._results_table.setItem(i, 4, QTableWidgetItem(duration_str))
 
-    def _display_artists(self, artists: List[OnlineArtist]):
+    def _display_artists(self, artists: List[OnlineArtist], is_append: bool = False):
         """Display artists in grid view."""
         logger.info(f"[OnlineMusicView] Displaying {len(artists)} artists")
         if artists:
             first = artists[0]
             logger.info(f"[OnlineMusicView] First artist - name: '{first.name}', mid: '{first.mid}', songs: {first.song_count}, albums: {first.album_count}, avatar: '{first.avatar_url}'")
             logger.info(f"[OnlineMusicView] First artist object: {first}")
-        self._singers_page.load_data(artists)
 
-    def _display_albums(self, albums: List[OnlineAlbum]):
+        if is_append:
+            self._singers_page.append_data(artists)
+        else:
+            self._singers_page.load_data(artists)
+
+        # Show "load more" button if there are more results
+        has_more = len(artists) >= self._grid_page_size and (
+            self._grid_total == 0 or  # Unknown total, assume more
+            self._grid_page * self._grid_page_size < self._grid_total
+        )
+        self._singers_page.set_has_more(has_more)
+
+    def _display_albums(self, albums: List[OnlineAlbum], is_append: bool = False):
         """Display albums in grid view."""
-        self._albums_page.load_data(albums)
+        if is_append:
+            self._albums_page.append_data(albums)
+        else:
+            self._albums_page.load_data(albums)
 
-    def _display_playlists(self, playlists: List[OnlinePlaylist]):
+        # Show "load more" button if there are more results
+        has_more = len(albums) >= self._grid_page_size and (
+            self._grid_total == 0 or
+            self._grid_page * self._grid_page_size < self._grid_total
+        )
+        self._albums_page.set_has_more(has_more)
+
+    def _display_playlists(self, playlists: List[OnlinePlaylist], is_append: bool = False):
         """Display playlists in grid view."""
-        self._playlists_page.load_data(playlists)
+        if is_append:
+            self._playlists_page.append_data(playlists)
+        else:
+            self._playlists_page.load_data(playlists)
+
+        # Show "load more" button if there are more results
+        has_more = len(playlists) >= self._grid_page_size and (
+            self._grid_total == 0 or
+            self._grid_page * self._grid_page_size < self._grid_total
+        )
+        self._playlists_page.set_has_more(has_more)
 
     def _on_tab_changed(self, index: int):
         """Handle tab change."""
@@ -791,6 +840,7 @@ class OnlineMusicView(QWidget):
         # Re-search if there's a keyword
         if self._current_keyword:
             self._current_page = 1
+            self._grid_page = 1  # Reset grid page for new tab
             self._do_search()
 
     def _on_artist_clicked(self, artist: OnlineArtist):
@@ -810,6 +860,67 @@ class OnlineMusicView(QWidget):
         logger.info(f"Playlist clicked: {playlist.title}, id: {playlist.id}")
         self._detail_view.load_playlist(playlist.id, playlist.title, playlist.creator)
         self._stack.setCurrentWidget(self._detail_view)
+
+    def _on_load_more_artists(self):
+        """Load more artists."""
+        self._grid_page += 1
+        self._singers_page.show_loading()
+        self._load_more_grid(SearchType.SINGER)
+
+    def _on_load_more_albums(self):
+        """Load more albums."""
+        self._grid_page += 1
+        self._albums_page.show_loading()
+        self._load_more_grid(SearchType.ALBUM)
+
+    def _on_load_more_playlists(self):
+        """Load more playlists."""
+        self._grid_page += 1
+        self._playlists_page.show_loading()
+        self._load_more_grid(SearchType.PLAYLIST)
+
+    def _load_more_grid(self, search_type: str):
+        """Load more items for grid view."""
+        if self._search_worker and self._search_worker.isRunning():
+            self._search_worker.terminate()
+            self._search_worker = None
+
+        self._search_worker = SearchWorker(
+            self._service,
+            self._current_keyword,
+            search_type,
+            self._grid_page,
+            self._grid_page_size
+        )
+        self._search_worker.search_completed.connect(
+            lambda result: self._on_load_more_completed(result, search_type)
+        )
+        self._search_worker.search_failed.connect(self._on_load_more_failed)
+        self._search_worker.start()
+
+    def _on_load_more_completed(self, result: SearchResult, search_type: str):
+        """Handle load more completion."""
+        if search_type == SearchType.SINGER:
+            self._singers_page.hide_loading()
+            self._display_artists(result.artists, is_append=True)
+        elif search_type == SearchType.ALBUM:
+            self._albums_page.hide_loading()
+            self._display_albums(result.albums, is_append=True)
+        elif search_type == SearchType.PLAYLIST:
+            self._playlists_page.hide_loading()
+            self._display_playlists(result.playlists, is_append=True)
+
+        # Update total
+        self._grid_total = result.total
+
+    def _on_load_more_failed(self, error: str):
+        """Handle load more failure."""
+        logger.error(f"Load more failed: {error}")
+        # Hide loading on all grid views
+        self._singers_page.hide_loading()
+        self._albums_page.hide_loading()
+        self._playlists_page.hide_loading()
+        QMessageBox.warning(self, t("error"), t("search_failed") + f": {error}")
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""

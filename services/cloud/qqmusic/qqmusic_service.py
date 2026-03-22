@@ -322,25 +322,9 @@ class QQMusicService:
                 logger.warning(f"Playlist {playlist_id} returned empty result")
                 return None
 
-            logger.info(f"Playlist raw result: {result}")
-
-            # Check for nested data structure
-            # Some APIs return: { code: 0, data: { dissname: ..., songlist: ... } }
-            # Others return directly: { dissname: ..., songlist: ... }
-            if 'data' in result and isinstance(result.get('data'), dict):
-                inner_data = result.get('data', {})
-                if inner_data.get('dissname') or inner_data.get('songlist'):
-                    result = inner_data
-                    logger.info(f"Using nested data structure")
-
-            logger.info(f"Playlist dissname: {result.get('dissname')}")
-            logger.info(f"Playlist songlist count: {len(result.get('songlist', []))}")
-
             # Parse response
             all_songs = result.get('songlist', []) or result.get('songs', []) or []
             total_songs = len(all_songs)
-
-            logger.info(f"Playlist {playlist_id} has {total_songs} songs")
 
             # Pagination
             start_idx = (page - 1) * page_size

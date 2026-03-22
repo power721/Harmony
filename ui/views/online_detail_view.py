@@ -470,14 +470,12 @@ class OnlineDetailView(QWidget):
 
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
-        logger.info(f"[OnlineDetailView] Artist detail data: {data}")
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
         self._extra_label.setText("")
 
         # Load artist cover
         avatar_url = data.get("avatar", "")
-        logger.info(f"[OnlineDetailView] Avatar URL: {avatar_url}")
         if avatar_url:
             self._load_cover(avatar_url)
 
@@ -490,9 +488,7 @@ class OnlineDetailView(QWidget):
         self._total_songs = total
         self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
-        logger.info(f"[OnlineDetailView] Songs count: {len(songs)}, total: {total}, page: {page}/{self._total_pages}")
         self._tracks = self._parse_songs(songs)
-        logger.info(f"[OnlineDetailView] Parsed tracks count: {len(self._tracks)}")
 
         # Display stats showing loaded vs total
         if total > len(self._tracks):
@@ -608,10 +604,6 @@ class OnlineDetailView(QWidget):
 
     def _display_playlist_detail(self, data: Dict):
         """Display playlist detail."""
-        logger.info(f"[OnlineDetailView] Playlist detail data keys: {data.keys()}")
-        logger.info(f"[OnlineDetailView] Playlist name: '{data.get('name', '')}'")
-        logger.info(f"[OnlineDetailView] Playlist creator: '{data.get('creator', '')}'")
-
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("creator", ""))
         self._extra_label.setText("")
