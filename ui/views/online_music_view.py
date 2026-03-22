@@ -136,6 +136,7 @@ class OnlineMusicView(QWidget):
         self._search_worker: Optional[SearchWorker] = None
         self._top_list_worker: Optional[TopListWorker] = None
         self._selected_top_id: Optional[int] = None
+        self._top_lists_loaded = False  # Track if top lists have been loaded
 
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
@@ -146,7 +147,6 @@ class OnlineMusicView(QWidget):
         self._event_bus = EventBus.instance()
 
         self._setup_ui()
-        self._load_top_lists()
 
     def _setup_ui(self):
         """Setup UI components."""
@@ -194,6 +194,13 @@ class OnlineMusicView(QWidget):
 
         # Apply styles
         self._apply_styles()
+
+    def showEvent(self, event):
+        """Handle show event - load top lists on first display."""
+        super().showEvent(event)
+        if not self._top_lists_loaded:
+            self._top_lists_loaded = True
+            self._load_top_lists()
 
     def _create_header(self) -> QWidget:
         """Create header with QQ Music login status."""

@@ -263,7 +263,11 @@ class OnlineMusicService:
             data = response.json()
 
             if data.get("code") == 0:
-                # YGKing returns data.data.song[] structure
+                # Prefer songInfoList which has full album and duration info
+                songs = data.get("data", {}).get("songInfoList", [])
+                if songs:
+                    return OnlineMusicAdapter._parse_ygking_song_info_list(songs)
+                # Fallback to data.data.song[] structure
                 songs = data.get("data", {}).get("data", {}).get("song", [])
                 return OnlineMusicAdapter._parse_ygking_top_songs(songs)
 

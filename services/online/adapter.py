@@ -316,6 +316,40 @@ class OnlineMusicAdapter:
         return tracks
 
     @staticmethod
+    def _parse_ygking_song_info_list(items: List[Dict]) -> List[OnlineTrack]:
+        """Parse songInfoList from YGKing API (has full album and duration info)."""
+        tracks = []
+        for item in items:
+            # Singer info - array of objects
+            singers = []
+            singer_list = item.get("singer", [])
+            if isinstance(singer_list, list):
+                for s in singer_list:
+                    singers.append(OnlineSinger(
+                        mid=s.get("mid", ""),
+                        name=s.get("name", "")
+                    ))
+
+            # Album info
+            album_data = item.get("album", {})
+            album = AlbumInfo(
+                mid=album_data.get("mid", "") if isinstance(album_data, dict) else "",
+                name=album_data.get("name", "") if isinstance(album_data, dict) else ""
+            )
+
+            track = OnlineTrack(
+                mid=item.get("mid", ""),
+                id=item.get("id"),
+                title=item.get("title", "") or item.get("name", ""),
+                singer=singers,
+                album=album,
+                duration=item.get("interval", 0)
+            )
+            tracks.append(track)
+
+        return tracks
+
+    @staticmethod
     def _normalize_qqmusic(
         raw_data: Dict[str, Any],
         search_type: str,

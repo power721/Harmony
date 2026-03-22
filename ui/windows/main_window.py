@@ -713,6 +713,7 @@ class MainWindow(QMainWindow):
         self._nav_artists.setChecked(False)
         self._nav_favorites.setChecked(True)
         self._nav_history.setChecked(False)
+        self._nav_online_music.setChecked(False)
 
         # Load favorites with delay to avoid blocking
         from PySide6.QtCore import QTimer
@@ -732,6 +733,7 @@ class MainWindow(QMainWindow):
         self._nav_albums.setChecked(False)
         self._nav_artists.setChecked(False)
         self._nav_favorites.setChecked(False)
+        self._nav_online_music.setChecked(False)
         self._nav_history.setChecked(True)
 
         # Load history with delay to avoid blocking

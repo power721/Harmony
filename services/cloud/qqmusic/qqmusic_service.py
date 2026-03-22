@@ -557,18 +557,26 @@ class QQMusicService:
                 return []
 
             # Songs can be in different locations:
+            # - result.songInfoList (has full album and duration info - prefer this)
+            # - result.data.songInfoList (newer API)
             # - result.song (some APIs)
             # - result.data.song (unsigned endpoint)
             # - result.list (signed endpoint)
-            songs = result.get('song', [])
+            songs = result.get('songInfoList', [])
             if not songs:
                 inner_data = result.get('data', {})
                 if isinstance(inner_data, dict):
-                    songs = inner_data.get('song', [])
+                    songs = inner_data.get('songInfoList', [])
+                    if not songs:
+                        songs = inner_data.get('song', [])
+            if not songs:
+                songs = result.get('song', [])
             if not songs:
                 songs = result.get('list', [])
 
             logger.debug(f"get_top_list_songs: top_id={top_id}, found {len(songs)} songs")
+            if songs:
+                logger.debug(f"First song keys: {list(songs[0].keys())}")
 
             # If songs don't have mid, query by id to get mid
             songs_need_mid = [s for s in songs if not s.get('songmid') and not s.get('mid') and s.get('songId')]
@@ -597,21 +605,24 @@ class QQMusicService:
                 else:
                     singer_name = ''
 
-                # Handle album data - can be albumName (string) or album (dict)
+                # Handle album data - can be albumName, albumname, album (dict)
                 album_info = song.get('album', {})
                 if isinstance(album_info, str):
                     album_name = album_info
                 elif isinstance(album_info, dict):
                     album_name = album_info.get('name', '')
                 else:
-                    album_name = song.get('albumName', '')
+                    album_name = song.get('albumName', '') or song.get('albumname', '')
+
+                # Handle duration - interval is in seconds
+                duration = song.get('interval', 0) or song.get('duration', 0)
 
                 track = {
                     'mid': song.get('songmid', '') or song.get('mid', ''),
-                    'title': song.get('songname', '') or song.get('title', ''),
+                    'title': song.get('songname', '') or song.get('title', '') or song.get('name', ''),
                     'singer': singer_name,
                     'album': album_name,
-                    'duration': song.get('interval', 0),
+                    'duration': duration,
                 }
                 tracks.append(track)
 
