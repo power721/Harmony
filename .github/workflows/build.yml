@@ -192,7 +192,7 @@ jobs:
               <true/>
               </dict>
               </plist>
-            EOF
+          EOF
           fi
 
       - name: Create ZIP
