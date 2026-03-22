@@ -69,6 +69,10 @@ class LyricsLoader(QThread):
                 lyrics = LyricsService.get_lyrics_by_qqmusic_mid(self._song_mid)
                 elapsed = time.time() - start_time
                 logger.debug(f"[LyricsLoader] Got lyrics in {elapsed:.2f}s")
+                # Save lyrics if we have a valid local path (file downloaded)
+                if lyrics and self._path and self._path not in ('.', '', '/'):
+                    LyricsService.save_lyrics(self._path, lyrics)
+                    logger.debug(f"[LyricsLoader] Saved lyrics for online track to {self._path}")
             else:
                 # For local tracks, use the normal flow
                 lyrics = LyricsService.get_lyrics(self._path, self._title, self._artist)
