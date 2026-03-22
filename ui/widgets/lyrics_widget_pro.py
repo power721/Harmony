@@ -259,33 +259,62 @@ class LyricsWidget(QWidget):
         p.setFont(self.font_current)
 
         total_width = max(1, self.width())
-
         cur_x = x
 
         for w in words:
 
             width = max(1, metrics.horizontalAdvance(w.text))
 
-            end_time = w.time + w.duration
+            start = w.time
+            end = w.time + w.duration
+            scale = 1.0
+            if start <= self.current_time <= end:
+                scale = 1.1
 
-            if self.current_time >= end_time:
-                color = self._gradient_color(cur_x, total_width)
-
-            elif self.current_time >= w.time:
-
-                if w.duration <= 0:
-                    progress = 1
-                else:
-                    progress = (self.current_time - w.time) / w.duration
-
-                color = self._interpolate_color(
-                    QColor(180, 180, 180),
-                    self._gradient_color(cur_x, total_width),
-                    progress
-                )
-            else:
+            # =========================
+            # 1. 未开始
+            # =========================
+            if self.current_time < start:
                 color = QColor(180, 180, 180)
 
+            # =========================
+            # 2. 已完成（扫光完成）
+            # =========================
+            elif self.current_time >= end:
+                color = self._gradient_color(cur_x, total_width)
+
+            # =========================
+            # 3. 正在播放（扫光动画）
+            # =========================
+            else:
+                progress = 0 if w.duration <= 0 else (self.current_time - start) / w.duration
+
+                # 👉 扫光宽度
+                sweep_width = width * progress
+                font = QFont(self.font_current)
+                font.setPointSizeF(self.font_current.pointSizeF() * scale)
+                p.setFont(font)
+
+                # 先画灰色底
+                p.setPen(QColor(180, 180, 180))
+                p.drawText(QRectF(cur_x, y - 30, width, 60), Qt.AlignCenter, w.text)
+
+                # 再画“扫光层”
+                clip_rect = QRectF(cur_x, y - 30, sweep_width, 60)
+
+                p.save()
+                p.setClipRect(clip_rect)
+
+                color = self._gradient_color(cur_x, total_width)
+                p.setPen(color)
+                p.drawText(QRectF(cur_x, y - 30, width, 60), Qt.AlignCenter, w.text)
+
+                p.restore()
+
+                cur_x += width
+                continue
+
+            # 普通绘制
             p.setPen(color)
             p.drawText(QRectF(cur_x, y - 30, width, 60), Qt.AlignCenter, w.text)
 
