@@ -109,7 +109,7 @@ class MiniPlayer(QWidget):
             font-weight: bold;
             font-size: 13px;
         """)
-        self._title_label.setWordWrap(True)
+        # self._title_label.setWordWrap(True)
         info_layout.addWidget(self._title_label)
 
         self._artist_label = QLabel("")
@@ -117,7 +117,7 @@ class MiniPlayer(QWidget):
             color: #b3b3b3;
             font-size: 11px;
         """)
-        self._artist_label.setWordWrap(True)
+        # self._artist_label.setWordWrap(True)
         info_layout.addWidget(self._artist_label)
 
         top_layout.addLayout(info_layout)
@@ -175,7 +175,7 @@ class MiniPlayer(QWidget):
 
         # Time labels
         self._current_time = QLabel("0:00")
-        self._current_time.setStyleSheet("color: #b3b3b3; font-size: 10px;")
+        self._current_time.setStyleSheet("color: #b3b3b3; font-size: 10px; font-family: monospace;")
         bottom_layout.addWidget(self._current_time)
 
         bottom_layout.addStretch()
@@ -203,7 +203,7 @@ class MiniPlayer(QWidget):
         bottom_layout.addStretch()
 
         self._total_time = QLabel("0:00")
-        self._total_time.setStyleSheet("color: #b3b3b3; font-size: 10px;")
+        self._total_time.setStyleSheet("color: #b3b3b3; font-size: 10px; font-family: monospace;")
         bottom_layout.addWidget(self._total_time)
 
         layout.addLayout(bottom_layout)
