@@ -562,6 +562,7 @@ class MainWindow(QMainWindow):
 
         # Player controls connections
         self._player_controls.artist_clicked.connect(self._on_player_artist_clicked)
+        self._player_controls.album_clicked.connect(self._on_player_album_clicked)
 
     def _setup_system_tray(self):
         """Setup system tray icon."""
@@ -809,6 +810,17 @@ class MainWindow(QMainWindow):
         artist = bootstrap.library_service.get_artist_by_name(artist_name)
         if artist:
             self._on_artist_clicked(artist)
+
+    def _on_player_album_clicked(self, album_name: str, artist_name: str):
+        """Handle album label click from player controls."""
+        if not album_name or not artist_name:
+            return
+        # Get Album object by name and artist
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        album = bootstrap.library_service.get_album_by_name(album_name, artist_name)
+        if album:
+            self._on_album_clicked(album)
 
     def _on_download_artist_cover(self, artist):
         """Handle download artist cover request."""

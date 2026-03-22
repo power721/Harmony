@@ -446,3 +446,96 @@ class SqliteTrackRepository:
             )
             for row in rows
         ]
+
+    def get_album_by_name(self, album_name: str, artist: str = None) -> Optional['Album']:
+        """
+        Get a specific album by name and optionally artist.
+
+        Args:
+            album_name: Album name
+            artist: Artist name (optional, but recommended for unique identification)
+
+        Returns:
+            Album object or None if not found
+        """
+        from domain.album import Album
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Try to use albums table first
+        cursor.execute("SELECT COUNT(*) as count FROM albums")
+        if cursor.fetchone()["count"] > 0:
+            if artist:
+                cursor.execute("""
+                    SELECT name, artist, cover_path, song_count, total_duration
+                    FROM albums
+                    WHERE name = ? AND artist = ?
+                """, (album_name, artist))
+            else:
+                cursor.execute("""
+                    SELECT name, artist, cover_path, song_count, total_duration
+                    FROM albums
+                    WHERE name = ?
+                """, (album_name,))
+            row = cursor.fetchone()
+            if row:
+                return Album(
+                    name=row["name"] or "",
+                    artist=row["artist"] or "",
+                    cover_path=row["cover_path"],
+                    song_count=row["song_count"] or 0,
+                    duration=row["total_duration"] or 0.0,
+                )
+            return None
+
+        # Fallback to direct query
+        if artist:
+            cursor.execute("""
+                SELECT
+                    album as name,
+                    artist,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album = ? AND artist = ?
+                GROUP BY album, artist
+            """, (album_name, artist))
+        else:
+            cursor.execute("""
+                SELECT
+                    album as name,
+                    artist,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album = ?
+                GROUP BY album, artist
+            """, (album_name,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        # Get cover from first track of album
+        if artist:
+            cursor.execute("""
+                SELECT cover_path FROM tracks
+                WHERE album = ? AND artist = ? AND cover_path IS NOT NULL
+                LIMIT 1
+            """, (album_name, artist))
+        else:
+            cursor.execute("""
+                SELECT cover_path FROM tracks
+                WHERE album = ? AND cover_path IS NOT NULL
+                LIMIT 1
+            """, (album_name,))
+        cover_row = cursor.fetchone()
+        cover_path = cover_row["cover_path"] if cover_row else None
+
+        return Album(
+            name=row["name"] or "",
+            artist=row["artist"] or "",
+            cover_path=cover_path,
+            song_count=row["song_count"] or 0,
+            duration=row["total_duration"] or 0.0,
+        )

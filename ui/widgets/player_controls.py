@@ -35,6 +35,8 @@ class PlayerControls(QWidget):
     _cover_loaded = Signal(str)
     # Signal for artist link clicked
     artist_clicked = Signal(str)  # Emits artist name
+    # Signal for album link clicked
+    album_clicked = Signal(str, str)  # Emits album name and artist name
 
     def __init__(self, player: PlaybackService, parent=None):
         """
@@ -143,7 +145,22 @@ class PlayerControls(QWidget):
         self._artist_label.setCursor(QCursor(Qt.PointingHandCursor))
         self._artist_label.clicked.connect(self._on_artist_label_clicked)
 
+        self._album_label = ClickableLabel()
+        self._album_label.setObjectName("trackAlbum")
+        self._album_label.setStyleSheet("""
+            QLabel#trackAlbum {
+                color: #b3b3b3;
+            }
+            QLabel#trackAlbum:hover {
+                color: #1db954;
+                text-decoration: underline;
+            }
+        """)
+        self._album_label.setCursor(QCursor(Qt.PointingHandCursor))
+        self._album_label.clicked.connect(self._on_album_label_clicked)
+
         info_layout.addWidget(self._title_label)
+        info_layout.addWidget(self._album_label)
         info_layout.addWidget(self._artist_label)
         info_layout.addStretch()
 
@@ -825,8 +842,15 @@ class PlayerControls(QWidget):
         if track_dict:
             title = track_dict.get("title", t("unknown"))
             artist = track_dict.get("artist", t("unknown"))
+            album = track_dict.get("album", "")
             self._title_label.setText(title)
             self._artist_label.setText(artist)
+            # Show album only if it exists
+            if album:
+                self._album_label.setText(album)
+                self._album_label.show()
+            else:
+                self._album_label.hide()
 
             # Update favorite button
             track_id = track_dict.get("id")
@@ -841,6 +865,8 @@ class PlayerControls(QWidget):
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")
+            self._album_label.setText("")
+            self._album_label.hide()
             self._cover_label.clear()
             # Reset favorite button style
             self._update_favorite_button_style(False)
@@ -996,6 +1022,13 @@ class PlayerControls(QWidget):
         artist = self._artist_label.text()
         if artist:
             self.artist_clicked.emit(artist)
+
+    def _on_album_label_clicked(self):
+        """Handle album label click - emit signal to navigate to album view."""
+        album = self._album_label.text()
+        artist = self._artist_label.text()
+        if album and artist:
+            self.album_clicked.emit(album, artist)
 
     def _update_position_display(self):
         """Update position display continuously."""
