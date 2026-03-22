@@ -12,7 +12,7 @@
     "artists": "Artists",
     "albums": "Albums",
     "lyrics": "Lyrics",
-    "download": "Download",
+    "download": "⬇ Download",
     "not_playing": "No track playing",
     "no_lyrics": "No lyrics available",
     "lyrics_load_error": "Lyrics load error",
@@ -438,5 +438,9 @@
     "qqmusic_login_required": "Please login to QQ Music to play online tracks",
     "song_count": "Song count",
     "detail_not_available": "Detail not available",
-    "add_all_to_queue": "Add all to queue"
+    "add_all_to_queue": "Add all to queue",
+    "load_more": "Load more",
+    "cover": "Cover",
+    "playlist_type": "PLAYLIST",
+    "qqmusic_logged_in_as": "QQ Music: {nick}"
 }

@@ -12,7 +12,7 @@
     "artists": "歌手",
     "albums": "专辑",
     "lyrics": "歌词",
-    "download": "下载",
+    "download": "⬇ 下载",
     "not_playing": "当前无播放",
     "no_lyrics": "暂无歌词",
     "lyrics_load_error": "歌词加载失败",
@@ -438,5 +438,9 @@
     "qqmusic_login_required": "请先登录QQ音乐才能播放在线音乐",
     "song_count": "歌曲数",
     "detail_not_available": "详情不可用",
-    "add_all_to_queue": "全部添加到队列"
+    "add_all_to_queue": "全部添加到队列",
+    "load_more": "加载更多",
+    "cover": "封面",
+    "playlist_type": "歌单",
+    "qqmusic_logged_in_as": "QQ音乐: {nick}"
 }

@@ -1065,6 +1065,7 @@ class MainWindow(QMainWindow):
         self._nav_favorites.setText(t("favorites"))
         self._nav_history.setText(t("history"))
         self._add_music_btn.setText(t("add_music"))
+        self._nav_online_music.setText(t("online_music"))
 
         # Update lyrics panel
         self._lyrics_title.setText(t("lyrics"))
@@ -1082,6 +1083,7 @@ class MainWindow(QMainWindow):
         self._artists_view.refresh_ui()
         self._artist_view.refresh_ui()
         self._album_view.refresh_ui()
+        self._online_music_view.refresh_ui()  # Refresh online music view
 
         # Update settings button status
         settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"

@@ -29,6 +29,7 @@ from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
 from domain.online_music import OnlineArtist, OnlineAlbum, OnlinePlaylist
+from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +474,7 @@ class OnlineGridView(QWidget):
 
         # Load more button
         self._load_more_btn = QPushButton()
-        self._load_more_btn.setText("加载更多")
+        self._load_more_btn.setText(t("load_more"))
         self._load_more_btn.setCursor(Qt.PointingHandCursor)
         self._load_more_btn.setFixedHeight(40)
         self._load_more_btn.setStyleSheet("""
@@ -521,7 +522,7 @@ class OnlineGridView(QWidget):
         """)
         layout.addWidget(progress)
 
-        self._loading_label = QLabel("Loading...")
+        self._loading_label = QLabel(t("loading"))
         self._loading_label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
         layout.addWidget(self._loading_label)
 
@@ -623,5 +624,9 @@ class OnlineGridView(QWidget):
 
     def refresh_ui(self):
         """Refresh UI (for language changes)."""
-        # Could add localization support here if needed
-        pass
+        # Update load more button text
+        if hasattr(self, '_load_more_btn'):
+            self._load_more_btn.setText(t("load_more"))
+        # Update loading label text
+        if hasattr(self, '_loading_label'):
+            self._loading_label.setText(t("loading"))

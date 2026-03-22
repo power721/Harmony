@@ -211,13 +211,13 @@ class OnlineMusicView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Title
-        title = QLabel(t("online_music"))
-        title.setStyleSheet("""
+        self._online_music_title = QLabel(t("online_music"))
+        self._online_music_title.setStyleSheet("""
             color: #1db954;
             font-size: 24px;
             font-weight: bold;
         """)
-        layout.addWidget(title)
+        layout.addWidget(self._online_music_title)
 
         layout.addStretch()
 
@@ -335,9 +335,9 @@ class OnlineMusicView(QWidget):
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
-        left_title = QLabel(t("rankings"))
-        left_title.setStyleSheet("color: #1db954; font-size: 16px; font-weight: bold;")
-        left_layout.addWidget(left_title)
+        self._rankings_title = QLabel(t("rankings"))
+        self._rankings_title.setStyleSheet("color: #1db954; font-size: 16px; font-weight: bold;")
+        left_layout.addWidget(self._rankings_title)
 
         self._top_list_list = QListWidget()
         self._top_list_list.setObjectName("topListList")
@@ -639,7 +639,7 @@ class OnlineMusicView(QWidget):
                     pass
 
             if nick:
-                self._login_status_label.setText(f"QQ音乐: {nick}")
+                self._login_status_label.setText(t("qqmusic_logged_in_as").format(nick=nick))
             else:
                 self._login_status_label.setText(t("qqmusic_logged_in"))
 
@@ -1255,6 +1255,75 @@ class OnlineMusicView(QWidget):
             # Duration
             duration_str = format_duration(song.duration) if song.duration else ""
             self._top_songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
+
+    def refresh_ui(self):
+        """Refresh UI texts after language change."""
+        # Update titles
+        if hasattr(self, '_online_music_title'):
+            self._online_music_title.setText(t("online_music"))
+        if hasattr(self, '_rankings_title'):
+            self._rankings_title.setText(t("rankings"))
+
+        # Update search placeholder
+        if hasattr(self, '_search_input'):
+            self._search_input.setPlaceholderText(t("search_online_music"))
+
+        # Update search button
+        if hasattr(self, '_search_btn'):
+            self._search_btn.setText(t("search"))
+
+        # Update login button
+        self._update_login_status()
+
+        # Update type tabs
+        if hasattr(self, '_tabs'):
+            self._tabs.setTabText(0, t("songs"))
+            self._tabs.setTabText(1, t("singers"))
+            self._tabs.setTabText(2, t("albums"))
+            self._tabs.setTabText(3, t("playlists"))
+
+        # Update table headers for both tables
+        if hasattr(self, '_results_table'):
+            header = self._results_table.horizontalHeader()
+            if header.count() >= 5:
+                header.model().setHeaderData(0, Qt.Horizontal, "#")
+                header.model().setHeaderData(1, Qt.Horizontal, t("title"))
+                header.model().setHeaderData(2, Qt.Horizontal, t("artist"))
+                header.model().setHeaderData(3, Qt.Horizontal, t("album"))
+                header.model().setHeaderData(4, Qt.Horizontal, t("duration"))
+        if hasattr(self, '_top_songs_table'):
+            header = self._top_songs_table.horizontalHeader()
+            if header.count() >= 5:
+                header.model().setHeaderData(0, Qt.Horizontal, "#")
+                header.model().setHeaderData(1, Qt.Horizontal, t("title"))
+                header.model().setHeaderData(2, Qt.Horizontal, t("artist"))
+                header.model().setHeaderData(3, Qt.Horizontal, t("album"))
+                header.model().setHeaderData(4, Qt.Horizontal, t("duration"))
+
+        # Update pagination buttons
+        if hasattr(self, '_prev_btn'):
+            self._prev_btn.setText("← " + t("previous_page"))
+        if hasattr(self, '_next_btn'):
+            self._next_btn.setText(t("next_page") + " →")
+
+        # Update top list title if showing "select_ranking" placeholder
+        if hasattr(self, '_top_list_title'):
+            current_text = self._top_list_title.text()
+            # Only update if it's the placeholder text
+            if current_text == t("select_ranking") or current_text == "选择排行榜":
+                self._top_list_title.setText(t("select_ranking"))
+
+        # Update grid views
+        if hasattr(self, '_singers_page'):
+            self._singers_page.refresh_ui()
+        if hasattr(self, '_albums_page'):
+            self._albums_page.refresh_ui()
+        if hasattr(self, '_playlists_page'):
+            self._playlists_page.refresh_ui()
+
+        # Update detail view
+        if hasattr(self, '_detail_view'):
+            self._detail_view.refresh_ui()
 
 
 class DownloadWorker(QThread):

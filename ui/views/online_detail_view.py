@@ -597,7 +597,7 @@ class OnlineDetailView(QWidget):
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
         image_label.setStyleSheet("background: #1a1a1a;")
-        image_label.setText("...")
+        image_label.setText(t("loading"))
         image_label.setMinimumSize(200, 200)
 
         # Close on click
@@ -851,3 +851,31 @@ class OnlineDetailView(QWidget):
         # TODO: Connect actions
 
         menu.exec(self._songs_table.viewport().mapToGlobal(pos))
+
+    def refresh_ui(self):
+        """Refresh UI texts after language change."""
+        # Update back button
+        if hasattr(self, '_back_btn'):
+            self._back_btn.setText("← " + t("back"))
+
+        # Update action buttons
+        if hasattr(self, '_play_all_btn'):
+            self._play_all_btn.setText(t("play_all"))
+        if hasattr(self, '_add_queue_btn'):
+            self._add_queue_btn.setText(t("add_all_to_queue"))
+
+        # Update pagination buttons
+        if hasattr(self, '_prev_page_btn'):
+            self._prev_page_btn.setText("← " + t("previous_page"))
+        if hasattr(self, '_next_page_btn'):
+            self._next_page_btn.setText(t("next_page") + " →")
+
+        # Update table headers
+        if hasattr(self, '_songs_table'):
+            header = self._songs_table.horizontalHeader()
+            if header.count() >= 5:
+                header.model().setHeaderData(0, Qt.Horizontal, "#")
+                header.model().setHeaderData(1, Qt.Horizontal, t("title"))
+                header.model().setHeaderData(2, Qt.Horizontal, t("artist"))
+                header.model().setHeaderData(3, Qt.Horizontal, t("album"))
+                header.model().setHeaderData(4, Qt.Horizontal, t("duration"))
