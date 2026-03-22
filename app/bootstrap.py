@@ -211,9 +211,22 @@ class Bootstrap:
         """Get online music service."""
         if self._online_music_service is None:
             from services.online import OnlineMusicService
+            from services.cloud.qqmusic.qqmusic_service import QQMusicService
+
+            # Try to create QQMusicService if credential is available
+            qqmusic = None
+            if self.config:
+                musicid = self.config.get("qqmusic.musicid")
+                if musicid:
+                    try:
+                        qqmusic = QQMusicService({"musicid": musicid})
+                        logger.info("QQMusicService initialized for OnlineMusicService")
+                    except Exception as e:
+                        logger.debug(f"Failed to initialize QQMusicService: {e}")
+
             self._online_music_service = OnlineMusicService(
                 config_manager=self.config,
-                qqmusic_service=None  # Will be set later if needed
+                qqmusic_service=qqmusic
             )
         return self._online_music_service
 

@@ -244,13 +244,14 @@ class OnlineDownloadService:
                 "duration": local_metadata.get("duration", 0),
                 "cover": local_metadata.get("cover"),
             })
-            logger.debug(f"Local metadata for {song_mid}: title={metadata.get('title')}, artist={metadata.get('artist')}")
+            logger.debug(f"Local metadata for {song_mid}: title={metadata.get('title')}, album={metadata.get('album')}, artist={metadata.get('artist')}")
         except Exception as e:
             logger.warning(f"Failed to extract local metadata: {e}")
 
         # Supplement with online API if available
         online_metadata = self._fetch_online_metadata(song_mid)
         if online_metadata:
+            print(online_metadata)
             # Use online data to fill missing fields
             if not metadata.get("title") and online_metadata.get("title"):
                 metadata["title"] = online_metadata["title"]
