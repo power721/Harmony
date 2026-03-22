@@ -87,11 +87,12 @@ class SqliteTrackRepository:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                           INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id, source)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            """, (
                                track.path, track.title, track.artist, track.album,
-                               track.duration, track.cover_path, track.cloud_file_id
+                               track.duration, track.cover_path, track.cloud_file_id,
+                               track.source.value if hasattr(track, 'source') and track.source else 'Local'
                            ))
             conn.commit()
             return cursor.lastrowid
@@ -113,11 +114,14 @@ class SqliteTrackRepository:
                            album         = ?,
                            duration      = ?,
                            cover_path    = ?,
-                           cloud_file_id = ?
+                           cloud_file_id = ?,
+                           source        = ?
                        WHERE id = ?
                        """, (
                            track.path, track.title, track.artist, track.album,
-                           track.duration, track.cover_path, track.cloud_file_id, track.id
+                           track.duration, track.cover_path, track.cloud_file_id,
+                           track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                           track.id
                        ))
         conn.commit()
         return cursor.rowcount > 0
@@ -142,6 +146,14 @@ class SqliteTrackRepository:
 
     def _row_to_track(self, row: sqlite3.Row) -> Track:
         """Convert a database row to a Track object."""
+        from domain.track import TrackSource
+        # Get source value from row, default to Local if not present
+        source_value = row["source"] if "source" in row.keys() else "Local"
+        try:
+            source = TrackSource(source_value) if source_value else TrackSource.LOCAL
+        except ValueError:
+            source = TrackSource.LOCAL  # Fallback for invalid values
+
         return Track(
             id=row["id"],
             path=row["path"],
@@ -151,6 +163,7 @@ class SqliteTrackRepository:
             duration=row["duration"] or 0.0,
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],
+            source=source,
         )
 
     # ===== Album Operations =====
@@ -433,3 +446,96 @@ class SqliteTrackRepository:
             )
             for row in rows
         ]
+
+    def get_album_by_name(self, album_name: str, artist: str = None) -> Optional['Album']:
+        """
+        Get a specific album by name and optionally artist.
+
+        Args:
+            album_name: Album name
+            artist: Artist name (optional, but recommended for unique identification)
+
+        Returns:
+            Album object or None if not found
+        """
+        from domain.album import Album
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Try to use albums table first
+        cursor.execute("SELECT COUNT(*) as count FROM albums")
+        if cursor.fetchone()["count"] > 0:
+            if artist:
+                cursor.execute("""
+                    SELECT name, artist, cover_path, song_count, total_duration
+                    FROM albums
+                    WHERE name = ? AND artist = ?
+                """, (album_name, artist))
+            else:
+                cursor.execute("""
+                    SELECT name, artist, cover_path, song_count, total_duration
+                    FROM albums
+                    WHERE name = ?
+                """, (album_name,))
+            row = cursor.fetchone()
+            if row:
+                return Album(
+                    name=row["name"] or "",
+                    artist=row["artist"] or "",
+                    cover_path=row["cover_path"],
+                    song_count=row["song_count"] or 0,
+                    duration=row["total_duration"] or 0.0,
+                )
+            return None
+
+        # Fallback to direct query
+        if artist:
+            cursor.execute("""
+                SELECT
+                    album as name,
+                    artist,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album = ? AND artist = ?
+                GROUP BY album, artist
+            """, (album_name, artist))
+        else:
+            cursor.execute("""
+                SELECT
+                    album as name,
+                    artist,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album = ?
+                GROUP BY album, artist
+            """, (album_name,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        # Get cover from first track of album
+        if artist:
+            cursor.execute("""
+                SELECT cover_path FROM tracks
+                WHERE album = ? AND artist = ? AND cover_path IS NOT NULL
+                LIMIT 1
+            """, (album_name, artist))
+        else:
+            cursor.execute("""
+                SELECT cover_path FROM tracks
+                WHERE album = ? AND cover_path IS NOT NULL
+                LIMIT 1
+            """, (album_name,))
+        cover_row = cursor.fetchone()
+        cover_path = cover_row["cover_path"] if cover_row else None
+
+        return Album(
+            name=row["name"] or "",
+            artist=row["artist"] or "",
+            cover_path=cover_path,
+            song_count=row["song_count"] or 0,
+            duration=row["total_duration"] or 0.0,
+        )

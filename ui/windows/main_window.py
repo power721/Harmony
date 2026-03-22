@@ -53,6 +53,7 @@ from ui.views.albums_view import AlbumsView
 from ui.views.artists_view import ArtistsView
 from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
+from ui.views.online_music_view import OnlineMusicView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
@@ -275,6 +276,19 @@ class MainWindow(QMainWindow):
         self._artist_view = ArtistView(bootstrap.library_service, self._playback, bootstrap.cover_service)
         self._album_view = AlbumView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
+        # Online music view with QQ Music service
+        from services.cloud.qqmusic.qqmusic_service import QQMusicService
+        qqmusic_credential = self._config.get("qqmusic.credential")
+        qqmusic_service = None
+        if qqmusic_credential:
+            try:
+                import json
+                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential, str) else qqmusic_credential
+                qqmusic_service = QQMusicService(cred_dict)
+            except Exception:
+                pass
+        self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
+
         self._stacked_widget.addWidget(self._library_view)       # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)   # 1
         self._stacked_widget.addWidget(self._playlist_view)      # 2
@@ -283,6 +297,7 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._artists_view)       # 5
         self._stacked_widget.addWidget(self._artist_view)        # 6
         self._stacked_widget.addWidget(self._album_view)         # 7
+        self._stacked_widget.addWidget(self._online_music_view)  # 8
 
         self._splitter.addWidget(self._stacked_widget)
 
@@ -359,6 +374,7 @@ class MainWindow(QMainWindow):
             ("_nav_albums", IconName.COMPACT_DISC, t("albums")),
             ("_nav_artists", IconName.MICROPHONE, t("artists")),
             ("_nav_cloud", IconName.CLOUD, t("cloud_drive")),
+            ("_nav_online_music", IconName.GLOBE, t("online_music")),
             ("_nav_playlists", IconName.LIST, t("playlists")),
             ("_nav_queue", IconName.QUEUE, t("queue")),
             ("_nav_favorites", IconName.STAR, t("favorites")),
@@ -484,6 +500,7 @@ class MainWindow(QMainWindow):
         """Setup signal connections."""
         # Navigation
         self._nav_library.clicked.connect(lambda: self._show_page(0))
+        self._nav_online_music.clicked.connect(lambda: self._show_page(8))
         self._nav_cloud.clicked.connect(lambda: self._show_page(1))
         self._nav_playlists.clicked.connect(lambda: self._show_page(2))
         self._nav_queue.clicked.connect(lambda: self._show_page(3))
@@ -514,6 +531,11 @@ class MainWindow(QMainWindow):
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
 
+        # Online music view connections
+        self._online_music_view.play_online_track.connect(self._play_online_track)
+        self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
+        self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
+
         # Albums view connections
         self._albums_view.album_clicked.connect(self._on_album_clicked)
         self._albums_view.play_album.connect(self._play_tracks)
@@ -540,6 +562,7 @@ class MainWindow(QMainWindow):
 
         # Player controls connections
         self._player_controls.artist_clicked.connect(self._on_player_artist_clicked)
+        self._player_controls.album_clicked.connect(self._on_player_album_clicked)
 
     def _setup_system_tray(self):
         """Setup system tray icon."""
@@ -655,6 +678,7 @@ class MainWindow(QMainWindow):
         self._nav_queue.setChecked(index == 3)
         self._nav_albums.setChecked(index == 4)
         self._nav_artists.setChecked(index == 5)
+        self._nav_online_music.setChecked(index == 8)
         self._nav_favorites.setChecked(False)
         self._nav_history.setChecked(False)
 
@@ -691,6 +715,7 @@ class MainWindow(QMainWindow):
         self._nav_artists.setChecked(False)
         self._nav_favorites.setChecked(True)
         self._nav_history.setChecked(False)
+        self._nav_online_music.setChecked(False)
 
         # Load favorites with delay to avoid blocking
         from PySide6.QtCore import QTimer
@@ -710,6 +735,7 @@ class MainWindow(QMainWindow):
         self._nav_albums.setChecked(False)
         self._nav_artists.setChecked(False)
         self._nav_favorites.setChecked(False)
+        self._nav_online_music.setChecked(False)
         self._nav_history.setChecked(True)
 
         # Load history with delay to avoid blocking
@@ -784,6 +810,17 @@ class MainWindow(QMainWindow):
         artist = bootstrap.library_service.get_artist_by_name(artist_name)
         if artist:
             self._on_artist_clicked(artist)
+
+    def _on_player_album_clicked(self, album_name: str, artist_name: str):
+        """Handle album label click from player controls."""
+        if not album_name or not artist_name:
+            return
+        # Get Album object by name and artist
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        album = bootstrap.library_service.get_album_by_name(album_name, artist_name)
+        if album:
+            self._on_album_clicked(album)
 
     def _on_download_artist_cover(self, artist):
         """Handle download artist cover request."""
@@ -1040,6 +1077,7 @@ class MainWindow(QMainWindow):
         self._nav_favorites.setText(t("favorites"))
         self._nav_history.setText(t("history"))
         self._add_music_btn.setText(t("add_music"))
+        self._nav_online_music.setText(t("online_music"))
 
         # Update lyrics panel
         self._lyrics_title.setText(t("lyrics"))
@@ -1057,6 +1095,7 @@ class MainWindow(QMainWindow):
         self._artists_view.refresh_ui()
         self._artist_view.refresh_ui()
         self._album_view.refresh_ui()
+        self._online_music_view.refresh_ui()  # Refresh online music view
 
         # Update settings button status
         settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
@@ -1131,6 +1170,141 @@ class MainWindow(QMainWindow):
         self._playback.engine.load_playlist_items([item])
         self._playback.engine.play()
 
+    def _play_online_track(self, song_mid: str, local_path: str, metadata: dict = None):
+        """Play downloaded online track.
+
+        Args:
+            song_mid: Song MID
+            local_path: Local file path
+            metadata: Optional metadata dict with title, artist, album, duration
+        """
+        logger.info(f"Playing online track: mid={song_mid}, path={local_path}")
+
+        if not local_path:
+            logger.error("No local path for online track")
+            return
+
+        # Get metadata from argument or use defaults
+        title = "Online Track"
+        artist = ""
+        album = ""
+        duration = 0.0
+
+        if metadata:
+            title = metadata.get("title") or title
+            artist = metadata.get("artist") or ""
+            album = metadata.get("album") or ""
+            duration = metadata.get("duration") or 0.0
+
+        # Create a playlist item for the downloaded track
+        # Use ONLINE provider for online music
+        item = PlaylistItem(
+            source_type=CloudProvider.ONLINE,
+            local_path=local_path,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cloud_file_id=song_mid,
+            needs_download=False
+        )
+        self._playback.engine.load_playlist_items([item])
+        self._playback.engine.play()
+
+    def _add_online_track_to_queue(self, song_mid: str, metadata: dict):
+        """Add online track to the play queue (deferred download).
+
+        Args:
+            song_mid: Song MID
+            metadata: Metadata dict with title, artist, album, duration
+        """
+        title = metadata.get("title", "Online Track")
+        artist = metadata.get("artist", "")
+        album = metadata.get("album", "")
+        duration = metadata.get("duration", 0.0)
+
+        # Check if already cached
+        download_service = self._online_music_view._download_service
+        local_path = ""
+        needs_download = True
+
+        if download_service.is_cached(song_mid):
+            local_path = download_service.get_cached_path(song_mid)
+            needs_download = False
+
+        item = PlaylistItem(
+            source_type=CloudProvider.ONLINE,
+            local_path=local_path,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cloud_file_id=song_mid,
+            needs_download=needs_download
+        )
+
+        self._playback.engine.add_track(item)
+
+        # Save queue
+        self._playback.save_queue()
+
+        # Show notification
+        self._status_bar = self.statusBar()
+        if needs_download:
+            self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
+        else:
+            self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
+
+    def _play_online_tracks(self, start_index: int, tracks_data: list):
+        """Play multiple online tracks, clearing queue first.
+
+        Args:
+            start_index: Index of track to start playing
+            tracks_data: List of (song_mid, metadata_dict) tuples
+        """
+        logger.info(f"Playing {len(tracks_data)} online tracks, starting at {start_index}")
+
+        download_service = self._online_music_view._download_service
+        items = []
+
+        for song_mid, metadata in tracks_data:
+            title = metadata.get("title", "Online Track")
+            artist = metadata.get("artist", "")
+            album = metadata.get("album", "")
+            duration = metadata.get("duration", 0.0)
+
+            # Check if already cached
+            local_path = ""
+            needs_download = True
+
+            if download_service.is_cached(song_mid):
+                local_path = download_service.get_cached_path(song_mid)
+                needs_download = False
+
+            item = PlaylistItem(
+                source_type=CloudProvider.ONLINE,
+                local_path=local_path,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cloud_file_id=song_mid,
+                needs_download=needs_download
+            )
+            items.append(item)
+
+        # Clear queue and load all items
+        self._playback.engine.load_playlist_items(items)
+        self._playback.save_queue()
+
+        # Play from start index
+        if 0 <= start_index < len(items):
+            self._playback.engine.play_at(start_index)
+
+        # Show notification
+        self._status_bar = self.statusBar()
+        self._status_bar.showMessage(f"✓ {t('playing')}: {tracks_data[start_index][1].get('title', 'Online Track')}", 3000)
+
     def _play_cloud_playlist(self, temp_path: str, index: int, cloud_files, start_position: float = 0.0):
         """Play multiple cloud files as a playlist."""
         # Get current cloud account from CloudDriveView
@@ -1164,10 +1338,15 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
+        from domain.cloud import CloudProvider
+
         # Reset lyric line tracking
         self._current_lyric_line = None
 
         # Convert to dict for backward compatibility
+        song_mid = None
+        is_online = False
+
         if isinstance(track_item, PlaylistItem):
             track_dict = track_item.to_dict()
             track_id = track_item.track_id
@@ -1176,6 +1355,8 @@ class MainWindow(QMainWindow):
             path = track_item.local_path
             is_cloud = track_item.is_cloud
             needs_metadata = track_item.needs_metadata
+            song_mid = track_item.cloud_file_id
+            is_online = track_item.source_type == CloudProvider.ONLINE
         elif isinstance(track_item, int):
             # Handle case where track_item is just an ID
             track_id = track_item
@@ -1193,6 +1374,10 @@ class MainWindow(QMainWindow):
             path = track_dict.get("path", "") if track_dict else ""
             is_cloud = not track_id or track_id < 0
             needs_metadata = track_dict.get("needs_metadata", False) if track_dict else False
+            # Check if online track from dict
+            source_type = track_dict.get("source_type", "")
+            is_online = source_type == "online" or source_type == CloudProvider.ONLINE.value
+            song_mid = track_dict.get("cloud_file_id")
 
         # Sync selection in both library and queue views
         if track_id and track_id > 0:
@@ -1207,6 +1392,12 @@ class MainWindow(QMainWindow):
 
         # Save current track title for window title update
         self._current_track_title = f"{title} - {artist}" if artist else title
+
+        # For online tracks, always try to load lyrics (even without local path)
+        if is_online and song_mid:
+            logger.debug(f"[MainWindow] Loading lyrics for online track: song_mid={song_mid}")
+            self._load_lyrics_async(path, title, artist, song_mid=song_mid, is_online=True)
+            return
 
         # Skip loading lyrics for cloud files without local path
         if not path or path.strip() in ('', '.', '/'):
@@ -1239,23 +1430,43 @@ class MainWindow(QMainWindow):
             if self._original_title:
                 self.setWindowTitle(self._original_title)
 
-    def _load_lyrics_async(self, path: str, title: str, artist: str):
+    def _load_lyrics_async(self, path: str, title: str, artist: str,
+                           song_mid: str = None, is_online: bool = False):
         """Load lyrics asynchronously.
 
         Uses version-based mechanism to avoid blocking UI.
         Old threads are allowed to finish but their results are ignored.
+
+        Args:
+            path: Path to the audio file
+            title: Track title
+            artist: Track artist
+            song_mid: QQ Music song MID (for online tracks)
+            is_online: Whether this is an online QQ Music track
         """
         # Increment version to invalidate any pending results
         self._lyrics_load_version += 1
         current_version = self._lyrics_load_version
 
-        # Request interruption on old thread (non-blocking)
-        if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
-            self._lyrics_thread.requestInterruption()
-            # Don't wait - let it finish naturally and be cleaned up in finished handler
+        # Clean up old thread before creating new one
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                # Wait for thread to finish to avoid "Destroyed while running" error
+                if not self._lyrics_thread.wait(500):  # Wait up to 500ms
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait(100)
+            # Disconnect signals and delete old thread
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass  # Already disconnected
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
 
         # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
-        self._lyrics_thread = LyricsLoader(path, title, artist)
+        self._lyrics_thread = LyricsLoader(path, title, artist, song_mid=song_mid, is_online=is_online)
         # Store version with the thread for result validation
         self._lyrics_thread._load_version = current_version
 
@@ -1283,9 +1494,12 @@ class MainWindow(QMainWindow):
     def _on_lyrics_thread_finished(self):
         """Handle lyrics thread finished."""
         sender = self.sender()
-        if sender and sender == self._lyrics_thread:
-            self._lyrics_thread.deleteLater()
-            self._lyrics_thread = None
+        if sender:
+            # Always delete the finished thread, not just current one
+            sender.deleteLater()
+            # Only clear reference if this is the current thread
+            if sender == self._lyrics_thread:
+                self._lyrics_thread = None
 
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""
@@ -2021,6 +2235,7 @@ class MainWindow(QMainWindow):
             5: "artists",
             6: "artist",
             7: "album",
+            8: "online",
         }
 
         view_type = index_to_type.get(current_index, "library")
@@ -2103,6 +2318,8 @@ class MainWindow(QMainWindow):
                 self._show_page(4)
             elif view_type == "artists":
                 self._show_page(5)
+            elif view_type == "online":
+                self._show_page(8)
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":

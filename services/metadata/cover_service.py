@@ -196,6 +196,53 @@ class CoverService:
         cache_key = self._get_cache_key(artist, album or title)
         return self._fetch_online_cover(title, artist, album, cache_key, duration)
 
+    def get_online_cover(self, song_mid: str, album_mid: str = None,
+                         artist: str = "", title: str = "") -> Optional[str]:
+        """
+        Get cover for online QQ Music track by song_mid or album_mid.
+
+        This directly fetches cover from QQ Music without searching.
+
+        Args:
+            song_mid: QQ Music song MID
+            album_mid: QQ Music album MID (preferred, if available)
+            artist: Artist name (for cache key)
+            title: Track title (for cache key)
+
+        Returns:
+            Path to cached cover, or None
+        """
+        if not song_mid and not album_mid:
+            return None
+
+        # Check cache first
+        cache_key = self._get_cache_key(artist, title)
+        cached_cover = self._get_cached_cover(cache_key)
+        if cached_cover and cached_cover.exists():
+            logger.debug(f"[CoverService] Returning cached cover for online track: {cached_cover}")
+            return str(cached_cover)
+
+        try:
+            from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+
+            # Get cover URL
+            cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
+            if not cover_url:
+                logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
+                return None
+
+            logger.debug(f"[CoverService] Got cover URL: {cover_url}")
+
+            # Download cover
+            cover_data = self.http_client.get_content(cover_url, timeout=5)
+            if cover_data:
+                return self._save_cover_to_cache(cover_data, cache_key)
+
+        except Exception as e:
+            logger.error(f"[CoverService] Error getting online cover: {e}")
+
+        return None
+
     def _fetch_online_cover(self, title: str, artist: str, album: str, cache_key: str, duration: float = None) -> \
     Optional[str]:
         """

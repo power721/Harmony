@@ -202,6 +202,47 @@ class QQMusicService:
             logger.error(f"Search failed: {e}", exc_info=True)
             return []
 
+    def complete(self, keyword: str) -> List[Dict[str, Any]]:
+        """
+        搜索词补全建议.
+
+        Args:
+            keyword: 关键词.
+
+        Returns:
+            搜索建议列表，每个建议包含 hint 和 type 键
+        """
+        try:
+            result = self.client.complete(keyword)
+
+            if not result:
+                return []
+
+            # Parse suggestions from response - items is at top level
+            # 实际响应格式:
+            # {
+            #   "items": [
+            #     { "hint": "建议词", "type": 0 },
+            #     ...
+            #   ]
+            # }
+
+            items = result.get('items', [])
+            suggestions = []
+            for item in items:
+                hint = item.get('hint', '')
+                if hint:  # Only add non-empty hints
+                    suggestions.append({
+                        'type': item.get('type', 0),
+                        'hint': hint,
+                    })
+
+            return suggestions
+
+        except Exception as e:
+            logger.error(f"Search completion failed: {e}", exc_info=True)
+            return []
+
     def get_playback_url(self, song_mid: str, quality: str = 'flac') -> Optional[str]:
         """
         Get playback URL for a song.
@@ -255,40 +296,55 @@ class QQMusicService:
             logger.error(f"Get lyrics failed: {e}", exc_info=True)
             return {'lyric': None, 'qrc': None, 'trans': None}
 
-    def get_album_info(self, album_mid: str) -> Optional[Dict[str, Any]]:
+    def get_album_info(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
-        Get album information.
+        Get album information with pagination.
 
         Args:
             album_mid: Album MID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Album information dictionary or None
         """
+        from services.online.adapter import OnlineMusicAdapter
+
         try:
-            result = self.client.get_album(album_mid)
+            # Get album basic info
+            basic_result = self.client.get_album(album_mid)
+
+            if not basic_result:
+                logger.warning(f"Album {album_mid} returned empty result")
+                return None
+
+            # Get album songs with pagination
+            begin = (page - 1) * page_size
+            songs_result = self.client.get_album_songs(album_mid, begin=begin, num=page_size)
+
+            # Use adapter to parse
+            result = OnlineMusicAdapter.parse_album_detail(basic_result, songs_result)
 
             if not result:
                 return None
 
-            return {
-                'mid': result.get('albumMid', ''),
-                'name': result.get('albumName', ''),
-                'singer': result.get('singerName', ''),
-                'song_count': len(result.get('songs', [])),
-                'songs': result.get('songs', []),
-            }
+            result['page'] = page
+            result['page_size'] = page_size
+
+            return result
 
         except Exception as e:
             logger.error(f"Get album info failed: {e}", exc_info=True)
             return None
 
-    def get_playlist_info(self, playlist_id: str) -> Optional[Dict[str, Any]]:
+    def get_playlist_info(self, playlist_id: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
-        Get playlist information.
+        Get playlist information with pagination.
 
         Args:
             playlist_id: Playlist ID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Playlist information dictionary or None
@@ -297,26 +353,77 @@ class QQMusicService:
             result = self.client.get_playlist(playlist_id)
 
             if not result:
+                logger.warning(f"Playlist {playlist_id} returned empty result")
                 return None
 
+            # Parse response
+            all_songs = result.get('songlist', []) or result.get('songs', []) or []
+            total_songs = len(all_songs)
+
+            # Pagination
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            songs = all_songs[start_idx:end_idx]
+
+            # Get playlist info from dirinfo (for CgiGetDiss API)
+            dirinfo = result.get('dirinfo', {})
+
+            # Get playlist name - try multiple locations
+            import re
+            name = ''
+            if dirinfo:
+                name = dirinfo.get('title', '')
+            if not name:
+                name = result.get('dissname', '') or result.get('title', '') or result.get('name', '')
+            if name:
+                name = re.sub(r'<[^>]+>', '', name)  # Remove HTML tags
+
+            # Get creator - try multiple locations
+            creator = ''
+            if dirinfo:
+                creator_data = dirinfo.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('nick', '') or creator_data.get('name', '')
+            if not creator:
+                creator_data = result.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('name', '') or creator_data.get('nick', '')
+                elif isinstance(creator_data, str):
+                    creator = creator_data
+            if not creator:
+                creator = result.get('nick', '') or result.get('nickname', '')
+
+            # Get cover
+            cover = ''
+            if dirinfo:
+                cover = dirinfo.get('picurl', '') or dirinfo.get('picurl2', '')
+            if not cover:
+                cover = result.get('logo', '') or result.get('cover', '')
+
             return {
-                'id': result.get('tid', ''),
-                'name': result.get('title', ''),
-                'creator': result.get('creator', {}).get('name', ''),
-                'song_count': result.get('cur_song_num', 0),
-                'songs': result.get('songlist', []),
+                'id': dirinfo.get('id', '') if dirinfo else '' or result.get('tid', '') or result.get('dissid', '') or str(playlist_id),
+                'name': name,
+                'creator': creator,
+                'cover': cover,
+                'description': dirinfo.get('desc', '') if dirinfo else '',
+                'songs': songs,
+                'total': total_songs,
+                'page': page,
+                'page_size': page_size,
             }
 
         except Exception as e:
             logger.error(f"Get playlist info failed: {e}", exc_info=True)
             return None
 
-    def get_singer_info(self, singer_mid: str) -> Optional[Dict[str, Any]]:
+    def get_singer_info(self, singer_mid: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
-        Get singer information.
+        Get singer information with pagination.
 
         Args:
             singer_mid: Singer MID
+            page: Page number (1-based)
+            page_size: Songs per page
 
         Returns:
             Singer information dictionary or None
@@ -327,11 +434,98 @@ class QQMusicService:
             if not result:
                 return None
 
+            # Parse singer_list array response
+            singer_list = result.get('singer_list', [])
+            if not singer_list:
+                return None
+
+            singer_data = singer_list[0]
+            basic_info = singer_data.get('basic_info', {})
+            ex_info = singer_data.get('ex_info', {})
+            pic_info = singer_data.get('pic', {})
+
+            # Get avatar URL - try different fields
+            avatar = pic_info.get('pic') or pic_info.get('big') or pic_info.get('big_black') or pic_info.get('big_white') or ''
+            # If no avatar in pic, construct from singer_mid
+            if not avatar:
+                singer_mid_from_info = basic_info.get('singer_mid', '')
+                has_photo = basic_info.get('has_photo', 0)
+                if has_photo and singer_mid_from_info:
+                    avatar = f"http://y.gtimg.cn/music/photo_new/T001R300x300M000{singer_mid_from_info}_{has_photo}.jpg"
+
+            # Get singer name
+            singer_name = basic_info.get('name', '')
+            songs = []
+            total_songs = 0
+
+            # Get singer's songs using dedicated API
+            begin = (page - 1) * page_size
+            songs_result = self.client.get_singer_songs(singer_mid, number=page_size, begin=begin)
+
+            if songs_result:
+                # Get total count
+                total_songs = songs_result.get('totalNum', 0)
+                logger.info(f"Total songs for {singer_name}: {total_songs}")
+
+                # Parse songs
+                song_list = songs_result.get('songList', [])
+                for song in song_list:
+                    song_info = song.get('songInfo', song)
+
+                    # Get basic song data
+                    songmid = song_info.get('mid', '') or song_info.get('songmid', '')
+                    songname = song_info.get('name', '') or song_info.get('songname', '') or song_info.get('title', '')
+                    songid = song_info.get('id')
+
+                    # Build singer list
+                    singer_info = song_info.get('singer', [])
+                    singer_list_data = []
+                    if isinstance(singer_info, list):
+                        for s in singer_info:
+                            singer_list_data.append({
+                                'mid': s.get('mid', ''),
+                                'name': s.get('name', '')
+                            })
+
+                    # Build album info
+                    album_data = song_info.get('album', {})
+                    if isinstance(album_data, dict):
+                        albummid = album_data.get('mid', '')
+                        albumname = album_data.get('name', '')
+                    else:
+                        albummid = song_info.get('albummid', '')
+                        albumname = song_info.get('albumname', '')
+
+                    songs.append({
+                        'mid': songmid,
+                        'songmid': songmid,
+                        'id': songid,
+                        'name': songname,
+                        'title': songname,
+                        'singer': singer_list_data,
+                        'album': {
+                            'mid': albummid,
+                            'name': albumname
+                        },
+                        'albummid': albummid,
+                        'albumname': albumname,
+                        'interval': song_info.get('interval', 0) or song_info.get('duration', 0),
+                    })
+
+                logger.info(f"Page {page}: Got {len(songs)} songs for {singer_name}")
+
+            # Use actual returned count as page_size (API may limit to 30)
+            actual_page_size = len(songs) if songs else page_size
+
             return {
-                'mid': result.get('singer_mid', ''),
-                'name': result.get('singer_name', ''),
-                'desc': result.get('SingerDesc', ''),
-                'songs': result.get('songlist', []),
+                'mid': basic_info.get('singer_mid', singer_mid),
+                'name': singer_name,
+                'desc': ex_info.get('desc', ''),
+                'avatar': avatar,
+                'songs': songs,
+                'total': total_songs,
+                'page': page,
+                'page_size': actual_page_size,
             }
 
         except Exception as e:
@@ -343,7 +537,7 @@ class QQMusicService:
         Get music top lists.
 
         Returns:
-            List of top list dictionaries
+            List of top list dictionaries with id and title
         """
         try:
             result = self.client.get_top_lists()
@@ -358,7 +552,7 @@ class QQMusicService:
                 for top_list in group.get('toplist', []):
                     top_lists.append({
                         'id': top_list.get('topId', ''),
-                        'name': top_list.get('title', ''),
+                        'title': top_list.get('title', ''),
                         'type': top_list.get('type', 0),
                     })
 
@@ -366,6 +560,94 @@ class QQMusicService:
 
         except Exception as e:
             logger.error(f"Get top lists failed: {e}", exc_info=True)
+            return []
+
+    def get_top_list_songs(self, top_id: int, num: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get songs from a specific top list.
+
+        Args:
+            top_id: Top list ID
+            num: Number of songs to return
+
+        Returns:
+            List of song dictionaries
+        """
+        try:
+            result = self.client.get_top_list_detail(top_id, num)
+
+            if not result:
+                return []
+
+            # Songs can be in different locations:
+            # - result.songInfoList (has full album and duration info - prefer this)
+            # - result.data.songInfoList (newer API)
+            # - result.song (some APIs)
+            # - result.data.song (unsigned endpoint)
+            # - result.list (signed endpoint)
+            songs = result.get('songInfoList', [])
+            if not songs:
+                inner_data = result.get('data', {})
+                if isinstance(inner_data, dict):
+                    songs = inner_data.get('songInfoList', [])
+                    if not songs:
+                        songs = inner_data.get('song', [])
+            if not songs:
+                songs = result.get('song', [])
+            if not songs:
+                songs = result.get('list', [])
+
+            # If songs don't have mid, query by id to get mid
+            songs_need_mid = [s for s in songs if not s.get('songmid') and not s.get('mid') and s.get('songId')]
+            if songs_need_mid:
+                song_ids = [s['songId'] for s in songs_need_mid]
+                track_infos = self.client.query_songs_by_ids(song_ids)
+                # Create a map from id to track info
+                id_to_track = {t.get('id'): t for t in track_infos}
+                for song in songs_need_mid:
+                    track_info = id_to_track.get(song.get('songId'))
+                    if track_info:
+                        song['songmid'] = track_info.get('mid', '')
+
+            tracks = []
+
+            for song in songs:
+                # Handle singer data - can be singerName (string) or singer (list/dict)
+                singer_info = song.get('singer') or song.get('singerName', '')
+                if isinstance(singer_info, str):
+                    singer_name = singer_info
+                elif isinstance(singer_info, list) and singer_info:
+                    singer_name = singer_info[0].get('name', '')
+                elif isinstance(singer_info, dict):
+                    singer_name = singer_info.get('name', '')
+                else:
+                    singer_name = ''
+
+                # Handle album data - can be albumName, albumname, album (dict)
+                album_info = song.get('album') or {}
+                if isinstance(album_info, str):
+                    album_name = album_info
+                elif isinstance(album_info, dict):
+                    album_name = album_info.get('name', '')
+                else:
+                    album_name = song.get('albumName', '') or song.get('albumname', '')
+
+                # Handle duration - interval is in seconds
+                duration = song.get('interval') or song.get('duration') or 0
+
+                track = {
+                    'mid': song.get('songmid', '') or song.get('mid', ''),
+                    'title': song.get('songname', '') or song.get('title', '') or song.get('name', ''),
+                    'singer': singer_name,
+                    'album': album_name,
+                    'duration': duration,
+                }
+                tracks.append(track)
+
+            return tracks
+
+        except Exception as e:
+            logger.error(f"Get top list songs failed: {e}", exc_info=True)
             return []
 
     def set_credential(self, credential: Dict[str, Any]):

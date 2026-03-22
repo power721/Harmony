@@ -41,7 +41,10 @@ class APIConfig:
 
     VERSION = "13.2.5.8"
     VERSION_CODE = 13020508
-    ENDPOINT = "https://u.y.qq.com/cgi-bin/musics.fcg"
+    # Use musicu.fcg endpoint (no sign required for most APIs)
+    ENDPOINT = "https://u.y.qq.com/cgi-bin/musicu.fcg"
+    # Signed endpoint for specific APIs
+    ENDPOINT_SIGNED = "https://u.y.qq.com/cgi-bin/musics.fcg"
 
     # Quality fallback order
     QUALITY_FALLBACK = ["master", "atmos_2", "atmos_51", "flac", "320", "128"]

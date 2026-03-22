@@ -53,9 +53,14 @@ class Bootstrap:
         self._library_service: Optional[LibraryService] = None
         self._cover_service: Optional[CoverService] = None
         self._file_org_service: Optional["FileOrganizationService"] = None
+        self._online_music_service: Optional["OnlineMusicService"] = None
+        self._online_download_service: Optional["OnlineDownloadService"] = None
 
         # QQ Music client
         self._qqmusic_client: Optional["QQMusicClient"] = None
+
+        # Services
+        self._cache_cleaner_service: Optional["CacheCleanerService"] = None
 
     @classmethod
     def instance(cls) -> "Bootstrap":
@@ -198,4 +203,42 @@ class Bootstrap:
         self._qqmusic_client = QQMusicClient()
         logger.info("QQ Music client refreshed")
         return self._qqmusic_client
+
+    # ===== Online Music =====
+
+    @property
+    def online_music_service(self) -> "OnlineMusicService":
+        """Get online music service."""
+        if self._online_music_service is None:
+            from services.online import OnlineMusicService
+            self._online_music_service = OnlineMusicService(
+                config_manager=self.config,
+                qqmusic_service=None  # Will be set later if needed
+            )
+        return self._online_music_service
+
+    @property
+    def online_download_service(self) -> "OnlineDownloadService":
+        """Get online download service."""
+        if self._online_download_service is None:
+            from services.online import OnlineDownloadService
+            self._online_download_service = OnlineDownloadService(
+                config_manager=self.config,
+                qqmusic_service=None,
+                online_music_service=self.online_music_service
+            )
+        return self._online_download_service
+
+    @property
+    def cache_cleaner_service(self) -> "CacheCleanerService":
+        """Get cache cleaner service."""
+        if self._cache_cleaner_service is None:
+            from services.online.cache_cleaner_service import CacheCleanerService
+            self._cache_cleaner_service = CacheCleanerService(
+                config_manager=self.config,
+                download_service=self.online_download_service,
+                event_bus=self.event_bus,
+                queue_service=self.queue_service
+            )
+        return self._cache_cleaner_service
 

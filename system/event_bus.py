@@ -77,6 +77,9 @@ class EventBus(QObject):
     # Emitted when a track needs to be downloaded (PlaylistItem)
     track_needs_download = Signal(object)
 
+    # Emitted when online track metadata is loaded (song_mid, metadata_dict)
+    online_track_metadata_loaded = Signal(str, dict)
+
     # ===== UI Events =====
 
     # Emitted when lyrics are loaded (lyrics_text)
@@ -123,6 +126,17 @@ class EventBus(QObject):
 
     # Emitted when cloud account token is updated (account_id)
     cloud_token_updated = Signal(int)
+
+    # ===== Cache Cleanup Events =====
+
+    # Emitted when cache cleanup starts
+    cache_cleanup_started = Signal()
+
+    # Emitted when cache cleanup completes (result dict with stats)
+    cache_cleanup_completed = Signal(dict)
+
+    # Emitted when cache cleanup encounters an error (error_message)
+    cache_cleanup_error = Signal(str)
 
     # Singleton instance
     _instance: Optional["EventBus"] = None

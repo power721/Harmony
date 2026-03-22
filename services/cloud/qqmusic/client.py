@@ -214,7 +214,7 @@ class QQMusicClient:
 
         return params
 
-    def _make_request(self, module: str, method: str, params: Dict, _retry: bool = False) -> Dict:
+    def _make_request(self, module: str, method: str, params: Dict, _retry: bool = False, use_sign: bool = False) -> Dict:
         """
         Make API request.
 
@@ -223,6 +223,7 @@ class QQMusicClient:
             method: Method name
             params: Request parameters
             _retry: Internal flag to prevent infinite retry loop
+            use_sign: Whether to use signed endpoint
 
         Returns:
             Response data
@@ -238,15 +239,39 @@ class QQMusicClient:
             }
         }
 
-        # Use same JSON serialization for both sign and request body
-        json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
-        signature = generate_sign(request_data)
-        url = f"{APIConfig.ENDPOINT}?sign={signature}"
+        # Build headers with Cookie if credential exists
+        headers = {
+            'Content-Type': 'application/json',
+            'Referer': 'https://y.qq.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Origin': 'https://y.qq.com',
+        }
+
+        # Add Cookie header if credential exists
+        if self.credential:
+            cookies = [
+                f"uin={self.credential.get('musicid', '')}",
+                f"qqmusic_key={self.credential.get('musickey', '')}",
+                f"qm_keyst={self.credential.get('musickey', '')}",
+                f"tmeLoginType={self.credential.get('login_type') or self.credential.get('loginType', 2)}",
+            ]
+            headers['Cookie'] = '; '.join(cookies)
+
+        if use_sign:
+            # Use signed endpoint
+            json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
+            signature = generate_sign(request_data)
+            url = f"{APIConfig.ENDPOINT_SIGNED}?sign={signature}"
+            data_to_send = json_str.encode('utf-8')
+        else:
+            # Use unsigned endpoint (works for most APIs)
+            url = APIConfig.ENDPOINT
+            data_to_send = json.dumps(request_data).encode('utf-8')
 
         response = self.session.post(
             url,
-            data=json_str.encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
+            data=data_to_send,
+            headers=headers,
             timeout=30
         )
         response.raise_for_status()
@@ -266,9 +291,11 @@ class QQMusicClient:
                 if not _retry and self._try_refresh_credential():
                     # Retry with new credential
                     return self._make_request(module, method, params, _retry=True)
-                logger.debug("QQ Music API requires login credential")
+                logger.debug(f"QQ Music API requires login credential for {module}.{method}, has_credential={bool(self.credential)}")
+                if self.credential:
+                    logger.debug(f"  Credential musicid={self.credential.get('musicid')}, has_key={bool(self.credential.get('musickey'))}")
             else:
-                logger.error(f"API error: {code}")
+                logger.error(f"API error: {code} for {module}.{method}")
             return {}
 
         return result.get('data', result)
@@ -320,6 +347,25 @@ class QQMusicClient:
         }
 
         return self._make_request('music.search.SearchCgiService', 'DoSearchForQQMusicMobile', params)
+
+    def complete(self, keyword: str) -> Dict:
+        """
+        搜索词补全建议.
+
+        Args:
+            keyword: 关键词.
+
+        Returns:
+            搜索建议字典
+        """
+        params = {
+            'search_id': get_search_id(),
+            'query': keyword,
+            'num_per_page': 0,
+            'page_idx': 0,
+        }
+
+        return self._make_request('music.smartboxCgi.SmartBoxCgi', 'GetSmartBoxResult', params)
 
     def get_song_url(self, song_mid: str, quality: str = 'flac') -> Dict:
         """
@@ -404,53 +450,93 @@ class QQMusicClient:
         Returns:
             Lyrics dictionary
         """
+        # Use musichallSong.PlayLyricInfo API (more reliable than music.lyric.GetLyric)
         params = {
-            'song_mid': song_mid,
+            'crypt': 1,
+            'ct': 11,
+            'cv': 13020508,
+            'lrc_t': 0,
+            'qrc': 1 if qrc else 0,
+            'qrc_t': 0,
+            'roma': 1 if roma else 0,
+            'roma_t': 0,
+            'trans': 1 if trans else 0,
+            'trans_t': 0,
+            'type': 1,
+            'songMid': song_mid,
         }
 
-        result = self._make_request('music.lyric.GetLyric', 'GetLyric', params)
+        result = self._make_request('music.musichallSong.PlayLyricInfo', 'GetPlayLyricInfo', params)
 
         # Parse lyric content
         if not result:
             return {}
 
         lyric_data = {}
+        from .tripledes import qrc_decrypt
 
-        # Regular lyrics
-        if 'lyric' in result:
-            lyric_data['lyric'] = result['lyric']
+        def decrypt_if_str(value):
+            """Decrypt value if it's a non-empty string, otherwise return empty."""
+            if isinstance(value, str) and value:
+                return qrc_decrypt(value)
+            return ""
+
+        # Regular lyrics (encrypted with crypt=1)
+        lyric_data['lyric'] = decrypt_if_str(result.get('lyric'))
 
         # QRC (word-by-word) lyrics
-        if qrc and 'qrc' in result:
-            from .crypto import qrc_decrypt
-            lyric_data['qrc'] = qrc_decrypt(result['qrc'])
+        if qrc:
+            lyric_data['qrc'] = decrypt_if_str(result.get('qrc'))
 
         # Translation
-        if trans and 'trans' in result:
-            lyric_data['trans'] = result['trans']
+        if trans:
+            lyric_data['trans'] = decrypt_if_str(result.get('trans'))
 
         # Romanization
-        if roma and 'roma' in result:
-            from .crypto import qrc_decrypt
-            lyric_data['roma'] = qrc_decrypt(result['roma'])
+        if roma:
+            lyric_data['roma'] = decrypt_if_str(result.get('roma'))
 
         return lyric_data
 
     def get_album(self, album_mid: str) -> Dict:
         """
-        Get album information.
+        Get album basic information.
 
         Args:
             album_mid: Album MID
 
         Returns:
-            Album detail dictionary
+            Album detail dictionary with basicInfo, singer, company
         """
         params = {
-            'album_mid': album_mid,
+            'albumMid': album_mid,
         }
 
-        return self._make_request('music.album.AlbumInfoService', 'GetAlbumDetail', params)
+        return self._make_request('music.musichallAlbum.AlbumInfoServer', 'GetAlbumDetail', params)
+
+    def get_album_songs(self, album_mid: str = '', album_id: int = 0,
+                         begin: int = 0, num: int = 50) -> Dict:
+        """
+        Get songs in an album.
+
+        Args:
+            album_mid: Album MID
+            album_id: Album ID (optional, use if MID not available)
+            begin: Start index (0-based)
+            num: Number of songs to return
+
+        Returns:
+            Dictionary with songList and totalNum
+        """
+        params = {
+            'albumMid': album_mid,
+            'albumID': album_id,
+            'begin': begin,
+            'num': num,
+            'order': 2,  # 2 = 按曲目顺序排序
+        }
+
+        return self._make_request('music.musichallAlbum.AlbumSongList', 'GetAlbumSongList', params)
 
     def get_playlist(self, playlist_id: str) -> Dict:
         """
@@ -463,10 +549,11 @@ class QQMusicClient:
             Playlist detail dictionary
         """
         params = {
-            'playlist_id': playlist_id,
+            'disstid': int(playlist_id),
+            'song_num': 1000,  # Get up to 1000 songs
         }
 
-        return self._make_request('music.playlist.PlaylistInfoService', 'GetPlaylistDetail', params)
+        return self._make_request('music.srfDissInfo.DissInfo', 'CgiGetDiss', params)
 
     def get_singer(self, singer_mid: str) -> Dict:
         """
@@ -479,21 +566,83 @@ class QQMusicClient:
             Singer detail dictionary
         """
         params = {
-            'singer_mid': singer_mid,
+            'singer_mids': [singer_mid],
         }
 
-        return self._make_request('music.singer.SingerInfoService', 'GetSingerDetail', params)
+        return self._make_request('music.musichallSinger.SingerInfoInter', 'GetSingerDetail', params)
+
+    def get_singer_songs(self, singer_mid: str, number: int = 50, begin: int = 0) -> Dict:
+        """
+        获取歌手的歌曲列表.
+
+        Args:
+            singer_mid: 歌手 MID
+            number: 返回歌曲数量
+            begin: 分页起始位置
+
+        Returns:
+            歌曲列表字典，包含 songList 和 totalNum
+        """
+        params = {
+            'singerMid': singer_mid,
+            'order': 1,  # 1 = 按热度排序, 2 = 按时间排序
+            'number': number,
+            'begin': begin,
+        }
+
+        return self._make_request('musichall.song_list_server', 'GetSingerSongList', params)
 
     def get_top_lists(self) -> Dict:
         """
         Get music top lists.
 
         Returns:
-            Top lists dictionary
+            Top lists dictionary with group structure
         """
         params = {}
 
-        return self._make_request('music.topList.TopListInfoService', 'GetTopList', params)
+        # Use same module as JS: music.musicToplist.Toplist with GetAll
+        return self._make_request('music.musicToplist.Toplist', 'GetAll', params)
+
+    def get_top_list_detail(self, top_id: int, num: int = 100) -> Dict:
+        """
+        Get songs from a specific top list.
+
+        Args:
+            top_id: Top list ID
+            num: Number of songs to return
+
+        Returns:
+            Top list detail with songs
+        """
+        params = {
+            'topId': top_id,
+            'num': num,
+            'offset': 0,
+        }
+
+        return self._make_request('music.musicToplist.Toplist', 'GetDetail', params)
+
+    def query_songs_by_ids(self, song_ids: List[int]) -> List[Dict]:
+        """
+        Query song info by ids to get mids.
+
+        Args:
+            song_ids: List of song ids
+
+        Returns:
+            List of song info with mids
+        """
+        params = {
+            'ids': song_ids,
+            'types': [0] * len(song_ids),
+            'modify_stamp': [0] * len(song_ids),
+            'ctx': 0,
+            'client': 1,
+        }
+
+        result = self._make_request('music.trackInfo.UniformRuleCtrl', 'CgiGetTrackInfo', params)
+        return result.get('tracks', [])
 
     def verify_login(self) -> Dict[str, Any]:
         """

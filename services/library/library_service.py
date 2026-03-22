@@ -271,6 +271,19 @@ class LibraryService:
         """Get a specific artist by name."""
         return self._track_repo.get_artist_by_name(artist_name)
 
+    def get_album_by_name(self, album_name: str, artist: str = None) -> Optional[Album]:
+        """
+        Get a specific album by name and optionally artist.
+
+        Args:
+            album_name: Album name
+            artist: Artist name (optional, but recommended for unique identification)
+
+        Returns:
+            Album object or None if not found
+        """
+        return self._track_repo.get_album_by_name(album_name, artist)
+
     def rename_artist(self, old_name: str, new_name: str) -> dict:
         """
         Rename an artist and update all associated tracks.
