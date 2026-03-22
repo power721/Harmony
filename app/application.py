@@ -111,6 +111,10 @@ class Application(QObject):
         """
         self.initialized.emit()
 
+        # Clean up old image cache
+        from infrastructure.cache import ImageCache
+        ImageCache.cleanup(days=7)
+
         # Start cache cleaner service
         cache_cleaner = self._bootstrap.cache_cleaner_service
         if cache_cleaner:

@@ -171,12 +171,19 @@ class OnlineItemDelegate(QStyledItemDelegate):
         return self._default_cover
 
     def _download_cover_async(self, url: str):
-        """Download cover image asynchronously."""
+        """Download cover image asynchronously with disk caching."""
         from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
         import urllib.request
         io_modules = []
 
         try:
+            # Check disk cache first
+            cached_data = ImageCache.get(url)
+            if cached_data:
+                self._load_cached_cover(url, cached_data)
+                return
+
             def download():
                 try:
                     # Create request with headers
@@ -204,56 +211,9 @@ class OnlineItemDelegate(QStyledItemDelegate):
                 if future.done():
                     image_data = future.result()
                     if image_data:
-                        pixmap = QPixmap()
-                        if pixmap.loadFromData(image_data):
-                            # Scale image
-                            scaled = pixmap.scaled(
-                                self.COVER_SIZE, self.COVER_SIZE,
-                                Qt.KeepAspectRatioByExpanding,
-                                Qt.SmoothTransformation
-                            )
-
-                            # Apply mask based on data type
-                            if self._data_type == "singer":
-                                # Create circular mask
-                                circular = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
-                                circular.fill(Qt.transparent)
-
-                                painter = QPainter(circular)
-                                painter.setRenderHint(QPainter.Antialiasing)
-                                painter.setBrush(Qt.white)
-                                painter.setPen(Qt.NoPen)
-                                painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
-                                painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-                                painter.drawPixmap(0, 0, scaled)
-                                painter.end()
-
-                                final = circular
-                            else:
-                                # Use rounded rectangle mask
-                                masked = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
-                                masked.fill(Qt.transparent)
-
-                                painter = QPainter(masked)
-                                painter.setRenderHint(QPainter.Antialiasing)
-                                painter.setBrush(Qt.white)
-                                painter.setPen(Qt.NoPen)
-                                painter.drawRoundedRect(0, 0, self.COVER_SIZE, self.COVER_SIZE, 8, 8)
-                                painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-                                painter.drawPixmap(0, 0, scaled)
-                                painter.end()
-
-                                final = masked
-
-                            self._cover_cache[url] = final
-                            logger.info(f"Successfully loaded cover from {url}")
-
-                            # Trigger repaint
-                            if self.parent():
-                                widget = self.parent()
-                                if hasattr(widget, 'viewport'):
-                                    widget.viewport().update()
-
+                        # Save to disk cache
+                        ImageCache.set(url, image_data)
+                        self._load_cached_cover(url, image_data)
                     self._pending_downloads.discard(url)
                     executor.shutdown(wait=False)
                 else:
@@ -265,6 +225,58 @@ class OnlineItemDelegate(QStyledItemDelegate):
         except Exception as e:
             logger.warning(f"Failed to start cover download: {e}")
             self._pending_downloads.discard(url)
+
+    def _load_cached_cover(self, url: str, image_data: bytes):
+        """Load cover from cached data."""
+        pixmap = QPixmap()
+        if pixmap.loadFromData(image_data):
+            # Scale image
+            scaled = pixmap.scaled(
+                self.COVER_SIZE, self.COVER_SIZE,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation
+            )
+
+            # Apply mask based on data type
+            if self._data_type == "singer":
+                # Create circular mask
+                circular = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+                circular.fill(Qt.transparent)
+
+                painter = QPainter(circular)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setBrush(Qt.white)
+                painter.setPen(Qt.NoPen)
+                painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
+                painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                painter.drawPixmap(0, 0, scaled)
+                painter.end()
+
+                final = circular
+            else:
+                # Use rounded rectangle mask
+                masked = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
+                masked.fill(Qt.transparent)
+
+                painter = QPainter(masked)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setBrush(Qt.white)
+                painter.setPen(Qt.NoPen)
+                painter.drawRoundedRect(0, 0, self.COVER_SIZE, self.COVER_SIZE, 8, 8)
+                painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+                painter.drawPixmap(0, 0, scaled)
+                painter.end()
+
+                final = masked
+
+            self._cover_cache[url] = final
+            logger.debug(f"Successfully loaded cover from cache: {url}")
+
+            # Trigger repaint
+            if self.parent():
+                widget = self.parent()
+                if hasattr(widget, 'viewport'):
+                    widget.viewport().update()
 
     def sizeHint(self, option, index):
         return QSize(self.CARD_WIDTH, self.CARD_HEIGHT)

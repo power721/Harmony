@@ -91,7 +91,7 @@ class AlbumListWorker(QThread):
 
 
 class AlbumCoverLoader(QThread):
-    """Background worker for loading album cover images."""
+    """Background worker for loading album cover images with disk caching."""
 
     cover_loaded = Signal(QPixmap)
 
@@ -102,11 +102,21 @@ class AlbumCoverLoader(QThread):
 
     def run(self):
         try:
+            from infrastructure.cache import ImageCache
             import requests
-            response = requests.get(self._url, timeout=10)
-            response.raise_for_status()
+
+            # Check disk cache first
+            image_data = ImageCache.get(self._url)
+            if not image_data:
+                # Download from network
+                response = requests.get(self._url, timeout=10)
+                response.raise_for_status()
+                image_data = response.content
+                # Save to cache
+                ImageCache.set(self._url, image_data)
+
             pixmap = QPixmap()
-            if pixmap.loadFromData(response.content):
+            if pixmap.loadFromData(image_data):
                 scaled = pixmap.scaled(
                     self._size, self._size,
                     Qt.KeepAspectRatioByExpanding,
@@ -921,6 +931,7 @@ class OnlineDetailView(QWidget):
         """Load cover image from URL."""
         from PySide6.QtGui import QPixmap
         from PySide6.QtCore import QThread, Signal
+        from infrastructure.cache import ImageCache
         import requests
 
         class CoverLoader(QThread):
@@ -932,10 +943,15 @@ class OnlineDetailView(QWidget):
 
             def run(self):
                 try:
-                    response = requests.get(self.url, timeout=10)
-                    response.raise_for_status()
+                    # Check disk cache first
+                    image_data = ImageCache.get(self.url)
+                    if not image_data:
+                        response = requests.get(self.url, timeout=10)
+                        response.raise_for_status()
+                        image_data = response.content
+                        ImageCache.set(self.url, image_data)
                     pixmap = QPixmap()
-                    if pixmap.loadFromData(response.content):
+                    if pixmap.loadFromData(image_data):
                         self.loaded.emit(pixmap)
                 except Exception as e:
                     logger.debug(f"Failed to load cover: {e}")
@@ -1000,11 +1016,17 @@ class OnlineDetailView(QWidget):
 
             def run(self):
                 try:
+                    from infrastructure.cache import ImageCache
                     import requests
-                    response = requests.get(self.url, timeout=10)
-                    response.raise_for_status()
+                    # Check disk cache first
+                    image_data = ImageCache.get(self.url)
+                    if not image_data:
+                        response = requests.get(self.url, timeout=10)
+                        response.raise_for_status()
+                        image_data = response.content
+                        ImageCache.set(self.url, image_data)
                     pixmap = QPixmap()
-                    if pixmap.loadFromData(response.content):
+                    if pixmap.loadFromData(image_data):
                         self.loaded.emit(pixmap)
                 except Exception as e:
                     logger.debug(f"Failed to load cover for dialog: {e}")
