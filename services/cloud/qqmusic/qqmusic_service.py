@@ -595,7 +595,7 @@ class QQMusicService:
 
             for song in songs:
                 # Handle singer data - can be singerName (string) or singer (list/dict)
-                singer_info = song.get('singer', song.get('singerName', ''))
+                singer_info = song.get('singer') or song.get('singerName', '')
                 if isinstance(singer_info, str):
                     singer_name = singer_info
                 elif isinstance(singer_info, list) and singer_info:
@@ -606,7 +606,7 @@ class QQMusicService:
                     singer_name = ''
 
                 # Handle album data - can be albumName, albumname, album (dict)
-                album_info = song.get('album', {})
+                album_info = song.get('album') or {}
                 if isinstance(album_info, str):
                     album_name = album_info
                 elif isinstance(album_info, dict):
@@ -615,7 +615,7 @@ class QQMusicService:
                     album_name = song.get('albumName', '') or song.get('albumname', '')
 
                 # Handle duration - interval is in seconds
-                duration = song.get('interval', 0) or song.get('duration', 0)
+                duration = song.get('interval') or song.get('duration') or 0
 
                 track = {
                     'mid': song.get('songmid', '') or song.get('mid', ''),

@@ -926,6 +926,8 @@ class PlaybackService(QObject):
         bootstrap = Bootstrap.instance()
         if not bootstrap.online_download_service:
             logger.error("[PlaybackService] Online download service not available")
+            # Skip to next track
+            self._engine.play_next()
             return
 
         logger.info(f"[PlaybackService] Downloading online track: {item.cloud_file_id}")
@@ -934,7 +936,7 @@ class PlaybackService(QObject):
         from PySide6.QtCore import QThread
 
         class OnlineDownloadWorker(QThread):
-            download_finished = Signal(str, str)  # (song_mid, local_path)
+            download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
 
             def __init__(self, service, song_mid, title):
                 super().__init__()
@@ -944,8 +946,8 @@ class PlaybackService(QObject):
 
             def run(self):
                 path = self._service.download(self._song_mid, self._title)
-                if path:
-                    self.download_finished.emit(self._song_mid, path)
+                # Always emit, even if path is None (failed)
+                self.download_finished.emit(self._song_mid, path or "")
 
         self._online_download_worker = OnlineDownloadWorker(
             bootstrap.online_download_service,
@@ -995,8 +997,17 @@ class PlaybackService(QObject):
 
         Args:
             song_mid: Song MID
-            local_path: Local path of downloaded file
+            local_path: Local path of downloaded file (empty if failed)
         """
+        # Handle download failure - skip to next track
+        if not local_path:
+            logger.warning(f"[PlaybackService] Online track download failed, skipping: {song_mid}")
+            # Remove the failed item from queue
+            self._engine.remove_playlist_item_by_cloud_id(song_mid)
+            # Skip to next track
+            self._engine.play_next()
+            return
+
         logger.info(f"[PlaybackService] Online track downloaded: {song_mid} -> {local_path}")
 
         # Save to library and get track_id

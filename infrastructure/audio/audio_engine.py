@@ -275,6 +275,22 @@ class PlayerEngine(QObject):
                 return i
         return None
 
+    def remove_playlist_item_by_cloud_id(self, cloud_file_id: str) -> Optional[int]:
+        """
+        Remove a playlist item by cloud_file_id.
+
+        Args:
+            cloud_file_id: Cloud file ID to find and remove
+
+        Returns:
+            Index of removed item, or None if not found
+        """
+        for i, item in enumerate(self._playlist):
+            if item.cloud_file_id == cloud_file_id:
+                self.remove_track(i)
+                return i
+        return None
+
     def play(self):
         """Start or resume playback."""
         if self._current_index < 0 and self._playlist:

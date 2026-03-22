@@ -534,6 +534,7 @@ class MainWindow(QMainWindow):
         # Online music view connections
         self._online_music_view.play_online_track.connect(self._play_online_track)
         self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
+        self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
 
         # Albums view connections
         self._albums_view.album_clicked.connect(self._on_album_clicked)
@@ -1240,6 +1241,56 @@ class MainWindow(QMainWindow):
         else:
             self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
 
+    def _play_online_tracks(self, start_index: int, tracks_data: list):
+        """Play multiple online tracks, clearing queue first.
+
+        Args:
+            start_index: Index of track to start playing
+            tracks_data: List of (song_mid, metadata_dict) tuples
+        """
+        logger.info(f"Playing {len(tracks_data)} online tracks, starting at {start_index}")
+
+        download_service = self._online_music_view._download_service
+        items = []
+
+        for song_mid, metadata in tracks_data:
+            title = metadata.get("title", "Online Track")
+            artist = metadata.get("artist", "")
+            album = metadata.get("album", "")
+            duration = metadata.get("duration", 0.0)
+
+            # Check if already cached
+            local_path = ""
+            needs_download = True
+
+            if download_service.is_cached(song_mid):
+                local_path = download_service.get_cached_path(song_mid)
+                needs_download = False
+
+            item = PlaylistItem(
+                source_type=CloudProvider.ONLINE,
+                local_path=local_path,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cloud_file_id=song_mid,
+                needs_download=needs_download
+            )
+            items.append(item)
+
+        # Clear queue and load all items
+        self._playback.engine.load_playlist_items(items)
+        self._playback.save_queue()
+
+        # Play from start index
+        if 0 <= start_index < len(items):
+            self._playback.engine.play_at(start_index)
+
+        # Show notification
+        self._status_bar = self.statusBar()
+        self._status_bar.showMessage(f"✓ {t('playing')}: {tracks_data[start_index][1].get('title', 'Online Track')}", 3000)
+
     def _play_cloud_playlist(self, temp_path: str, index: int, cloud_files, start_position: float = 0.0):
         """Play multiple cloud files as a playlist."""
         # Get current cloud account from CloudDriveView
@@ -1383,10 +1434,22 @@ class MainWindow(QMainWindow):
         self._lyrics_load_version += 1
         current_version = self._lyrics_load_version
 
-        # Request interruption on old thread (non-blocking)
-        if self._lyrics_thread and isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
-            self._lyrics_thread.requestInterruption()
-            # Don't wait - let it finish naturally and be cleaned up in finished handler
+        # Clean up old thread before creating new one
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                # Wait for thread to finish to avoid "Destroyed while running" error
+                if not self._lyrics_thread.wait(500):  # Wait up to 500ms
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait(100)
+            # Disconnect signals and delete old thread
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass  # Already disconnected
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
 
         # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
         self._lyrics_thread = LyricsLoader(path, title, artist, song_mid=song_mid, is_online=is_online)
@@ -1417,9 +1480,12 @@ class MainWindow(QMainWindow):
     def _on_lyrics_thread_finished(self):
         """Handle lyrics thread finished."""
         sender = self.sender()
-        if sender and sender == self._lyrics_thread:
-            self._lyrics_thread.deleteLater()
-            self._lyrics_thread = None
+        if sender:
+            # Always delete the finished thread, not just current one
+            sender.deleteLater()
+            # Only clear reference if this is the current thread
+            if sender == self._lyrics_thread:
+                self._lyrics_thread = None
 
     def _download_lyrics(self):
         """Download lyrics for current track - shows search dialog for user to select."""

@@ -104,6 +104,7 @@ class OnlineMusicView(QWidget):
     # Signals
     play_online_track = Signal(str, str, object)  # (song_mid, local_path, metadata_dict)
     add_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
+    play_online_tracks = Signal(int, list)  # (start_index, list of (song_mid, metadata_dict))
 
     def __init__(
         self,
@@ -137,6 +138,7 @@ class OnlineMusicView(QWidget):
         self._top_list_worker: Optional[TopListWorker] = None
         self._selected_top_id: Optional[int] = None
         self._top_lists_loaded = False  # Track if top lists have been loaded
+        self._is_top_list_view = True  # True when viewing top list, False when viewing search results
 
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
@@ -722,6 +724,7 @@ class OnlineMusicView(QWidget):
         """Handle search completion."""
         self._current_result = result
         self._stack.setCurrentWidget(self._results_page)
+        self._is_top_list_view = False  # Now viewing search results
 
         if self._current_search_type == SearchType.SONG:
             self._current_tracks = result.tracks
@@ -980,8 +983,27 @@ class OnlineMusicView(QWidget):
         if row < 0 or row >= len(self._current_tracks):
             return
 
-        track = self._current_tracks[row]
-        self._play_track(track)
+        # If viewing top list, play all songs starting from clicked
+        if self._is_top_list_view:
+            self._play_all_from_top_list(row)
+        else:
+            track = self._current_tracks[row]
+            self._play_track(track)
+
+    def _play_all_from_top_list(self, start_index: int):
+        """Play all songs from top list starting from given index."""
+        tracks_data = []
+        for track in self._current_tracks:
+            metadata = {
+                "title": track.title,
+                "artist": track.singer_name,
+                "album": track.album_name,
+                "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
+            }
+            tracks_data.append((track.mid, metadata))
+
+        self.play_online_tracks.emit(start_index, tracks_data)
 
     def _play_track(self, track: OnlineTrack):
         """Play an online track."""
@@ -1201,6 +1223,7 @@ class OnlineMusicView(QWidget):
             return
 
         self._current_tracks = songs
+        self._is_top_list_view = True  # Now viewing top list
         self._display_top_songs(songs)
 
     def _display_top_songs(self, songs: List[OnlineTrack]):

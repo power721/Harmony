@@ -104,8 +104,8 @@ class OnlineDetailView(QWidget):
     def _setup_ui(self):
         """Setup UI components."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 10)
-        layout.setSpacing(15)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(8)
 
         # Header
         header = self._create_header()
@@ -125,11 +125,12 @@ class OnlineDetailView(QWidget):
 
         # Songs table
         self._songs_table = self._create_songs_table()
-        layout.addWidget(self._songs_table)
+        layout.addWidget(self._songs_table, 1)  # Give table stretch priority
 
     def _create_header(self) -> QWidget:
         """Create header with back button."""
         widget = QWidget()
+        widget.setFixedHeight(28)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -148,48 +149,50 @@ class OnlineDetailView(QWidget):
         widget = QWidget()
         self._info_layout = QHBoxLayout(widget)
         self._info_layout.setContentsMargins(0, 0, 0, 0)
-        self._info_layout.setSpacing(20)
+        self._info_layout.setSpacing(12)
 
-        # Cover/Avatar placeholder
+        # Cover/Avatar placeholder - clickable
         self._cover_label = QLabel()
-        self._cover_label.setFixedSize(150, 150)
+        self._cover_label.setFixedSize(80, 80)
         self._cover_label.setStyleSheet("""
             background: #333;
-            border-radius: 10px;
+            border-radius: 8px;
         """)
         self._cover_label.setAlignment(Qt.AlignCenter)
+        self._cover_label.setCursor(Qt.PointingHandCursor)
+        self._cover_label.mousePressEvent = self._on_cover_clicked
         self._info_layout.addWidget(self._cover_label)
 
         # Info
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(2)
 
         # Type label
         self._type_label = QLabel()
-        self._type_label.setStyleSheet("color: #808080; font-size: 12px;")
+        self._type_label.setStyleSheet("color: #808080; font-size: 11px;")
         info_layout.addWidget(self._type_label)
 
         # Name
         self._name_label = QLabel()
-        self._name_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
+        self._name_label.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
         info_layout.addWidget(self._name_label)
 
         # Secondary info (artist/creator)
         self._secondary_label = QLabel()
-        self._secondary_label.setStyleSheet("color: #808080; font-size: 14px;")
+        self._secondary_label.setStyleSheet("color: #808080; font-size: 12px;")
         info_layout.addWidget(self._secondary_label)
 
         # Extra info row (company, genre, language, etc.)
         self._extra_label = QLabel()
-        self._extra_label.setStyleSheet("color: #666; font-size: 12px;")
+        self._extra_label.setStyleSheet("color: #666; font-size: 11px;")
         self._extra_label.setWordWrap(True)
         info_layout.addWidget(self._extra_label)
 
         # Stats
         self._stats_label = QLabel()
-        self._stats_label.setStyleSheet("color: #1db954; font-size: 14px;")
+        self._stats_label.setStyleSheet("color: #1db954; font-size: 12px;")
         info_layout.addWidget(self._stats_label)
 
         info_layout.addStretch()
@@ -200,6 +203,7 @@ class OnlineDetailView(QWidget):
     def _create_actions(self) -> QWidget:
         """Create action buttons."""
         widget = QWidget()
+        widget.setFixedHeight(32)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -207,12 +211,14 @@ class OnlineDetailView(QWidget):
         self._play_all_btn = QPushButton(t("play_all"))
         self._play_all_btn.setObjectName("primaryBtn")
         self._play_all_btn.setCursor(Qt.PointingHandCursor)
+        self._play_all_btn.setFixedHeight(28)
         self._play_all_btn.clicked.connect(self._on_play_all)
         layout.addWidget(self._play_all_btn)
 
         # Add to queue
         self._add_queue_btn = QPushButton(t("add_all_to_queue"))
         self._add_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._add_queue_btn.setFixedHeight(28)
         self._add_queue_btn.clicked.connect(self._on_add_all_to_queue)
         layout.addWidget(self._add_queue_btn)
 
@@ -223,24 +229,25 @@ class OnlineDetailView(QWidget):
     def _create_pagination(self) -> QWidget:
         """Create pagination widget."""
         widget = QWidget()
+        widget.setFixedHeight(32)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Previous button
         self._prev_page_btn = QPushButton("← " + t("previous_page"))
-        self._prev_page_btn.setFixedHeight(36)
+        self._prev_page_btn.setFixedHeight(28)
         self._prev_page_btn.setCursor(Qt.PointingHandCursor)
         self._prev_page_btn.clicked.connect(self._on_prev_page)
         layout.addWidget(self._prev_page_btn)
 
         # Page label
         self._page_label = QLabel("1 / 1")
-        self._page_label.setStyleSheet("color: #808080; padding: 0 15px;")
+        self._page_label.setStyleSheet("color: #808080; padding: 0 10px;")
         layout.addWidget(self._page_label)
 
         # Next button
         self._next_page_btn = QPushButton(t("next_page") + " →")
-        self._next_page_btn.setFixedHeight(36)
+        self._next_page_btn.setFixedHeight(28)
         self._next_page_btn.setCursor(Qt.PointingHandCursor)
         self._next_page_btn.clicked.connect(self._on_next_page)
         layout.addWidget(self._next_page_btn)
@@ -380,9 +387,9 @@ class OnlineDetailView(QWidget):
                 background: #333;
                 color: white;
                 border: none;
-                padding: 8px 20px;
-                border-radius: 20px;
-                font-size: 14px;
+                padding: 4px 16px;
+                border-radius: 14px;
+                font-size: 12px;
             }
             QPushButton:hover {
                 background: #444;
@@ -554,6 +561,68 @@ class OnlineDetailView(QWidget):
             pixmap.scaled(self._cover_label.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         ))
         self._cover_loader.start()
+
+    def _on_cover_clicked(self, event):
+        """Handle cover click to show full size image."""
+        # Get cover URL based on detail type
+        cover_url = ""
+        if self._detail_type == "album":
+            # Use high-res album cover
+            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R800x800M000{self._mid}.jpg"
+        elif self._detail_type == "artist":
+            cover_url = f"https://y.gtimg.cn/music/photo_new/T800R800x800M000{self._mid}.jpg"
+        elif self._detail_type == "playlist":
+            cover_url = f"https://y.gtimg.cn/music/photo_new/T800R800x800M000{self._mid}.jpg"
+
+        if cover_url:
+            self._show_cover_dialog(cover_url)
+
+    def _show_cover_dialog(self, url: str):
+        """Show cover image in a dialog."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PySide6.QtGui import QPixmap
+        import requests
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self._name_label.text() or t("cover"))
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.FramelessWindowHint)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Image label
+        image_label = QLabel()
+        image_label.setAlignment(Qt.AlignCenter)
+        image_label.setStyleSheet("background: #1a1a1a;")
+
+        # Close on click
+        dialog.mousePressEvent = lambda e: dialog.close()
+
+        # Load image
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(response.content):
+                    # Scale to fit screen (max 600x600)
+                    screen = self.screen() if self.screen() else None
+                    max_size = 600
+                    if screen:
+                        max_size = min(screen.availableGeometry().width() - 100,
+                                       screen.availableGeometry().height() - 100,
+                                       600)
+
+                    if pixmap.width() > max_size or pixmap.height() > max_size:
+                        pixmap = pixmap.scaled(max_size, max_size,
+                                               Qt.KeepAspectRatio,
+                                               Qt.SmoothTransformation)
+
+                    image_label.setPixmap(pixmap)
+                    dialog.setFixedSize(pixmap.size())
+        except Exception as e:
+            logger.debug(f"Failed to load cover for dialog: {e}")
+
+        layout.addWidget(image_label)
+        dialog.exec()
 
     def _display_album_detail(self, data: Dict):
         """Display album detail."""
