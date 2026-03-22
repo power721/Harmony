@@ -603,7 +603,7 @@ class OnlineMusicAdapter:
         song = item.get('songInfo', item)
 
         # Strip HTML tags from name
-        name = song.get('name', song.get('songName', song.get('title', '')))
+        name = song.get('title', song.get('name', song.get('songName', '')))
         if name:
             name = re.sub(r'<[^>]+>', '', name)
 
