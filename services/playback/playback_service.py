@@ -1067,13 +1067,15 @@ class PlaybackService(QObject):
                 album=track.album,
                 duration=track.duration,
                 needs_download=False,
-                needs_metadata=False
+                needs_metadata=False,
+                expected_index=self._engine.current_index
             )
         else:
             updated_index = self._engine.update_playlist_item(
                 cloud_file_id=song_mid,
                 local_path=local_path,
-                needs_download=False
+                needs_download=False,
+                expected_index=self._engine.current_index
             )
 
         # Play if this is current track

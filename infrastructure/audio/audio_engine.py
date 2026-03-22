@@ -231,7 +231,8 @@ class PlayerEngine(QObject):
         duration: float = None,
         cover_path: str = None,
         needs_download: bool = False,
-        needs_metadata: bool = False
+        needs_metadata: bool = False,
+        expected_index: int = None
     ) -> Optional[int]:
         """
         Update a playlist item by cloud_file_id.
@@ -250,10 +251,35 @@ class PlayerEngine(QObject):
             cover_path: Path to cover art
             needs_download: Whether file needs download
             needs_metadata: Whether metadata needs extraction
+            expected_index: Expected index of the item (for handling duplicates)
 
         Returns:
             Index of updated item, or None if not found
         """
+        # If expected_index is provided, check that item at that index matches
+        if expected_index is not None and 0 <= expected_index < len(self._playlist):
+            item = self._playlist[expected_index]
+            if item.cloud_file_id == cloud_file_id:
+                # Found the expected item, update it
+                if local_path is not None:
+                    item.local_path = local_path
+                if track_id is not None:
+                    item.track_id = track_id
+                if title is not None:
+                    item.title = title
+                if artist is not None:
+                    item.artist = artist
+                if album is not None:
+                    item.album = album
+                if duration is not None:
+                    item.duration = duration
+                if cover_path is not None:
+                    item.cover_path = cover_path
+                item.needs_download = needs_download
+                item.needs_metadata = needs_metadata
+                return expected_index
+
+        # Fall back to searching for the first matching item
         for i, item in enumerate(self._playlist):
             if item.cloud_file_id == cloud_file_id:
                 if local_path is not None:
