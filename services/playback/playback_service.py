@@ -79,6 +79,9 @@ class PlaybackService(QObject):
         # Current track ID for history
         self._current_track_id: Optional[int] = None
 
+        # Online download workers (song_mid -> QThread)
+        self._online_download_workers: dict = {}
+
         # Connect engine signals
         self._connect_engine_signals()
 
@@ -934,6 +937,18 @@ class PlaybackService(QObject):
         """Download an online track."""
         from services.online import OnlineDownloadService
 
+        song_mid = item.cloud_file_id
+
+        # Check if already downloading this song
+        if song_mid in self._online_download_workers:
+            existing = self._online_download_workers[song_mid]
+            if existing.isRunning():
+                logger.info(f"[PlaybackService] Already downloading: {song_mid}")
+                return
+            else:
+                # Clean up finished worker
+                del self._online_download_workers[song_mid]
+
         # Get download service from Bootstrap
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
@@ -943,7 +958,7 @@ class PlaybackService(QObject):
             self._engine.play_next()
             return
 
-        logger.info(f"[PlaybackService] Downloading online track: {item.cloud_file_id}")
+        logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
 
         # Download in background thread
         from PySide6.QtCore import QThread
@@ -962,15 +977,26 @@ class PlaybackService(QObject):
                 # Always emit, even if path is None (failed)
                 self.download_finished.emit(self._song_mid, path or "")
 
-        self._online_download_worker = OnlineDownloadWorker(
+        worker = OnlineDownloadWorker(
             bootstrap.online_download_service,
-            item.cloud_file_id,
+            song_mid,
             item.title
         )
-        self._online_download_worker.download_finished.connect(
-            lambda mid, path: self.on_online_track_downloaded(mid, path)
-        )
-        self._online_download_worker.start()
+
+        # Clean up worker when finished
+        def on_finished(mid, path):
+            self.on_online_track_downloaded(mid, path)
+            # Remove from dict after completion
+            if mid in self._online_download_workers:
+                worker_obj = self._online_download_workers.pop(mid)
+                worker_obj.deleteLater()
+
+        worker.download_finished.connect(on_finished)
+        worker.finished.connect(lambda: worker.deleteLater())
+
+        # Store in dict and start
+        self._online_download_workers[song_mid] = worker
+        worker.start()
 
     def _download_cloud_track(self, item: PlaylistItem):
         """Download a cloud track."""
@@ -1140,7 +1166,8 @@ class PlaybackService(QObject):
             return
 
         # Skip if already downloading
-        if hasattr(self, '_online_download_worker') and self._online_download_worker and self._online_download_worker.isRunning():
+        song_mid = item.cloud_file_id
+        if song_mid in self._online_download_workers and self._online_download_workers[song_mid].isRunning():
             return
 
         logger.info(f"[PlaybackService] Preloading online track: {item.title}")
