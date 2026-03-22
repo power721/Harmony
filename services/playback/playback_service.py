@@ -1263,9 +1263,32 @@ class PlaybackService(QObject):
                 )
                 logger.info(f"[PlaybackService] Embedded cover saved: {embedded_cover_path}")
 
-            # Step 3: Always try to fetch online cover (even if embedded exists)
-            # Online cover with high score is preferred
-            if title and artist:
+            # Step 3: For QQ Music online tracks, try to get cover directly by song_mid
+            # file_id is the song_mid for QQ Music tracks
+            if file_id:
+                logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
+                qq_cover_path = self._cover_service.get_online_cover(
+                    song_mid=file_id,
+                    artist=artist,
+                    title=title
+                )
+                if qq_cover_path:
+                    logger.info(f"[PlaybackService] QQ Music cover downloaded: {qq_cover_path}")
+                    cover_path = qq_cover_path
+                elif title and artist:
+                    # Fallback to search if direct fetch failed
+                    logger.info(f"[PlaybackService] QQ Music cover not found, searching: {title} - {artist}")
+                    online_cover_path = self._cover_service.fetch_online_cover(
+                        title,
+                        artist,
+                        album,
+                        duration
+                    )
+                    if online_cover_path:
+                        logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
+                        cover_path = online_cover_path
+            # Step 4: Fallback to search for tracks without song_mid
+            elif title and artist:
                 logger.info(f"[PlaybackService] Fetching online cover for: {title} - {artist}")
                 online_cover_path = self._cover_service.fetch_online_cover(
                     title,
@@ -1276,11 +1299,10 @@ class PlaybackService(QObject):
                 if online_cover_path:
                     logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
                     cover_path = online_cover_path
-                elif embedded_cover_path:
-                    # Use embedded cover if online fetch failed
-                    logger.info(f"[PlaybackService] Using embedded cover as fallback")
-                    cover_path = embedded_cover_path
-            elif embedded_cover_path:
+
+            # Use embedded cover as last resort
+            if not cover_path and embedded_cover_path:
+                logger.info(f"[PlaybackService] Using embedded cover as fallback")
                 cover_path = embedded_cover_path
 
         track = Track(
