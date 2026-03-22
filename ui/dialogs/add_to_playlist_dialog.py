@@ -49,10 +49,8 @@ class AddToPlaylistDialog(QDialog):
                 background-color: #181818;
                 border: 1px solid #404040;
                 border-radius: 4px;
-                padding: 5px;
             }
             QListWidget::item {
-                padding: 10px;
                 color: #ffffff;
             }
             QListWidget::item:selected {
@@ -80,6 +78,7 @@ class AddToPlaylistDialog(QDialog):
 
         # Playlist list
         self._playlist_list = QListWidget()
+        self._playlist_list.setSpacing(12)
         self._playlist_list.setCurrentRow(0)
         layout.addWidget(self._playlist_list)
 
