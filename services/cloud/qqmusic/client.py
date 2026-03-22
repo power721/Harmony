@@ -569,19 +569,26 @@ class QQMusicClient:
 
         return self._make_request('music.musichallSinger.SingerInfoInter', 'GetSingerDetail', params)
 
-    def get_songs_list(self, mid: str, number: int = 10, begin: int = 0) -> Dict:
+    def get_singer_songs(self, singer_mid: str, number: int = 50, begin: int = 0) -> Dict:
         """
         获取歌手的歌曲列表.
-        Note: QQ Music doesn't have a dedicated singer song list API, so we use search instead.
 
         Args:
-            mid: 歌手 MID (not used, kept for compatibility)
+            singer_mid: 歌手 MID
             number: 返回歌曲数量
             begin: 分页起始位置
+
+        Returns:
+            歌曲列表字典，包含 songList 和 totalNum
         """
-        # This API is not available in QQ Music, use search instead
-        # Returning empty dict to signal caller to use fallback
-        return {}
+        params = {
+            'singerMid': singer_mid,
+            'order': 1,  # 1 = 按热度排序, 2 = 按时间排序
+            'number': number,
+            'begin': begin,
+        }
+
+        return self._make_request('musichall.song_list_server', 'GetSingerSongList', params)
 
     def get_top_lists(self) -> Dict:
         """

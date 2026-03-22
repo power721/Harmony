@@ -455,83 +455,69 @@ class QQMusicService:
             avatar = pic_info.get('pic') or pic_info.get('big') or pic_info.get('big_black') or pic_info.get('big_white') or ''
             # If no avatar in pic, construct from singer_mid
             if not avatar:
-                singer_mid = basic_info.get('singer_mid', '')
+                singer_mid_from_info = basic_info.get('singer_mid', '')
                 has_photo = basic_info.get('has_photo', 0)
-                if has_photo and singer_mid:
-                    avatar = f"http://y.gtimg.cn/music/photo_new/T001R300x300M000{singer_mid}_{has_photo}.jpg"
+                if has_photo and singer_mid_from_info:
+                    avatar = f"http://y.gtimg.cn/music/photo_new/T001R300x300M000{singer_mid_from_info}_{has_photo}.jpg"
 
-            # Get singer name and search for their songs
+            # Get singer name
             singer_name = basic_info.get('name', '')
             songs = []
             total_songs = 0
 
-            if singer_name:
-                # Get requested page using search
-                search_results = self.client.search(singer_name, search_type='song', page_num=page, page_size=page_size)
+            # Get singer's songs using dedicated API
+            begin = (page - 1) * page_size
+            songs_result = self.client.get_singer_songs(singer_mid, number=page_size, begin=begin)
 
-                # Get total count from meta
-                if search_results and 'meta' in search_results:
-                    meta = search_results['meta']
-                    total_songs = meta.get('sum', 0)
-                    logger.info(f"Total songs for {singer_name}: {total_songs}")
+            if songs_result:
+                # Get total count
+                total_songs = songs_result.get('totalNum', 0)
+                logger.info(f"Total songs for {singer_name}: {total_songs}")
 
-                # Parse and filter songs from this page
-                if search_results and 'body' in search_results:
-                    item_song = search_results['body'].get('item_song', [])
-                    for song in item_song:
-                        # Search API returns 'mid' and 'name'
-                        songmid = song.get('mid', '')
-                        songname = song.get('name', '') or song.get('title_main', '') or song.get('title', '')
-                        songid = song.get('id')
+                # Parse songs
+                song_list = songs_result.get('songList', [])
+                for song in song_list:
+                    song_info = song.get('songInfo', song)
 
-                        # Check if this song is by the singer
-                        singer_info = song.get('singer', {})
-                        song_singers = []
-                        if isinstance(singer_info, list):
-                            song_singers = [s.get('name', '') for s in singer_info]
-                        elif isinstance(singer_info, dict):
-                            song_singers = [singer_info.get('name', '')]
+                    # Get basic song data
+                    songmid = song_info.get('mid', '') or song_info.get('songmid', '')
+                    songname = song_info.get('name', '') or song_info.get('songname', '') or song_info.get('title', '')
+                    songid = song_info.get('id')
 
-                        # Include if singer name matches
-                        if singer_name in song_singers:
-                            # Build album info
-                            album_data = song.get('album', {})
-                            if isinstance(album_data, dict):
-                                albummid = album_data.get('mid', '')
-                                albumname = album_data.get('name', '')
-                            else:
-                                albummid = song.get('albummid', '')
-                                albumname = song.get('albumname', '')
-
-                            # Build singer list
-                            singer_list = []
-                            if isinstance(singer_info, list):
-                                for s in singer_info:
-                                    singer_list.append({
-                                        'mid': s.get('mid', ''),
-                                        'name': s.get('name', '')
-                                    })
-                            elif isinstance(singer_info, dict):
-                                singer_list.append({
-                                    'mid': singer_info.get('mid', ''),
-                                    'name': singer_info.get('name', '')
-                                })
-
-                            songs.append({
-                                'mid': songmid or '',
-                                'songmid': songmid or '',
-                                'id': songid,
-                                'name': songname or '',
-                                'title': songname or '',
-                                'singer': singer_list,
-                                'album': {
-                                    'mid': albummid,
-                                    'name': albumname
-                                },
-                                'albummid': albummid,
-                                'albumname': albumname,
-                                'interval': song.get('interval', 0),
+                    # Build singer list
+                    singer_info = song_info.get('singer', [])
+                    singer_list_data = []
+                    if isinstance(singer_info, list):
+                        for s in singer_info:
+                            singer_list_data.append({
+                                'mid': s.get('mid', ''),
+                                'name': s.get('name', '')
                             })
+
+                    # Build album info
+                    album_data = song_info.get('album', {})
+                    if isinstance(album_data, dict):
+                        albummid = album_data.get('mid', '')
+                        albumname = album_data.get('name', '')
+                    else:
+                        albummid = song_info.get('albummid', '')
+                        albumname = song_info.get('albumname', '')
+
+                    songs.append({
+                        'mid': songmid,
+                        'songmid': songmid,
+                        'id': songid,
+                        'name': songname,
+                        'title': songname,
+                        'singer': singer_list_data,
+                        'album': {
+                            'mid': albummid,
+                            'name': albumname
+                        },
+                        'albummid': albummid,
+                        'albumname': albumname,
+                        'interval': song_info.get('interval', 0) or song_info.get('duration', 0),
+                    })
 
                 logger.info(f"Page {page}: Got {len(songs)} songs for {singer_name}")
 
