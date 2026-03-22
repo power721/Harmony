@@ -49,7 +49,15 @@ jobs:
             libxcb-xinerama0 \
             libxcb-xkb1 \
             libxkbcommon-x11-0 \
-            libfuse2
+            libfuse2 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools \
+            libgstreamer1.0-0 \
+            libgstreamer-plugins-base1.0-0
 
       - name: Install Python dependencies
         run: |
@@ -92,12 +100,19 @@ jobs:
 
           ln -sf usr/share/applications/Harmony.desktop dist/Harmony.AppDir/Harmony.desktop
 
-          # Create AppRun
+          # Create AppRun with GStreamer environment
           cat > dist/Harmony.AppDir/AppRun << 'EOF'
           #!/bin/bash
           SELF=$(readlink -f "$0")
           HERE=${SELF%/*}
           export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}:${LD_LIBRARY_PATH}"
+
+          # GStreamer plugin path
+          export GST_PLUGIN_PATH="${HERE}/gstreamer-1.0"
+          export GST_PLUGIN_SYSTEM_PATH="${HERE}/gstreamer-1.0"
+          export GST_REGISTRY_UPDATE=no
+
           exec "${HERE}/usr/bin/Harmony" "$@"
           EOF
           chmod +x dist/Harmony.AppDir/AppRun

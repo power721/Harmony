@@ -253,6 +253,18 @@ def collect_data_files() -> list:
     if translations_dir.exists():
         datas.append((str(translations_dir), "translations"))
 
+    # UI styles (QSS files)
+    ui_styles_dir = PROJECT_ROOT / "ui"
+    if ui_styles_dir.exists():
+        datas.append((str(ui_styles_dir), "ui"))
+        print(f"[INFO] Found UI styles: {ui_styles_dir}")
+
+    # Application icon (for packaged executable)
+    icon_file = PROJECT_ROOT / "icon.png"
+    if icon_file.exists():
+        datas.append((str(icon_file), "."))
+        print(f"[INFO] Found icon: {icon_file}")
+
     # Add more data directories as needed
     data_dirs = ["assets", "resources", "icons", "themes"]
     for data_dir in data_dirs:
@@ -498,6 +510,120 @@ def find_ffmpeg_libs() -> list:
     return binaries
 
 
+def find_gstreamer_plugins() -> tuple:
+    """查找GStreamer插件和库（QtMultimedia在Linux上的后端）"""
+    binaries = []
+    datas = []
+
+    if platform.system() != "Linux":
+        return binaries, datas
+
+    # 查找GStreamer安装路径
+    gst_paths = [
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
+        "/usr/lib/gstreamer-1.0",
+        "/usr/lib64/gstreamer-1.0",
+    ]
+
+    # 也检查conda环境
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        gst_paths.insert(0, os.path.join(conda_prefix, "lib", "gstreamer-1.0"))
+
+    gst_plugin_path = None
+    for path in gst_paths:
+        if os.path.exists(path):
+            gst_plugin_path = path
+            print(f"[INFO] Found GStreamer plugins: {path}")
+            break
+
+    if not gst_plugin_path:
+        print("[WARN] GStreamer plugins not found")
+        return binaries, datas
+
+    # 必需的GStreamer插件用于音频播放
+    essential_plugins = [
+        # 核心插件
+        "libgstcoreelements.so",
+        "libgstcoretracers.so",
+        # 音频处理
+        "libgstaudioconvert.so",
+        "libgstaudioresample.so",
+        "libgstaudiorate.so",
+        "libgstvolume.so",
+        # 解码器
+        "libgstdecodebin.so",
+        "libgstdecodebin2.so",
+        "libgstplayback.so",
+        "libgsttypefindfunctions.so",
+        # 音频格式支持
+        "libgstmpg123.so",       # MP3
+        "libgstflac.so",         # FLAC
+        "libgstvorbis.so",       # OGG Vorbis
+        "libgstogg.so",          # OGG container
+        "libgstopus.so",         # Opus
+        "libgstlame.so",         # MP3 encoding
+        "libgstwavparse.so",     # WAV
+        "libgstapetag.so",       # APE tags
+        "libgstid3demux.so",     # ID3 tags
+        "libgsticydemux.so",     # ICY demuxer
+        "libgstisomp4.so",       # MP4/M4A
+        "libgstfaad.so",         # AAC
+        "libgstfaac.so",         # AAC encoding
+        # ALSA/PulseAudio输出
+        "libgstalsa.so",
+        "libgstpulse.so",
+        "libgstpulseaudio.so",
+        # 自动检测
+        "libgstautoconvert.so",
+        "libgstautodetect.so",
+        # 其他常用
+        "libgstapp.so",
+        "libgstpbtypes.so",
+    ]
+
+    # 收集插件
+    for plugin in essential_plugins:
+        plugin_path = os.path.join(gst_plugin_path, plugin)
+        if os.path.exists(plugin_path):
+            binaries.append((plugin_path, "gstreamer-1.0"))
+            print(f"[INFO] Found GStreamer plugin: {plugin}")
+
+    # 收集GStreamer核心库
+    gst_lib_patterns = [
+        "/usr/lib/x86_64-linux-gnu/libgst*-1.0.so*",
+        "/usr/lib/libgst*-1.0.so*",
+        "/usr/lib64/libgst*-1.0.so*",
+    ]
+
+    if conda_prefix:
+        gst_lib_patterns.insert(0, os.path.join(conda_prefix, "lib", "libgst*-1.0.so*"))
+
+    for pattern in gst_lib_patterns:
+        matches = glob.glob(pattern)
+        for match in matches:
+            if (match, ".") not in binaries:
+                binaries.append((match, "."))
+                print(f"[INFO] Found GStreamer lib: {match}")
+
+    # 收集glib/gobject库（GStreamer依赖）
+    glib_patterns = [
+        "/usr/lib/x86_64-linux-gnu/libglib-2.0.so*",
+        "/usr/lib/x86_64-linux-gnu/libgobject-2.0.so*",
+        "/usr/lib/x86_64-linux-gnu/libgio-2.0.so*",
+        "/usr/lib/x86_64-linux-gnu/libgmodule-2.0.so*",
+    ]
+
+    for pattern in glib_patterns:
+        matches = glob.glob(pattern)
+        for match in matches:
+            if (match, ".") not in binaries:
+                binaries.append((match, "."))
+                print(f"[INFO] Found GLib: {match}")
+
+    return binaries, datas
+
+
 def clean_build_dirs():
     """Clean build and dist directories."""
     print("Cleaning build directories...")
@@ -598,12 +724,19 @@ def build_executable(
         cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
         print(f"Adding SSL certs: {src} -> {dst}")
 
-    # Add binaries (OpenSSL, Qt plugins, FFmpeg)
+    # Add binaries (OpenSSL, Qt plugins, FFmpeg, GStreamer)
     print("\nCollecting binaries...")
     all_binaries = []
     all_binaries += find_openssl_libs()
     all_binaries += find_qt_plugins()
     all_binaries += find_ffmpeg_libs()
+
+    # Add GStreamer plugins (Linux only)
+    gst_binaries, gst_datas = find_gstreamer_plugins()
+    all_binaries += gst_binaries
+    for src, dst in gst_datas:
+        cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
+
     print(f"Total binaries: {len(all_binaries)}")
 
     for src, dst in all_binaries:

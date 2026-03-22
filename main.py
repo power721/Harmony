@@ -50,6 +50,17 @@ def setup_ssl_certificates():
 # Setup SSL before any HTTPS requests
 setup_ssl_certificates()
 
+
+def get_resource_path(relative_path: str) -> Path:
+    """Get absolute path to resource, works for dev and PyInstaller bundle."""
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Running in development
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -75,7 +86,6 @@ def main():
     qt_app = QApplication(sys.argv)
     qt_app.setApplicationName('Harmony')
     qt_app.setOrganizationName('HarmonyPlayer')
-    qt_app.setWindowIcon(QIcon("icon.png"))
 
     # Set default font
     font = QFont()
@@ -89,11 +99,17 @@ def main():
 
     # Load global stylesheet
     try:
-        with open("ui/styles.qss", "r", encoding="utf-8") as f:
+        qss_path = get_resource_path("ui/styles.qss")
+        with open(qss_path, "r", encoding="utf-8") as f:
             stylesheet = f.read()
             qt_app.setStyleSheet(stylesheet)
     except Exception as e:
         logging.warning(f"Failed to load stylesheet: {e}")
+
+    # Set window icon
+    icon_path = get_resource_path("icon.png")
+    if icon_path.exists():
+        qt_app.setWindowIcon(QIcon(str(icon_path)))
 
     # Create application with dependency injection
     app = Application.create(qt_app)

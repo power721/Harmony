@@ -112,16 +112,35 @@ EOF
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
 export PATH="${HERE}/usr/bin:${PATH}"
-export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}:${LD_LIBRARY_PATH}"
+
+# GStreamer plugin path
+export GST_PLUGIN_PATH="${HERE}/gstreamer-1.0:${HERE}/usr/lib/gstreamer-1.0"
+export GST_PLUGIN_SYSTEM_PATH="${HERE}/gstreamer-1.0:${HERE}/usr/lib/gstreamer-1.0"
+
+# Disable GStreamer registry update (use bundled plugins)
+export GST_REGISTRY_UPDATE=no
+
+# GLib settings
+export GSETTINGS_SCHEMA_DIR="${HERE}/usr/share/glib-2.0/schemas"
+
 exec "${HERE}/usr/bin/Harmony" "$@"
 EOF
     chmod +x "$APPDIR/AppRun"
 
-    # Create icon (placeholder - should be replaced with actual icon)
-    if [ -f "$SCRIPT_DIR/icons/icon.png" ]; then
-        cp "$SCRIPT_DIR/icons/icon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
-        cp "$SCRIPT_DIR/icons/icon.png" "$APPDIR/$APP_NAME.png"
-    else
+    # Create icon - check multiple locations
+    ICON_FOUND=false
+    for icon_location in "$SCRIPT_DIR/icon.png" "$SCRIPT_DIR/icons/icon.png" "$SCRIPT_DIR/resources/icon.png"; do
+        if [ -f "$icon_location" ]; then
+            cp "$icon_location" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
+            cp "$icon_location" "$APPDIR/$APP_NAME.png"
+            ICON_FOUND=true
+            echo "Found icon: $icon_location"
+            break
+        fi
+    done
+
+    if [ "$ICON_FOUND" = false ]; then
         echo "Warning: No icon found. AppImage will use default icon."
     fi
 
@@ -129,8 +148,9 @@ EOF
     ln -sf "$APPDIR/usr/share/applications/$APP_NAME.desktop" "$APPDIR/$APP_NAME.desktop"
     ln -sf "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png" "$APPDIR/$APP_NAME.png" 2>/dev/null || true
 
-    # Build AppImage
+    # Build AppImage with explicit architecture
     ARCH=$(uname -m)
+    export ARCH
     appimagetool "$APPDIR" "$DIST_DIR/${APP_NAME}-${APP_VERSION}-${ARCH}.AppImage"
 
     echo "AppImage created: $DIST_DIR/${APP_NAME}-${APP_VERSION}-${ARCH}.AppImage"
