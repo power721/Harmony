@@ -89,6 +89,7 @@ class OnlineDetailView(QWidget):
 
         self._detail_type = ""  # "artist", "album", "playlist"
         self._mid = ""
+        self._cover_url = ""  # Store actual cover URL for full-size display
         self._tracks: List[OnlineTrack] = []
         self._detail_worker: Optional[DetailWorker] = None
 
@@ -153,7 +154,7 @@ class OnlineDetailView(QWidget):
 
         # Cover/Avatar placeholder - clickable
         self._cover_label = QLabel()
-        self._cover_label.setFixedSize(80, 80)
+        self._cover_label.setFixedSize(120, 120)
         self._cover_label.setStyleSheet("""
             background: #333;
             border-radius: 8px;
@@ -484,6 +485,7 @@ class OnlineDetailView(QWidget):
         # Load artist cover
         avatar_url = data.get("avatar", "")
         if avatar_url:
+            self._cover_url = avatar_url
             self._load_cover(avatar_url)
 
         songs = data.get("songs", [])
@@ -564,64 +566,90 @@ class OnlineDetailView(QWidget):
 
     def _on_cover_clicked(self, event):
         """Handle cover click to show full size image."""
-        # Get cover URL based on detail type
-        cover_url = ""
-        if self._detail_type == "album":
-            # Use high-res album cover
-            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R800x800M000{self._mid}.jpg"
-        elif self._detail_type == "artist":
-            cover_url = f"https://y.gtimg.cn/music/photo_new/T800R800x800M000{self._mid}.jpg"
-        elif self._detail_type == "playlist":
-            cover_url = f"https://y.gtimg.cn/music/photo_new/T800R800x800M000{self._mid}.jpg"
+        if not self._cover_url:
+            return
 
-        if cover_url:
-            self._show_cover_dialog(cover_url)
+        cover_url = self._cover_url
 
-    def _show_cover_dialog(self, url: str):
-        """Show cover image in a dialog."""
+        # Try to get high-res version for y.gtimg.cn URLs
+        if "y.gtimg.cn" in cover_url:
+            if "R300x300" in cover_url:
+                cover_url = cover_url.replace("R300x300", "R800x800")
+
+        # For qpic.y.qq.com (playlist covers), use original URL as-is
+        # The /600 suffix is already a reasonable size
+
+        self._show_cover_dialog_async(cover_url)
+
+    def _show_cover_dialog_async(self, url: str):
+        """Show cover image in a dialog (async loading)."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
         from PySide6.QtGui import QPixmap
-        import requests
 
+        # Create dialog first
         dialog = QDialog(self)
         dialog.setWindowTitle(self._name_label.text() or t("cover"))
         dialog.setWindowFlags(dialog.windowFlags() | Qt.FramelessWindowHint)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Image label
+        # Image label with loading state
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
         image_label.setStyleSheet("background: #1a1a1a;")
+        image_label.setText("...")
+        image_label.setMinimumSize(200, 200)
 
         # Close on click
         dialog.mousePressEvent = lambda e: dialog.close()
 
-        # Load image
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(response.content):
-                    # Scale to fit screen (max 600x600)
-                    screen = self.screen() if self.screen() else None
-                    max_size = 600
-                    if screen:
-                        max_size = min(screen.availableGeometry().width() - 100,
-                                       screen.availableGeometry().height() - 100,
-                                       600)
-
-                    if pixmap.width() > max_size or pixmap.height() > max_size:
-                        pixmap = pixmap.scaled(max_size, max_size,
-                                               Qt.KeepAspectRatio,
-                                               Qt.SmoothTransformation)
-
-                    image_label.setPixmap(pixmap)
-                    dialog.setFixedSize(pixmap.size())
-        except Exception as e:
-            logger.debug(f"Failed to load cover for dialog: {e}")
-
         layout.addWidget(image_label)
+
+        # Async load
+        class FullCoverLoader(QThread):
+            loaded = Signal(QPixmap)
+
+            def __init__(self, url):
+                super().__init__()
+                self.url = url
+
+            def run(self):
+                try:
+                    import requests
+                    response = requests.get(self.url, timeout=10)
+                    response.raise_for_status()
+                    pixmap = QPixmap()
+                    if pixmap.loadFromData(response.content):
+                        self.loaded.emit(pixmap)
+                except Exception as e:
+                    logger.debug(f"Failed to load cover for dialog: {e}")
+
+        def on_cover_loaded(pixmap):
+            if dialog.isVisible():
+                # Scale to fit screen
+                screen = self.screen() if self.screen() else None
+                max_size = 600
+                if screen:
+                    max_size = min(screen.availableGeometry().width() - 100,
+                                   screen.availableGeometry().height() - 100,
+                                   600)
+
+                if pixmap.width() > max_size or pixmap.height() > max_size:
+                    pixmap = pixmap.scaled(max_size, max_size,
+                                           Qt.KeepAspectRatio,
+                                           Qt.SmoothTransformation)
+
+                image_label.setPixmap(pixmap)
+                image_label.setMinimumSize(pixmap.size())
+                dialog.setFixedSize(pixmap.size())
+
+        if hasattr(self, '_full_cover_loader') and self._full_cover_loader:
+            self._full_cover_loader.terminate()
+
+        self._full_cover_loader = FullCoverLoader(url)
+        self._full_cover_loader.loaded.connect(on_cover_loaded)
+        self._full_cover_loader.start()
+
         dialog.exec()
 
     def _display_album_detail(self, data: Dict):
@@ -648,6 +676,7 @@ class OnlineDetailView(QWidget):
             if album_mid:
                 cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
         if cover_url:
+            self._cover_url = cover_url
             self._load_cover(cover_url)
 
         songs = data.get("songs", [])
@@ -680,6 +709,7 @@ class OnlineDetailView(QWidget):
         # Load playlist cover
         cover_url = data.get("cover_url", "") or data.get("cover", "")
         if cover_url:
+            self._cover_url = cover_url
             self._load_cover(cover_url)
 
         songs = data.get("songs", [])

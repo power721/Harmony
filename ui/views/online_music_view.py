@@ -242,43 +242,47 @@ class OnlineMusicView(QWidget):
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Search input
+        # Search input with built-in clear button
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText(t("search_online_music"))
         self._search_input.returnPressed.connect(self._on_search)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         self._search_input.setFixedHeight(50)
+        self._search_input.setClearButtonEnabled(True)
         self._search_input.setStyleSheet("""
             QLineEdit {
-                padding: 8px 15px;
-                border: 1px solid #333;
-                border-radius: 20px;
-                background: #1a1a1a;
-                color: white;
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+                border: 2px solid #3a3a3a;
+                border-radius: 25px;
+                padding: 10px 20px;
                 font-size: 14px;
             }
             QLineEdit:focus {
-                border-color: #1db954;
+                border: 2px solid #1db954;
+                background-color: #2d2d2d;
+            }
+            QLineEdit::placeholder {
+                color: #808080;
+            }
+            QLineEdit::clear-button {
+                subcontrol-origin: padding;
+                subcontrol-position: right;
+                width: 20px;
+                height: 20px;
+                margin-right: 10px;
+                border-radius: 10px;
+                background-color: #505050;
+            }
+            QLineEdit::clear-button:hover {
+                background-color: #606060;
+                border: 1px solid #707070;
+            }
+            QLineEdit::clear-button:pressed {
+                background-color: #404040;
             }
         """)
         layout.addWidget(self._search_input, 1)
-
-        # Clear button
-        self._clear_btn = QPushButton("✕")
-        self._clear_btn.setCursor(Qt.PointingHandCursor)
-        self._clear_btn.setFixedWidth(35)
-        self._clear_btn.clicked.connect(self._on_clear_search)
-        self._clear_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #808080;
-                border: none;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                color: #1db954;
-            }
-        """)
-        layout.addWidget(self._clear_btn)
 
         # Search button
         self._search_btn = QPushButton(t("search"))
@@ -687,21 +691,22 @@ class OnlineMusicView(QWidget):
 
         self._do_search()
 
-    def _on_clear_search(self):
-        """Clear search and show top lists."""
-        self._search_input.clear()
-        self._current_keyword = ""
-        self._current_page = 1
-        self._grid_page = 1
-        self._grid_total = 0
-        self._current_tracks = []
-        self._tabs.hide()
-        # Clear grid views
-        self._singers_page.clear()
-        self._albums_page.clear()
-        self._playlists_page.clear()
-        # Switch to top list page
-        self._stack.setCurrentWidget(self._top_list_page)
+    def _on_search_text_changed(self, text: str):
+        """Handle search text change - show top lists when cleared."""
+        if not text and self._current_keyword:
+            # Text was cleared, go back to top lists
+            self._current_keyword = ""
+            self._current_page = 1
+            self._grid_page = 1
+            self._grid_total = 0
+            self._current_tracks = []
+            self._tabs.hide()
+            # Clear grid views
+            self._singers_page.clear()
+            self._albums_page.clear()
+            self._playlists_page.clear()
+            # Switch to top list page
+            self._stack.setCurrentWidget(self._top_list_page)
 
     def _do_search(self):
         """Execute search."""

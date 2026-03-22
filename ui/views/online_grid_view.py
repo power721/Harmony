@@ -278,14 +278,14 @@ class OnlineItemDelegate(QStyledItemDelegate):
         is_hovered = option.state & QStyle.State_MouseOver
 
         # Debug log for first item
-        if index.row() == 0:
-            if isinstance(item, OnlineArtist):
-                logger.info(f"[OnlineItemDelegate] Painting artist: {item.name}, rect: {rect.x()}, {rect.y()}, {rect.width()}, {rect.height()}")
-                logger.info(f"[OnlineItemDelegate] Name rect will be: x={rect.x() + 4}, y={rect.y() + self.COVER_SIZE + 8}, w={rect.width() - 8}, h=36")
-            elif isinstance(item, OnlineAlbum):
-                logger.info(f"[OnlineItemDelegate] Painting album: {item.name}")
-            elif isinstance(item, OnlinePlaylist):
-                logger.info(f"[OnlineItemDelegate] Painting playlist: {item.title}")
+        # if index.row() == 0:
+        #     if isinstance(item, OnlineArtist):
+        #         logger.info(f"[OnlineItemDelegate] Painting artist: {item.name}, rect: {rect.x()}, {rect.y()}, {rect.width()}, {rect.height()}")
+        #         logger.info(f"[OnlineItemDelegate] Name rect will be: x={rect.x() + 4}, y={rect.y() + self.COVER_SIZE + 8}, w={rect.width() - 8}, h=36")
+        #     elif isinstance(item, OnlineAlbum):
+        #         logger.info(f"[OnlineItemDelegate] Painting album: {item.name}")
+        #     elif isinstance(item, OnlinePlaylist):
+        #         logger.info(f"[OnlineItemDelegate] Painting playlist: {item.title}")
 
         # Draw cover
         cover = self._load_cover(item)
