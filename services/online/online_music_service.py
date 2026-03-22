@@ -557,6 +557,35 @@ class OnlineMusicService:
         Returns:
             Dict with song details or None
         """
+        # Prefer QQ Music local API if credential is available
+        if self._has_qqmusic_credential() and self._qqmusic:
+            return self._get_song_detail_qqmusic(song_mid)
+
+        # Use YGKing remote API
+        return self._get_song_detail_ygking(song_mid)
+
+    def _get_song_detail_qqmusic(self, song_mid: str) -> Optional[Dict[str, Any]]:
+        """Get song detail using QQ Music local API."""
+        try:
+            result = self._qqmusic.client.get_song_detail(song_mid)
+            track_info = result.get("track_info", {})
+            if track_info:
+                return {
+                    "title": track_info.get("title", ""),
+                    "artist": ", ".join(s.get("name", "") for s in track_info.get("singer", [])),
+                    "album": track_info.get("album", {}).get("name", "") if track_info.get("album") else "",
+                    "duration": track_info.get("interval", 0),
+                    "genre": track_info.get("genre"),
+                    "language": track_info.get("language"),
+                    "publish_date": track_info.get("publish_date"),
+                }
+        except Exception as e:
+            logger.debug(f"QQ Music get_song_detail failed: {e}")
+
+        return None
+
+    def _get_song_detail_ygking(self, song_mid: str) -> Optional[Dict[str, Any]]:
+        """Get song detail using YGKing remote API."""
         try:
             url = f"{self.YGKING_BASE_URL}/api/song/detail"
             params = {"mid": song_mid}
@@ -578,6 +607,6 @@ class OnlineMusicService:
                 }
 
         except Exception as e:
-            logger.debug(f"Failed to get song detail: {e}")
+            logger.debug(f"YGKing get_song_detail failed: {e}")
 
         return None
