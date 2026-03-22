@@ -68,6 +68,7 @@ class OnlineDetailView(QWidget):
 
     back_requested = Signal()
     play_all = Signal(list)  # List of OnlineTrack
+    insert_all_to_queue = Signal(list)
     add_all_to_queue = Signal(list)
 
     def __init__(
@@ -853,6 +854,8 @@ class OnlineDetailView(QWidget):
         """)
 
         play_action = menu.addAction(t("play"))
+
+        insert_action = menu.addAction(t("insert_to_queue"))
         add_action = menu.addAction(t("add_to_queue"))
 
         menu.addSeparator()
@@ -861,6 +864,7 @@ class OnlineDetailView(QWidget):
 
         # Connect actions
         play_action.triggered.connect(lambda: self._play_track(track))
+        insert_action.triggered.connect(lambda: self._insert_track_to_queue(track))
         add_action.triggered.connect(lambda: self._add_track_to_queue(track))
         download_action.triggered.connect(lambda: self._download_track(track))
 
@@ -880,6 +884,10 @@ class OnlineDetailView(QWidget):
     def _add_track_to_queue(self, track: OnlineTrack):
         """Add track to queue."""
         self.add_all_to_queue.emit([track])
+
+    def _insert_track_to_queue(self, track: OnlineTrack):
+        """Insert track after current playing track."""
+        self.insert_all_to_queue.emit([track])
 
     def _download_track(self, track: OnlineTrack):
         """Download a track."""

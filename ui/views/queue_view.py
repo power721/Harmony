@@ -659,6 +659,42 @@ class QueueView(QWidget):
 
         db.close()
 
+    def insert_tracks_after_current(self, track_ids: List[int]):
+        """
+        Insert tracks after the current playing track.
+
+        Args:
+            track_ids: List of track IDs to insert
+        """
+        from infrastructure.database import DatabaseManager
+
+        db = DatabaseManager()
+
+        # Get current index
+        current_index = self._player.engine.current_index
+
+        # Insert position is after current track
+        insert_index = current_index + 1 if current_index >= 0 else 0
+
+        for track_id in track_ids:
+            track = db.get_track(track_id)
+            if track:
+                from pathlib import Path
+
+                if Path(track.path).exists():
+                    track_dict = {
+                        "id": track.id,
+                        "path": track.path,
+                        "title": track.title,
+                        "artist": track.artist,
+                        "album": track.album,
+                        "duration": track.duration,
+                    }
+                    self._player.engine.insert_track(insert_index, track_dict)
+                    insert_index += 1
+
+        db.close()
+
     def closeEvent(self, event):
         """Handle close event."""
         event.accept()

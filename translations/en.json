@@ -41,6 +41,8 @@
     "albums_count": "albums",
     "results_for": "results for",
     "add_to_queue": "➕ Add to Queue",
+    "insert_to_queue": "📥 Insert to Queue",
+    "inserted_to_queue": "Inserted {count} track{s} after current",
     "play": "▶️ Play",
     "view_details": "🔍 View Details",
     "add_to_playlist": "Add to Playlist",

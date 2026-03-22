@@ -160,6 +160,7 @@ class OnlineMusicView(QWidget):
 
     # Signals
     play_online_track = Signal(str, str, object)  # (song_mid, local_path, metadata_dict)
+    insert_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
     add_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
     play_online_tracks = Signal(int, list)  # (start_index, list of (song_mid, metadata_dict))
 
@@ -253,6 +254,7 @@ class OnlineMusicView(QWidget):
         self._detail_view.back_requested.connect(self._on_back_from_detail)
         # Connect play_all and add_all_to_queue signals
         self._detail_view.play_all.connect(self._on_play_all_from_detail)
+        self._detail_view.insert_all_to_queue.connect(self._on_insert_all_to_queue_from_detail)
         self._detail_view.add_all_to_queue.connect(self._on_add_all_to_queue_from_detail)
         self._stack.addWidget(self._detail_view)
 
@@ -1102,6 +1104,18 @@ class OnlineMusicView(QWidget):
             }
             self.add_to_queue.emit(track.mid, metadata)
 
+    def _on_insert_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
+        """Handle insert all to queue from detail view."""
+        for track in tracks:
+            metadata = {
+                "title": track.title,
+                "artist": track.singer_name,
+                "album": track.album_name,
+                "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
+            }
+            self.insert_to_queue.emit(track.mid, metadata)
+
     def _on_prev_page(self):
         """Go to previous page."""
         if self._current_page > 1:
@@ -1263,6 +1277,9 @@ class OnlineMusicView(QWidget):
         play_action = menu.addAction(t("play"))
         play_action.triggered.connect(lambda: self._play_selected_tracks(tracks))
 
+        insert_to_queue_action = menu.addAction(t("insert_to_queue"))
+        insert_to_queue_action.triggered.connect(lambda: self._insert_selected_to_queue(tracks))
+
         add_to_queue_action = menu.addAction(t("add_to_queue"))
         add_to_queue_action.triggered.connect(lambda: self._add_selected_to_queue(tracks))
 
@@ -1319,6 +1336,17 @@ class OnlineMusicView(QWidget):
         """Add selected tracks to queue."""
         for track in tracks:
             self.add_to_queue.emit(track.mid, {
+                "title": track.title,
+                "artist": track.singer_name,
+                "album": track.album_name,
+                "duration": track.duration,
+                "album_mid": track.album.mid if track.album else "",
+            })
+
+    def _insert_selected_to_queue(self, tracks: List[OnlineTrack]):
+        """Insert selected tracks after current playing track."""
+        for track in tracks:
+            self.insert_to_queue.emit(track.mid, {
                 "title": track.title,
                 "artist": track.singer_name,
                 "album": track.album_name,

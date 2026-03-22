@@ -524,6 +524,7 @@ class MainWindow(QMainWindow):
         # View connections
         self._library_view.track_double_clicked.connect(self._play_track)
         self._library_view.cloud_file_double_clicked.connect(self._play_cloud_favorite)
+        self._library_view.insert_to_queue.connect(self._insert_to_queue)
         self._library_view.add_to_queue.connect(self._add_to_queue)
         self._playlist_view.playlist_track_double_clicked.connect(self._play_playlist_track)
         self._queue_view.play_track.connect(self._play_track)
@@ -533,6 +534,7 @@ class MainWindow(QMainWindow):
 
         # Online music view connections
         self._online_music_view.play_online_track.connect(self._play_online_track)
+        self._online_music_view.insert_to_queue.connect(self._insert_online_track_to_queue)
         self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
         self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
 
@@ -550,6 +552,7 @@ class MainWindow(QMainWindow):
         # Artist view connections
         self._artist_view.play_tracks.connect(self._play_tracks)
         self._artist_view.track_double_clicked.connect(self._play_track)
+        self._artist_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._artist_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._artist_view.add_to_playlist.connect(self._add_tracks_to_playlist)
         self._artist_view.download_cover_requested.connect(self._on_download_album_cover)
@@ -557,6 +560,7 @@ class MainWindow(QMainWindow):
         # Album view connections
         self._album_view.play_tracks.connect(self._play_tracks)
         self._album_view.track_double_clicked.connect(self._play_track)
+        self._album_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
 
@@ -1254,6 +1258,50 @@ class MainWindow(QMainWindow):
             self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
         else:
             self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
+
+    def _insert_online_track_to_queue(self, song_mid: str, metadata: dict):
+        """Insert online track after current playing track.
+
+        Args:
+            song_mid: Song MID
+            metadata: Metadata dict with title, artist, album, duration
+        """
+        title = metadata.get("title", "Online Track")
+        artist = metadata.get("artist", "")
+        album = metadata.get("album", "")
+        duration = metadata.get("duration", 0.0)
+
+        # Check if already cached
+        download_service = self._online_music_view._download_service
+        local_path = ""
+        needs_download = True
+
+        if download_service.is_cached(song_mid):
+            local_path = download_service.get_cached_path(song_mid)
+            needs_download = False
+
+        item = PlaylistItem(
+            source_type=CloudProvider.ONLINE,
+            local_path=local_path,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cloud_file_id=song_mid,
+            needs_download=needs_download
+        )
+
+        # Insert after current track
+        current_index = self._playback.engine.current_index
+        insert_index = current_index + 1 if current_index >= 0 else 0
+        self._playback.engine.insert_track(insert_index, item)
+
+        # Save queue
+        self._playback.save_queue()
+
+        # Show notification
+        self._status_bar = self.statusBar()
+        self._status_bar.showMessage(f"✓ {t('insert_to_queue')}: {title}", 3000)
 
     def _play_online_tracks(self, start_index: int, tracks_data: list):
         """Play multiple online tracks, clearing queue first.
@@ -2056,6 +2104,22 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to open file location: {e}", exc_info=True)
             QMessageBox.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _insert_to_queue(self, track_ids: list):
+        """Insert tracks after current playing track."""
+        self._queue_view.insert_tracks_after_current(track_ids)
+
+        # Show notification
+        count = len(track_ids)
+        self._status_bar = self.statusBar()
+        msg = t("inserted_to_queue").replace("{count}", str(count))
+        self._status_bar.showMessage(msg, 3000)
+
+    def _insert_tracks_to_queue(self, tracks: list):
+        """Insert Track objects after current playing track."""
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            self._insert_to_queue(track_ids)
 
     def _add_to_queue(self, track_ids: list):
         """Add tracks to the play queue."""

@@ -41,6 +41,8 @@
     "albums_count": "张专辑",
     "results_for": "条结果",
     "add_to_queue": "➕ 添加到队列",
+    "insert_to_queue": "📥 插入到队列",
+    "inserted_to_queue": "已插入 {count} 首歌曲到当前播放下一首",
     "play": "▶️ 播放",
     "view_details": "🔍 查看详情",
     "add_to_playlist": "添加到播放列表",

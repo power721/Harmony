@@ -47,6 +47,7 @@ class LibraryView(QWidget):
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked
     cloud_file_double_clicked = Signal(str, int)  # Signal when cloud file is double-clicked (file_id, account_id)
+    insert_to_queue = Signal(list)  # Signal when tracks should be inserted after current
     add_to_queue = Signal(list)  # Signal when tracks should be added to queue
     add_to_playlist_signal = Signal(
         list
@@ -964,6 +965,10 @@ class LibraryView(QWidget):
         play_action = menu.addAction(t("play"))
         play_action.triggered.connect(lambda: self._play_selected_track())
 
+        # Insert to queue action (insert after current playing track)
+        insert_action = menu.addAction(t("insert_to_queue"))
+        insert_action.triggered.connect(lambda: self._insert_selected_to_queue())
+
         # Add to queue action
         add_action = menu.addAction(t("add_to_queue"))
         add_action.triggered.connect(lambda: self._add_selected_to_queue())
@@ -1034,6 +1039,30 @@ class LibraryView(QWidget):
             delete_file_action.triggered.connect(lambda: self._delete_file())
 
         menu.exec_(self._tracks_table.mapToGlobal(pos))
+
+    def _insert_selected_to_queue(self):
+        """Insert selected tracks after current playing track."""
+        selected_items = self._tracks_table.selectedItems()
+        if not selected_items:
+            return
+
+        track_ids = []
+        for item in selected_items:
+            # Only process items from the first column to avoid duplicates
+            if item.column() == 0:
+                track_data = item.data(Qt.UserRole)
+                if track_data:
+                    # Only add local tracks to queue for now
+                    if isinstance(track_data, dict):
+                        if track_data.get("type") != "cloud":
+                            tid = track_data.get("id")
+                            if tid:
+                                track_ids.append(tid)
+                    else:
+                        track_ids.append(track_data)
+
+        if track_ids:
+            self.insert_to_queue.emit(track_ids)
 
     def _add_selected_to_queue(self):
         """Add selected tracks to queue."""

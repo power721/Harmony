@@ -1352,6 +1352,10 @@ class CloudDriveView(QWidget):
 
         menu.addSeparator()
 
+        # Insert to queue action (insert after current playing track)
+        insert_action = menu.addAction(t("insert_to_queue"))
+        insert_action.triggered.connect(lambda: self._insert_to_queue(file))
+
         queue_action = menu.addAction(t("add_to_queue"))
         queue_action.triggered.connect(lambda: self._add_to_queue(file))
 
@@ -1884,6 +1888,48 @@ class CloudDriveView(QWidget):
 
         # Update status
         self._status_label.setText(f"✓ {t('add_to_queue')}: {file.name}")
+
+    def _insert_to_queue(self, file: CloudFile):
+        """Insert file after current playing track."""
+        from domain.playlist_item import PlaylistItem
+
+        if file.file_type != 'audio':
+            return
+
+        # Check if file is already downloaded
+        local_path = ""
+        if file.local_path:
+            local_path = file.local_path
+        else:
+            # Check download cache
+            from pathlib import Path
+            from utils.helpers import sanitize_filename
+
+            if self._config_manager:
+                download_dir = Path(self._config_manager.get_cloud_download_dir())
+            else:
+                download_dir = Path("data/cloud_downloads")
+
+            if not download_dir.is_absolute():
+                download_dir = Path.cwd() / download_dir
+
+            safe_filename = sanitize_filename(file.name)
+            local_file_path = download_dir / safe_filename
+
+            if local_file_path.exists():
+                local_path = str(local_file_path)
+
+        # Create playlist item
+        account_id = self._current_account.id if self._current_account else 0
+        item = PlaylistItem.from_cloud_file(file, account_id, local_path)
+
+        # Insert after current track
+        current_index = self._player.engine.current_index
+        insert_index = current_index + 1 if current_index >= 0 else 0
+        self._player.engine.insert_track(insert_index, item)
+
+        # Update status
+        self._status_label.setText(f"✓ {t('insert_to_queue')}: {file.name}")
 
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for downloaded cloud file."""

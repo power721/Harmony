@@ -54,6 +54,7 @@ class ArtistView(QWidget):
     back_clicked = Signal()
     play_tracks = Signal(list)  # Emits list of Track objects
     track_double_clicked = Signal(int)  # Emits track_id
+    insert_to_queue = Signal(list)  # Emits list of Track objects
     add_to_queue = Signal(list)  # Emits list of Track objects
     add_to_playlist = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
@@ -726,6 +727,10 @@ class ArtistView(QWidget):
         # Play action
         play_action = menu.addAction(t("play"))
         play_action.triggered.connect(lambda: self.play_tracks.emit(selected_tracks))
+
+        # Insert to queue action
+        insert_queue_action = menu.addAction(t("insert_to_queue"))
+        insert_queue_action.triggered.connect(lambda: self.insert_to_queue.emit(selected_tracks))
 
         # Add to queue action
         add_queue_action = menu.addAction(t("add_to_queue"))
