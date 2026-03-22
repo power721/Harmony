@@ -466,20 +466,20 @@ class QQMusicService:
             total_songs = 0
 
             if singer_name:
-                # Get requested page
+                # Get requested page using search
                 search_results = self.client.search(singer_name, search_type='song', page_num=page, page_size=page_size)
 
                 # Get total count from meta
                 if search_results and 'meta' in search_results:
                     meta = search_results['meta']
-                    total_songs = meta.get('sum', 0)  # Total search results for this singer
+                    total_songs = meta.get('sum', 0)
                     logger.info(f"Total songs for {singer_name}: {total_songs}")
 
                 # Parse and filter songs from this page
                 if search_results and 'body' in search_results:
                     item_song = search_results['body'].get('item_song', [])
                     for song in item_song:
-                        # Search API returns 'mid' and 'name' (NOT 'songmid' and 'songname')
+                        # Search API returns 'mid' and 'name'
                         songmid = song.get('mid', '')
                         songname = song.get('name', '') or song.get('title_main', '') or song.get('title', '')
                         songid = song.get('id')
@@ -518,7 +518,7 @@ class QQMusicService:
                                 })
 
                             songs.append({
-                                'mid': songmid or '',  # Use empty string if no mid
+                                'mid': songmid or '',
                                 'songmid': songmid or '',
                                 'id': songid,
                                 'name': songname or '',
@@ -541,7 +541,7 @@ class QQMusicService:
                 'desc': ex_info.get('desc', ''),
                 'avatar': avatar,
                 'songs': songs,
-                'total': total_songs,  # Total song count
+                'total': total_songs,
                 'page': page,
                 'page_size': page_size,
             }
