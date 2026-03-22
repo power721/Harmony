@@ -574,15 +574,10 @@ class QQMusicService:
             if not songs:
                 songs = result.get('list', [])
 
-            logger.debug(f"get_top_list_songs: top_id={top_id}, found {len(songs)} songs")
-            if songs:
-                logger.debug(f"First song keys: {list(songs[0].keys())}")
-
             # If songs don't have mid, query by id to get mid
             songs_need_mid = [s for s in songs if not s.get('songmid') and not s.get('mid') and s.get('songId')]
             if songs_need_mid:
                 song_ids = [s['songId'] for s in songs_need_mid]
-                logger.debug(f"Querying mids for {len(song_ids)} songs")
                 track_infos = self.client.query_songs_by_ids(song_ids)
                 # Create a map from id to track info
                 id_to_track = {t.get('id'): t for t in track_infos}

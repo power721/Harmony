@@ -277,6 +277,7 @@ class OnlineMusicView(QWidget):
             QLineEdit::clear-button:hover {
                 background-color: #606060;
                 border: 1px solid #707070;
+                cursor: pointer;
             }
             QLineEdit::clear-button:pressed {
                 background-color: #404040;

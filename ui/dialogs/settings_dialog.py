@@ -2,12 +2,13 @@
 General Settings Dialog for configuring AI, AcoustID, and QQ Music.
 """
 import logging
+import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget, QWidget
+    QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget, QWidget, QComboBox, QFileDialog
 )
 
 from system.i18n import t
@@ -256,6 +257,42 @@ class GeneralSettingsDialog(QDialog):
         qqmusic_layout = QVBoxLayout(qqmusic_tab)
         qqmusic_layout.setSpacing(10)
 
+        # Quality settings
+        quality_group = QGroupBox(t("qqmusic_quality"))
+        quality_layout = QHBoxLayout()
+        quality_label = QLabel(t("qqmusic_quality"))
+        self._quality_combo = QComboBox()
+        self._quality_combo.addItem(t("qqmusic_quality_master"), "master")
+        self._quality_combo.addItem(t("qqmusic_quality_atmos"), "atmos")
+        self._quality_combo.addItem(t("qqmusic_quality_flac"), "flac")
+        self._quality_combo.addItem(t("qqmusic_quality_320"), "320")
+        self._quality_combo.addItem(t("qqmusic_quality_128"), "128")
+        quality_layout.addWidget(quality_label)
+        quality_layout.addWidget(self._quality_combo)
+        quality_layout.addStretch()
+        quality_group.setLayout(quality_layout)
+        qqmusic_layout.addWidget(quality_group)
+
+        # Download directory settings
+        download_dir_group = QGroupBox(t("online_music_download_dir"))
+        download_dir_layout = QHBoxLayout()
+        download_dir_label = QLabel(t("online_music_download_dir"))
+        self._download_dir_input = QLineEdit()
+        self._download_dir_input.setPlaceholderText("data/online_cache")
+        browse_btn = QPushButton(t("online_music_browse"))
+        browse_btn.clicked.connect(self._browse_download_dir)
+        download_dir_layout.addWidget(download_dir_label)
+        download_dir_layout.addWidget(self._download_dir_input)
+        download_dir_layout.addWidget(browse_btn)
+        download_dir_group.setLayout(download_dir_layout)
+        qqmusic_layout.addWidget(download_dir_group)
+
+        # Hint label for download directory
+        download_dir_hint = QLabel(t("online_music_download_dir_hint"))
+        download_dir_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        download_dir_hint.setWordWrap(True)
+        qqmusic_layout.addWidget(download_dir_hint)
+
         # QQ Music instructions
         qqmusic_instructions = QLabel(
             f"<b>{t('qqmusic_login')}</b><br><br>"
@@ -353,6 +390,17 @@ class GeneralSettingsDialog(QDialog):
         self._acoustid_api_key_input.setText(acoustid_api_key)
         self._acoustid_api_key_input.setEnabled(acoustid_enabled)
 
+        # QQ Music quality setting
+        qqmusic_quality = self._config.get_qqmusic_quality()
+        for i in range(self._quality_combo.count()):
+            if self._quality_combo.itemData(i) == qqmusic_quality:
+                self._quality_combo.setCurrentIndex(i)
+                break
+
+        # QQ Music download directory setting
+        download_dir = self._config.get_online_music_download_dir()
+        self._download_dir_input.setText(download_dir)
+
     def _save_settings(self):
         """Save settings to config."""
         # AI settings
@@ -391,6 +439,16 @@ class GeneralSettingsDialog(QDialog):
         # Save AcoustID settings
         self._config.set_acoustid_enabled(acoustid_enabled)
         self._config.set_acoustid_api_key(acoustid_api_key)
+
+        # Save QQ Music quality setting
+        qqmusic_quality = self._quality_combo.currentData()
+        self._config.set_qqmusic_quality(qqmusic_quality)
+
+        # Save QQ Music download directory setting
+        download_dir = self._download_dir_input.text().strip()
+        if not download_dir:
+            download_dir = "data/online_cache"
+        self._config.set_online_music_download_dir(download_dir)
 
         QMessageBox.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
@@ -526,6 +584,32 @@ class GeneralSettingsDialog(QDialog):
         dialog = QQMusicQRLoginDialog(self)
         dialog.credentials_obtained.connect(self._update_qqmusic_status)
         dialog.exec_()
+
+    def _browse_download_dir(self):
+        """Browse for download directory."""
+        current_dir = self._download_dir_input.text().strip()
+        if not current_dir or not os.path.exists(current_dir):
+            current_dir = os.path.expanduser("~")
+
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            t("online_music_select_dir"),
+            current_dir
+        )
+
+        if directory:
+            # Store relative path if possible
+            cwd = os.getcwd()
+            try:
+                rel_path = os.path.relpath(directory, cwd)
+                # Use relative path if it's not too deep
+                if not rel_path.startswith("..") or len(rel_path.split(os.sep)) <= 3:
+                    self._download_dir_input.setText(rel_path)
+                else:
+                    self._download_dir_input.setText(directory)
+            except ValueError:
+                # On Windows, can't get relative path between different drives
+                self._download_dir_input.setText(directory)
 
     def closeEvent(self, event):
         """Handle dialog close event."""

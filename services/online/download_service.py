@@ -52,7 +52,15 @@ class OnlineDownloadService:
 
     def _get_default_download_dir(self) -> str:
         """Get default download directory."""
-        # Use data/online_cache in current directory
+        # First check config
+        if self._config:
+            config_dir = self._config.get_online_music_download_dir()
+            if config_dir:
+                # If relative path, make it relative to current directory
+                if not os.path.isabs(config_dir):
+                    return os.path.join(os.getcwd(), config_dir)
+                return config_dir
+        # Fallback to default
         cache_dir = os.path.join(os.getcwd(), "data", "online_cache")
         return cache_dir
 
@@ -61,28 +69,30 @@ class OnlineDownloadService:
         self._download_dir = path
         os.makedirs(self._download_dir, exist_ok=True)
 
-    def get_cached_path(self, song_mid: str, quality: str = "320") -> str:
+    def get_cached_path(self, song_mid: str, quality: Optional[str] = None) -> str:
         """
         Get cached file path for a song.
 
         Args:
             song_mid: Song MID
-            quality: Audio quality
+            quality: Audio quality (uses config default if None)
 
         Returns:
             Local file path
         """
+        if quality is None:
+            quality = self._config.get_qqmusic_quality() if self._config else "320"
         ext = ".flac" if quality in ("master", "flac") else ".mp3"
         filename = f"{song_mid}{ext}"
         return os.path.join(self._download_dir, filename)
 
-    def is_cached(self, song_mid: str, quality: str = "320") -> bool:
+    def is_cached(self, song_mid: str, quality: Optional[str] = None) -> bool:
         """
         Check if song is already cached.
 
         Args:
             song_mid: Song MID
-            quality: Audio quality
+            quality: Audio quality (uses config default if None)
 
         Returns:
             True if cached
@@ -94,7 +104,7 @@ class OnlineDownloadService:
         self,
         song_mid: str,
         song_title: str = "",
-        quality: str = "320",
+        quality: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> Optional[str]:
         """
@@ -103,12 +113,16 @@ class OnlineDownloadService:
         Args:
             song_mid: Song MID
             song_title: Song title (for logging)
-            quality: Audio quality (master/flac/320/128)
+            quality: Audio quality (master/flac/320/128), uses config default if None
             progress_callback: Callback for progress (downloaded, total)
 
         Returns:
             Local file path if successful, None otherwise
         """
+        # Use configured quality if not specified
+        if quality is None:
+            quality = self._config.get_qqmusic_quality() if self._config else "320"
+
         # Check cache first
         cached_path = self.get_cached_path(song_mid, quality)
         if os.path.exists(cached_path):

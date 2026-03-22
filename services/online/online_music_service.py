@@ -484,17 +484,21 @@ class OnlineMusicService:
             logger.error(f"Get playlist detail from YGKing failed: {e}")
             return None
 
-    def get_playback_url(self, song_mid: str, quality: str = "320") -> Optional[str]:
+    def get_playback_url(self, song_mid: str, quality: Optional[str] = None) -> Optional[str]:
         """
         Get playback URL for a song.
 
         Args:
             song_mid: Song MID
-            quality: Audio quality (master/flac/320/128)
+            quality: Audio quality (master/flac/320/128), uses config default if None
 
         Returns:
             Playback URL or None
         """
+        # Use configured quality if not specified
+        if quality is None:
+            quality = self._config.get_qqmusic_quality() if self._config else "320"
+
         # Prefer QQ Music local API if credential is available
         if self._has_qqmusic_credential() and self._qqmusic:
             # Try different qualities in order

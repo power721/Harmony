@@ -32,6 +32,9 @@ class SettingKey:
     CLOUD_ACCOUNT_ID = "cloud.account_id"
     CLOUD_DOWNLOAD_DIR = "cloud.download_dir"
 
+    # Online music settings
+    ONLINE_MUSIC_DOWNLOAD_DIR = "online_music.download_dir"
+
     # UI settings
     UI_LANGUAGE = "ui.language"
     UI_GEOMETRY = "ui.geometry"
@@ -54,6 +57,7 @@ class SettingKey:
     QQMUSIC_MUSICKEY = "qqmusic.musickey"
     QQMUSIC_LOGIN_TYPE = "qqmusic.login_type"
     QQMUSIC_CREDENTIAL = "qqmusic.credential"  # Full credential JSON
+    QQMUSIC_QUALITY = "qqmusic.quality"  # Audio quality setting
 
 
 class ConfigManager:
@@ -270,6 +274,26 @@ class ConfigManager:
     def clear_cloud_account_id(self):
         """Clear the current cloud account ID."""
         self.delete(SettingKey.CLOUD_ACCOUNT_ID)
+
+    # ===== Online music settings =====
+
+    def get_online_music_download_dir(self) -> str:
+        """
+        Get the online music download directory.
+
+        Returns:
+            Path to online music download directory (default: ./data/online_cache)
+        """
+        return self.get(SettingKey.ONLINE_MUSIC_DOWNLOAD_DIR, "data/online_cache")
+
+    def set_online_music_download_dir(self, dir_path: str):
+        """
+        Set the online music download directory.
+
+        Args:
+            dir_path: Path to online music download directory
+        """
+        self.set(SettingKey.ONLINE_MUSIC_DOWNLOAD_DIR, dir_path)
 
     # ===== UI settings =====
 
@@ -563,3 +587,21 @@ class ConfigManager:
         self.delete(SettingKey.QQMUSIC_MUSICKEY)
         self.delete(SettingKey.QQMUSIC_LOGIN_TYPE)
         self.delete(SettingKey.QQMUSIC_CREDENTIAL)
+
+    def get_qqmusic_quality(self) -> str:
+        """
+        Get QQ Music audio quality setting.
+
+        Returns:
+            Quality string (master/atmos/flac/320/128), default "320"
+        """
+        return self.get(SettingKey.QQMUSIC_QUALITY, "320")
+
+    def set_qqmusic_quality(self, quality: str):
+        """
+        Set QQ Music audio quality.
+
+        Args:
+            quality: Quality string (master/atmos/flac/320/128)
+        """
+        self.set(SettingKey.QQMUSIC_QUALITY, quality)
