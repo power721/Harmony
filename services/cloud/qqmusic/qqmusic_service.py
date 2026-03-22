@@ -202,6 +202,47 @@ class QQMusicService:
             logger.error(f"Search failed: {e}", exc_info=True)
             return []
 
+    def complete(self, keyword: str) -> List[Dict[str, Any]]:
+        """
+        搜索词补全建议.
+
+        Args:
+            keyword: 关键词.
+
+        Returns:
+            搜索建议列表，每个建议包含 hint 和 type 键
+        """
+        try:
+            result = self.client.complete(keyword)
+
+            if not result:
+                return []
+
+            # Parse suggestions from response - items is at top level
+            # 实际响应格式:
+            # {
+            #   "items": [
+            #     { "hint": "建议词", "type": 0 },
+            #     ...
+            #   ]
+            # }
+
+            items = result.get('items', [])
+            suggestions = []
+            for item in items:
+                hint = item.get('hint', '')
+                if hint:  # Only add non-empty hints
+                    suggestions.append({
+                        'type': item.get('type', 0),
+                        'hint': hint,
+                    })
+
+            return suggestions
+
+        except Exception as e:
+            logger.error(f"Search completion failed: {e}", exc_info=True)
+            return []
+
     def get_playback_url(self, song_mid: str, quality: str = 'flac') -> Optional[str]:
         """
         Get playback URL for a song.

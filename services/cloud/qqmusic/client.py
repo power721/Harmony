@@ -348,6 +348,25 @@ class QQMusicClient:
 
         return self._make_request('music.search.SearchCgiService', 'DoSearchForQQMusicMobile', params)
 
+    def complete(self, keyword: str) -> Dict:
+        """
+        搜索词补全建议.
+
+        Args:
+            keyword: 关键词.
+
+        Returns:
+            搜索建议字典
+        """
+        params = {
+            'search_id': get_search_id(),
+            'query': keyword,
+            'num_per_page': 0,
+            'page_idx': 0,
+        }
+
+        return self._make_request('music.smartboxCgi.SmartBoxCgi', 'GetSmartBoxResult', params)
+
     def get_song_url(self, song_mid: str, quality: str = 'flac') -> Dict:
         """
         Get playback URL for a song.

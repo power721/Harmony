@@ -26,9 +26,41 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QSplitter,
     QFrame,
+    QCompleter,
+    QListView,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel
 from PySide6.QtGui import QCursor, QColor, QBrush, QAction
+
+
+class CustomQCompleter(QCompleter):
+    """自定义QCompleter用于搜索建议."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 设置列表样式
+        self.popup().setStyleSheet("""
+            QListView {
+                background-color: #2a2a2a;
+                border: 1px solid #3a3a3a;
+                border-radius: 8px;
+                color: #e0e0e0;
+                selection-background-color: #1db954;
+                selection-color: #ffffff;
+                outline: none;
+            }
+            QListView::item {
+                padding: 8px 12px;
+                border-bottom: 1px solid #3a3a3a;
+            }
+            QListView::item:selected {
+                background-color: #1db954;
+                color: #ffffff;
+            }
+            QListView::item:hover {
+                background-color: #333;
+            }
+        """)
 
 from domain.online_music import (
     OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
@@ -98,6 +130,31 @@ class TopListWorker(QThread):
             logger.error(f"Failed to load top list: {e}")
 
 
+class CompletionWorker(QThread):
+    """Background worker for search completion."""
+
+    completion_ready = Signal(list)  # List of completion suggestions
+
+    def __init__(self, qqmusic_service, keyword: str):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+        self._keyword = keyword
+
+    def run(self):
+        try:
+            # Try to get completion suggestions
+            if self._qqmusic_service:
+                suggestions = self._qqmusic_service.complete(self._keyword)
+                self.completion_ready.emit(suggestions)
+            else:
+                # No QQ Music service configured
+                logger.debug("No QQ Music service available for completion")
+                self.completion_ready.emit([])
+        except Exception as e:
+            logger.error(f"Search completion failed: {e}")
+            self.completion_ready.emit([])
+
+
 class OnlineMusicView(QWidget):
     """View for searching and browsing online music."""
 
@@ -136,6 +193,8 @@ class OnlineMusicView(QWidget):
         self._current_tracks: List[OnlineTrack] = []
         self._search_worker: Optional[SearchWorker] = None
         self._top_list_worker: Optional[TopListWorker] = None
+        self._completion_worker: Optional[CompletionWorker] = None
+        self._completion_timer: Optional[QTimer] = None
         self._selected_top_id: Optional[int] = None
         self._top_lists_loaded = False  # Track if top lists have been loaded
         self._is_top_list_view = True  # True when viewing top list, False when viewing search results
@@ -147,6 +206,11 @@ class OnlineMusicView(QWidget):
 
         # Event bus
         self._event_bus = EventBus.instance()
+
+        # Setup completion timer
+        self._completion_timer = QTimer()
+        self._completion_timer.setSingleShot(True)
+        self._completion_timer.timeout.connect(self._trigger_completion)
 
         self._setup_ui()
 
@@ -249,6 +313,20 @@ class OnlineMusicView(QWidget):
         self._search_input.textChanged.connect(self._on_search_text_changed)
         self._search_input.setFixedHeight(50)
         self._search_input.setClearButtonEnabled(True)
+
+        # Setup completer for search suggestions
+        self._completer = CustomQCompleter(self)
+        self._completer.setCaseSensitivity(Qt.CaseInsensitive)
+        # Use PopupCompletion mode to show all matching suggestions
+        self._completer.setCompletionMode(QCompleter.PopupCompletion)
+        self._completer.setMaxVisibleItems(10)
+        # Set filter mode to show anything that contains the typed text
+        self._completer.setFilterMode(Qt.MatchContains)
+        self._search_input.setCompleter(self._completer)
+
+        # Connect completion activation
+        self._completer.activated.connect(self._on_completion_selected)
+
         self._search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #2a2a2a;
@@ -708,6 +786,55 @@ class OnlineMusicView(QWidget):
             self._playlists_page.clear()
             # Switch to top list page
             self._stack.setCurrentWidget(self._top_list_page)
+        elif text and len(text) >= 1 and self._qqmusic_service:
+            # Trigger completion after delay (debounce)
+            self._completion_timer.start(300)  # 300ms delay
+
+    def _trigger_completion(self):
+        """Trigger search completion request."""
+        keyword = self._search_input.text().strip()
+        if not keyword or len(keyword) < 1:
+            return
+
+        # Cancel previous completion worker
+        if self._completion_worker and self._completion_worker.isRunning():
+            self._completion_worker.terminate()
+
+        # Note: Completion API works without login too
+        self._completion_worker = CompletionWorker(self._qqmusic_service, keyword)
+        self._completion_worker.completion_ready.connect(self._on_completion_ready)
+        self._completion_worker.start()
+
+    def _on_completion_ready(self, suggestions: List[Dict[str, Any]]):
+        """Handle completion suggestions ready."""
+        if not suggestions:
+            return
+
+        # Extract suggestion hints (the text to display)
+        suggestion_texts = [s.get('hint', '') for s in suggestions if s.get('hint')]
+
+        logger.info(f"Search completion: {len(suggestion_texts)} suggestions - {suggestion_texts[:3]}")
+
+        # Update completer model
+        model = QStringListModel(suggestion_texts)
+        self._completer.setModel(model)
+
+        # Set the completion prefix to current text so matches work correctly
+        current_text = self._search_input.text()
+        self._completer.setCompletionPrefix(current_text)
+
+        # Show completion popup - ensure the input still has focus
+        if suggestion_texts and self._search_input.hasFocus():
+            self._completer.complete()
+        elif suggestion_texts:
+            # Input doesn't have focus, don't show popup
+            logger.debug("Search input lost focus, not showing completion")
+
+    def _on_completion_selected(self, text: str):
+        """Handle completion selection."""
+        # Set the selected text and trigger search
+        self._search_input.setText(text)
+        self._on_search()
 
     def _do_search(self):
         """Execute search."""
