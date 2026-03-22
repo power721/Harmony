@@ -1,6 +1,6 @@
 # Qt and GUI
-PySide6==6.6.0
-PySide6-Addons==6.6.0
+PySide6==6.4.2
+PySide6-Addons==6.4.2
 
 # Audio metadata
 mutagen==1.47.0

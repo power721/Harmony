@@ -163,46 +163,10 @@ jobs:
           chmod +x build.sh build.py build_macos.sh
           python build.py macos
 
-      - name: Create DMG
+      - name: Create ZIP
         run: |
-          # Create app bundle if needed
-          if [ ! -d "dist/Harmony.app" ]; then
-            mkdir -p dist/Harmony.app/Contents/MacOS
-            mkdir -p dist/Harmony.app/Contents/Resources
-            cp dist/Harmony dist/Harmony.app/Contents/MacOS/
-
-            # Create Info.plist
-            cat > dist/Harmony.app/Contents/Info.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>Harmony</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.harmonyplayer.harmony</string>
-              <key>CFBundleName</key>
-              <string>Harmony</string>
-              <key>CFBundleVersion</key>
-              <string>${{ env.APP_VERSION }}</string>
-              <key>CFBundleShortVersionString</key>
-              <string>${{ env.APP_VERSION }}</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.14</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-          fi
-
-          # Create DMG
-          hdiutil create -volname "Harmony" -srcfolder dist/Harmony.app -ov -format UDZO dist/Harmony-${{ env.APP_VERSION }}.dmg
-
-      - name: Cleanup before DMG
-        run: |
-          rm -rf build/
-          rm -rf __pycache__
+          cd dist
+          zip -r Harmony-${{ env.APP_VERSION }}-macos.zip Harmony.app
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -210,7 +174,7 @@ jobs:
           name: harmony-macos
           path: |
             dist/Harmony.app
-            dist/Harmony-${{ env.APP_VERSION }}.dmg
+            dist/Harmony-${{ env.APP_VERSION }}-macos.zip
           retention-days: 30
 
   build-windows:
