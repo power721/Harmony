@@ -83,7 +83,8 @@ class OnlineDetailView(QWidget):
         )
         self._download_service = OnlineDownloadService(
             config_manager=config_manager,
-            qqmusic_service=qqmusic_service
+            qqmusic_service=qqmusic_service,
+            online_music_service=self._service
         )
         self._event_bus = EventBus.instance()
 
@@ -848,9 +849,53 @@ class OnlineDetailView(QWidget):
         play_action = menu.addAction(t("play"))
         add_action = menu.addAction(t("add_to_queue"))
 
-        # TODO: Connect actions
+        menu.addSeparator()
+
+        download_action = menu.addAction(t("download"))
+
+        # Connect actions
+        play_action.triggered.connect(lambda: self._play_track(track))
+        add_action.triggered.connect(lambda: self._add_track_to_queue(track))
+        download_action.triggered.connect(lambda: self._download_track(track))
 
         menu.exec(self._songs_table.viewport().mapToGlobal(pos))
+
+    def _play_track(self, track: OnlineTrack):
+        """Play a single track."""
+        if self._tracks:
+            # Find the track index and play all from that track
+            try:
+                index = self._tracks.index(track)
+                tracks_to_play = self._tracks[index:]
+                self.play_all.emit(tracks_to_play)
+            except ValueError:
+                logger.warning(f"Track not found in list: {track.title}")
+
+    def _add_track_to_queue(self, track: OnlineTrack):
+        """Add track to queue."""
+        self.add_all_to_queue.emit([track])
+
+    def _download_track(self, track: OnlineTrack):
+        """Download a track."""
+        if self._download_service.is_cached(track.mid):
+            logger.info(f"Track already cached: {track.title}")
+            return
+
+        # Start download
+        worker = DownloadWorker(self._download_service, track.mid, track.title)
+        worker.download_finished.connect(self._on_download_finished)
+        worker.start()
+        # Keep reference to prevent garbage collection
+        if not hasattr(self, '_download_workers'):
+            self._download_workers = []
+        self._download_workers.append(worker)
+
+    def _on_download_finished(self, song_mid: str, local_path: str):
+        """Handle download finished."""
+        if local_path:
+            logger.info(f"Download completed: {song_mid} -> {local_path}")
+        else:
+            logger.warning(f"Download failed: {song_mid}")
 
     def refresh_ui(self):
         """Refresh UI texts after language change."""
@@ -879,3 +924,24 @@ class OnlineDetailView(QWidget):
                 header.model().setHeaderData(2, Qt.Horizontal, t("artist"))
                 header.model().setHeaderData(3, Qt.Horizontal, t("album"))
                 header.model().setHeaderData(4, Qt.Horizontal, t("duration"))
+
+
+class DownloadWorker(QThread):
+    """Background worker for downloading online music."""
+
+    download_finished = Signal(str, str)  # (song_mid, local_path)
+
+    def __init__(self, download_service: OnlineDownloadService, song_mid: str, song_title: str):
+        super().__init__()
+        self._download_service = download_service
+        self._song_mid = song_mid
+        self._song_title = song_title
+
+    def run(self):
+        """Run download."""
+        try:
+            result = self._download_service.download(self._song_mid, self._song_title)
+            self.download_finished.emit(self._song_mid, result or "")
+        except Exception as e:
+            logger.error(f"Download worker error: {e}")
+            self.download_finished.emit(self._song_mid, "")

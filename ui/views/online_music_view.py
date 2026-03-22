@@ -778,7 +778,7 @@ class OnlineMusicView(QWidget):
             self._current_page = 1
             self._grid_page = 1
             self._grid_total = 0
-            self._current_tracks = []
+            # Don't clear _current_tracks - keep the top list songs that were already loaded
             self._tabs.hide()
             # Clear grid views
             self._singers_page.clear()
@@ -1217,17 +1217,33 @@ class OnlineMusicView(QWidget):
         sender_table = self.sender()
         if sender_table == self._top_songs_table:
             table = self._top_songs_table
+            is_top_list = True
         else:
             table = self._results_table
+            is_top_list = False
 
-        selected_rows = [idx.row() for idx in table.selectedIndexes()
-                         if idx.column() == 0]
+        # Get selected rows
+        selected_items = table.selectedItems()
+        if not selected_items:
+            logger.debug(f"No items selected in {'top list' if is_top_list else 'search'} table")
+            return
+
+        # Get unique row indices
+        selected_rows = sorted(set(item.row() for item in selected_items))
         if not selected_rows:
+            return
+
+        # Validate row indices
+        if selected_rows[0] < 0 or selected_rows[-1] >= len(self._current_tracks):
+            logger.warning(f"Invalid row indices: {selected_rows}, tracks count: {len(self._current_tracks)}")
             return
 
         tracks = [self._current_tracks[r] for r in selected_rows if 0 <= r < len(self._current_tracks)]
         if not tracks:
+            logger.warning("No valid tracks found for selected rows")
             return
+
+        logger.debug(f"Showing context menu for {len(tracks)} tracks in {'top list' if is_top_list else 'search'}")
 
         menu = QMenu(self)
         menu.setStyleSheet("""
