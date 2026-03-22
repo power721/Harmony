@@ -946,8 +946,9 @@ class PlaybackService(QObject):
                 logger.info(f"[PlaybackService] Already downloading: {song_mid}")
                 return
             else:
-                # Clean up finished worker
+                # Clean up finished worker properly
                 del self._online_download_workers[song_mid]
+                existing.deleteLater()
 
         # Get download service from Bootstrap
         from app.bootstrap import Bootstrap
@@ -989,10 +990,11 @@ class PlaybackService(QObject):
             # Remove from dict after completion
             if mid in self._online_download_workers:
                 worker_obj = self._online_download_workers.pop(mid)
+                # Wait for thread to fully stop before deleting
+                worker_obj.wait(500)
                 worker_obj.deleteLater()
 
         worker.download_finished.connect(on_finished)
-        worker.finished.connect(lambda: worker.deleteLater())
 
         # Store in dict and start
         self._online_download_workers[song_mid] = worker

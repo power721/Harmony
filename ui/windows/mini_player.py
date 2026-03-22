@@ -1,11 +1,13 @@
 """
 Mini player mode - a small floating window.
 """
-
+import logging
 import threading
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,6 +22,7 @@ from system.i18n import t
 from ui.widgets.player_controls import ClickableSlider
 from utils import format_time
 
+logger = logging.getLogger(__name__)
 
 class MiniPlayer(QWidget):
     """
@@ -86,10 +89,14 @@ class MiniPlayer(QWidget):
         # Cover art (small)
         self._cover_label = QLabel()
         self._cover_label.setFixedSize(50, 50)
+        self._cover_label.setAlignment(Qt.AlignCenter)
         self._cover_label.setStyleSheet("""
-            background-color: #404040;
-            border-radius: 6px;
+            QLabel {
+                background-color: #404040;
+                border-radius: 6px;
+            }
         """)
+        self._set_default_cover()
         top_layout.addWidget(self._cover_label)
 
         # Track info
@@ -119,19 +126,20 @@ class MiniPlayer(QWidget):
 
         # Close button
         self._close_btn = QPushButton("×")
-        self._close_btn.setFixedSize(24, 24)
+        self._close_btn.setFixedSize(26, 26)
+        self._close_btn.setCursor(Qt.PointingHandCursor)
         self._close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
                 color: #b3b3b3;
-                font-size: 18px;
+                font-size: 22px;
                 font-weight: bold;
             }
             QPushButton:hover {
                 color: #ffffff;
                 background-color: #404040;
-                border-radius: 12px;
+                border-radius: 14px;
             }
         """)
         top_layout.addWidget(self._close_btn)
@@ -142,6 +150,7 @@ class MiniPlayer(QWidget):
         self._progress_slider = ClickableSlider(Qt.Horizontal)
         self._progress_slider.setRange(0, 1000)
         self._progress_slider.setValue(0)
+        self._progress_slider.setCursor(Qt.PointingHandCursor)
         self._progress_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 3px;
@@ -172,16 +181,14 @@ class MiniPlayer(QWidget):
         bottom_layout.addStretch()
 
         # Controls
-        self._prev_btn = self._create_control_button("⏮", 28)
+        self._prev_btn = self._create_control_button("previous.svg", 28)
         bottom_layout.addWidget(self._prev_btn)
 
-        self._play_pause_btn = self._create_control_button("▶️", 32)
+        self._play_pause_btn = self._create_control_button("play.svg", 32)
         self._play_pause_btn.setStyleSheet("""
             QPushButton {
                 background: #1db954;
                 border: none;
-                color: #000000;
-                font-size: 16px;
                 border-radius: 16px;
             }
             QPushButton:hover {
@@ -190,7 +197,7 @@ class MiniPlayer(QWidget):
         """)
         bottom_layout.addWidget(self._play_pause_btn)
 
-        self._next_btn = self._create_control_button("⏭", 28)
+        self._next_btn = self._create_control_button("next.svg", 28)
         bottom_layout.addWidget(self._next_btn)
 
         bottom_layout.addStretch()
@@ -201,20 +208,28 @@ class MiniPlayer(QWidget):
 
         layout.addLayout(bottom_layout)
 
-    def _create_control_button(self, text: str, size: int) -> QPushButton:
-        """Create a control button."""
-        btn = QPushButton(text)
+    def _create_control_button(self, icon_name: str, size: int) -> QPushButton:
+        """Create a control button with SVG icon."""
+        btn = QPushButton()
         btn.setFixedSize(size, size)
         btn.setCursor(Qt.PointingHandCursor)
+
+        # Load SVG icon
+        icons_dir = Path(__file__).parent.parent.parent / "icons"
+        icon_path = icons_dir / icon_name
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(16, 16))
+
         btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
-                color: #b3b3b3;
-                font-size: 16px;
             }
             QPushButton:hover {
-                color: #ffffff;
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 12px;
             }
         """)
         return btn
@@ -331,11 +346,14 @@ class MiniPlayer(QWidget):
 
     def _initialize_current_track(self):
         """Initialize with current track info if playing."""
+        icons_dir = Path(__file__).parent.parent.parent / "icons"
         # Update play/pause button state
         if self._player.engine.state == PlaybackState.PLAYING:
-            self._play_pause_btn.setText("⏸")
+            icon_path = icons_dir / "pause.svg"
         else:
-            self._play_pause_btn.setText("▶️")
+            icon_path = icons_dir / "play.svg"
+        if icon_path.exists():
+            self._play_pause_btn.setIcon(QIcon(str(icon_path)))
 
         # Get current track info
         current_track = self._player.engine.current_track
@@ -355,13 +373,18 @@ class MiniPlayer(QWidget):
 
     def _on_state_changed(self, state: PlaybackState):
         """Handle player state change."""
+        icons_dir = Path(__file__).parent.parent.parent / "icons"
         if state == PlaybackState.PLAYING:
-            self._play_pause_btn.setText("⏸")
+            icon_path = icons_dir / "pause.svg"
+            if icon_path.exists():
+                self._play_pause_btn.setIcon(QIcon(str(icon_path)))
             # Update window title to show current track
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
         else:
-            self._play_pause_btn.setText("▶️")
+            icon_path = icons_dir / "play.svg"
+            if icon_path.exists():
+                self._play_pause_btn.setIcon(QIcon(str(icon_path)))
             # Paused or stopped - show original app title
             self.setWindowTitle(t("app_title"))
 
@@ -405,7 +428,7 @@ class MiniPlayer(QWidget):
             self._artist_label.setText("")
             self._current_track_title = ""
             self.setWindowTitle(t("app_title"))
-            self._cover_label.clear()
+            self._set_default_cover()
 
     def _load_cover_async(self, track_dict: dict):
         """Load cover art in background thread."""
@@ -423,6 +446,29 @@ class MiniPlayer(QWidget):
             title = track_dict.get("title", "")
             artist = track_dict.get("artist", "")
             album = track_dict.get("album", "")
+
+            # Check if this is an online QQ Music track
+            source_type = track_dict.get("source_type", "")
+            cloud_file_id = track_dict.get("cloud_file_id", "")
+            is_online = source_type == "online"
+
+            if is_online and cloud_file_id:
+                # For online QQ Music tracks, get cover directly by song_mid
+                logger.debug(f"[MiniPlayer] Getting cover for online track: song_mid={cloud_file_id}")
+                try:
+                    cover_service = self._player.cover_service
+                    if cover_service:
+                        cover_path = cover_service.get_online_cover(
+                            song_mid=cloud_file_id,
+                            album_mid=None,  # We don't have album_mid in track_dict yet
+                            artist=track_dict.get("artist", ""),
+                            title=track_dict.get("title", "")
+                        )
+                        if cover_path:
+                            logger.debug(f"[MiniPlayer] Got online cover: {cover_path}")
+                            return cover_path
+                except Exception as e:
+                    logger.error(f"[MiniPlayer] Error getting online cover: {e}")
 
             # For cloud files that need download, skip online cover fetching
             # Online cover will be fetched after download completes in _save_cloud_track_to_library
@@ -445,7 +491,6 @@ class MiniPlayer(QWidget):
     def _show_cover(self, cover_path: str):
         """Show cover art (called via signal from background thread)."""
         if cover_path:
-            from PySide6.QtGui import QPixmap
             pixmap = QPixmap(cover_path)
             if not pixmap.isNull():
                 scaled = pixmap.scaled(
@@ -453,9 +498,15 @@ class MiniPlayer(QWidget):
                 )
                 self._cover_label.setPixmap(scaled)
             else:
-                self._cover_label.clear()
+                self._set_default_cover()
         else:
-            self._cover_label.clear()
+            self._set_default_cover()
+
+    def _set_default_cover(self):
+        """Set default cover placeholder."""
+        pixmap = QPixmap(50, 50)
+        pixmap.fill(QColor("#404040"))
+        self._cover_label.setPixmap(pixmap)
 
     def mousePressEvent(self, event):
         """Handle mouse press for dragging."""
