@@ -83,14 +83,10 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Initialize playback service with proper dependencies
+        # Get playback service from Bootstrap (singleton)
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
-        self._playback = PlaybackService(
-            self._db,
-            self._config,
-            cover_service=bootstrap.cover_service
-        )
+        self._playback = bootstrap.playback_service
 
         # Keep reference to engine for backward compatibility
         # Use closures to capture self for methods that need access to db

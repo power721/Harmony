@@ -161,7 +161,9 @@ class PlaybackService(QObject):
             song_mid: Song MID
             metadata: Metadata dict with title, artist, album, duration, etc.
         """
-        logger.debug(f"[PlaybackService] _on_online_track_metadata_loaded called: song_mid={song_mid}")
+        import traceback
+        stack = ''.join(traceback.format_stack()[-4:-1])
+        logger.debug(f"[PlaybackService] _on_online_track_metadata_loaded called: song_mid={song_mid}\nStack:\n{stack}")
         # Update playlist items that match this song_mid (stored in cloud_file_id)
         updated = False
         is_current_track = False
