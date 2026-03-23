@@ -105,28 +105,28 @@ class Bootstrap:
     def track_repo(self) -> SqliteTrackRepository:
         """Get track repository."""
         if self._track_repo is None:
-            self._track_repo = SqliteTrackRepository(self._db_path)
+            self._track_repo = SqliteTrackRepository(self._db_path, db_manager=self.db)
         return self._track_repo
 
     @property
     def playlist_repo(self) -> SqlitePlaylistRepository:
         """Get playlist repository."""
         if self._playlist_repo is None:
-            self._playlist_repo = SqlitePlaylistRepository(self._db_path)
+            self._playlist_repo = SqlitePlaylistRepository(self._db_path, db_manager=self.db)
         return self._playlist_repo
 
     @property
     def cloud_repo(self) -> SqliteCloudRepository:
         """Get cloud repository."""
         if self._cloud_repo is None:
-            self._cloud_repo = SqliteCloudRepository(self._db_path)
+            self._cloud_repo = SqliteCloudRepository(self._db_path, db_manager=self.db)
         return self._cloud_repo
 
     @property
     def queue_repo(self) -> SqliteQueueRepository:
         """Get queue repository."""
         if self._queue_repo is None:
-            self._queue_repo = SqliteQueueRepository(self._db_path)
+            self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self.db)
         return self._queue_repo
 
     # ===== Services =====

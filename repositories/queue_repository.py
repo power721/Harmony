@@ -4,25 +4,32 @@ SQLite implementation of QueueRepository.
 
 import sqlite3
 import threading
-from typing import List
+from typing import List, TYPE_CHECKING
 from datetime import datetime
 
 from domain.playback import PlayQueueItem
+
+if TYPE_CHECKING:
+    from infrastructure.database import DatabaseManager
 
 
 class SqliteQueueRepository:
     """SQLite implementation of QueueRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db"):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         self.db_path = db_path
+        self._db_manager = db_manager
         self.local = threading.local()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Get thread-local database connection."""
+        """Get database connection from db_manager or create thread-local connection."""
+        if self._db_manager:
+            return self._db_manager._get_connection()
+
+        # Fallback: create thread-local connection (for tests)
         if not hasattr(self.local, "conn"):
             self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
-            # Enable WAL mode for better concurrent access
             self.local.conn.execute("PRAGMA journal_mode=WAL")
             self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
