@@ -18,6 +18,16 @@ import argparse
 import glob
 from pathlib import Path
 from datetime import datetime
+import os
+import sys
+from PySide6.QtCore import QCoreApplication
+
+# This helps the .exe find the 'plugins' folder included by PyInstaller
+if getattr(sys, 'frozen', False):
+    app_path = os.path.dirname(sys.executable)
+    # Point Qt to the internal PySide6 plugins folder
+    plugin_path = os.path.join(app_path, "PySide6", "plugins")
+    QCoreApplication.addLibraryPath(plugin_path)
 
 # Project info
 APP_NAME = "Harmony"
@@ -69,7 +79,6 @@ def get_platform_info(target_platform: str = None) -> dict:
             "icon_extension": ".ico",
             "onefile_options": [
                 "--noconsole",
-                "--uac-admin",
             ],
             "onedir_options": [
                 "--noconsole",
