@@ -1291,10 +1291,8 @@ class LibraryView(QWidget):
 
         # If only one playlist, add directly without showing dialog
         if dialog.has_single_playlist():
-            playlist_name = dialog.get_single_playlist()
+            playlist = dialog.get_single_playlist()
             dialog.deleteLater()
-            playlists = bootstrap.library_service.get_all_playlists()
-            playlist = next((p for p in playlists if p.name == playlist_name), None)
             if playlist:
                 added_count = 0
                 duplicate_count = 0
@@ -1305,10 +1303,10 @@ class LibraryView(QWidget):
                         duplicate_count += 1
 
                 if duplicate_count == 0:
-                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
                     QMessageBox.information(self, t("success"), msg)
                 elif added_count == 0:
-                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
                     QMessageBox.warning(self, t("duplicate"), msg)
                 else:
                     msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
@@ -1318,28 +1316,25 @@ class LibraryView(QWidget):
         dialog.set_track_ids(track_ids)
 
         if dialog.exec() == QDialog.Accepted:
-            playlist_name = dialog.get_selected_playlist()
-            if playlist_name:
-                playlists = bootstrap.library_service.get_all_playlists()
-                playlist = next((p for p in playlists if p.name == playlist_name), None)
-                if playlist:
-                    added_count = 0
-                    duplicate_count = 0
-                    for track_id in track_ids:
-                        if self._db.add_track_to_playlist(playlist.id, track_id):
-                            added_count += 1
-                        else:
-                            duplicate_count += 1
-
-                    if duplicate_count == 0:
-                        msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
-                        QMessageBox.information(self, t("success"), msg)
-                    elif added_count == 0:
-                        msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
-                        QMessageBox.warning(self, t("duplicate"), msg)
+            playlist = dialog.get_selected_playlist()
+            if playlist:
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
                     else:
-                        msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-                        QMessageBox.information(self, t("partially_added"), msg)
+                        duplicate_count += 1
+
+                if duplicate_count == 0:
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
+                    QMessageBox.information(self, t("success"), msg)
+                elif added_count == 0:
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
+                    QMessageBox.warning(self, t("duplicate"), msg)
+                else:
+                    msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                    QMessageBox.information(self, t("partially_added"), msg)
 
     def _edit_media_info(self):
         """Edit media information for selected tracks (batch edit support)."""

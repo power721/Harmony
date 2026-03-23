@@ -34,8 +34,12 @@ class DatabaseManager:
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
         if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            # Set busy timeout for this connection
+            self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
     def _init_database(self):
@@ -416,12 +420,10 @@ class DatabaseManager:
                            INTEGER
                            NOT
                            NULL,
-                           source_type
+                           source
                            TEXT
                            NOT
                            NULL,
-                           cloud_type
-                           TEXT,
                            track_id
                            INTEGER,
                            cloud_file_id
@@ -656,6 +658,68 @@ class DatabaseManager:
                            """)
             cursor.execute("DROP TABLE favorites")
             cursor.execute("ALTER TABLE favorites_new RENAME TO favorites")
+
+        # Migration 3: Migrate play_queue from source_type+cloud_type to source
+        cursor.execute("PRAGMA table_info(play_queue)")
+        pq_columns = [col[1] for col in cursor.fetchall()]
+
+        if 'source_type' in pq_columns and 'source' not in pq_columns:
+            # Need to migrate - create new table and copy data
+            logger.info("[Database] Migrating play_queue to use 'source' column")
+
+            # Create new table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS play_queue_new
+                (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    position INTEGER NOT NULL,
+                    source TEXT NOT NULL,
+                    track_id INTEGER,
+                    cloud_file_id TEXT,
+                    cloud_account_id INTEGER,
+                    local_path TEXT,
+                    title TEXT,
+                    artist TEXT,
+                    album TEXT,
+                    duration REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Copy and transform data
+            # source_type + cloud_type -> source
+            # 'local' + '' -> 'Local'
+            # 'online' + 'QQ' -> 'QQ'
+            # 'cloud' + 'quark' -> 'QUARK'
+            # 'cloud' + 'baidu' -> 'BAIDU'
+            cursor.execute("""
+                INSERT INTO play_queue_new
+                    (id, position, source, track_id, cloud_file_id, cloud_account_id,
+                     local_path, title, artist, album, duration, created_at)
+                SELECT
+                    id, position,
+                    CASE
+                        WHEN source_type = 'local' THEN 'Local'
+                        WHEN source_type = 'online' THEN 'QQ'
+                        WHEN source_type = 'cloud' THEN UPPER(cloud_type)
+                        ELSE 'Local'
+                    END,
+                    track_id, cloud_file_id, cloud_account_id,
+                    local_path, title, artist, album, duration, created_at
+                FROM play_queue
+            """)
+
+            # Drop old table and rename new
+            cursor.execute("DROP TABLE play_queue")
+            cursor.execute("ALTER TABLE play_queue_new RENAME TO play_queue")
+
+            # Recreate index
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_play_queue_position
+                ON play_queue(position)
+            """)
+
+            logger.info("[Database] play_queue migration completed")
 
         # Migration 2: Initialize FTS5 index for existing tracks
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracks_fts'")
@@ -1028,6 +1092,28 @@ class DatabaseManager:
         logger.info(f"[DatabaseManager] Updated {affected} row(s)")
         return affected > 0
 
+    def update_track_path(self, track_id: int, path: str) -> bool:
+        """Update path for a track."""
+        logger = logging.getLogger(__name__)
+        logger.info(f"[DatabaseManager] update_track_path: track_id={track_id}, path={path}")
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tracks
+            SET path = ?
+            WHERE id = ?
+            """,
+            (path, track_id),
+        )
+
+        conn.commit()
+        affected = cursor.rowcount
+        logger.info(f"[DatabaseManager] Updated {affected} row(s)")
+        return affected > 0
+
     # Playlist operations
 
     def create_playlist(self, name: str) -> int:
@@ -1107,6 +1193,7 @@ class DatabaseManager:
                 duration=row["duration"],
                 cover_path=row["cover_path"],
                 created_at=datetime.fromisoformat(row["created_at"]),
+                cloud_file_id=row["cloud_file_id"],
                 source=self._get_track_source_from_row(row),
             )
             for row in rows
@@ -1132,7 +1219,8 @@ class DatabaseManager:
         )
 
         result = cursor.fetchone()
-        next_position = (result["max_pos"] or 0) + 1
+        # Use is not None check because MAX can return 0 which is falsy
+        next_position = (result["max_pos"] if result["max_pos"] is not None else -1) + 1
 
         try:
             cursor.execute(
@@ -2108,14 +2196,13 @@ class DatabaseManager:
             cursor.execute(
                 """
                 INSERT INTO play_queue
-                (position, source_type, cloud_type, track_id, cloud_file_id, cloud_account_id,
+                (position, source, track_id, cloud_file_id, cloud_account_id,
                  local_path, title, artist, album, duration, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     position,
-                    item.source_type,
-                    item.cloud_type,
+                    item.source,
                     item.track_id,
                     item.cloud_file_id,
                     item.cloud_account_id,
@@ -2151,12 +2238,30 @@ class DatabaseManager:
 
         rows = cursor.fetchall()
 
+        # Get column names to handle both old and new schema
+        columns = rows[0].keys() if rows else []
+
+        def get_source(row, columns):
+            """Get source value, handling both old and new schema."""
+            if "source" in columns:
+                return row["source"] or "Local"
+            # Old schema: combine source_type and cloud_type
+            if "source_type" in columns:
+                source_type = row["source_type"]
+                cloud_type = row["cloud_type"] if "cloud_type" in columns else ""
+                if source_type == "local":
+                    return "Local"
+                elif source_type == "online":
+                    return "QQ"
+                elif source_type == "cloud" and cloud_type:
+                    return cloud_type.upper()
+            return "Local"
+
         return [
             PlayQueueItem(
                 id=row["id"],
                 position=row["position"],
-                source_type=row["source_type"],
-                cloud_type=row["cloud_type"] if "cloud_type" in row.keys() else "",
+                source=get_source(row, columns),
                 track_id=row["track_id"],
                 cloud_file_id=row["cloud_file_id"],
                 cloud_account_id=row["cloud_account_id"],

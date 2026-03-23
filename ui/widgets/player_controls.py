@@ -892,9 +892,9 @@ class PlayerControls(QWidget):
                     return cover_path
 
             # Check if this is an online QQ Music track
-            source_type = track_dict.get("source_type", "")
+            source = track_dict.get("source", "") or track_dict.get("source_type", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source_type == "online"
+            is_online = source == "QQ" or source == "online"
 
             if is_online and cloud_file_id:
                 # For online QQ Music tracks, get cover directly by song_mid

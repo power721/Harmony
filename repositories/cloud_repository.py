@@ -19,8 +19,11 @@ class SqliteCloudRepository:
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
         if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
     # ===== Cloud Account methods =====

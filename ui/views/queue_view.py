@@ -105,7 +105,7 @@ class QueueView(QWidget):
         self._queue_list.model().rowsMoved.connect(self._on_rows_moved)
         self._queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._queue_list.customContextMenuRequested.connect(self._show_context_menu)
-        self._queue_list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._queue_list.itemDoubleClicked.connect(self._play_selected)
         layout.addWidget(self._queue_list)
 
         # Status bar

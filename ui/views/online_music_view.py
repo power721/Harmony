@@ -167,12 +167,14 @@ class OnlineMusicView(QWidget):
     def __init__(
         self,
         config_manager=None,
+        db_manager=None,
         qqmusic_service=None,
         parent=None
     ):
         super().__init__(parent)
 
         self._config = config_manager
+        self._db = db_manager
         self._qqmusic_service = qqmusic_service
 
         # Create services
@@ -1295,6 +1297,16 @@ class OnlineMusicView(QWidget):
         download_action = menu.addAction(t("download"))
         download_action.triggered.connect(lambda: self._download_selected_tracks(tracks))
 
+        menu.addSeparator()
+
+        # Add to favorites action
+        add_to_favorites_action = menu.addAction(t("add_to_favorites"))
+        add_to_favorites_action.triggered.connect(lambda: self._add_selected_to_favorites(tracks))
+
+        # Add to playlist action
+        add_to_playlist_action = menu.addAction(t("add_to_playlist"))
+        add_to_playlist_action.triggered.connect(lambda: self._add_selected_to_playlist(tracks))
+
         menu.exec(table.viewport().mapToGlobal(pos))
 
     def _download_selected_tracks(self, tracks: List[OnlineTrack]):
@@ -1323,6 +1335,121 @@ class OnlineMusicView(QWidget):
             logger.info(f"Download completed: {song_mid} -> {local_path}")
         else:
             logger.warning(f"Download failed: {song_mid}")
+
+    def _add_selected_to_favorites(self, tracks: List[OnlineTrack]):
+        """Add selected online tracks to favorites."""
+        if not tracks:
+            return
+
+        from app.bootstrap import Bootstrap
+
+        added_count = 0
+
+        for track in tracks:
+            track_id = self._add_online_track_to_library(track)
+            if track_id:
+                # Add to favorites
+                if self._db:
+                    self._db.add_favorite(track_id=track_id)
+                    added_count += 1
+
+        if added_count > 0:
+            logger.info(f"[OnlineMusicView] Added {added_count} tracks to favorites")
+            QMessageBox.information(
+                self,
+                t("success"),
+                t("added_x_tracks_to_favorites").format(count=added_count)
+            )
+
+    def _add_selected_to_playlist(self, tracks: List[OnlineTrack]):
+        """Add selected online tracks to playlist."""
+        if not tracks:
+            return
+
+        from app.bootstrap import Bootstrap
+        from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
+
+        bootstrap = Bootstrap.instance()
+
+        # Add tracks to library first and collect track IDs
+        track_ids = []
+        for track in tracks:
+            track_id = self._add_online_track_to_library(track)
+            if track_id:
+                track_ids.append(track_id)
+
+        if not track_ids:
+            return
+
+        # Show playlist selection dialog
+        dialog = AddToPlaylistDialog(bootstrap.library_service, self)
+
+        if not dialog.has_playlists():
+            dialog.deleteLater()
+            reply = QMessageBox.question(
+                self,
+                t("no_playlists"),
+                t("no_playlists_message"),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                if hasattr(self, "window()") and self.window():
+                    self.window()._nav_playlists.click()
+            return
+
+        # If only one playlist, add directly
+        if dialog.has_single_playlist():
+            playlist = dialog.get_single_playlist()
+            dialog.deleteLater()
+            if playlist:
+                for track_id in track_ids:
+                    bootstrap.library_service.add_track_to_playlist(playlist.id, track_id)
+                logger.info(f"[OnlineMusicView] Added {len(track_ids)} tracks to playlist '{playlist.name}'")
+                QMessageBox.information(
+                    self,
+                    t("success"),
+                    t("added_tracks_to_playlist").format(count=len(track_ids), name=playlist.name)
+                )
+            return
+
+        # Show dialog for user to select playlist
+        if dialog.exec():
+            playlist = dialog.get_selected_playlist()
+            if playlist:
+                for track_id in track_ids:
+                    bootstrap.library_service.add_track_to_playlist(playlist.id, track_id)
+                logger.info(f"[OnlineMusicView] Added {len(track_ids)} tracks to playlist ID {playlist.id}")
+                QMessageBox.information(
+                    self,
+                    t("success"),
+                    t("added_tracks_to_playlist").format(count=len(track_ids), name=playlist.name)
+                )
+        dialog.deleteLater()
+
+    def _add_online_track_to_library(self, track: OnlineTrack) -> Optional[int]:
+        """Add online track to library, return track_id."""
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        if not bootstrap.library_service:
+            return None
+
+        cover_url = self._get_cover_url(track)
+
+        return bootstrap.library_service.add_online_track(
+            song_mid=track.mid,
+            title=track.title,
+            artist=track.singer_name,
+            album=track.album_name,
+            duration=float(track.duration),
+            cover_url=cover_url
+        )
+
+    def _get_cover_url(self, track: OnlineTrack) -> str:
+        """Get cover URL for online track."""
+        if track.album and track.album.mid:
+            return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
+        return ""
 
     def _play_selected_tracks(self, tracks: List[OnlineTrack]):
         """Play selected tracks."""

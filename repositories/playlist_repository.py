@@ -22,8 +22,11 @@ class SqlitePlaylistRepository:
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
         if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
     def get_by_id(self, playlist_id: int) -> Optional[Playlist]:
@@ -97,7 +100,8 @@ class SqlitePlaylistRepository:
         # Get next position
         cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
         row = cursor.fetchone()
-        position = (row[0] or -1) + 1
+        # Use is not None check because MAX can return 0 which is falsy
+        position = (row[0] if row[0] is not None else -1) + 1
 
         cursor.execute("""
                        INSERT INTO playlist_items (playlist_id, track_id, position)

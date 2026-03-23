@@ -93,8 +93,8 @@ class AddToPlaylistDialog(QDialog):
 
     def _load_playlists(self):
         """Load playlists from database."""
-        playlists = self._library_service.get_all_playlists()
-        for playlist in playlists:
+        self.playlists = self._library_service.get_all_playlists()
+        for playlist in self.playlists:
             self._playlist_list.addItem(playlist.name)
         if self._playlist_list.count() > 0:
             self._playlist_list.setCurrentRow(0)
@@ -128,7 +128,8 @@ class AddToPlaylistDialog(QDialog):
         """Get the selected playlist name."""
         selected_items = self._playlist_list.selectedItems()
         if selected_items:
-            return selected_items[0].text()
+            playlist_name = selected_items[0].text()
+            return next((p for p in self.playlists if p.name == playlist_name), None)
         return None
 
     def get_track_ids(self):
@@ -146,7 +147,8 @@ class AddToPlaylistDialog(QDialog):
     def get_single_playlist(self):
         """Get the single playlist name if there's only one."""
         if self._playlist_list.count() == 1:
-            return self._playlist_list.item(0).text()
+            playlist_name = self._playlist_list.item(0).text()
+            return next((p for p in self.playlists if p.name == playlist_name), None)
         return None
 
     def show_no_playlists_prompt(self):

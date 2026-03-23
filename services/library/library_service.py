@@ -9,7 +9,7 @@ from typing import List, Optional
 from domain.album import Album
 from domain.artist import Artist
 from domain.playlist import Playlist
-from domain.track import Track
+from domain.track import Track, TrackSource
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
 from services.metadata.metadata_service import MetadataService
@@ -99,6 +99,65 @@ class LibraryService:
                 )
         return track_id
 
+    def add_online_track(
+            self,
+            song_mid: str,
+            title: str,
+            artist: str,
+            album: str,
+            duration: float,
+            cover_url: str = None
+    ) -> int:
+        """
+        Add an online track to the library.
+
+        Creates a track record for online music (QQ Music, etc.)
+        with empty path, indicating it needs to be downloaded before playback.
+
+        Args:
+            song_mid: Song MID (unique identifier from QQ Music)
+            title: Track title
+            artist: Artist name
+            album: Album name
+            duration: Duration in seconds
+            cover_url: Cover image URL (optional)
+
+        Returns:
+            Track ID (existing or newly created)
+        """
+        # Check if already exists by cloud_file_id
+        if self._db:
+            existing = self._db.get_track_by_cloud_file_id(song_mid)
+            if existing:
+                logger.debug(f"[LibraryService] Online track already exists: {song_mid}")
+                return existing.id
+
+        # Create Track record with empty path
+        track = Track(
+            path="",  # Empty path indicates online track needs download
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cover_path=cover_url,
+            source=TrackSource.QQ,
+            cloud_file_id=song_mid
+        )
+
+        track_id = self._track_repo.add(track)
+        if track_id:
+            logger.info(f"[LibraryService] Added online track: {title} - {artist}")
+            # Update albums and artists tables
+            if self._db:
+                self._db.update_albums_on_track_added(
+                    album, artist, cover_url, duration
+                )
+                self._db.update_artists_on_track_added(
+                    artist, album, cover_url
+                )
+
+        return track_id
+
     def update_track(self, track: Track, old_track: Track = None) -> bool:
         """
         Update an existing track.
@@ -141,6 +200,9 @@ class LibraryService:
             self._db.update_artists_on_track_deleted(
                 track.artist, track.album
             )
+
+            # Emit event to notify other components (e.g., playback queue)
+            self._event_bus.track_deleted.emit(track_id)
 
         return result
 

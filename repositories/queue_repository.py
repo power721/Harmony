@@ -5,6 +5,7 @@ SQLite implementation of QueueRepository.
 import sqlite3
 import threading
 from typing import List
+from datetime import datetime
 
 from domain.playback import PlayQueueItem
 
@@ -19,8 +20,11 @@ class SqliteQueueRepository:
     def _get_connection(self) -> sqlite3.Connection:
         """Get thread-local database connection."""
         if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrent access
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
     def load(self) -> List[PlayQueueItem]:
@@ -29,7 +33,48 @@ class SqliteQueueRepository:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM play_queue ORDER BY position")
         rows = cursor.fetchall()
-        return [self._row_to_item(row) for row in rows]
+
+        if not rows:
+            return []
+
+        # Get column names to handle both old and new schema
+        columns = rows[0].keys()
+
+        def get_source(row, columns):
+            """Get source value, handling both old and new schema."""
+            if "source" in columns:
+                return row["source"] or "Local"
+            # Old schema: combine source_type and cloud_type
+            if "source_type" in columns:
+                source_type = row["source_type"]
+                cloud_type = row["cloud_type"] if "cloud_type" in columns else ""
+                if source_type == "local":
+                    return "Local"
+                elif source_type == "online":
+                    return "QQ"
+                elif source_type == "cloud" and cloud_type:
+                    return cloud_type.upper()
+            return "Local"
+
+        return [
+            PlayQueueItem(
+                id=row["id"],
+                position=row["position"],
+                source=get_source(row, columns),
+                track_id=row["track_id"],
+                cloud_file_id=row["cloud_file_id"],
+                cloud_account_id=row["cloud_account_id"],
+                local_path=row["local_path"] or "",
+                title=row["title"] or "",
+                artist=row["artist"] or "",
+                album=row["album"] or "",
+                duration=row["duration"] or 0.0,
+                created_at=datetime.fromisoformat(row["created_at"])
+                if row["created_at"]
+                else None,
+            )
+            for row in rows
+        ]
 
     def save(self, items: List[PlayQueueItem]) -> bool:
         """Save the play queue."""
@@ -40,13 +85,14 @@ class SqliteQueueRepository:
         # Insert new items
         for item in items:
             cursor.execute("""
-                           INSERT INTO play_queue (position, source_type, cloud_type, track_id, cloud_file_id,
-                                                   cloud_account_id, local_path, title, artist, album, duration)
+                           INSERT INTO play_queue (position, source, track_id, cloud_file_id,
+                                                   cloud_account_id, local_path, title, artist, album, duration, created_at)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            """, (
-                               item.position, item.source_type, item.cloud_type, item.track_id,
+                               item.position, item.source, item.track_id,
                                item.cloud_file_id, item.cloud_account_id, item.local_path,
-                               item.title, item.artist, item.album, item.duration
+                               item.title, item.artist, item.album, item.duration,
+                               item.created_at or datetime.now()
                            ))
         conn.commit()
         return True
@@ -58,20 +104,3 @@ class SqliteQueueRepository:
         cursor.execute("DELETE FROM play_queue")
         conn.commit()
         return True
-
-    def _row_to_item(self, row: sqlite3.Row) -> PlayQueueItem:
-        """Convert a database row to a PlayQueueItem object."""
-        return PlayQueueItem(
-            id=row["id"],
-            position=row["position"],
-            source_type=row["source_type"],
-            cloud_type=row["cloud_type"],
-            track_id=row["track_id"],
-            cloud_file_id=row["cloud_file_id"],
-            cloud_account_id=row["cloud_account_id"],
-            local_path=row["local_path"],
-            title=row["title"],
-            artist=row["artist"],
-            album=row["album"],
-            duration=row["duration"],
-        )

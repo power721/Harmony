@@ -473,9 +473,9 @@ class MiniPlayer(QWidget):
             album = track_dict.get("album", "")
 
             # Check if this is an online QQ Music track
-            source_type = track_dict.get("source_type", "")
+            source = track_dict.get("source", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source_type == "online"
+            is_online = source == "online"
 
             if is_online and cloud_file_id:
                 # For online QQ Music tracks, get cover directly by song_mid
@@ -545,9 +545,9 @@ class MiniPlayer(QWidget):
             album = track_dict.get("album", "")
 
             # Check if this is an online QQ Music track with song_mid
-            source_type = track_dict.get("source_type", "")
+            source = track_dict.get("source", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source_type == "online"
+            is_online = source == "online"
 
             if is_online and cloud_file_id:
                 # For online QQ Music tracks, get lyrics by song_mid

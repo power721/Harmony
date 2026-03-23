@@ -1,20 +1,10 @@
 """
-Cloud domain models - CloudProvider, CloudAccount, CloudFile.
+Cloud domain models - CloudAccount, CloudFile.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Optional
-
-
-class CloudProvider(Enum):
-    """Cloud storage provider enumeration."""
-    LOCAL = "local"  # Local music files
-    ONLINE = "online"  # Online music (QQ Music, etc.)
-    QUARK = "quark"  # Quark cloud drive
-    BAIDU = "baidu"  # Baidu cloud drive
-    # Future extensions: ONEDRIVE, GOOGLE_DRIVE, DROPBOX, etc.
 
 
 @dataclass

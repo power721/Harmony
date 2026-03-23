@@ -4,8 +4,8 @@ Tests for PlaylistItem domain model.
 
 import pytest
 from domain.playlist_item import PlaylistItem
-from domain.track import Track
-from domain.cloud import CloudFile, CloudProvider
+from domain.track import Track, TrackSource
+from domain.cloud import CloudFile
 
 
 class TestPlaylistItem:
@@ -14,7 +14,7 @@ class TestPlaylistItem:
     def test_default_initialization(self):
         """Test playlist item with default values."""
         item = PlaylistItem()
-        assert item.source_type == CloudProvider.LOCAL
+        assert item.source == TrackSource.LOCAL
         assert item.track_id is None
         assert item.cloud_file_id is None
         assert item.cloud_account_id is None
@@ -33,7 +33,7 @@ class TestPlaylistItem:
         track = Track(**sample_track_data)
         item = PlaylistItem.from_track(track)
 
-        assert item.source_type == CloudProvider.LOCAL
+        assert item.source == TrackSource.LOCAL
         assert item.track_id == track.id
         assert item.local_path == track.path
         assert item.title == track.title
@@ -44,12 +44,28 @@ class TestPlaylistItem:
         assert item.needs_download is False
         assert item.needs_metadata is False
 
+    def test_from_online_track(self):
+        """Test creating PlaylistItem from online track (empty path)."""
+        track = Track(
+            id=1,
+            path="",  # Empty path indicates online track
+            title="Online Song",
+            artist="Online Artist",
+            source=TrackSource.QQ,
+            cloud_file_id="song_mid_123"
+        )
+        item = PlaylistItem.from_track(track)
+
+        assert item.source == TrackSource.QQ
+        assert item.cloud_file_id == "song_mid_123"
+        assert item.needs_download is True
+
     def test_from_cloud_file_without_local_path(self, sample_cloud_file_data):
         """Test creating PlaylistItem from CloudFile without local path."""
         cloud_file = CloudFile(**sample_cloud_file_data)
         item = PlaylistItem.from_cloud_file(cloud_file, account_id=1)
 
-        assert item.source_type == CloudProvider.QUARK
+        assert item.source == TrackSource.QUARK
         assert item.cloud_file_id == cloud_file.file_id
         assert item.cloud_account_id == 1
         assert item.title == cloud_file.name
@@ -68,6 +84,13 @@ class TestPlaylistItem:
         assert item.local_path == "/cache/song.mp3"
         assert item.needs_download is False  # Has local path
 
+    def test_from_cloud_file_baidu(self, sample_cloud_file_data):
+        """Test creating PlaylistItem from Baidu CloudFile."""
+        cloud_file = CloudFile(**sample_cloud_file_data)
+        item = PlaylistItem.from_cloud_file(cloud_file, account_id=1, provider="BAIDU")
+
+        assert item.source == TrackSource.BAIDU
+
     def test_from_dict_local_track(self):
         """Test creating PlaylistItem from dict for local track."""
         data = {
@@ -80,7 +103,7 @@ class TestPlaylistItem:
         }
         item = PlaylistItem.from_dict(data)
 
-        assert item.source_type == CloudProvider.LOCAL
+        assert item.source == TrackSource.LOCAL
         assert item.track_id == 1
         assert item.local_path == "/music/song.mp3"
 
@@ -95,9 +118,21 @@ class TestPlaylistItem:
         }
         item = PlaylistItem.from_dict(data)
 
-        assert item.source_type == CloudProvider.QUARK
+        assert item.source == TrackSource.QUARK
         assert item.cloud_file_id == "quark_123"
         assert item.cloud_account_id == 1
+
+    def test_from_dict_with_source(self):
+        """Test creating PlaylistItem from dict with source field."""
+        data = {
+            "id": 1,
+            "source": "QQ",
+            "cloud_file_id": "song_mid",
+            "title": "Online Song",
+        }
+        item = PlaylistItem.from_dict(data)
+
+        assert item.source == TrackSource.QQ
 
     def test_to_dict(self):
         """Test converting PlaylistItem to dict."""
@@ -114,22 +149,25 @@ class TestPlaylistItem:
         assert data["path"] == "/music/song.mp3"
         assert data["title"] == "Test Song"
         assert data["artist"] == "Test Artist"
-        assert data["source_type"] == "local"
+        assert data["source"] == "Local"
 
     def test_is_cloud_property(self):
         """Test is_cloud property."""
-        local_item = PlaylistItem(source_type=CloudProvider.LOCAL)
+        local_item = PlaylistItem(source=TrackSource.LOCAL)
         assert local_item.is_cloud is False
 
-        cloud_item = PlaylistItem(source_type=CloudProvider.QUARK)
+        cloud_item = PlaylistItem(source=TrackSource.QUARK)
         assert cloud_item.is_cloud is True
+
+        qq_item = PlaylistItem(source=TrackSource.QQ)
+        assert qq_item.is_cloud is True
 
     def test_is_local_property(self):
         """Test is_local property."""
-        local_item = PlaylistItem(source_type=CloudProvider.LOCAL)
+        local_item = PlaylistItem(source=TrackSource.LOCAL)
         assert local_item.is_local is True
 
-        cloud_item = PlaylistItem(source_type=CloudProvider.QUARK)
+        cloud_item = PlaylistItem(source=TrackSource.QUARK)
         assert cloud_item.is_local is False
 
     def test_is_ready_property(self):
@@ -190,6 +228,7 @@ class TestPlaylistItem:
     def test_to_play_queue_item(self):
         """Test converting to PlayQueueItem."""
         item = PlaylistItem(
+            source=TrackSource.LOCAL,
             track_id=1,
             local_path="/music/song.mp3",
             title="Test Song",
@@ -200,14 +239,14 @@ class TestPlaylistItem:
         queue_item = item.to_play_queue_item(position=5)
 
         assert queue_item.position == 5
-        assert queue_item.source_type == "local"
+        assert queue_item.source == "Local"
         assert queue_item.track_id == 1
         assert queue_item.title == "Test Song"
 
     def test_to_play_queue_item_cloud(self):
         """Test converting cloud PlaylistItem to PlayQueueItem."""
         item = PlaylistItem(
-            source_type=CloudProvider.QUARK,
+            source=TrackSource.QUARK,
             cloud_file_id="quark_123",
             cloud_account_id=1,
             local_path="/cache/song.mp3",
@@ -215,9 +254,26 @@ class TestPlaylistItem:
         )
         queue_item = item.to_play_queue_item(position=1)
 
-        assert queue_item.source_type == "cloud"
-        assert queue_item.cloud_type == "quark"
+        assert queue_item.source == "QUARK"
         assert queue_item.cloud_file_id == "quark_123"
+
+    def test_to_play_queue_item_online(self):
+        """Test converting online PlaylistItem to PlayQueueItem."""
+        item = PlaylistItem(
+            source=TrackSource.QQ,
+            cloud_file_id="song_mid_123",
+            local_path="/cache/online/song.mp3",
+            title="Online Song",
+            artist="Online Artist",
+            album="Online Album",
+            duration=200.0,
+        )
+        queue_item = item.to_play_queue_item(position=0)
+
+        assert queue_item.source == "QQ"
+        assert queue_item.cloud_file_id == "song_mid_123"
+        assert queue_item.title == "Online Song"
+        assert queue_item.artist == "Online Artist"
 
     def test_from_play_queue_item_local(self, temp_dir):
         """Test creating from PlayQueueItem for local track."""
@@ -225,14 +281,14 @@ class TestPlaylistItem:
 
         queue_item = PlayQueueItem(
             position=1,
-            source_type="local",
+            source="Local",
             track_id=1,
             local_path="/music/song.mp3",
             title="Test Song",
         )
         playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
 
-        assert playlist_item.source_type == CloudProvider.LOCAL
+        assert playlist_item.source == TrackSource.LOCAL
         assert playlist_item.track_id == 1
         assert playlist_item.local_path == "/music/song.mp3"
         assert playlist_item.cover_path is None  # No db provided
@@ -243,8 +299,7 @@ class TestPlaylistItem:
 
         queue_item = PlayQueueItem(
             position=1,
-            source_type="cloud",
-            cloud_type="quark",
+            source="QUARK",
             cloud_file_id="quark_123",
             cloud_account_id=1,
             local_path="/cache/song.mp3",
@@ -252,28 +307,9 @@ class TestPlaylistItem:
         )
         playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
 
-        assert playlist_item.source_type == CloudProvider.QUARK
+        assert playlist_item.source == TrackSource.QUARK
         assert playlist_item.cloud_file_id == "quark_123"
         assert playlist_item.cloud_account_id == 1
-
-    def test_to_play_queue_item_online(self):
-        """Test converting online PlaylistItem to PlayQueueItem."""
-        item = PlaylistItem(
-            source_type=CloudProvider.ONLINE,
-            cloud_file_id="song_mid_123",
-            local_path="/cache/online/song.mp3",
-            title="Online Song",
-            artist="Online Artist",
-            album="Online Album",
-            duration=200.0,
-        )
-        queue_item = item.to_play_queue_item(position=0)
-
-        assert queue_item.source_type == "online"
-        assert queue_item.cloud_type == "QQ"
-        assert queue_item.cloud_file_id == "song_mid_123"
-        assert queue_item.title == "Online Song"
-        assert queue_item.artist == "Online Artist"
 
     def test_from_play_queue_item_online(self):
         """Test creating from PlayQueueItem for online track."""
@@ -281,8 +317,7 @@ class TestPlaylistItem:
 
         queue_item = PlayQueueItem(
             position=1,
-            source_type="online",
-            cloud_type="QQ",
+            source="QQ",
             cloud_file_id="song_mid_123",
             local_path="/cache/online/song.mp3",
             title="Online Song",
@@ -292,7 +327,7 @@ class TestPlaylistItem:
         )
         playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
 
-        assert playlist_item.source_type == CloudProvider.ONLINE
+        assert playlist_item.source == TrackSource.QQ
         assert playlist_item.cloud_file_id == "song_mid_123"
         assert playlist_item.title == "Online Song"
         assert playlist_item.artist == "Online Artist"
