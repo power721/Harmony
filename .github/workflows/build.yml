@@ -245,6 +245,8 @@ jobs:
 
       - name: Build executable
         run: |
+          # Add System32 to PATH so PyInstaller can resolve MFPlat.dll, PROPSYS.dll, etc.
+          $env:PATH = "C:\Windows\System32;" + $env:PATH
           python build.py windows
 
       - name: Create portable ZIP
