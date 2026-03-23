@@ -101,21 +101,36 @@ class SqlitePlaylistRepository:
         return cursor.rowcount > 0
 
     def add_track(self, playlist_id: int, track_id: TrackId) -> bool:
-        """Add a track to a playlist."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        # Get next position
-        cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
-        row = cursor.fetchone()
-        # Use is not None check because MAX can return 0 which is falsy
-        position = (row[0] if row[0] is not None else -1) + 1
+        """Add a track to a playlist.
 
-        cursor.execute("""
-                       INSERT INTO playlist_items (playlist_id, track_id, position)
-                       VALUES (?, ?, ?)
-                       """, (playlist_id, track_id, position))
-        conn.commit()
-        return cursor.rowcount > 0
+        Returns True if track was added, False if it already exists.
+        """
+        import time
+        max_retries = 3
+        retry_delay = 0.1
+
+        for attempt in range(max_retries):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                # Get next position
+                cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
+                row = cursor.fetchone()
+                # Use is not None check because MAX can return 0 which is falsy
+                position = (row[0] if row[0] is not None else -1) + 1
+
+                cursor.execute("""
+                               INSERT OR IGNORE INTO playlist_items (playlist_id, track_id, position)
+                               VALUES (?, ?, ?)
+                               """, (playlist_id, track_id, position))
+                conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise
 
     def remove_track(self, playlist_id: int, track_id: TrackId) -> bool:
         """Remove a track from a playlist."""

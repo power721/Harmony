@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 class PlayerControls(QWidget):
     """Player controls widget at the bottom of the main window."""
 
-    # Signal for cover loaded in background thread
-    _cover_loaded = Signal(str)
+    # Signal for cover loaded in background thread (cover_path, version)
+    _cover_loaded = Signal(str, int)
     # Signal for artist link clicked
     artist_clicked = Signal(str)  # Emits artist name
     # Signal for album link clicked
@@ -51,6 +51,7 @@ class PlayerControls(QWidget):
         self._current_duration = 0
         self._is_seeking = False
         self._current_cover_path = None  # Store current cover path
+        self._cover_load_version = 0  # Version counter for cover loading
 
         # Get icons directory path (must be before _setup_ui)
         self._icons_dir = Path(__file__).parent.parent.parent / "icons"
@@ -414,7 +415,7 @@ class PlayerControls(QWidget):
         bus.cover_updated.connect(self._on_cover_updated)
 
         # Cover loaded signal (for thread-safe UI update)
-        self._cover_loaded.connect(self._show_cover)
+        self._cover_loaded.connect(self._on_cover_loaded)
 
         # Sync button states with current player mode
         self._sync_button_states()
@@ -860,8 +861,11 @@ class PlayerControls(QWidget):
 
             # Clear cover immediately, load in background
             self._cover_label.clear()
+            # Increment version to invalidate any pending cover loads
+            self._cover_load_version += 1
+            current_version = self._cover_load_version
             # Use QTimer to delay cover loading so UI doesn't block
-            QTimer.singleShot(100, lambda: self._load_cover_art_async(track_dict))
+            QTimer.singleShot(100, lambda v=current_version, t=track_dict: self._load_cover_art_async(t, v))
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")
@@ -878,8 +882,13 @@ class PlayerControls(QWidget):
         if not current_track:
             self._title_label.setText(t("not_playing"))
 
-    def _load_cover_art_async(self, track_dict: dict):
-        """Load cover art in background thread."""
+    def _load_cover_art_async(self, track_dict: dict, version: int):
+        """Load cover art in background thread.
+
+        Args:
+            track_dict: Track information dictionary
+            version: Version number for stale result detection
+        """
 
         def load_cover():
             from pathlib import Path
@@ -947,9 +956,9 @@ class PlayerControls(QWidget):
 
         def worker():
             cover_path = load_cover()
-            logger.info(f"[PlayerControls] Worker emitting cover_path: {cover_path}")
-            # Use signal for thread-safe UI update
-            self._cover_loaded.emit(cover_path or "")
+            logger.info(f"[PlayerControls] Worker emitting cover_path: {cover_path}, version: {version}")
+            # Use signal for thread-safe UI update with version
+            self._cover_loaded.emit(cover_path or "", version)
 
         # Run in thread
         thread = threading.Thread(target=worker)
@@ -988,8 +997,18 @@ class PlayerControls(QWidget):
 
         return None
 
-    def _show_cover(self, cover_path: str):
-        """Show cover art (called via signal from background thread)."""
+    def _on_cover_loaded(self, cover_path: str, version: int):
+        """Handle cover loaded from background thread.
+
+        Args:
+            cover_path: Path to cover image
+            version: Version number for stale result detection
+        """
+        # Ignore stale results
+        if version != self._cover_load_version:
+            logger.debug(f"[PlayerControls] Ignoring stale cover result (version {version}, current {self._cover_load_version})")
+            return
+
         logger.info(f"[PlayerControls] _show_cover called with: {cover_path}")
         if cover_path:
             try:

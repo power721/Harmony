@@ -1402,28 +1402,40 @@ class OnlineMusicView(QWidget):
             playlist = dialog.get_single_playlist()
             dialog.deleteLater()
             if playlist:
+                added_count = 0
                 for track_id in track_ids:
-                    bootstrap.library_service.add_track_to_playlist(playlist.id, track_id)
-                logger.info(f"[OnlineMusicView] Added {len(track_ids)} tracks to playlist '{playlist.name}'")
-                QMessageBox.information(
-                    self,
-                    t("success"),
-                    t("added_tracks_to_playlist").format(count=len(track_ids), name=playlist.name)
-                )
+                    try:
+                        if bootstrap.library_service.add_track_to_playlist(playlist.id, track_id):
+                            added_count += 1
+                    except Exception as e:
+                        logger.warning(f"[OnlineMusicView] Failed to add track to playlist: {e}")
+                if added_count > 0:
+                    logger.info(f"[OnlineMusicView] Added {added_count} tracks to playlist '{playlist.name}'")
+                    QMessageBox.information(
+                        self,
+                        t("success"),
+                        t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
+                    )
             return
 
         # Show dialog for user to select playlist
         if dialog.exec():
             playlist = dialog.get_selected_playlist()
             if playlist:
+                added_count = 0
                 for track_id in track_ids:
-                    bootstrap.library_service.add_track_to_playlist(playlist.id, track_id)
-                logger.info(f"[OnlineMusicView] Added {len(track_ids)} tracks to playlist ID {playlist.id}")
-                QMessageBox.information(
-                    self,
-                    t("success"),
-                    t("added_tracks_to_playlist").format(count=len(track_ids), name=playlist.name)
-                )
+                    try:
+                        if bootstrap.library_service.add_track_to_playlist(playlist.id, track_id):
+                            added_count += 1
+                    except Exception as e:
+                        logger.warning(f"[OnlineMusicView] Failed to add track to playlist: {e}")
+                if added_count > 0:
+                    logger.info(f"[OnlineMusicView] Added {added_count} tracks to playlist ID {playlist.id}")
+                    QMessageBox.information(
+                        self,
+                        t("success"),
+                        t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
+                    )
         dialog.deleteLater()
 
     def _add_online_track_to_library(self, track: OnlineTrack) -> Optional[int]:

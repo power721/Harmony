@@ -123,6 +123,7 @@ class PlaybackService(QObject):
 
     def _on_metadata_updated(self, track_id: int):
         """Handle metadata update from manual edit - update play_queue."""
+        logger.debug(f"[PlaybackService] _on_metadata_updated called: track_id={track_id}")
         # Get updated track from database
         track = self._db.get_track(track_id)
         if not track:
@@ -160,6 +161,7 @@ class PlaybackService(QObject):
             song_mid: Song MID
             metadata: Metadata dict with title, artist, album, duration, etc.
         """
+        logger.debug(f"[PlaybackService] _on_online_track_metadata_loaded called: song_mid={song_mid}")
         # Update playlist items that match this song_mid (stored in cloud_file_id)
         updated = False
         is_current_track = False
@@ -187,11 +189,9 @@ class PlaybackService(QObject):
         if updated:
             self.save_queue()
 
-        # If current track was updated, emit signal to refresh UI
-        if is_current_track:
-            current_item = self._engine.current_playlist_item
-            if current_item:
-                self._event_bus.emit_track_change(current_item)
+        # Note: We don't emit track_change here because:
+        # 1. For downloads: on_cloud_file_downloaded already handles this via play_after_download
+        # 2. The metadata update is already reflected in the playlist item
 
     def _on_track_deleted(self, track_id: int):
         """
@@ -614,6 +614,14 @@ class PlaybackService(QObject):
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
         """
+        logger.debug(f"[PlaybackService] on_cloud_file_downloaded called: cloud_file_id={cloud_file_id}")
+
+        # Skip if this is an online track (QQ Music) - handled by on_online_track_downloaded
+        current_item = self._engine.current_playlist_item
+        if current_item and current_item.source == TrackSource.QQ:
+            logger.debug(f"[PlaybackService] Skipping on_cloud_file_downloaded for online track, handled by on_online_track_downloaded")
+            return
+
         self._downloaded_files[cloud_file_id] = local_path
 
         # Update cloud_files table with local_path
@@ -653,12 +661,8 @@ class PlaybackService(QObject):
         # Play if this is current track
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
-
-            # Re-emit track_changed with updated metadata for lyrics search
-            # This ensures lyrics are searched with correct title/artist from metadata
-            current_item = self._engine.current_playlist_item
-            if current_item and track:
-                self._event_bus.emit_track_change(current_item)
+            # Note: play_after_download already emits current_track_changed signal
+            # which will be handled by _on_track_changed -> emit_track_change
 
         # Save queue to persist the updated metadata
         self.save_queue()
@@ -902,6 +906,7 @@ class PlaybackService(QObject):
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
+        logger.debug(f"[PlaybackService] _on_track_changed called: track_id={track_dict.get('id')}")
         self._current_track_id = track_dict.get("id")
 
         item = self._engine.current_playlist_item
@@ -1116,12 +1121,11 @@ class PlaybackService(QObject):
             )
 
         # Play if this is current track
+        # Note: play_after_download already emits current_track_changed signal,
+        # which is forwarded to EventBus by _on_track_changed handler.
+        # No need to emit track_change here to avoid duplicate events.
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
-
-            current_item = self._engine.current_playlist_item
-            if current_item and track:
-                self._event_bus.emit_track_change(current_item)
 
         # Save queue to persist the updated metadata
         self.save_queue()

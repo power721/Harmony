@@ -1386,6 +1386,7 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
+        logger.debug(f"[MainWindow] _on_track_changed called")
         # Reset lyric line tracking
         self._current_lyric_line = None
 

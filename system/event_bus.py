@@ -6,6 +6,7 @@ all application-wide signals, reducing coupling between components.
 """
 
 import logging
+import traceback
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
@@ -166,6 +167,13 @@ class EventBus(QObject):
 
     def emit_track_change(self, track_item):
         """Emit a track change event with logging."""
+        # Get caller info for debugging
+        stack = traceback.extract_stack()
+        # Find the caller (skip this function and get the one before)
+        caller = stack[-3] if len(stack) > 2 else stack[-2]
+        caller_info = f"{caller.filename}:{caller.lineno} in {caller.name}"
+        track_info = getattr(track_item, 'title', str(track_item))[:50]
+        logger.debug(f"[EventBus] emit_track_change called from {caller_info}, track: {track_info}")
         self.track_changed.emit(track_item)
 
     def emit_playback_state(self, state: str):
