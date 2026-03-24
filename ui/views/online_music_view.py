@@ -1294,11 +1294,6 @@ class OnlineMusicView(QWidget):
 
         menu.addSeparator()
 
-        download_action = menu.addAction(t("download"))
-        download_action.triggered.connect(lambda: self._download_selected_tracks(tracks))
-
-        menu.addSeparator()
-
         # Add to favorites action
         add_to_favorites_action = menu.addAction(t("add_to_favorites"))
         add_to_favorites_action.triggered.connect(lambda: self._add_selected_to_favorites(tracks))
@@ -1306,6 +1301,11 @@ class OnlineMusicView(QWidget):
         # Add to playlist action
         add_to_playlist_action = menu.addAction(t("add_to_playlist"))
         add_to_playlist_action.triggered.connect(lambda: self._add_selected_to_playlist(tracks))
+
+        menu.addSeparator()
+
+        download_action = menu.addAction(t("download"))
+        download_action.triggered.connect(lambda: self._download_selected_tracks(tracks))
 
         menu.exec(table.viewport().mapToGlobal(pos))
 

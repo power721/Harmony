@@ -4,14 +4,16 @@ Database manager for the music player using SQLite.
 import logging
 import sqlite3
 import threading
+from concurrent.futures import Future
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Callable, List, Optional
 
 from domain.cloud import CloudAccount, CloudFile
 from domain.history import PlayHistory
 from domain.playback import PlayQueueItem
 from domain.playlist import Playlist
 from domain.track import Track, TrackSource
+from infrastructure.database.db_write_worker import DBWriteWorker, get_write_worker
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,6 +31,7 @@ class DatabaseManager:
         """
         self.db_path = db_path
         self.local = threading.local()
+        self._write_worker = get_write_worker(db_path)
         self._init_database()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -41,6 +44,33 @@ class DatabaseManager:
             # Set busy timeout for this connection
             self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
+
+    def _submit_write(self, func: Callable, *args, **kwargs) -> Future:
+        """
+        Submit a write operation to the worker thread.
+
+        Args:
+            func: Function to execute (will receive 'conn' kwarg if signature has it)
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Future with the result
+        """
+        return self._write_worker.submit(func, *args, **kwargs)
+
+    def _submit_write_async(self, func: Callable, *args, **kwargs):
+        """
+        Submit a write operation without waiting for result.
+
+        Fire-and-forget for operations where you don't need the result.
+
+        Args:
+            func: Function to execute
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+        """
+        self._write_worker.submit_async(func, *args, **kwargs)
 
     def _init_database(self):
         """Initialize database tables."""
@@ -777,7 +807,26 @@ class DatabaseManager:
 
     def add_track(self, track: Track) -> int:
         """Add a track to the database. Returns track ID."""
-        conn = self._get_connection()
+        # Serialize track data for thread safety
+        track_data = {
+            'path': track.path,
+            'title': track.title,
+            'artist': track.artist,
+            'album': track.album,
+            'duration': track.duration,
+            'cover_path': track.cover_path,
+            'created_at': track.created_at or datetime.now(),
+            'cloud_file_id': track.cloud_file_id,
+            'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
+        }
+
+        future = self._submit_write(self._do_add_track, track_data)
+        return future.result(timeout=10.0)
+
+    def _do_add_track(self, track_data: dict, conn: sqlite3.Connection = None) -> int:
+        """Internal method to add a track (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -787,15 +836,15 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
-                track.path,
-                track.title,
-                track.artist,
-                track.album,
-                track.duration,
-                track.cover_path,
-                track.created_at or datetime.now(),
-                track.cloud_file_id,
-                track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                track_data['path'],
+                track_data['title'],
+                track_data['artist'],
+                track_data['album'],
+                track_data['duration'],
+                track_data['cover_path'],
+                track_data['created_at'],
+                track_data['cloud_file_id'],
+                track_data['source'],
             ),
         )
 
@@ -1025,7 +1074,13 @@ class DatabaseManager:
 
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the database."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_delete_track, track_id)
+        return future.result(timeout=10.0)
+
+    def _do_delete_track(self, track_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to delete a track (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
@@ -1037,7 +1092,15 @@ class DatabaseManager:
             self, track_id: int, title: str = None, artist: str = None, album: str = None
     ) -> bool:
         """Update track metadata in the database."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_track, track_id, title, artist, album)
+        return future.result(timeout=10.0)
+
+    def _do_update_track(
+            self, track_id: int, title: str = None, artist: str = None, album: str = None, conn: sqlite3.Connection = None
+    ) -> bool:
+        """Internal method to update track metadata (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         updates = []
@@ -1072,10 +1135,15 @@ class DatabaseManager:
 
     def update_track_cover_path(self, track_id: int, cover_path: str) -> bool:
         """Update cover_path for a track."""
-        logger = logging.getLogger(__name__)
         logger.info(f"[DatabaseManager] update_track_cover_path: track_id={track_id}, cover_path={cover_path}")
 
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_track_cover_path, track_id, cover_path)
+        return future.result(timeout=10.0)
+
+    def _do_update_track_cover_path(self, track_id: int, cover_path: str, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to update track cover path (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1094,10 +1162,15 @@ class DatabaseManager:
 
     def update_track_path(self, track_id: int, path: str) -> bool:
         """Update path for a track."""
-        logger = logging.getLogger(__name__)
         logger.info(f"[DatabaseManager] update_track_path: track_id={track_id}, path={path}")
 
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_track_path, track_id, path)
+        return future.result(timeout=10.0)
+
+    def _do_update_track_path(self, track_id: int, path: str, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to update track path (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1300,7 +1373,13 @@ class DatabaseManager:
 
     def add_play_history(self, track_id: int) -> int:
         """Add a play history entry or increment play count."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_add_play_history, track_id)
+        return future.result(timeout=10.0)
+
+    def _do_add_play_history(self, track_id: int, conn: sqlite3.Connection = None) -> int:
+        """Internal method to add play history (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Check if there's a recent entry for today
@@ -1390,7 +1469,13 @@ class DatabaseManager:
 
     def add_favorite(self, track_id: int = None, cloud_file_id: str = None, cloud_account_id: int = None) -> bool:
         """Add a track or cloud file to favorites."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_add_favorite, track_id, cloud_file_id, cloud_account_id)
+        return future.result(timeout=10.0)
+
+    def _do_add_favorite(self, track_id: int = None, cloud_file_id: str = None, cloud_account_id: int = None, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to add favorite (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # If cloud_file_id provided, check if there's already a track record
@@ -1417,7 +1502,13 @@ class DatabaseManager:
 
     def remove_favorite(self, track_id: int = None, cloud_file_id: str = None) -> bool:
         """Remove a track or cloud file from favorites."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_remove_favorite, track_id, cloud_file_id)
+        return future.result(timeout=10.0)
+
+    def _do_remove_favorite(self, track_id: int = None, cloud_file_id: str = None, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to remove favorite (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # If cloud_file_id provided, check if there's a track record
@@ -1799,7 +1890,15 @@ class DatabaseManager:
             self, file_id: str, account_id: int, local_path: str
     ) -> bool:
         """Update the local path for a downloaded cloud file."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_cloud_file_local_path, file_id, account_id, local_path)
+        return future.result(timeout=10.0)
+
+    def _do_update_cloud_file_local_path(
+            self, file_id: str, account_id: int, local_path: str, conn: sqlite3.Connection = None
+    ) -> bool:
+        """Internal method to update cloud file local path (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -2101,14 +2200,20 @@ class DatabaseManager:
             True if successful
         """
         import json
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
         # Serialize value to string
         if isinstance(value, str):
             value_str = value
         else:
             value_str = json.dumps(value)
+
+        future = self._submit_write(self._do_set_setting, key, value_str)
+        return future.result(timeout=10.0)
+
+    def _do_set_setting(self, key: str, value_str: str, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to set setting (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
+        cursor = conn.cursor()
 
         cursor.execute(
             """
@@ -2182,15 +2287,38 @@ class DatabaseManager:
         Returns:
             True if successful
         """
+        # Serialize items to simple dicts for thread safety
+        items_data = [
+            {
+                'position': i,
+                'source': item.source,
+                'track_id': item.track_id,
+                'cloud_file_id': item.cloud_file_id,
+                'cloud_account_id': item.cloud_account_id,
+                'local_path': item.local_path,
+                'title': item.title,
+                'artist': item.artist,
+                'album': item.album,
+                'duration': item.duration,
+                'created_at': item.created_at or datetime.now(),
+            }
+            for i, item in enumerate(items)
+        ]
 
-        conn = self._get_connection()
+        future = self._submit_write(self._do_save_play_queue, items_data)
+        return future.result(timeout=10.0)
+
+    def _do_save_play_queue(self, items_data: list, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to save play queue (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Clear existing queue
         cursor.execute("DELETE FROM play_queue")
 
         # Insert new items
-        for position, item in enumerate(items):
+        for item in items_data:
             cursor.execute(
                 """
                 INSERT INTO play_queue
@@ -2199,17 +2327,17 @@ class DatabaseManager:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    position,
-                    item.source,
-                    item.track_id,
-                    item.cloud_file_id,
-                    item.cloud_account_id,
-                    item.local_path,
-                    item.title,
-                    item.artist,
-                    item.album,
-                    item.duration,
-                    item.created_at or datetime.now(),
+                    item['position'],
+                    item['source'],
+                    item['track_id'],
+                    item['cloud_file_id'],
+                    item['cloud_account_id'],
+                    item['local_path'],
+                    item['title'],
+                    item['artist'],
+                    item['album'],
+                    item['duration'],
+                    item['created_at'],
                 ),
             )
 
@@ -2282,7 +2410,13 @@ class DatabaseManager:
         Returns:
             True if successful
         """
-        conn = self._get_connection()
+        future = self._submit_write(self._do_clear_play_queue)
+        return future.result(timeout=10.0)
+
+    def _do_clear_play_queue(self, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to clear play queue (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM play_queue")
