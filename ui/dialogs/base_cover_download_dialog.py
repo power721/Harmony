@@ -501,6 +501,113 @@ class BaseCoverDownloadDialog(QDialog):
         pass
 
     # ========================================================================
+    # Shared Search Result Handlers
+    # ========================================================================
+
+    def _on_search_completed_base(self, results: list):
+        """Handle search completion - shared implementation."""
+        self._search_results = results
+        self._progress.setVisible(False)
+        self._search_btn.setEnabled(True)
+
+        if not results:
+            self._status_label.setText(t("no_results"))
+            self._cover_label.setText(t("no_results"))
+            return
+
+        # Populate results list
+        for result in results:
+            display = self._format_result_display(result)
+            item = QListWidgetItem(display)
+            item.setData(Qt.UserRole, result)
+            self._results_list.addItem(item)
+
+        # Auto-select first result
+        if self._results_list.count() > 0:
+            self._results_list.setCurrentRow(0)
+            self._on_result_selected(self._results_list.item(0))
+
+        self._status_label.setText(f"{t('found')} {len(results)} {t('results')}")
+
+    def _on_search_failed_base(self, error_message: str):
+        """Handle search failure - shared implementation."""
+        self._progress.setVisible(False)
+        self._search_btn.setEnabled(True)
+        self._status_label.setText(error_message)
+        self._cover_label.setText(t("no_results"))
+
+    # ========================================================================
+    # QQ Music Cover Fetch (Shared)
+    # ========================================================================
+
+    def _fetch_qqmusic_cover_base(self, album_mid: str = None, song_mid: str = None,
+                                   singer_mid: str = None, result: dict = None,
+                                   is_artist: bool = False):
+        """Fetch QQ Music cover URL lazily and download - shared implementation.
+
+        Args:
+            album_mid: Album mid (for album/track covers)
+            song_mid: Song mid (for track covers)
+            singer_mid: Singer mid (for artist covers)
+            result: Search result dict with score
+            is_artist: True for artist covers (uses QQMusicArtistCoverFetchThread)
+        """
+        if result is None:
+            result = {}
+        score = result.get('score', 0)
+        logger.info(f"QQ Music lazy fetch: album_mid={album_mid}, song_mid={song_mid}, singer_mid={singer_mid}")
+
+        # Update score display
+        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
+
+        # Stop any running download thread
+        if self._download_thread and self._download_thread.isRunning():
+            self._download_thread.terminate()
+            self._download_thread.wait()
+
+        self._progress.setVisible(True)
+        self._progress.setRange(0, 0)
+        self._status_label.setText(t("downloading"))
+
+        if is_artist and singer_mid:
+            # Use QQMusicArtistCoverFetchThread for artist covers
+            self._download_thread = QQMusicArtistCoverFetchThread(
+                singer_mid=singer_mid,
+                score=score
+            )
+        else:
+            # Use QQMusicCoverFetchThread for album/track covers
+            self._download_thread = QQMusicCoverFetchThread(
+                album_mid=album_mid,
+                song_mid=song_mid,
+                score=score
+            )
+
+        self._download_thread.cover_fetched.connect(self._on_qqmusic_cover_fetched)
+        self._download_thread.fetch_failed.connect(self._on_qqmusic_cover_failed)
+        self._download_thread.finished.connect(self._on_download_finished)
+        self._download_thread.start()
+
+    def _on_qqmusic_cover_fetched(self, cover_data: bytes, source: str, score: float):
+        """Handle QQ Music cover fetch success - shared implementation."""
+        logger.info(f"QQ Music cover fetched: {len(cover_data)} bytes")
+        # Call subclass _on_cover_downloaded which calls _on_cover_downloaded_base
+        self._on_cover_downloaded(cover_data, source)
+        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
+
+    def _on_qqmusic_cover_failed(self, error_message: str):
+        """Handle QQ Music cover fetch failure - shared implementation."""
+        logger.warning(f"QQ Music cover fetch failed: {error_message}")
+        self._progress.setVisible(False)
+        self._status_label.setText(error_message)
+        self._cover_label.setText(t("cover_load_failed"))
+
+    @abstractmethod
+    def _on_cover_downloaded(self, cover_data: bytes, source: str):
+        """Handle successful cover download - subclass calls _on_cover_downloaded_base."""
+        pass
+
+    # ========================================================================
     # Cleanup
     # ========================================================================
 

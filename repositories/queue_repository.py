@@ -2,37 +2,21 @@
 SQLite implementation of QueueRepository.
 """
 
-import sqlite3
-import threading
-from typing import List, TYPE_CHECKING
 from datetime import datetime
+from typing import List, TYPE_CHECKING
 
 from domain.playback import PlayQueueItem
+from repositories.base_repository import BaseRepository
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
 
 
-class SqliteQueueRepository:
+class SqliteQueueRepository(BaseRepository):
     """SQLite implementation of QueueRepository."""
 
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
-        self.db_path = db_path
-        self._db_manager = db_manager
-        self.local = threading.local()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get database connection from db_manager or create thread-local connection."""
-        if self._db_manager:
-            return self._db_manager._get_connection()
-
-        # Fallback: create thread-local connection (for tests)
-        if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
-            self.local.conn.row_factory = sqlite3.Row
-            self.local.conn.execute("PRAGMA journal_mode=WAL")
-            self.local.conn.execute("PRAGMA busy_timeout=30000")
-        return self.local.conn
+        super().__init__(db_path, db_manager)
 
     def load(self) -> List[PlayQueueItem]:
         """Load the saved play queue."""

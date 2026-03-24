@@ -16,7 +16,7 @@ from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.base_cover_download_dialog import (
-    BaseCoverDownloadDialog, CoverDownloadThread, QQMusicCoverFetchThread
+    BaseCoverDownloadDialog, CoverDownloadThread
 )
 
 logger = logging.getLogger(__name__)
@@ -461,45 +461,8 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _fetch_qqmusic_cover(self, album_mid: str, song_mid: str, result: dict):
         """Fetch QQ Music cover URL lazily and download."""
-        score = result.get('score', 0)
         logger.info(f"=== _fetch_qqmusic_cover called: album_mid={album_mid}, song_mid={song_mid} ===")
-
-        # Update score display
-        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
-
-        # Stop any running download thread
-        if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
-
-        self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
-        self._status_label.setText(t("downloading"))
-
-        # Use QQMusicCoverFetchThread for lazy fetch
-        self._download_thread = QQMusicCoverFetchThread(
-            album_mid=album_mid,
-            song_mid=song_mid,
-            score=score
-        )
-        self._download_thread.cover_fetched.connect(self._on_qqmusic_cover_fetched)
-        self._download_thread.fetch_failed.connect(self._on_qqmusic_cover_failed)
-        self._download_thread.finished.connect(self._on_download_finished)
-        self._download_thread.start()
-        logger.info(f"Thread started, isRunning={self._download_thread.isRunning()}")
-
-    def _on_qqmusic_cover_fetched(self, cover_data: bytes, source: str, score: float):
-        """Handle QQ Music cover fetch success."""
-        logger.info(f"=== _on_qqmusic_cover_fetched: {len(cover_data)} bytes ===")
-        self._on_cover_downloaded(cover_data, source)
-        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
-
-    def _on_qqmusic_cover_failed(self, error_message: str):
-        """Handle QQ Music cover fetch failure."""
-        logger.warning(f"_on_qqmusic_cover_failed: {error_message}")
-        self._progress.setVisible(False)
-        self._status_label.setText(error_message)
-        self._cover_label.setText(t("cover_load_failed"))
+        self._fetch_qqmusic_cover_base(album_mid=album_mid, song_mid=song_mid, result=result)
 
     def _on_cover_downloaded(self, cover_data: bytes, source: str):
         """Handle successful cover download."""

@@ -163,7 +163,7 @@ class OnlineDownloadService:
         try:
             import requests
 
-            logger.info(f"Downloading: {song_title or song_mid}")
+            logger.info(f"Downloading: {song_mid} {song_title}")
 
             # Emit download started event
             self._event_bus.download_started.emit(song_mid)

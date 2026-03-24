@@ -12,7 +12,7 @@ from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.base_cover_download_dialog import (
-    BaseCoverDownloadDialog, CoverDownloadThread, QQMusicArtistCoverFetchThread
+    BaseCoverDownloadDialog, CoverDownloadThread
 )
 
 logger = logging.getLogger(__name__)
@@ -77,35 +77,11 @@ class ArtistCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _on_search_completed(self, results: list):
         """Handle search completion."""
-        self._search_results = results
-        self._progress.setVisible(False)
-        self._search_btn.setEnabled(True)
-
-        if not results:
-            self._status_label.setText(t("no_results"))
-            self._cover_label.setText(t("no_results"))
-            return
-
-        # Populate results list
-        for result in results:
-            display = self._format_result_display(result)
-            item = QListWidgetItem(display)
-            item.setData(Qt.UserRole, result)
-            self._results_list.addItem(item)
-
-        # Auto-select first result
-        if self._results_list.count() > 0:
-            self._results_list.setCurrentRow(0)
-            self._on_result_selected(self._results_list.item(0))
-
-        self._status_label.setText(f"{t('found')} {len(results)} {t('results')}")
+        self._on_search_completed_base(results)
 
     def _on_search_failed(self, error_message: str):
         """Handle search failure."""
-        self._progress.setVisible(False)
-        self._search_btn.setEnabled(True)
-        self._status_label.setText(error_message)
-        self._cover_label.setText(t("no_results"))
+        self._on_search_failed_base(error_message)
 
     def _format_result_display(self, result: dict) -> str:
         """Format search result for display in list."""
@@ -167,43 +143,7 @@ class ArtistCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _fetch_qqmusic_cover(self, singer_mid: str, result: dict):
         """Fetch QQ Music artist cover URL lazily and download."""
-        score = result.get('score', 0)
-        logger.info(f"Artist QQ Music lazy fetch: singer_mid={singer_mid}")
-
-        # Update score display
-        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
-
-        # Stop any running download thread
-        if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
-
-        self._progress.setVisible(True)
-        self._progress.setRange(0, 0)
-        self._status_label.setText(t("downloading"))
-
-        # Use QQMusicArtistCoverFetchThread for lazy fetch
-        self._download_thread = QQMusicArtistCoverFetchThread(
-            singer_mid=singer_mid,
-            score=score
-        )
-        self._download_thread.cover_fetched.connect(self._on_qqmusic_cover_fetched)
-        self._download_thread.fetch_failed.connect(self._on_qqmusic_cover_failed)
-        self._download_thread.finished.connect(self._on_download_finished)
-        self._download_thread.start()
-
-    def _on_qqmusic_cover_fetched(self, cover_data: bytes, source: str, score: float):
-        """Handle QQ Music cover fetch success."""
-        logger.info(f"Artist QQ Music cover fetched: {len(cover_data)} bytes")
-        self._on_cover_downloaded(cover_data, source)
-        self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
-
-    def _on_qqmusic_cover_failed(self, error_message: str):
-        """Handle QQ Music cover fetch failure."""
-        logger.warning(f"Artist QQ Music cover fetch failed: {error_message}")
-        self._progress.setVisible(False)
-        self._status_label.setText(error_message)
-        self._cover_label.setText(t("cover_load_failed"))
+        self._fetch_qqmusic_cover_base(singer_mid=singer_mid, result=result, is_artist=True)
 
     def _on_cover_downloaded(self, cover_data: bytes, source: str):
         """Handle successful cover download - display as circular."""

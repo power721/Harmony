@@ -566,7 +566,6 @@ class OnlineGridView(QWidget):
         Args:
             items: List of online items to display
         """
-        logger.info(f"[OnlineGridView] load_data called with {len(items)} items, data_type={self._data_type}, visible={self.isVisible()}")
         self._pending_data = items
 
         if self.isVisible():
@@ -579,13 +578,11 @@ class OnlineGridView(QWidget):
 
     def _do_load(self, items: List[OnlineItem]):
         """Actually load data into the view."""
-        logger.info(f"[OnlineGridView] _do_load called with {len(items)} items, data_type={self._data_type}")
         self._items = items
         self._data_loaded = True
         self._model.set_items(items)
         self._loading.hide()
         self._list_view.show()
-        logger.info(f"[OnlineGridView] Data loaded, list view visible: {self._list_view.isVisible()}")
 
     def append_data(self, items: List[OnlineItem]):
         """
@@ -597,7 +594,6 @@ class OnlineGridView(QWidget):
         if not items:
             return
 
-        logger.info(f"[OnlineGridView] Appending {len(items)} items to existing {len(self._items)} items")
         self._items.extend(items)
         self._model.set_items(self._items)
         self._loading.hide()

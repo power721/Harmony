@@ -936,12 +936,6 @@ class OnlineMusicView(QWidget):
 
     def _display_artists(self, artists: List[OnlineArtist], is_append: bool = False):
         """Display artists in grid view."""
-        logger.info(f"[OnlineMusicView] Displaying {len(artists)} artists")
-        if artists:
-            first = artists[0]
-            logger.info(f"[OnlineMusicView] First artist - name: '{first.name}', mid: '{first.mid}', songs: {first.song_count}, albums: {first.album_count}, avatar: '{first.avatar_url}'")
-            logger.info(f"[OnlineMusicView] First artist object: {first}")
-
         if is_append:
             self._singers_page.append_data(artists)
         else:
