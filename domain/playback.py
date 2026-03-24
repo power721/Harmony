@@ -31,12 +31,11 @@ class PlayQueueItem:
 
     id: Optional[int] = None
     position: int = 0  # Order in the queue (determines playback order)
-    source_type: str = "local"  # "local" or "cloud"
-    cloud_type: str = ""  # Cloud provider type: "quark", "onedrive", etc. (for source_type=cloud)
-    track_id: Optional[int] = None  # Local track ID (source_type=local)
-    cloud_file_id: Optional[str] = None  # Cloud file ID (source_type=cloud)
+    source: str = "Local"  # TrackSource value: "Local", "QQ", "QUARK", "BAIDU"
+    track_id: Optional[int] = None  # Track ID in database
+    cloud_file_id: Optional[str] = None  # Cloud file ID / Song MID
     cloud_account_id: Optional[int] = None  # Cloud account ID
-    local_path: str = ""  # Local file path (for cloud files: cached path)
+    local_path: str = ""  # Local file path
     title: str = ""
     artist: str = ""
     album: str = ""

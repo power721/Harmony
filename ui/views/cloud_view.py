@@ -1881,7 +1881,8 @@ class CloudDriveView(QWidget):
 
         # Create playlist item
         account_id = self._current_account.id if self._current_account else 0
-        item = PlaylistItem.from_cloud_file(file, account_id, local_path)
+        provider = self._current_account.provider if self._current_account else "QUARK"
+        item = PlaylistItem.from_cloud_file(file, account_id, local_path, provider=provider)
 
         # Add to engine playlist
         self._player.engine.add_track(item)
@@ -1921,7 +1922,8 @@ class CloudDriveView(QWidget):
 
         # Create playlist item
         account_id = self._current_account.id if self._current_account else 0
-        item = PlaylistItem.from_cloud_file(file, account_id, local_path)
+        provider = self._current_account.provider if self._current_account else "QUARK"
+        item = PlaylistItem.from_cloud_file(file, account_id, local_path, provider=provider)
 
         # Insert after current track
         current_index = self._player.engine.current_index

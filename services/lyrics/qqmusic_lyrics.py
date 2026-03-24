@@ -5,6 +5,7 @@ Hybrid implementation: Uses local QQ Music API when credentials are available,
 falls back to remote API (api.ygking.top) for public access.
 """
 import logging
+import threading
 from typing import List, Optional, TYPE_CHECKING
 import requests
 
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
     from system.config import ConfigManager
 
 logger = logging.getLogger(__name__)
+
+# Global lock to prevent concurrent credential refresh
+_refresh_lock = threading.Lock()
 
 
 def _get_client() -> 'QQMusicClient':
@@ -98,21 +102,35 @@ class QQMusicClient:
         """
         Refresh credential and save to config.
 
+        Uses a global lock to prevent concurrent refresh attempts.
+
         Args:
             config: ConfigManager instance for saving updated credential
         """
         if not self._local_client:
             return
 
-        try:
-            updated = self._local_client.refresh_credential()
-            if updated:
-                config.set_qqmusic_credential(updated)
-                logger.info("Credential refreshed and saved successfully")
-            else:
-                logger.warning("Credential refresh failed, will retry later")
-        except Exception as e:
-            logger.error(f"Error refreshing credential: {e}")
+        # Use lock to prevent concurrent refresh
+        with _refresh_lock:
+            # Re-read credential from config to check if already refreshed by another thread
+            current_credential = config.get_qqmusic_credential()
+            if current_credential:
+                # Update local client's credential
+                self._local_client.credential = current_credential
+                # Check again if refresh is still needed
+                if not self._local_client.needs_refresh():
+                    logger.debug("Credential already refreshed by another thread, skipping")
+                    return
+
+            try:
+                updated = self._local_client.refresh_credential()
+                if updated:
+                    config.set_qqmusic_credential(updated)
+                    logger.info("Credential refreshed and saved successfully")
+                else:
+                    logger.warning("Credential refresh failed, will retry later")
+            except Exception as e:
+                logger.error(f"Error refreshing credential: {e}")
 
     def refresh_credentials(self):
         """Refresh credentials and reinitialize local client."""

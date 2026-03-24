@@ -4,26 +4,36 @@ SQLite implementation of PlaylistRepository.
 
 import sqlite3
 import threading
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from domain.playlist import Playlist
 from domain.track import Track, TrackId
 from repositories.track_repository import SqliteTrackRepository
 
+if TYPE_CHECKING:
+    from infrastructure.database import DatabaseManager
+
 
 class SqlitePlaylistRepository:
     """SQLite implementation of PlaylistRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db"):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         self.db_path = db_path
+        self._db_manager = db_manager
         self.local = threading.local()
-        self._track_repo = SqliteTrackRepository(db_path)
+        self._track_repo = SqliteTrackRepository(db_path, db_manager)
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Get thread-local database connection."""
+        """Get database connection from db_manager or create thread-local connection."""
+        if self._db_manager:
+            return self._db_manager._get_connection()
+
+        # Fallback: create thread-local connection (for tests)
         if not hasattr(self.local, "conn"):
-            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
+            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
     def get_by_id(self, playlist_id: int) -> Optional[Playlist]:
@@ -91,20 +101,36 @@ class SqlitePlaylistRepository:
         return cursor.rowcount > 0
 
     def add_track(self, playlist_id: int, track_id: TrackId) -> bool:
-        """Add a track to a playlist."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        # Get next position
-        cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
-        row = cursor.fetchone()
-        position = (row[0] or -1) + 1
+        """Add a track to a playlist.
 
-        cursor.execute("""
-                       INSERT INTO playlist_items (playlist_id, track_id, position)
-                       VALUES (?, ?, ?)
-                       """, (playlist_id, track_id, position))
-        conn.commit()
-        return cursor.rowcount > 0
+        Returns True if track was added, False if it already exists.
+        """
+        import time
+        max_retries = 3
+        retry_delay = 0.1
+
+        for attempt in range(max_retries):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                # Get next position
+                cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
+                row = cursor.fetchone()
+                # Use is not None check because MAX can return 0 which is falsy
+                position = (row[0] if row[0] is not None else -1) + 1
+
+                cursor.execute("""
+                               INSERT OR IGNORE INTO playlist_items (playlist_id, track_id, position)
+                               VALUES (?, ?, ?)
+                               """, (playlist_id, track_id, position))
+                conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    raise
 
     def remove_track(self, playlist_id: int, track_id: TrackId) -> bool:
         """Remove a track from a playlist."""

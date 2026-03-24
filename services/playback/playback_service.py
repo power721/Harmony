@@ -6,10 +6,11 @@ favorites management, and EventBus integration.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
@@ -82,6 +83,8 @@ class PlaybackService(QObject):
         # Online download workers (song_mid -> QThread)
         self._online_download_workers: dict = {}
 
+        # NOTE: _db_lock removed - DBWriteWorker now handles serialization
+
         # Connect engine signals
         self._connect_engine_signals()
 
@@ -117,6 +120,9 @@ class PlaybackService(QObject):
 
         # Connect to online_track_metadata_loaded to update play_queue for online tracks
         self._event_bus.online_track_metadata_loaded.connect(self._on_online_track_metadata_loaded)
+
+        # Connect to track_deleted to remove from play queue
+        self._event_bus.track_deleted.connect(self._on_track_deleted)
 
     def _on_metadata_updated(self, track_id: int):
         """Handle metadata update from manual edit - update play_queue."""
@@ -184,11 +190,28 @@ class PlaybackService(QObject):
         if updated:
             self.save_queue()
 
-        # If current track was updated, emit signal to refresh UI
-        if is_current_track:
-            current_item = self._engine.current_playlist_item
-            if current_item:
-                self._event_bus.emit_track_change(current_item)
+        # Note: We don't emit track_change here because:
+        # 1. For downloads: on_cloud_file_downloaded already handles this via play_after_download
+        # 2. The metadata update is already reflected in the playlist item
+
+    def _on_track_deleted(self, track_id: int):
+        """
+        Handle track deletion - remove from play queue.
+
+        Args:
+            track_id: ID of the deleted track
+        """
+        logger.info(f"[PlaybackService] Track deleted, removing from queue: {track_id}")
+
+        # Remove all items with this track_id from the queue
+        removed_indices = self._engine.remove_playlist_item_by_track_id(track_id)
+
+        if removed_indices:
+            logger.info(f"[PlaybackService] Removed {len(removed_indices)} item(s) from queue")
+            # Save the updated queue
+            self.save_queue()
+            # Emit playlist changed signal
+            self._engine.playlist_changed.emit()
 
     def _restore_settings(self):
         """Restore saved settings from config."""
@@ -286,6 +309,9 @@ class PlaybackService(QObject):
         """
         Play a local track by ID.
 
+        Handles both local files and online tracks (QQ Music).
+        Online tracks (empty path) will be downloaded before playback.
+
         Args:
             track_id: Database track ID
         """
@@ -294,7 +320,11 @@ class PlaybackService(QObject):
             logger.error(f"[PlaybackService] Track not found: {track_id}")
             return
 
-        if not Path(track.path).exists():
+        # Check if this is an online track (empty path)
+        is_online_track = not track.path or track.source == TrackSource.QQ
+
+        # For local tracks with path, verify file exists
+        if not is_online_track and not Path(track.path).exists():
             logger.error(f"[PlaybackService] File not found: {track.path}")
             return
 
@@ -309,11 +339,14 @@ class PlaybackService(QObject):
         start_index = 0
 
         for t in tracks:
-            if t.id and t.id > 0 and Path(t.path).exists():
-                item = PlaylistItem.from_track(t)
-                if t.id == track_id:
-                    start_index = len(items)
-                items.append(item)
+            if t.id and t.id > 0:
+                # Include online tracks (empty path) and existing local files
+                t_is_online = not t.path or t.source == TrackSource.QQ
+                if t_is_online or Path(t.path).exists():
+                    item = PlaylistItem.from_track(t)
+                    if t.id == track_id:
+                        start_index = len(items)
+                    items.append(item)
 
         self._engine.load_playlist_items(items)
 
@@ -333,6 +366,8 @@ class PlaybackService(QObject):
         """
         Play multiple local tracks.
 
+        Handles both local files and online tracks.
+
         Args:
             track_ids: List of track IDs
             start_index: Index to start playback from
@@ -343,8 +378,11 @@ class PlaybackService(QObject):
         items = []
         for track_id in track_ids:
             track = self._db.get_track(track_id)
-            if track and Path(track.path).exists():
-                items.append(PlaylistItem.from_track(track))
+            if track:
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
+                    items.append(PlaylistItem.from_track(track))
 
         self._engine.load_playlist_items(items)
 
@@ -365,8 +403,11 @@ class PlaybackService(QObject):
         items = []
 
         for t in tracks:
-            if t.id and t.id > 0 and Path(t.path).exists():
-                items.append(PlaylistItem.from_track(t))
+            if t.id and t.id > 0:
+                # Include online tracks (empty path) and existing local files
+                is_online = not t.path or t.source == TrackSource.QQ
+                if is_online or Path(t.path).exists():
+                    items.append(PlaylistItem.from_track(t))
 
         self._engine.load_playlist_items(items)
 
@@ -385,21 +426,24 @@ class PlaybackService(QObject):
         """
         logger.debug(f"[PlaybackService] Loading playlist: {playlist_id}")
 
-        self._set_source("local")
+        # self._set_source("local")
 
         tracks = self._db.get_playlist_tracks(playlist_id)
         items = []
 
         for track in tracks:
-            if track.id and track.id > 0 and Path(track.path).exists():
-                items.append(PlaylistItem.from_track(track))
+            if track.id and track.id > 0:
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
+                    items.append(PlaylistItem.from_track(track))
 
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
             self._engine.shuffle_and_play()
 
-        self._config.set_playback_source("local")
+        # self._config.set_playback_source("local")
 
     def play_playlist_track(self, playlist_id: int, track_id: int):
         """
@@ -416,11 +460,14 @@ class PlaybackService(QObject):
         start_index = 0
 
         for track in tracks:
-            if track.id and track.id > 0 and Path(track.path).exists():
-                item = PlaylistItem.from_track(track)
-                if track.id == track_id:
-                    start_index = len(items)
-                items.append(item)
+            if track.id and track.id > 0:
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
+                    item = PlaylistItem.from_track(track)
+                    if track.id == track_id:
+                        start_index = len(items)
+                    items.append(item)
 
         self._engine.load_playlist_items(items)
 
@@ -440,8 +487,11 @@ class PlaybackService(QObject):
         items = []
 
         for track in tracks:
-            if track.id and Path(track.path).exists():
-                items.append(PlaylistItem.from_track(track))
+            if track.id:
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
+                    items.append(PlaylistItem.from_track(track))
 
         self._engine.load_playlist_items(items)
 
@@ -474,7 +524,7 @@ class PlaybackService(QObject):
 
         for i, cf in enumerate(self._cloud_files):
             local_path = self._get_cached_path(cf.file_id)
-            item = PlaylistItem.from_cloud_file(cf, account.id, local_path)
+            item = PlaylistItem.from_cloud_file(cf, account.id, local_path, provider=account.provider)
             if cf.file_id == cloud_file.file_id:
                 start_index = i
             items.append(item)
@@ -523,7 +573,7 @@ class PlaybackService(QObject):
             else:
                 local_path = self._get_cached_path(cf.file_id)
 
-            item = PlaylistItem.from_cloud_file(cf, account.id, local_path)
+            item = PlaylistItem.from_cloud_file(cf, account.id, local_path, provider=account.provider)
 
             # For already downloaded files, ensure track record exists
             if local_path:
@@ -565,6 +615,12 @@ class PlaybackService(QObject):
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
         """
+        # Skip if this is an online track (QQ Music) - handled by on_online_track_downloaded
+        current_item = self._engine.current_playlist_item
+        if current_item and current_item.source == TrackSource.QQ:
+            logger.debug(f"[PlaybackService] Skipping on_cloud_file_downloaded for online track, handled by on_online_track_downloaded")
+            return
+
         self._downloaded_files[cloud_file_id] = local_path
 
         # Update cloud_files table with local_path
@@ -604,12 +660,8 @@ class PlaybackService(QObject):
         # Play if this is current track
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
-
-            # Re-emit track_changed with updated metadata for lyrics search
-            # This ensures lyrics are searched with correct title/artist from metadata
-            current_item = self._engine.current_playlist_item
-            if current_item and track:
-                self._event_bus.emit_track_change(current_item)
+            # Note: play_after_download already emits current_track_changed signal
+            # which will be handled by _on_track_changed -> emit_track_change
 
         # Save queue to persist the updated metadata
         self.save_queue()
@@ -705,6 +757,7 @@ class PlaybackService(QObject):
             queue_item = item.to_play_queue_item(i)
             queue_items.append(queue_item)
 
+        # DBWriteWorker handles serialization
         self._db.save_play_queue(queue_items)
 
         # Save current index and play mode
@@ -875,18 +928,6 @@ class PlaybackService(QObject):
                         self.save_queue()
                 else:
                     # Create a new Track record for this cloud file
-                    from domain.track import TrackSource
-                    from domain.cloud import CloudProvider
-
-                    # Map CloudProvider to TrackSource
-                    source_map = {
-                        CloudProvider.LOCAL: TrackSource.LOCAL,
-                        CloudProvider.ONLINE: TrackSource.QQ,
-                        CloudProvider.QUARK: TrackSource.QUARK,
-                        CloudProvider.BAIDU: TrackSource.BAIDU,
-                    }
-                    source = source_map.get(item.source_type, TrackSource.LOCAL)
-
                     new_track = Track(
                         path=item.local_path,
                         title=item.title,
@@ -894,7 +935,7 @@ class PlaybackService(QObject):
                         album=item.album,
                         duration=item.duration,
                         cloud_file_id=item.cloud_file_id,
-                        source=source,
+                        source=item.source,  # Already TrackSource
                     )
                     track_id = self._db.add_track(new_track)
 
@@ -924,9 +965,7 @@ class PlaybackService(QObject):
 
     def _on_track_needs_download(self, item: PlaylistItem):
         """Handle track that needs download."""
-        from domain.cloud import CloudProvider
-
-        if item.source_type == CloudProvider.ONLINE:
+        if item.source == TrackSource.QQ:
             # Handle online music download
             self._download_online_track(item)
         else:
@@ -990,11 +1029,12 @@ class PlaybackService(QObject):
             # Remove from dict after completion
             if mid in self._online_download_workers:
                 worker_obj = self._online_download_workers.pop(mid)
-                # Wait for thread to fully stop before deleting
-                worker_obj.wait(500)
+                # Don't call wait() here - we're in the worker thread!
+                # Just schedule deletion, Qt will handle it safely
                 worker_obj.deleteLater()
 
-        worker.download_finished.connect(on_finished)
+        # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
+        worker.download_finished.connect(on_finished, Qt.DirectConnection)
 
         # Store in dict and start
         self._online_download_workers[song_mid] = worker
@@ -1081,12 +1121,11 @@ class PlaybackService(QObject):
             )
 
         # Play if this is current track
+        # Note: play_after_download already emits current_track_changed signal,
+        # which is forwarded to EventBus by _on_track_changed handler.
+        # No need to emit track_change here to avoid duplicate events.
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
-
-            current_item = self._engine.current_playlist_item
-            if current_item and track:
-                self._event_bus.emit_track_change(current_item)
 
         # Save queue to persist the updated metadata
         self.save_queue()
@@ -1094,6 +1133,8 @@ class PlaybackService(QObject):
     def _save_online_track_to_library(self, song_mid: str, local_path: str) -> Optional[int]:
         """
         Save downloaded online track to library.
+
+        Updates existing track if found by cloud_file_id, otherwise creates new.
 
         Args:
             song_mid: Song MID
@@ -1107,6 +1148,14 @@ class PlaybackService(QObject):
 
         if not local_path or not Path(local_path).exists():
             return None
+
+        # Check if track already exists by cloud_file_id (song_mid)
+        existing = self._db.get_track_by_cloud_file_id(song_mid)
+        if existing:
+            # Update existing track with local path
+            self._db.update_track_path(existing.id, local_path)
+            logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
+            return existing.id
 
         # Extract metadata from file
         metadata = MetadataService.extract_metadata(local_path)
@@ -1133,12 +1182,12 @@ class PlaybackService(QObject):
             source=TrackSource.QQ,  # Online music from QQ
         )
 
+        # DBWriteWorker handles serialization
         track_id = self._db.add_track(track)
         return track_id
 
     def _preload_next_cloud_track(self):
         """Preload the next track in the queue (cloud or online)."""
-        from domain.cloud import CloudProvider
         from services.cloud.download_service import CloudDownloadService
 
         # Single track loop modes - don't preload
@@ -1155,7 +1204,7 @@ class PlaybackService(QObject):
             return
 
         # Handle online music preload
-        if next_item.source_type == CloudProvider.ONLINE:
+        if next_item.source == TrackSource.QQ:
             self._preload_online_track(next_item)
             return
 
@@ -1245,6 +1294,11 @@ class PlaybackService(QObject):
         # Check if track already exists
         existing = self._db.get_track_by_cloud_file_id(file_id)
         if existing:
+            # Update path if it's empty or different
+            if not existing.path or existing.path != local_path:
+                self._db.update_track_path(existing.id, local_path)
+                logger.info(f"[PlaybackService] Updated track {existing.id} path: {local_path}")
+
             # Check if existing metadata needs update (e.g., title looks like filename or artist is empty)
             needs_update = False
             if is_filename_like(existing.title) or not existing.artist:
@@ -1264,6 +1318,14 @@ class PlaybackService(QObject):
                 if LyricsService.lyrics_file_exists(local_path):
                     LyricsService.delete_lyrics(local_path)
                     logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+
+            # Fetch and update cover if missing
+            if not existing.cover_path and self._cover_service:
+                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
+                if cover_path:
+                    self._db.update_track_cover_path(existing.id, cover_path)
+                    logger.info(f"[PlaybackService] Updated track {existing.id} cover: {cover_path}")
+                    return cover_path
 
             return existing.cover_path
 
@@ -1292,6 +1354,14 @@ class PlaybackService(QObject):
                         LyricsService.delete_lyrics(local_path)
                         logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
 
+            # Fetch and update cover if missing
+            if not existing_by_path.cover_path and self._cover_service:
+                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
+                if cover_path:
+                    self._db.update_track_cover_path(existing_by_path.id, cover_path)
+                    logger.info(f"[PlaybackService] Updated track {existing_by_path.id} cover: {cover_path}")
+                    return cover_path
+
             return existing_by_path.cover_path
 
         # Create new track
@@ -1308,58 +1378,10 @@ class PlaybackService(QObject):
                 LyricsService.delete_lyrics(local_path)
                 logger.info(f"[PlaybackService] Deleted old lyrics file for new track (metadata now available)")
 
+        # Fetch cover art
         cover_path = None
         if self._cover_service:
-            # Step 2: Save embedded cover as fallback (if present)
-            embedded_cover_path = None
-            if metadata.get("cover"):
-                embedded_cover_path = self._cover_service.save_cover_from_metadata(
-                    local_path,
-                    metadata.get("cover")
-                )
-                logger.info(f"[PlaybackService] Embedded cover saved: {embedded_cover_path}")
-
-            # Step 3: For QQ Music online tracks, try to get cover directly by song_mid
-            # file_id is the song_mid for QQ Music tracks
-            if file_id:
-                logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
-                qq_cover_path = self._cover_service.get_online_cover(
-                    song_mid=file_id,
-                    artist=artist,
-                    title=title
-                )
-                if qq_cover_path:
-                    logger.info(f"[PlaybackService] QQ Music cover downloaded: {qq_cover_path}")
-                    cover_path = qq_cover_path
-                elif title and artist:
-                    # Fallback to search if direct fetch failed
-                    logger.info(f"[PlaybackService] QQ Music cover not found, searching: {title} - {artist}")
-                    online_cover_path = self._cover_service.fetch_online_cover(
-                        title,
-                        artist,
-                        album,
-                        duration
-                    )
-                    if online_cover_path:
-                        logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
-                        cover_path = online_cover_path
-            # Step 4: Fallback to search for tracks without song_mid
-            elif title and artist:
-                logger.info(f"[PlaybackService] Fetching online cover for: {title} - {artist}")
-                online_cover_path = self._cover_service.fetch_online_cover(
-                    title,
-                    artist,
-                    album,
-                    duration
-                )
-                if online_cover_path:
-                    logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
-                    cover_path = online_cover_path
-
-            # Use embedded cover as last resort
-            if not cover_path and embedded_cover_path:
-                logger.info(f"[PlaybackService] Using embedded cover as fallback")
-                cover_path = embedded_cover_path
+            cover_path = self._fetch_cover_for_track(file_id, title, artist, album, duration, metadata, local_path)
 
         track = Track(
             path=local_path,
@@ -1380,6 +1402,77 @@ class PlaybackService(QObject):
 
         # Notify UI to refresh
         self._event_bus.tracks_added.emit(1)
+
+        return cover_path
+
+    def _fetch_cover_for_track(self, file_id: str, title: str, artist: str, album: str,
+                               duration: float, metadata: dict, local_path: str) -> Optional[str]:
+        """
+        Fetch cover art for a track from various sources.
+
+        Args:
+            file_id: Cloud file ID or song_mid
+            title: Track title
+            artist: Track artist
+            album: Album name
+            duration: Track duration
+            metadata: Metadata dict from file
+            local_path: Local file path
+
+        Returns:
+            Cover path if found, None otherwise
+        """
+        cover_path = None
+        embedded_cover_path = None
+
+        # Step 1: Save embedded cover as fallback (if present)
+        if metadata.get("cover"):
+            embedded_cover_path = self._cover_service.save_cover_from_metadata(
+                local_path,
+                metadata.get("cover")
+            )
+            logger.info(f"[PlaybackService] Embedded cover saved: {embedded_cover_path}")
+
+        # Step 2: For QQ Music online tracks, try to get cover directly by song_mid
+        if file_id:
+            logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
+            qq_cover_path = self._cover_service.get_online_cover(
+                song_mid=file_id,
+                artist=artist,
+                title=title
+            )
+            if qq_cover_path:
+                logger.info(f"[PlaybackService] QQ Music cover downloaded: {qq_cover_path}")
+                cover_path = qq_cover_path
+            elif title and artist:
+                # Fallback to search if direct fetch failed
+                logger.info(f"[PlaybackService] QQ Music cover not found, searching: {title} - {artist}")
+                online_cover_path = self._cover_service.fetch_online_cover(
+                    title,
+                    artist,
+                    album,
+                    duration
+                )
+                if online_cover_path:
+                    logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
+                    cover_path = online_cover_path
+        # Step 3: Fallback to search for tracks without song_mid
+        elif title and artist:
+            logger.info(f"[PlaybackService] Fetching online cover for: {title} - {artist}")
+            online_cover_path = self._cover_service.fetch_online_cover(
+                title,
+                artist,
+                album,
+                duration
+            )
+            if online_cover_path:
+                logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
+                cover_path = online_cover_path
+
+        # Use embedded cover as last resort
+        if not cover_path and embedded_cover_path:
+            logger.info(f"[PlaybackService] Using embedded cover as fallback")
+            cover_path = embedded_cover_path
 
         return cover_path
 

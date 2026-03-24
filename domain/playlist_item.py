@@ -2,10 +2,13 @@
 Unified playlist item model for local and cloud playback.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
-from .cloud import CloudProvider
+from .track import TrackSource
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from domain.track import Track
@@ -21,7 +24,7 @@ class PlaylistItem:
     providing a consistent interface for the playback engine.
     """
     # Source type
-    source_type: CloudProvider = CloudProvider.LOCAL
+    source: TrackSource = TrackSource.LOCAL
 
     # Local track fields
     track_id: Optional[int] = None
@@ -48,7 +51,10 @@ class PlaylistItem:
     @classmethod
     def from_track(cls, track: "Track") -> "PlaylistItem":
         """
-        Create a PlaylistItem from a local Track.
+        Create a PlaylistItem from a Track.
+
+        Handles both local tracks and online tracks (QQ Music, etc.)
+        by checking if path is empty (indicating online track needs download).
 
         Args:
             track: Track object from database
@@ -56,8 +62,27 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
+        # Check if this is an online track (empty path or QQ source)
+        is_online = not track.path or track.source == TrackSource.QQ
+
+        if is_online:
+            return cls(
+                source=TrackSource.QQ,
+                track_id=track.id,
+                cloud_file_id=track.cloud_file_id,
+                local_path="",  # No local path yet
+                title=track.title or "",
+                artist=track.artist or "",
+                album=track.album or "",
+                duration=track.duration or 0.0,
+                cover_path=track.cover_path,
+                needs_download=True,  # Needs download before playback
+                needs_metadata=False,
+            )
+
+        # Local track
         return cls(
-            source_type=CloudProvider.LOCAL,
+            source=TrackSource.LOCAL,
             track_id=track.id,
             local_path=track.path,
             title=track.title or "",
@@ -74,7 +99,8 @@ class PlaylistItem:
             cls,
             cloud_file: "CloudFile",
             account_id: int,
-            local_path: str = ""
+            local_path: str = "",
+            provider: str = "QUARK"
     ) -> "PlaylistItem":
         """
         Create a PlaylistItem from a cloud file.
@@ -83,12 +109,14 @@ class PlaylistItem:
             cloud_file: CloudFile object
             account_id: Cloud account ID
             local_path: Optional local path if already downloaded
+            provider: Cloud provider type ("QUARK" or "BAIDU")
 
         Returns:
             PlaylistItem instance
         """
+        source = TrackSource.QUARK if provider.upper() == "QUARK" else TrackSource.BAIDU
         return cls(
-            source_type=CloudProvider.QUARK,  # Currently only Quark is supported
+            source=source,
             cloud_file_id=cloud_file.file_id,
             cloud_account_id=account_id,
             local_path=local_path,
@@ -112,28 +140,28 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
-        # Determine source_type from saved value or infer from other fields
-        source_type_str = data.get("source_type")
-        if source_type_str:
+        # Determine source from saved value or infer from other fields
+        source_str = data.get("source") or data.get("source")
+        if source_str:
             try:
-                source_type = CloudProvider(source_type_str)
+                source = TrackSource(source_str)
             except ValueError:
                 # Fallback to inference if invalid value
-                source_type = CloudProvider.LOCAL
+                source = TrackSource.LOCAL
                 if data.get("cloud_file_id"):
-                    source_type = CloudProvider.QUARK
+                    source = TrackSource.QUARK
         else:
             # Legacy: infer from other fields
-            source_type = CloudProvider.LOCAL
+            source = TrackSource.LOCAL
             if data.get("cloud_file_id"):
-                source_type = CloudProvider.QUARK
+                source = TrackSource.QUARK
 
         return cls(
-            source_type=source_type,
+            source=source,
             track_id=data.get("id"),
             cloud_file_id=data.get("cloud_file_id"),
             cloud_account_id=data.get("cloud_account_id"),
-            local_path=data.get("path", ""),
+            local_path=data.get("path", "") or data.get("local_path", ""),
             title=data.get("title", ""),
             artist=data.get("artist", ""),
             album=data.get("album", ""),
@@ -158,7 +186,7 @@ class PlaylistItem:
             "album": self.album,
             "duration": self.duration,
             "cover_path": self.cover_path,
-            "source_type": self.source_type.value,
+            "source": self.source.value,
             "cloud_file_id": self.cloud_file_id,
             "cloud_account_id": self.cloud_account_id,
             "needs_download": self.needs_download,
@@ -169,12 +197,12 @@ class PlaylistItem:
     @property
     def is_cloud(self) -> bool:
         """Check if this is a cloud file."""
-        return self.source_type != CloudProvider.LOCAL
+        return self.source != TrackSource.LOCAL
 
     @property
     def is_local(self) -> bool:
         """Check if this is a local file."""
-        return self.source_type == CloudProvider.LOCAL
+        return self.source == TrackSource.LOCAL
 
     @property
     def is_ready(self) -> bool:
@@ -198,13 +226,13 @@ class PlaylistItem:
 
     def __str__(self) -> str:
         """String representation for debugging."""
-        source = "local" if self.is_local else f"cloud({self.source_type.value})"
+        source = "local" if self.is_local else f"cloud({self.source.value})"
         return f"PlaylistItem({source}: {self.display_title} - {self.display_artist})"
 
     def __repr__(self) -> str:
         """Detailed representation for debugging."""
         return (
-            f"PlaylistItem(source_type={self.source_type}, "
+            f"PlaylistItem(source={self.source}, "
             f"track_id={self.track_id}, cloud_file_id={self.cloud_file_id}, "
             f"path={self.local_path}, title={self.title}, "
             f"needs_download={self.needs_download})"
@@ -222,21 +250,9 @@ class PlaylistItem:
         """
         from domain.playback import PlayQueueItem
 
-        # Determine source_type string
-        if self.source_type == CloudProvider.LOCAL:
-            source_type = "local"
-            cloud_type = ""
-        elif self.source_type == CloudProvider.ONLINE:
-            source_type = "online"
-            cloud_type = "QQ"  # QQ Music source
-        else:
-            source_type = "cloud"
-            cloud_type = self.source_type.value
-
         return PlayQueueItem(
             position=position,
-            source_type=source_type,
-            cloud_type=cloud_type,
+            source=self.source.value,  # "Local", "QQ", "QUARK", "BAIDU"
             track_id=self.track_id,
             cloud_file_id=self.cloud_file_id,
             cloud_account_id=self.cloud_account_id,
@@ -261,12 +277,11 @@ class PlaylistItem:
         """
         from pathlib import Path
 
-        # Determine source_type
-        source_type = CloudProvider.LOCAL
-        if item.source_type == "online":
-            source_type = CloudProvider.ONLINE
-        elif item.source_type == "cloud" and item.cloud_type:
-            source_type = CloudProvider(item.cloud_type)
+        # Determine source from item.source
+        try:
+            source = TrackSource(item.source)
+        except ValueError:
+            source = TrackSource.LOCAL
 
         # Try to get metadata from database
         cover_path = None
@@ -280,7 +295,7 @@ class PlaylistItem:
         if db:
             try:
                 # For local tracks, get by track_id
-                if item.track_id and item.source_type == "local":
+                if item.track_id and source == TrackSource.LOCAL:
                     track = db.get_track(item.track_id)
                     if track:
                         cover_path = track.cover_path
@@ -289,21 +304,15 @@ class PlaylistItem:
                         album = track.album or album
                         duration = track.duration or duration
                         needs_metadata = False
-                # For online tracks, metadata is already stored in queue
-                elif item.source_type == "online":
-                    # Online tracks already have metadata in the queue item
+                # For online/cloud tracks, metadata is already stored in queue
+                elif source in (TrackSource.QQ, TrackSource.QUARK, TrackSource.BAIDU):
                     needs_metadata = False
-                # For cloud files, get by cloud_file_id
-                elif item.cloud_file_id:
-                    track = db.get_track_by_cloud_file_id(item.cloud_file_id)
-                    if track:
-                        cover_path = track.cover_path
-                        title = track.title or title
-                        artist = track.artist or artist
-                        album = track.album or album
-                        duration = track.duration or duration
-                        track_id = track.id
-                        needs_metadata = False
+                    # Try to get cover_path from tracks table
+                    if item.cloud_file_id:
+                        track = db.get_track_by_cloud_file_id(item.cloud_file_id)
+                        if track:
+                            cover_path = track.cover_path
+                            track_id = track.id
                 # For local files without track_id, try to find by path
                 elif item.local_path and not item.cloud_file_id:
                     track = db.get_track_by_path(item.local_path)
@@ -315,46 +324,38 @@ class PlaylistItem:
                         duration = track.duration or duration
                         track_id = track.id
                         needs_metadata = False
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error fetching track metadata from DB: {e}")
                 pass  # Ignore errors, use item values
 
         # Determine the correct local_path to use
         local_path = item.local_path
-        if db and track_id and item.source_type == "local":
+        if db and track_id and source == TrackSource.LOCAL:
             try:
-                # For tracks with track_id (local), get the latest path
                 track = db.get_track(track_id)
                 if track and track.path:
                     local_path = track.path
-            except Exception:
-                pass  # Fallback to item.local_path
-        elif db and item.cloud_file_id and item.source_type == "cloud":
-            try:
-                # For cloud files without local_path, try to get from cloud_files table
-                cloud_file = db.get_cloud_file_by_file_id(item.cloud_file_id)
-                if cloud_file and cloud_file.local_path:
-                    local_path = cloud_file.local_path
-            except Exception:
-                pass  # Ignore errors, local_path will remain empty
+            except Exception as e:
+                logger.warning(f"Error fetching track path from DB: {e}")
 
         # Check if local file actually exists
         file_exists = local_path and Path(local_path).exists()
 
         # Determine needs_download
         needs_download = False
-        if item.source_type == "online":
-            # Online tracks need download if file doesn't exist
+        if source == TrackSource.QQ:
+            # QQ Music tracks need download if file doesn't exist
             needs_download = not file_exists
             if not file_exists:
                 local_path = ""
-        elif item.source_type == "cloud":
+        elif source in (TrackSource.QUARK, TrackSource.BAIDU):
             # Cloud files need download if no local path
             if item.cloud_file_id and not file_exists:
                 needs_download = True
                 local_path = ""
 
         return cls(
-            source_type=source_type,
+            source=source,
             track_id=track_id,
             cloud_file_id=item.cloud_file_id,
             cloud_account_id=item.cloud_account_id,

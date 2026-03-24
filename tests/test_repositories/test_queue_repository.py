@@ -21,13 +21,12 @@ def temp_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Create play_queue table
+    # Create play_queue table with new schema
     cursor.execute("""
         CREATE TABLE play_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             position INTEGER NOT NULL,
-            source_type TEXT NOT NULL,
-            cloud_type TEXT,
+            source TEXT NOT NULL,
             track_id INTEGER,
             cloud_file_id TEXT,
             cloud_account_id INTEGER,
@@ -35,7 +34,8 @@ def temp_db():
             title TEXT,
             artist TEXT,
             album TEXT,
-            duration REAL
+            duration REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -70,14 +70,14 @@ class TestSqliteQueueRepository:
         items = [
             PlayQueueItem(
                 position=0,
-                source_type="local",
+                source="Local",
                 track_id=1,
                 title="Song 1",
                 artist="Artist 1"
             ),
             PlayQueueItem(
                 position=1,
-                source_type="local",
+                source="Local",
                 track_id=2,
                 title="Song 2",
                 artist="Artist 2"
@@ -103,7 +103,7 @@ class TestSqliteQueueRepository:
         """Test clearing the queue."""
         # Add items
         items = [
-            PlayQueueItem(position=0, source_type="local", track_id=1)
+            PlayQueueItem(position=0, source="Local", track_id=1)
         ]
         queue_repo.save(items)
 
@@ -119,14 +119,14 @@ class TestSqliteQueueRepository:
         """Test that save overwrites existing queue."""
         # Save initial queue
         items1 = [
-            PlayQueueItem(position=0, source_type="local", track_id=1, title="Song 1")
+            PlayQueueItem(position=0, source="Local", track_id=1, title="Song 1")
         ]
         queue_repo.save(items1)
 
         # Save new queue
         items2 = [
-            PlayQueueItem(position=0, source_type="local", track_id=2, title="Song 2"),
-            PlayQueueItem(position=1, source_type="local", track_id=3, title="Song 3")
+            PlayQueueItem(position=0, source="Local", track_id=2, title="Song 2"),
+            PlayQueueItem(position=1, source="Local", track_id=3, title="Song 3")
         ]
         queue_repo.save(items2)
 
@@ -141,8 +141,7 @@ class TestSqliteQueueRepository:
         items = [
             PlayQueueItem(
                 position=0,
-                source_type="cloud",
-                cloud_type="quark",
+                source="QUARK",
                 cloud_file_id="file123",
                 cloud_account_id=1,
                 local_path="/cache/file123.mp3",
@@ -157,9 +156,30 @@ class TestSqliteQueueRepository:
 
         loaded = queue_repo.load()
         assert len(loaded) == 1
-        assert loaded[0].source_type == "cloud"
+        assert loaded[0].source == "QUARK"
         assert loaded[0].cloud_file_id == "file123"
         assert loaded[0].title == "Cloud Song"
+
+    def test_save_online_items(self, queue_repo):
+        """Test saving online (QQ Music) items."""
+        items = [
+            PlayQueueItem(
+                position=0,
+                source="QQ",
+                cloud_file_id="song_mid_123",
+                title="Online Song",
+                artist="Online Artist",
+                duration=200.0
+            )
+        ]
+
+        result = queue_repo.save(items)
+        assert result is True
+
+        loaded = queue_repo.load()
+        assert len(loaded) == 1
+        assert loaded[0].source == "QQ"
+        assert loaded[0].cloud_file_id == "song_mid_123"
 
     def test_row_to_item_conversion(self, queue_repo):
         """Test conversion from database row to PlayQueueItem."""
@@ -167,7 +187,7 @@ class TestSqliteQueueRepository:
             PlayQueueItem(
                 id=1,
                 position=0,
-                source_type="local",
+                source="Local",
                 track_id=42,
                 title="Test Song",
                 artist="Test Artist",
@@ -180,7 +200,7 @@ class TestSqliteQueueRepository:
         loaded = queue_repo.load()
 
         assert loaded[0].position == 0
-        assert loaded[0].source_type == "local"
+        assert loaded[0].source == "Local"
         assert loaded[0].track_id == 42
         assert loaded[0].title == "Test Song"
         assert loaded[0].artist == "Test Artist"

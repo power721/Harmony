@@ -738,7 +738,7 @@ class LyricsService:
                 'type': '1',
                 'limit': '5'
             }
-            print(f'search lyric from 163: {artist} {title}')
+            logger.debug('Search lyric from 163: %s %s', artist, title)
 
             response = requests.get(
                 search_url,
@@ -784,11 +784,11 @@ class LyricsService:
                 lrc_content = lyrics_data['lyric']
 
             if lrc_content:
-                print('get lyrics from 163')
+                logger.debug('Get lyrics from 163')
                 return lrc_content
 
         except Exception as e:
-            print(f"NetEase lyrics fetch error: {e}")
+            logger.debug("NetEase lyrics fetch error: %s", e)
 
         return ""
 
@@ -796,7 +796,7 @@ class LyricsService:
     def _fetch_from_kugou_music(cls, title: str, artist: str) -> str:
         try:
             keyword = f"{title} {artist}"
-            print(f'search lyric from kugou: {keyword}')
+            logger.debug('Search lyric from kugou: %s', keyword)
 
             search_url = "https://lyrics.kugou.com/search"
             download_url = "https://lyrics.kugou.com/download"
@@ -850,7 +850,7 @@ class LyricsService:
             # 6 zlib 解压
             lyric = zlib.decompress(krc)
 
-            print('get lyrics from kugou')
+            logger.debug('Get lyrics from kugou')
             return lyric.decode("utf-8", errors="ignore")
 
         except Exception:
@@ -869,7 +869,7 @@ class LyricsService:
             Synced lyrics content or empty string
         """
         try:
-            print(f'search lyric from lrclib: {artist} {title}')
+            logger.debug('Search lyric from lrclib: %s %s', artist, title)
             search_url = "https://lrclib.net/api/search"
             params = {
                 'track_name': title,
@@ -895,7 +895,7 @@ class LyricsService:
             for song in data:
                 synced_lyrics = song.get('syncedLyrics')
                 if synced_lyrics:
-                    print('get lyrics from lrclib')
+                    logger.debug('Get lyrics from lrclib')
                     # Convert to Simplified Chinese
                     return cls._convert_to_simplified_chinese(synced_lyrics)
 
@@ -903,12 +903,12 @@ class LyricsService:
             for song in data:
                 plain_lyrics = song.get('plainLyrics')
                 if plain_lyrics:
-                    print('get plain lyrics from lrclib')
+                    logger.debug('Get plain lyrics from lrclib')
                     # Convert to Simplified Chinese
                     return cls._convert_to_simplified_chinese(plain_lyrics)
 
         except Exception as e:
-            print(f"LRCLIB lyrics fetch error: {e}")
+            logger.debug("LRCLIB lyrics fetch error: %s", e)
 
         return ""
 

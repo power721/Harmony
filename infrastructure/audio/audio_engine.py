@@ -317,6 +317,27 @@ class PlayerEngine(QObject):
                 return i
         return None
 
+    def remove_playlist_item_by_track_id(self, track_id: int) -> list[int]:
+        """
+        Remove all playlist items with the given track_id.
+
+        Args:
+            track_id: Track ID to find and remove
+
+        Returns:
+            List of removed indices (in descending order)
+        """
+        indices = []
+        for i, item in enumerate(self._playlist):
+            if item.track_id == track_id:
+                indices.append(i)
+
+        # Remove from highest index first to maintain valid indices
+        for i in sorted(indices, reverse=True):
+            self.remove_track(i)
+
+        return indices
+
     def play(self):
         """Start or resume playback."""
         if self._current_index < 0 and self._playlist:

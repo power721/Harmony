@@ -4,7 +4,7 @@ Tests for intelligent track deduplication utility.
 
 import pytest
 from domain import PlaylistItem
-from domain.cloud import CloudProvider
+from domain.track import TrackSource
 from utils.dedup import (
     extract_version_info,
     get_track_key,
@@ -210,13 +210,13 @@ class TestDeduplicatePlaylistItems:
         """Test handling both cloud and local items."""
         items = [
             PlaylistItem(
-                source_type=CloudProvider.LOCAL,
+                source=TrackSource.LOCAL,
                 title="Song",
                 artist="Artist",
                 local_path="/local/song.flac",
             ),
             PlaylistItem(
-                source_type=CloudProvider.QUARK,
+                source=TrackSource.QUARK,
                 title="Song Instrumental",
                 artist="Artist",
                 cloud_file_id="cloud123",

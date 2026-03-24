@@ -710,6 +710,12 @@ class PlaylistView(QWidget):
         success = self._db.add_track_to_playlist(self._current_playlist_id, track_id)
         if success:
             self._load_playlist(self._current_playlist_id)
+            # Get playlist name for message
+            playlist = self._db.get_playlist(self._current_playlist_id)
+            playlist_name = playlist.name if playlist else ""
+            QMessageBox.information(
+                self, t("success"), t("added_tracks_to_playlist").format(count=1, name=playlist_name)
+            )
         else:
             QMessageBox.warning(self, "Error", t("track_already_in_playlist"))
 

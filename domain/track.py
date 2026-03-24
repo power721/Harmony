@@ -2,6 +2,7 @@
 Track domain model - Core track entity.
 """
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -46,7 +47,7 @@ class Track:
         """Get display name for the track."""
         if self.title:
             return self.title
-        return self.path.split("/")[-1] if self.path else "Unknown"
+        return os.path.basename(self.path) if self.path else "Unknown"
 
     @property
     def artist_album(self) -> str:

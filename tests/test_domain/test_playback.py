@@ -48,8 +48,7 @@ class TestPlayQueueItem:
         item = PlayQueueItem()
         assert item.id is None
         assert item.position == 0
-        assert item.source_type == "local"
-        assert item.cloud_type == ""
+        assert item.source == "Local"
         assert item.track_id is None
         assert item.cloud_file_id is None
         assert item.cloud_account_id is None
@@ -64,7 +63,7 @@ class TestPlayQueueItem:
         """Test queue item for local track."""
         item = PlayQueueItem(
             position=1,
-            source_type="local",
+            source="Local",
             track_id=123,
             local_path="/music/song.mp3",
             title="Test Song",
@@ -72,27 +71,51 @@ class TestPlayQueueItem:
             duration=180.0,
         )
         assert item.position == 1
-        assert item.source_type == "local"
+        assert item.source == "Local"
         assert item.track_id == 123
         assert item.local_path == "/music/song.mp3"
         assert item.title == "Test Song"
 
     def test_cloud_file_initialization(self):
-        """Test queue item for cloud file."""
+        """Test queue item for cloud file (Quark)."""
         item = PlayQueueItem(
             position=1,
-            source_type="cloud",
-            cloud_type="quark",
+            source="QUARK",
             cloud_file_id="quark_123",
             cloud_account_id=1,
             local_path="/cache/song.mp3",
             title="Cloud Song",
             duration=240.0,
         )
-        assert item.source_type == "cloud"
-        assert item.cloud_type == "quark"
+        assert item.source == "QUARK"
         assert item.cloud_file_id == "quark_123"
         assert item.cloud_account_id == 1
+
+    def test_online_track_initialization(self):
+        """Test queue item for online track (QQ Music)."""
+        item = PlayQueueItem(
+            position=1,
+            source="QQ",
+            cloud_file_id="song_mid_123",
+            local_path="/cache/online/song.mp3",
+            title="Online Song",
+            artist="Online Artist",
+            duration=200.0,
+        )
+        assert item.source == "QQ"
+        assert item.cloud_file_id == "song_mid_123"
+
+    def test_baidu_cloud_initialization(self):
+        """Test queue item for Baidu cloud file."""
+        item = PlayQueueItem(
+            position=1,
+            source="BAIDU",
+            cloud_file_id="baidu_456",
+            cloud_account_id=2,
+            title="Baidu Song",
+        )
+        assert item.source == "BAIDU"
+        assert item.cloud_file_id == "baidu_456"
 
     def test_created_at_auto_set(self):
         """Test created_at is automatically set."""

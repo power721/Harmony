@@ -41,7 +41,7 @@ from system.event_bus import EventBus
 from ui.icons import IconName, IconButton, set_button_icon
 from domain.track import Track
 from domain.playlist_item import PlaylistItem
-from domain.cloud import CloudProvider
+from domain.track import TrackSource
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
@@ -83,14 +83,10 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Initialize playback service with proper dependencies
+        # Get playback service from Bootstrap (singleton)
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
-        self._playback = PlaybackService(
-            self._db,
-            self._config,
-            cover_service=bootstrap.cover_service
-        )
+        self._playback = bootstrap.playback_service
 
         # Keep reference to engine for backward compatibility
         # Use closures to capture self for methods that need access to db
@@ -287,7 +283,7 @@ class MainWindow(QMainWindow):
                 qqmusic_service = QQMusicService(cred_dict)
             except Exception:
                 pass
-        self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
+        self._online_music_view = OnlineMusicView(self._config, self._db, qqmusic_service)
 
         self._stacked_widget.addWidget(self._library_view)       # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)   # 1
@@ -894,13 +890,17 @@ class MainWindow(QMainWindow):
         """Play a list of tracks."""
         if tracks:
             from domain.playlist_item import PlaylistItem
+            from domain.track import TrackSource
             from pathlib import Path
 
             # Create PlaylistItems with full track info (including local_path)
             items = []
             for track in tracks:
-                if track.id and track.id > 0 and Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
+                if track.id and track.id > 0:
+                    # Include online tracks (empty path) and existing local files
+                    is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                    if is_online or Path(track.path).exists():
+                        items.append(PlaylistItem.from_track(track))
 
             if items:
                 self._playback.engine.clear_playlist()
@@ -1145,15 +1145,16 @@ class MainWindow(QMainWindow):
         cloud_file = self._db.get_cloud_file_by_file_id(cloud_file_id)
         if cloud_file:
             # Create PlaylistItem from cloud file
-            item = PlaylistItem.from_cloud_file(cloud_file, account_id)
+            item = PlaylistItem.from_cloud_file(cloud_file, account_id, provider=account.provider)
             self._playback.engine.load_playlist_items([item])
             self._playback.engine.play()
         else:
             # File not in cache, need to get from cloud
             logger.warning(f"[MainWindow] Cloud file {cloud_file_id} not found in cache")
             # Fallback: create basic item with file_id
+            source = TrackSource.QUARK if account.provider.lower() == "quark" else TrackSource.BAIDU
             item = PlaylistItem(
-                source_type=CloudProvider.QUARK,
+                source=source,
                 cloud_file_id=cloud_file_id,
                 cloud_account_id=account_id,
                 title="Cloud Track",
@@ -1166,7 +1167,7 @@ class MainWindow(QMainWindow):
         """Play track from cloud (temp file) - backward compatible."""
         # Create a simple playlist item for single track
         item = PlaylistItem(
-            source_type=CloudProvider.QUARK,
+            source=TrackSource.QUARK,
             local_path=temp_path,
             title='Cloud Track',
             needs_download=False
@@ -1203,7 +1204,7 @@ class MainWindow(QMainWindow):
         # Create a playlist item for the downloaded track
         # Use ONLINE provider for online music
         item = PlaylistItem(
-            source_type=CloudProvider.ONLINE,
+            source=TrackSource.QQ,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -1237,7 +1238,7 @@ class MainWindow(QMainWindow):
             needs_download = False
 
         item = PlaylistItem(
-            source_type=CloudProvider.ONLINE,
+            source=TrackSource.QQ,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -1281,7 +1282,7 @@ class MainWindow(QMainWindow):
             needs_download = False
 
         item = PlaylistItem(
-            source_type=CloudProvider.ONLINE,
+            source=TrackSource.QQ,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -1330,7 +1331,7 @@ class MainWindow(QMainWindow):
                 needs_download = False
 
             item = PlaylistItem(
-                source_type=CloudProvider.ONLINE,
+                source=TrackSource.QQ,
                 local_path=local_path,
                 title=title,
                 artist=artist,
@@ -1386,8 +1387,6 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
-        from domain.cloud import CloudProvider
-
         # Reset lyric line tracking
         self._current_lyric_line = None
 
@@ -1404,7 +1403,7 @@ class MainWindow(QMainWindow):
             is_cloud = track_item.is_cloud
             needs_metadata = track_item.needs_metadata
             song_mid = track_item.cloud_file_id
-            is_online = track_item.source_type == CloudProvider.ONLINE
+            is_online = track_item.source == TrackSource.QQ
         elif isinstance(track_item, int):
             # Handle case where track_item is just an ID
             track_id = track_item
@@ -1423,8 +1422,8 @@ class MainWindow(QMainWindow):
             is_cloud = not track_id or track_id < 0
             needs_metadata = track_dict.get("needs_metadata", False) if track_dict else False
             # Check if online track from dict
-            source_type = track_dict.get("source_type", "")
-            is_online = source_type == "online" or source_type == CloudProvider.ONLINE.value
+            source = track_dict.get("source_type", "") or track_dict.get("source", "")
+            is_online = source == "QQ" or source == TrackSource.QQ.value
             song_mid = track_dict.get("cloud_file_id")
 
         # Sync selection in both library and queue views
@@ -2166,10 +2165,32 @@ class MainWindow(QMainWindow):
 
         # If only one playlist, add directly without showing dialog
         if dialog.has_single_playlist():
-            playlist_name = dialog.get_single_playlist()
+            playlist = dialog.get_single_playlist()
             dialog.deleteLater()
-            playlists = bootstrap.library_service.get_all_playlists()
-            playlist = next((p for p in playlists if p.name == playlist_name), None)
+            if playlist:
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
+
+                if duplicate_count == 0:
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
+                    QMessageBox.information(self, t("success"), msg)
+                elif added_count == 0:
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
+                    QMessageBox.warning(self, t("duplicate"), msg)
+                else:
+                    msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
+                    QMessageBox.information(self, t("partially_added"), msg)
+            return
+
+        dialog.set_track_ids(track_ids)
+
+        if dialog.exec() == QDialog.Accepted:
+            playlist = dialog.get_selected_playlist()
             if playlist:
                 added_count = 0
                 duplicate_count = 0
@@ -2188,33 +2209,6 @@ class MainWindow(QMainWindow):
                 else:
                     msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
                     QMessageBox.information(self, t("partially_added"), msg)
-            return
-
-        dialog.set_track_ids(track_ids)
-
-        if dialog.exec() == QDialog.Accepted:
-            playlist_name = dialog.get_selected_playlist()
-            if playlist_name:
-                playlists = bootstrap.library_service.get_all_playlists()
-                playlist = next((p for p in playlists if p.name == playlist_name), None)
-                if playlist:
-                    added_count = 0
-                    duplicate_count = 0
-                    for track_id in track_ids:
-                        if self._db.add_track_to_playlist(playlist.id, track_id):
-                            added_count += 1
-                        else:
-                            duplicate_count += 1
-
-                    if duplicate_count == 0:
-                        msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
-                        QMessageBox.information(self, t("success"), msg)
-                    elif added_count == 0:
-                        msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
-                        QMessageBox.warning(self, t("duplicate"), msg)
-                    else:
-                        msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-                        QMessageBox.information(self, t("partially_added"), msg)
 
     def _on_position_changed(self, position_ms):
         """Handle playback position change."""

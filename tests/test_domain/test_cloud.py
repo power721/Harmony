@@ -4,21 +4,7 @@ Tests for Cloud domain models.
 
 import pytest
 from datetime import datetime
-from domain.cloud import CloudProvider, CloudAccount, CloudFile
-
-
-class TestCloudProvider:
-    """Test CloudProvider enumeration."""
-
-    def test_cloud_provider_values(self):
-        """Test all cloud provider values exist."""
-        assert CloudProvider.LOCAL.value == "local"
-        assert CloudProvider.QUARK.value == "quark"
-
-    def test_cloud_provider_from_value(self):
-        """Test creating CloudProvider from string value."""
-        assert CloudProvider("local") == CloudProvider.LOCAL
-        assert CloudProvider("quark") == CloudProvider.QUARK
+from domain.cloud import CloudAccount, CloudFile
 
 
 class TestCloudAccount:
@@ -55,6 +41,16 @@ class TestCloudAccount:
         assert account.provider == "quark"
         assert account.account_name == "My Quark"
         assert account.account_email == "user@example.com"
+
+    def test_baidu_account_initialization(self):
+        """Test Baidu cloud account."""
+        account = CloudAccount(
+            id=2,
+            provider="baidu",
+            account_name="My Baidu",
+        )
+        assert account.provider == "baidu"
+        assert account.account_name == "My Baidu"
 
     def test_created_at_auto_set(self):
         """Test created_at is automatically set."""

@@ -100,6 +100,9 @@ class EventBus(QObject):
     # Emitted when tracks are added to the library (count)
     tracks_added = Signal(int)
 
+    # Emitted when a track is deleted from the library (track_id)
+    track_deleted = Signal(int)
+
     # Emitted when a playlist is created (playlist_id)
     playlist_created = Signal(int)
 
@@ -162,7 +165,7 @@ class EventBus(QObject):
     # ===== Convenience Methods =====
 
     def emit_track_change(self, track_item):
-        """Emit a track change event with logging."""
+        """Emit a track change event."""
         self.track_changed.emit(track_item)
 
     def emit_playback_state(self, state: str):

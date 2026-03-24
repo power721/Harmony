@@ -37,7 +37,8 @@ class Application(QObject):
         super().__init__()
 
         self._qt_app = qt_app
-        self._bootstrap = Bootstrap(db_path)
+        # Use Bootstrap singleton to avoid duplicate service instances
+        self._bootstrap = Bootstrap.instance(db_path)
         self._main_window = None
 
         Application._instance = self

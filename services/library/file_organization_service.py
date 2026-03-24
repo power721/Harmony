@@ -84,6 +84,12 @@ class FileOrganizationService:
                 results['errors'].append(f"Track ID {track_id}: 不存在")
                 continue
 
+            # Skip tracks without local path (online/cloud tracks)
+            if not track.path or not track.path.strip():
+                results['failed'] += 1
+                results['errors'].append(f"{track.title}: 无本地文件（网络歌曲）")
+                continue
+
             old_audio_path = Path(track.path)
             if not old_audio_path.exists():
                 results['failed'] += 1
@@ -251,6 +257,10 @@ class FileOrganizationService:
         for track_id in track_ids:
             track = self._track_repo.get_by_id(track_id)
             if track:
+                # Skip tracks without local path (online/cloud tracks)
+                if not track.path or not track.path.strip():
+                    continue
+
                 new_audio_path, new_lrc_path = calculate_target_path(track, target_dir)
                 old_lyrics_paths = self._get_all_lyrics_paths(Path(track.path))
 

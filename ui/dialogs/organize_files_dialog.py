@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QFileDialog, QProgressBar
 )
 
+from domain import PlaylistItem
 from domain.track import Track
 from system.i18n import t
 

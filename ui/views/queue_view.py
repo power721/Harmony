@@ -105,7 +105,7 @@ class QueueView(QWidget):
         self._queue_list.model().rowsMoved.connect(self._on_rows_moved)
         self._queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._queue_list.customContextMenuRequested.connect(self._show_context_menu)
-        self._queue_list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._queue_list.itemDoubleClicked.connect(self._play_selected)
         layout.addWidget(self._queue_list)
 
         # Status bar
@@ -645,8 +645,11 @@ class QueueView(QWidget):
             track = db.get_track(track_id)
             if track:
                 from pathlib import Path
+                from domain.track import TrackSource
 
-                if Path(track.path).exists():
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,
                         "path": track.path,
@@ -680,8 +683,11 @@ class QueueView(QWidget):
             track = db.get_track(track_id)
             if track:
                 from pathlib import Path
+                from domain.track import TrackSource
 
-                if Path(track.path).exists():
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,
                         "path": track.path,

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QGridLayout,
     QGraphicsDropShadowEffect,
+    QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
 from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
@@ -79,11 +80,9 @@ class AlbumListWorker(QThread):
 
     def run(self):
         try:
-            logger.debug(f"AlbumListWorker: Loading albums for singer_mid={self._singer_mid}, number={self._number}, begin={self._begin}")
             result = self._service.get_artist_albums(self._singer_mid, number=self._number, begin=self._begin)
             albums = result.get('albums', [])
             total = result.get('total', 0)
-            logger.debug(f"AlbumListWorker: Got {len(albums)} albums, total={total}")
             self.albums_loaded.emit(albums, total)
         except Exception as e:
             logger.error(f"Failed to load artist albums: {e}", exc_info=True)
@@ -297,12 +296,14 @@ class OnlineDetailView(QWidget):
     def __init__(
         self,
         config_manager=None,
+        db_manager=None,
         qqmusic_service=None,
         parent=None
     ):
         super().__init__(parent)
 
         self._config = config_manager
+        self._db = db_manager
         self._service = OnlineMusicService(
             config_manager=config_manager,
             qqmusic_service=qqmusic_service
@@ -633,7 +634,7 @@ class OnlineDetailView(QWidget):
         table.setColumnWidth(0, 50)
         table.setColumnWidth(4, 80)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         table.setAlternatingRowColors(True)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         table.verticalHeader().setVisible(False)
@@ -1247,7 +1248,6 @@ class OnlineDetailView(QWidget):
             total: Total album count from API
         """
         append = getattr(self, '_albums_append', False)
-        logger.debug(f"_on_albums_loaded: {len(albums) if albums else 0} albums, total={total}, append={append}")
 
         if not append:
             # Clear existing cards
@@ -1272,7 +1272,6 @@ class OnlineDetailView(QWidget):
             card.clicked.connect(self._on_album_card_clicked)
             self._albums_layout.addWidget(card)
             self._album_cards.append(card)
-            logger.debug(f"Created card for album: {album_data.get('name', 'Unknown')}")
 
         # Update loaded count - add to existing if appending
         self._albums_loaded += len(albums)
@@ -1286,8 +1285,6 @@ class OnlineDetailView(QWidget):
         self._albums_layout.update()
         self._albums_container.updateGeometry()
 
-        logger.debug(f"_on_albums_loaded: total_width={total_width}, container_size={self._albums_container.size()}")
-
         # Show/hide load more button based on whether there are more albums
         if self._albums_loaded < self._albums_total:
             self._load_more_albums_btn.show()
@@ -1296,7 +1293,6 @@ class OnlineDetailView(QWidget):
 
         self._albums_section.show()
         self._albums_section.raise_()  # Bring to front
-        logger.debug(f"_on_albums_loaded: albums_section shown, visible={self._albums_section.isVisible()}, geometry={self._albums_section.geometry()}")
 
     def _on_load_more_albums(self):
         """Handle load more albums button click."""
@@ -1325,12 +1321,22 @@ class OnlineDetailView(QWidget):
 
     def _show_track_context_menu(self, pos):
         """Show context menu for track."""
-        index = self._songs_table.indexAt(pos)
-        row = index.row()
-        if row < 0 or row >= len(self._tracks):
+        selected_rows = self._songs_table.selectionModel().selectedRows()
+        if not selected_rows:
             return
 
-        track = self._tracks[row]
+        # Get selected tracks
+        selected_tracks = []
+        for index in sorted(selected_rows, key=lambda x: x.row()):
+            row = index.row()
+            if 0 <= row < len(self._tracks):
+                selected_tracks.append(self._tracks[row])
+
+        if not selected_tracks:
+            return
+
+        is_single = len(selected_tracks) == 1
+        track = selected_tracks[0] if is_single else None
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -1351,13 +1357,30 @@ class OnlineDetailView(QWidget):
 
         menu.addSeparator()
 
+        # Add to favorites action
+        add_to_favorites_action = menu.addAction(t("add_to_favorites"))
+        # Add to playlist action
+        add_to_playlist_action = menu.addAction(t("add_to_playlist"))
+
+        menu.addSeparator()
+
         download_action = menu.addAction(t("download"))
 
         # Connect actions
-        play_action.triggered.connect(lambda: self._play_track(track))
-        insert_action.triggered.connect(lambda: self._insert_track_to_queue(track))
-        add_action.triggered.connect(lambda: self._add_track_to_queue(track))
-        download_action.triggered.connect(lambda: self._download_track(track))
+        if is_single:
+            play_action.triggered.connect(lambda: self._play_track(track))
+            insert_action.triggered.connect(lambda: self._insert_track_to_queue(track))
+            add_action.triggered.connect(lambda: self._add_track_to_queue(track))
+            add_to_favorites_action.triggered.connect(lambda: self._add_track_to_favorites(track))
+            add_to_playlist_action.triggered.connect(lambda: self._add_track_to_playlist(track))
+            download_action.triggered.connect(lambda: self._download_track(track))
+        else:
+            play_action.triggered.connect(lambda: self._play_tracks(selected_tracks))
+            insert_action.triggered.connect(lambda: self._insert_tracks_to_queue(selected_tracks))
+            add_action.triggered.connect(lambda: self._add_tracks_to_queue(selected_tracks))
+            add_to_favorites_action.triggered.connect(lambda: self._add_tracks_to_favorites(selected_tracks))
+            add_to_playlist_action.triggered.connect(lambda: self._add_tracks_to_playlist(selected_tracks))
+            download_action.triggered.connect(lambda: self._download_tracks(selected_tracks))
 
         menu.exec(self._songs_table.viewport().mapToGlobal(pos))
 
@@ -1376,9 +1399,22 @@ class OnlineDetailView(QWidget):
         """Add track to queue."""
         self.add_all_to_queue.emit([track])
 
+    def _add_tracks_to_queue(self, tracks: list):
+        """Add multiple tracks to queue."""
+        self.add_all_to_queue.emit(tracks)
+
     def _insert_track_to_queue(self, track: OnlineTrack):
         """Insert track after current playing track."""
         self.insert_all_to_queue.emit([track])
+
+    def _insert_tracks_to_queue(self, tracks: list):
+        """Insert multiple tracks after current playing track."""
+        self.insert_all_to_queue.emit(tracks)
+
+    def _play_tracks(self, tracks: list):
+        """Play multiple tracks."""
+        if tracks:
+            self.play_all.emit(tracks)
 
     def _download_track(self, track: OnlineTrack):
         """Download a track."""
@@ -1395,12 +1431,95 @@ class OnlineDetailView(QWidget):
             self._download_workers = []
         self._download_workers.append(worker)
 
+    def _download_tracks(self, tracks: list):
+        """Download multiple tracks."""
+        for track in tracks:
+            self._download_track(track)
+
     def _on_download_finished(self, song_mid: str, local_path: str):
         """Handle download finished."""
         if local_path:
             logger.info(f"Download completed: {song_mid} -> {local_path}")
         else:
             logger.warning(f"Download failed: {song_mid}")
+
+    def _add_track_to_favorites(self, track: OnlineTrack):
+        """Add track to favorites."""
+        self._add_tracks_to_favorites([track])
+
+    def _add_tracks_to_favorites(self, tracks: list):
+        """Add multiple tracks to favorites."""
+        from app.bootstrap import Bootstrap
+
+        added_count = 0
+        for track in tracks:
+            track_id = self._add_online_track_to_library(track)
+            if track_id and self._db:
+                self._db.add_favorite(track_id=track_id)
+                added_count += 1
+
+        if added_count > 0:
+            logger.info(f"[OnlineDetailView] Added {added_count} tracks to favorites")
+            QMessageBox.information(
+                self,
+                t("success"),
+                t("added_x_tracks_to_favorites").format(count=added_count)
+            )
+
+    def _add_track_to_playlist(self, track: OnlineTrack):
+        """Add track to playlist."""
+        self._add_tracks_to_playlist([track])
+
+    def _add_tracks_to_playlist(self, tracks: list):
+        """Add multiple tracks to playlist."""
+        from app.bootstrap import Bootstrap
+        from utils.playlist_utils import add_tracks_to_playlist
+
+        bootstrap = Bootstrap.instance()
+
+        # Add tracks to library first and collect track IDs
+        track_ids = []
+        for track in tracks:
+            track_id = self._add_online_track_to_library(track)
+            if track_id:
+                track_ids.append(track_id)
+
+        if not track_ids:
+            return
+
+        add_tracks_to_playlist(
+            self,
+            bootstrap.library_service,
+            self._db,
+            track_ids,
+            "[OnlineDetailView]"
+        )
+
+    def _add_online_track_to_library(self, track: OnlineTrack):
+        """Add online track to library, return track_id."""
+        from app.bootstrap import Bootstrap
+        from domain.track import TrackSource
+
+        bootstrap = Bootstrap.instance()
+        if not bootstrap.library_service:
+            return None
+
+        cover_url = self._get_cover_url(track)
+
+        return bootstrap.library_service.add_online_track(
+            song_mid=track.mid,
+            title=track.title,
+            artist=track.singer_name,
+            album=track.album_name,
+            duration=float(track.duration),
+            cover_url=cover_url
+        )
+
+    def _get_cover_url(self, track: OnlineTrack) -> str:
+        """Get cover URL for online track."""
+        if track.album and track.album.mid:
+            return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
+        return ""
 
     def refresh_ui(self):
         """Refresh UI texts after language change."""

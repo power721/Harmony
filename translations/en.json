@@ -195,6 +195,7 @@
     "search_results_for": "Search results for",
     "no_lyrics_found": "No lyrics found",
     "added_tracks_to_playlist": "Added {count} track(s) to \"{name}\"",
+    "added_to_playlist": "Added to \"{playlist}\"",
     "all_tracks_duplicate": "All {count} track(s) already in \"{name}\"",
     "added_skipped_duplicates": "Added {added}, skipped {duplicates} duplicate(s)",
     "download_first": "Download first",

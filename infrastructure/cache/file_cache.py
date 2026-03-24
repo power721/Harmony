@@ -75,9 +75,18 @@ class FileCache:
 
     def clear(self):
         """Clear all cached files."""
-        for file in self.cache_dir.iterdir():
-            if file.is_file():
-                file.unlink()
+        try:
+            if not self.cache_dir.exists():
+                return
+            # Convert to list first to avoid issues with concurrent modification
+            for file in list(self.cache_dir.iterdir()):
+                if file.is_file():
+                    try:
+                        file.unlink()
+                    except FileNotFoundError:
+                        pass  # File was deleted by another process
+        except Exception as e:
+            logger.warning(f"Error clearing cache: {e}")
 
     def _get_cache_key(self, file_id: str) -> str:
         """Generate cache key from file ID."""

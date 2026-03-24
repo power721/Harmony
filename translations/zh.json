@@ -195,6 +195,7 @@
     "search_results_for": "搜索结果",
     "no_lyrics_found": "未找到歌词",
     "added_tracks_to_playlist": "已添加 {count} 首歌曲到「{name}」",
+    "added_to_playlist": "已添加到「{playlist}」",
     "all_tracks_duplicate": "所有 {count} 首歌曲已在「{name}」中",
     "added_skipped_duplicates": "已添加 {added} 首，跳过 {duplicates} 首重复歌曲",
     "download_first": "先下载",
