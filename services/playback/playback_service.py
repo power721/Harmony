@@ -132,26 +132,22 @@ class PlaybackService(QObject):
             return
 
         # Update all playlist items with this track_id
-        updated = False
-        is_current_track = False
-        for i, item in enumerate(self._engine._playlist):
-            if item.track_id == track_id:
-                item.title = track.title or item.title
-                item.artist = track.artist or item.artist
-                item.album = track.album or item.album
-                item.duration = track.duration or item.duration
-                item.cover_path = track.cover_path
-                updated = True
-                # Check if this is the current playing track
-                if i == self._engine.current_index:
-                    is_current_track = True
+        updated_indices = self._engine.update_item_metadata(
+            track_id=track_id,
+            title=track.title,
+            artist=track.artist,
+            album=track.album,
+            duration=track.duration,
+            cover_path=track.cover_path
+        )
 
         # Save queue if any item was updated
-        if updated:
+        if updated_indices:
             self.save_queue()
 
-        # If current track was updated, emit signal to refresh UI
-        if is_current_track:
+        # Check if current track was updated
+        current_idx = self._engine.current_index
+        if current_idx in updated_indices:
             current_item = self._engine.current_playlist_item
             if current_item:
                 self._event_bus.emit_track_change(current_item)
@@ -164,30 +160,17 @@ class PlaybackService(QObject):
             metadata: Metadata dict with title, artist, album, duration, etc.
         """
         # Update playlist items that match this song_mid (stored in cloud_file_id)
-        updated = False
-        is_current_track = False
-
-        for i, item in enumerate(self._engine._playlist):
-            if item.cloud_file_id == song_mid:
-                # Update metadata fields
-                if metadata.get("title"):
-                    item.title = metadata["title"]
-                if metadata.get("artist"):
-                    item.artist = metadata["artist"]
-                if metadata.get("album"):
-                    item.album = metadata["album"]
-                if metadata.get("duration"):
-                    item.duration = metadata["duration"]
-
-                updated = True
-                item.needs_metadata = False
-
-                # Check if this is the current playing track
-                if i == self._engine.current_index:
-                    is_current_track = True
+        updated_indices = self._engine.update_item_metadata(
+            cloud_file_id=song_mid,
+            title=metadata.get("title"),
+            artist=metadata.get("artist"),
+            album=metadata.get("album"),
+            duration=metadata.get("duration"),
+            needs_metadata=False
+        )
 
         # Save queue if any item was updated
-        if updated:
+        if updated_indices:
             self.save_queue()
 
         # Note: We don't emit track_change here because:
@@ -803,21 +786,20 @@ class PlaybackService(QObject):
         # Load queue into engine
         self._engine.load_playlist_items(items)
 
-        # Restore play mode
-        try:
-            mode = PlayMode(saved_mode)
-            self._engine._play_mode = mode
-        except ValueError:
-            pass
-
         # Clamp index to valid range
         if saved_index < 0 or saved_index >= len(items):
             saved_index = 0
 
-        # Set current index and load track (but don't play)
-        self._engine._current_index = saved_index
+        # Restore play mode and current index
+        try:
+            mode = PlayMode(saved_mode)
+            self._engine.restore_state(mode, saved_index)
+        except ValueError:
+            pass
+
+        # Load track at saved index (but don't play)
         if 0 <= saved_index < len(items):
-            self._engine._load_track(saved_index)
+            self._engine.load_track_at(saved_index)
 
         return True
 

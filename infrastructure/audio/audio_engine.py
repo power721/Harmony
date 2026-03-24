@@ -683,6 +683,72 @@ class PlayerEngine(QObject):
         """Check if currently in shuffle mode."""
         return self._play_mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
 
+    def restore_state(self, play_mode: PlayMode, current_index: int):
+        """
+        Restore player state without starting playback.
+
+        Args:
+            play_mode: PlayMode to restore
+            current_index: Current track index to restore
+        """
+        self._play_mode = play_mode
+        self._current_index = current_index
+        self.play_mode_changed.emit(play_mode)
+
+    def update_item_metadata(self, track_id: int = None, cloud_file_id: str = None,
+                             title: str = None, artist: str = None, album: str = None,
+                             duration: float = None, cover_path: str = None,
+                             needs_metadata: bool = None) -> List[int]:
+        """
+        Update metadata for playlist items matching track_id or cloud_file_id.
+
+        Args:
+            track_id: Track ID to match (for local tracks)
+            cloud_file_id: Cloud file ID to match (for cloud tracks)
+            title: New title
+            artist: New artist
+            album: New album
+            duration: New duration
+            cover_path: New cover path
+            needs_metadata: New needs_metadata flag
+
+        Returns:
+            List of indices of updated items
+        """
+        updated_indices = []
+        for i, item in enumerate(self._playlist):
+            match = False
+            if track_id is not None and item.track_id == track_id:
+                match = True
+            elif cloud_file_id is not None and item.cloud_file_id == cloud_file_id:
+                match = True
+
+            if match:
+                if title is not None:
+                    item.title = title
+                if artist is not None:
+                    item.artist = artist
+                if album is not None:
+                    item.album = album
+                if duration is not None:
+                    item.duration = duration
+                if cover_path is not None:
+                    item.cover_path = cover_path
+                if needs_metadata is not None:
+                    item.needs_metadata = needs_metadata
+                updated_indices.append(i)
+        return updated_indices
+
+    def load_track_at(self, index: int):
+        """
+        Load track at index without playing.
+
+        Args:
+            index: Index of track to load
+        """
+        if 0 <= index < len(self._playlist):
+            self._load_track(index)
+
     def get_next_item(self) -> Optional[PlaylistItem]:
         """
         Get the next playlist item without changing state.

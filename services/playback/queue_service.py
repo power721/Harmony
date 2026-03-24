@@ -79,14 +79,13 @@ class QueueService:
         # Restore play mode
         try:
             mode = PlayMode(saved_mode)
-            self._engine._play_mode = mode
+            self._engine.restore_state(mode, saved_index)
         except ValueError:
             pass
 
-        # Set current index and load track (but don't play)
-        self._engine._current_index = saved_index
+        # Load track at saved index (but don't play)
         if 0 <= saved_index < len(items):
-            self._engine._load_track(saved_index)
+            self._engine.load_track_at(saved_index)
 
         return True
 
