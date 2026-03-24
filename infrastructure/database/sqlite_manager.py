@@ -820,6 +820,11 @@ class DatabaseManager:
             'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
         }
 
+        # Check if we're in the write worker thread - execute directly
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_add_track(track_data, conn=self._write_worker._conn)
+
         future = self._submit_write(self._do_add_track, track_data)
         return future.result(timeout=10.0)
 
@@ -1164,6 +1169,11 @@ class DatabaseManager:
         """Update path for a track."""
         logger.info(f"[DatabaseManager] update_track_path: track_id={track_id}, path={path}")
 
+        # Check if we're in the write worker thread - execute directly
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_update_track_path(track_id, path, conn=self._write_worker._conn)
+
         future = self._submit_write(self._do_update_track_path, track_id, path)
         return future.result(timeout=10.0)
 
@@ -1191,7 +1201,17 @@ class DatabaseManager:
 
     def create_playlist(self, name: str) -> int:
         """Create a new playlist. Returns playlist ID."""
-        conn = self._get_connection()
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_create_playlist(name, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_create_playlist, name)
+        return future.result(timeout=10.0)
+
+    def _do_create_playlist(self, name: str, conn: sqlite3.Connection = None) -> int:
+        """Internal method to create playlist (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1274,7 +1294,18 @@ class DatabaseManager:
 
     def add_track_to_playlist(self, playlist_id: int, track_id: int) -> bool:
         """Add a track to a playlist."""
-        conn = self._get_connection()
+        # Check if we're in the write worker thread - execute directly
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_add_track_to_playlist(playlist_id, track_id, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_add_track_to_playlist, playlist_id, track_id)
+        return future.result(timeout=10.0)
+
+    def _do_add_track_to_playlist(self, playlist_id: int, track_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to add track to playlist (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Check if already exists
@@ -1307,7 +1338,17 @@ class DatabaseManager:
 
     def remove_track_from_playlist(self, playlist_id: int, track_id: int) -> bool:
         """Remove a track from a playlist."""
-        conn = self._get_connection()
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_remove_track_from_playlist(playlist_id, track_id, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_remove_track_from_playlist, playlist_id, track_id)
+        return future.result(timeout=10.0)
+
+    def _do_remove_track_from_playlist(self, playlist_id: int, track_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to remove track from playlist (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Get position before deletion
@@ -1338,7 +1379,17 @@ class DatabaseManager:
 
     def delete_playlist(self, playlist_id: int) -> bool:
         """Delete a playlist."""
-        conn = self._get_connection()
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_delete_playlist(playlist_id, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_delete_playlist, playlist_id)
+        return future.result(timeout=10.0)
+
+    def _do_delete_playlist(self, playlist_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to delete playlist (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
@@ -1348,7 +1399,17 @@ class DatabaseManager:
 
     def rename_playlist(self, playlist_id: int, new_name: str) -> bool:
         """Rename a playlist."""
-        conn = self._get_connection()
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_rename_playlist(playlist_id, new_name, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_rename_playlist, playlist_id, new_name)
+        return future.result(timeout=10.0)
+
+    def _do_rename_playlist(self, playlist_id: int, new_name: str, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to rename playlist (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1361,7 +1422,17 @@ class DatabaseManager:
 
     def remove_track(self, track_id: int) -> bool:
         """Remove a track from the library (does not delete the file)."""
-        conn = self._get_connection()
+        current_thread = threading.current_thread()
+        if current_thread.name == "DBWriteWorker":
+            return self._do_remove_track(track_id, conn=self._write_worker._conn)
+
+        future = self._submit_write(self._do_remove_track, track_id)
+        return future.result(timeout=10.0)
+
+    def _do_remove_track(self, track_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal method to remove track (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
@@ -2305,8 +2376,9 @@ class DatabaseManager:
             for i, item in enumerate(items)
         ]
 
-        future = self._submit_write(self._do_save_play_queue, items_data)
-        return future.result(timeout=10.0)
+        # Use async submit to avoid blocking Qt event loop
+        self._submit_write_async(self._do_save_play_queue, items_data)
+        return True
 
     def _do_save_play_queue(self, items_data: list, conn: sqlite3.Connection = None) -> bool:
         """Internal method to save play queue (runs in write worker)."""

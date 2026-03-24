@@ -237,7 +237,11 @@ class LibraryService:
 
     def add_track_to_playlist(self, playlist_id: int, track_id: int) -> bool:
         """Add a track to a playlist."""
-        result = self._playlist_repo.add_track(playlist_id, track_id)
+        # Use db_manager to go through write worker if available
+        if self._db:
+            result = self._db.add_track_to_playlist(playlist_id, track_id)
+        else:
+            result = self._playlist_repo.add_track(playlist_id, track_id)
         if result:
             self._event_bus.playlist_modified.emit(playlist_id)
         return result

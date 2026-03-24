@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
@@ -83,8 +83,7 @@ class PlaybackService(QObject):
         # Online download workers (song_mid -> QThread)
         self._online_download_workers: dict = {}
 
-        # Lock for serializing database write operations
-        self._db_lock = threading.Lock()
+        # NOTE: _db_lock removed - DBWriteWorker now handles serialization
 
         # Connect engine signals
         self._connect_engine_signals()
@@ -758,8 +757,8 @@ class PlaybackService(QObject):
             queue_item = item.to_play_queue_item(i)
             queue_items.append(queue_item)
 
-        with self._db_lock:
-            self._db.save_play_queue(queue_items)
+        # DBWriteWorker handles serialization
+        self._db.save_play_queue(queue_items)
 
         # Save current index and play mode
         self._config.set("queue_current_index", current_idx)
@@ -1030,11 +1029,12 @@ class PlaybackService(QObject):
             # Remove from dict after completion
             if mid in self._online_download_workers:
                 worker_obj = self._online_download_workers.pop(mid)
-                # Wait for thread to fully stop before deleting
-                worker_obj.wait(500)
+                # Don't call wait() here - we're in the worker thread!
+                # Just schedule deletion, Qt will handle it safely
                 worker_obj.deleteLater()
 
-        worker.download_finished.connect(on_finished)
+        # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
+        worker.download_finished.connect(on_finished, Qt.DirectConnection)
 
         # Store in dict and start
         self._online_download_workers[song_mid] = worker
@@ -1153,8 +1153,7 @@ class PlaybackService(QObject):
         existing = self._db.get_track_by_cloud_file_id(song_mid)
         if existing:
             # Update existing track with local path
-            with self._db_lock:
-                self._db.update_track_path(existing.id, local_path)
+            self._db.update_track_path(existing.id, local_path)
             logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
             return existing.id
 
@@ -1183,8 +1182,8 @@ class PlaybackService(QObject):
             source=TrackSource.QQ,  # Online music from QQ
         )
 
-        with self._db_lock:
-            track_id = self._db.add_track(track)
+        # DBWriteWorker handles serialization
+        track_id = self._db.add_track(track)
         return track_id
 
     def _preload_next_cloud_track(self):

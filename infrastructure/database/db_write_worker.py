@@ -138,6 +138,14 @@ class DBWriteWorker:
             Future that will contain the result
         """
         future = Future()
+        caller_thread = threading.current_thread().name
+
+        # Ensure worker thread is running
+        if not self._thread or not self._thread.is_alive():
+            logger.warning(f"[DBWriteWorker] Thread not alive, restarting...")
+            self._start()
+
+        logger.debug(f"[DBWriteWorker] Submit from {caller_thread}: {func.__name__}, queue size: {self._queue.qsize()}")
         self._queue.put((func, args, kwargs, future))
         return future
 
