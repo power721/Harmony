@@ -237,19 +237,13 @@ class AlbumCoverDownloadDialog(BaseCoverDownloadDialog):
         )
 
         if cover_path:
-            # Update albums in database
+            # Update albums in database via LibraryService
             from app import Application
             app = Application.instance()
             if app and app.bootstrap:
-                db = app.bootstrap.db
-                conn = db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE albums
-                    SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE name = ? AND artist = ?
-                """, (cover_path, self._album.name, self._album.artist))
-                conn.commit()
+                app.bootstrap.library_service.update_album_cover(
+                    self._album.name, self._album.artist, cover_path
+                )
 
             # Emit signal
             self.cover_saved.emit(cover_path)

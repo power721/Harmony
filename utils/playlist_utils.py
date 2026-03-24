@@ -10,7 +10,6 @@ from system.i18n import t
 
 if TYPE_CHECKING:
     from services.library.library_service import LibraryService
-    from infrastructure.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,6 @@ logger = logging.getLogger(__name__)
 def add_tracks_to_playlist(
     parent,
     library_service: "LibraryService",
-    db_manager: "DatabaseManager",
     track_ids: List[int],
     log_prefix: str = ""
 ) -> bool:
@@ -33,7 +31,6 @@ def add_tracks_to_playlist(
     Args:
         parent: Parent widget for dialogs
         library_service: LibraryService instance
-        db_manager: DatabaseManager instance
         track_ids: List of track IDs to add
         log_prefix: Prefix for log messages
 
@@ -67,7 +64,7 @@ def add_tracks_to_playlist(
         dialog.deleteLater()
         if playlist:
             added_count, duplicate_count = _add_tracks_to_playlist_internal(
-                db_manager, playlist.id, track_ids
+                library_service, playlist.id, track_ids
             )
             _show_result_message(parent, added_count, duplicate_count, playlist.name)
             if log_prefix and added_count > 0:
@@ -83,7 +80,7 @@ def add_tracks_to_playlist(
         dialog.deleteLater()
         if playlist:
             added_count, duplicate_count = _add_tracks_to_playlist_internal(
-                db_manager, playlist.id, track_ids
+                library_service, playlist.id, track_ids
             )
             _show_result_message(parent, added_count, duplicate_count, playlist.name)
             if log_prefix and added_count > 0:
@@ -96,7 +93,7 @@ def add_tracks_to_playlist(
 
 
 def _add_tracks_to_playlist_internal(
-    db_manager: "DatabaseManager",
+    library_service: "LibraryService",
     playlist_id: int,
     track_ids: List[int]
 ) -> tuple:
@@ -104,7 +101,7 @@ def _add_tracks_to_playlist_internal(
     Internal function to add tracks to a playlist.
 
     Args:
-        db_manager: DatabaseManager instance
+        library_service: LibraryService instance
         playlist_id: Target playlist ID
         track_ids: List of track IDs to add
 
@@ -115,7 +112,7 @@ def _add_tracks_to_playlist_internal(
     duplicate_count = 0
 
     for track_id in track_ids:
-        if db_manager.add_track_to_playlist(playlist_id, track_id):
+        if library_service.add_track_to_playlist(playlist_id, track_id):
             added_count += 1
         else:
             duplicate_count += 1

@@ -5,7 +5,6 @@ import logging
 
 from app import Bootstrap
 from domain.playback import PlaybackState
-from infrastructure.database import DatabaseManager
 from services import PlaybackService
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsDownloadWorker
@@ -70,11 +69,16 @@ class MainWindow(QMainWindow):
         """Initialize the main window."""
         super().__init__()
 
-        # Initialize database
-        self._db = DatabaseManager()
-
-        # Initialize config manager
-        self._config = ConfigManager(self._db)
+        # Get all services from Bootstrap (singleton)
+        bootstrap = Bootstrap.instance()
+        self._db = bootstrap.db  # Keep for backward compatibility with some components
+        self._config = bootstrap.config
+        self._playback = bootstrap.playback_service
+        self._library_service = bootstrap.library_service
+        self._favorites_service = bootstrap.favorites_service
+        self._play_history_service = bootstrap.play_history_service
+        self._cloud_account_service = bootstrap.cloud_account_service
+        self._cloud_file_service = bootstrap.cloud_file_service
 
         # Initialize QSettings for window geometry/splitter (Qt native format)
         self._settings = QSettings("HarmonyPlayer", "Harmony")
@@ -82,11 +86,6 @@ class MainWindow(QMainWindow):
         # Initialize language from config
         saved_lang = self._config.get_language()
         set_language(saved_lang)
-
-        # Get playback service from Bootstrap (singleton)
-        from app.bootstrap import Bootstrap
-        bootstrap = Bootstrap.instance()
-        self._playback = bootstrap.playback_service
 
         # Keep reference to engine for backward compatibility
         # Use closures to capture self for methods that need access to db
@@ -260,11 +259,24 @@ class MainWindow(QMainWindow):
         # Library/playlist view
         self._stacked_widget = QStackedWidget()
 
-        from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
 
-        self._library_view = LibraryView(self._db, self._player, self._config, bootstrap.cover_service)
-        self._cloud_drive_view = CloudDriveView(self._db, self._player, self._config, bootstrap.cover_service)
+        self._library_view = LibraryView(
+            self._library_service,
+            self._favorites_service,
+            self._play_history_service,
+            self._player,
+            self._config,
+            bootstrap.cover_service
+        )
+        self._cloud_drive_view = CloudDriveView(
+            self._cloud_account_service,
+            self._cloud_file_service,
+            self._library_service,
+            self._player,
+            self._config,
+            bootstrap.cover_service
+        )
         self._playlist_view = PlaylistView(self._db, self._player)
         self._queue_view = QueueView(self._player, self._db)
         self._albums_view = AlbumsView(bootstrap.library_service, bootstrap.cover_service)

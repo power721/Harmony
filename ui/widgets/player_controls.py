@@ -967,7 +967,7 @@ class PlayerControls(QWidget):
 
     def _get_album_cover(self, album: str, artist: str) -> str:
         """
-        Get cover from albums table.
+        Get cover from albums table via LibraryService.
 
         Args:
             album: Album name
@@ -977,21 +977,14 @@ class PlayerControls(QWidget):
             Cover path or None
         """
         from pathlib import Path
+        from app import Bootstrap
 
         try:
-            if hasattr(self._player, '_db') and self._player._db:
-                conn = self._player._db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT cover_path FROM albums
-                    WHERE name = ? AND artist = ? AND cover_path IS NOT NULL AND cover_path != ''
-                    LIMIT 1
-                """, (album, artist))
-                row = cursor.fetchone()
-                if row and row[0]:
-                    cover_path = row[0]
-                    if Path(cover_path).exists():
-                        return cover_path
+            bootstrap = Bootstrap.instance()
+            album_obj = bootstrap.library_service.get_album_by_name(album, artist)
+            if album_obj and album_obj.cover_path:
+                if Path(album_obj.cover_path).exists():
+                    return album_obj.cover_path
         except Exception as e:
             logger.debug(f"[PlayerControls] Error getting album cover: {e}")
 

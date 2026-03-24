@@ -50,9 +50,11 @@ class CloudDriveView(QWidget):
         str, int, list, float
     )  # Signal for playing multiple cloud files (temp_path, index, cloud_files, start_position)
 
-    def __init__(self, db_manager, player, config_manager=None, cover_service=None, parent=None):
+    def __init__(self, cloud_account_service, cloud_file_service, library_service, player, config_manager=None, cover_service=None, parent=None):
         super().__init__(parent)
-        self._db = db_manager
+        self._cloud_account_service = cloud_account_service
+        self._cloud_file_service = cloud_file_service
+        self._library_service = library_service
         self._player = player
         self._config_manager = config_manager
         self._cover_service = cover_service
@@ -396,7 +398,7 @@ class CloudDriveView(QWidget):
     def _load_accounts(self):
         """Load available cloud accounts and auto-select the last used account."""
         # Load all accounts from all providers
-        accounts = self._db.get_cloud_accounts()
+        accounts = self._cloud_account_service.get_accounts()
         self._populate_account_list(accounts)
 
         # Restore last selected account
@@ -572,7 +574,7 @@ class CloudDriveView(QWidget):
 
     def _on_login_success(self, account_info: dict, provider: str = "quark"):
         """Handle successful login."""
-        account_id = self._db.create_cloud_account(
+        account_id = self._cloud_account_service.create_account(
             provider=provider,
             account_name=account_info.get("account_email", f"{provider.capitalize()} Account"),
             account_email=account_info.get("account_email", ""),
@@ -580,7 +582,7 @@ class CloudDriveView(QWidget):
         )
 
         # Reload all accounts
-        accounts = self._db.get_cloud_accounts()
+        accounts = self._cloud_account_service.get_accounts()
         self._populate_account_list(accounts)
 
         # Select the new account
@@ -620,7 +622,7 @@ class CloudDriveView(QWidget):
 
         # Update token if changed
         if updated_token:
-            self._db.update_cloud_account_token(self._current_account.id, updated_token)
+            self._cloud_account_service.update_token(self._current_account.id, updated_token)
             self._current_account.access_token = updated_token
 
         # Cache files in database
@@ -628,10 +630,10 @@ class CloudDriveView(QWidget):
             self._current_parent_id = files[0].parent_id
             can_go_back = self._current_parent_id != "0"
             self._back_btn.setEnabled(can_go_back)
-            self._db.cache_cloud_files(self._current_account.id, files)
+            self._cloud_file_service.cache_files(self._current_account.id, files)
 
             # Reload files from database to get local_path information
-        files = self._db.get_cloud_files(self._current_account.id, self._current_parent_id)
+        files = self._cloud_file_service.get_files(self._current_account.id, self._current_parent_id)
 
         # Save the first file's parent_id (current folder's parent) for back navigation
         # If we have files and we're not at root, the first file's parent_id can help us
@@ -909,7 +911,7 @@ class CloudDriveView(QWidget):
                 return
 
             # Save position to database (in seconds)
-            self._db.update_cloud_account_playing_state(
+            self._cloud_account_service.update_playing_state(
                 self._current_account.id,
                 position=current_position
             )
@@ -941,7 +943,7 @@ class CloudDriveView(QWidget):
             current_path = self._path_label.text()
 
             # Save folder path and fid_path
-            self._db.update_cloud_account_folder(
+            self._cloud_account_service.update_folder(
                 self._current_account.id,
                 self._current_parent_id,
                 current_path,
@@ -964,7 +966,7 @@ class CloudDriveView(QWidget):
                 self._status_label.setText(
                     f"🎵 {t('resume_play')}: {file.name} ({t('resume_from', time=time_str)})")
 
-            self._db.update_cloud_account_playing_state(
+            self._cloud_account_service.update_playing_state(
                 self._current_account.id,
                 playing_fid=file.file_id,
                 position=actual_start_position
@@ -987,7 +989,7 @@ class CloudDriveView(QWidget):
         # First, check if we have a local_path in database (may have been moved by file organization)
         local_file_path = None
         if self._current_account:
-            db_file = self._db.get_cloud_file_by_file_id(file.file_id)
+            db_file = self._cloud_file_service.get_file_by_file_id(file.file_id)
             if db_file and db_file.local_path:
                 db_path = Path(db_file.local_path)
                 if db_path.exists():
@@ -1042,7 +1044,7 @@ class CloudDriveView(QWidget):
         # Get db_local_path for download thread (may have been moved by file organization)
         db_local_path = None
         if self._current_account:
-            db_file = self._db.get_cloud_file_by_file_id(file.file_id)
+            db_file = self._cloud_file_service.get_file_by_file_id(file.file_id)
             if db_file and db_file.local_path:
                 db_local_path = db_file.local_path
 
@@ -1084,13 +1086,13 @@ class CloudDriveView(QWidget):
             if file_index < len(audio_files):
                 cloud_file = audio_files[file_index]
                 if self._current_account:
-                    self._db.update_cloud_file_local_path(
+                    self._cloud_file_service.update_local_path(
                         cloud_file.file_id,
                         self._current_account.id,
                         temp_path
                     )
                     # Also update last_playing_local_path for faster restore
-                    self._db.update_cloud_account_playing_state(
+                    self._cloud_account_service.update_playing_state(
                         self._current_account.id,
                         playing_fid=cloud_file.file_id,
                         local_path=temp_path
@@ -1129,7 +1131,7 @@ class CloudDriveView(QWidget):
     def _on_token_updated(self, updated_token: str):
         """Handle updated access token from API calls."""
         if self._current_account and updated_token:
-            self._db.update_cloud_account_token(self._current_account.id, updated_token)
+            self._cloud_account_service.update_token(self._current_account.id, updated_token)
             self._current_account.access_token = updated_token
 
     def _on_file_downloaded(self, temp_path: str, file_index: int, audio_files: list, file_name: str = None,
@@ -1159,13 +1161,13 @@ class CloudDriveView(QWidget):
                 if file_index < len(audio_files):
                     cloud_file = audio_files[file_index]
                     if self._current_account:
-                        self._db.update_cloud_file_local_path(
+                        self._cloud_file_service.update_local_path(
                             cloud_file.file_id,
                             self._current_account.id,
                             temp_path
                         )
                         # Also update last_playing_local_path for faster restore
-                        self._db.update_cloud_account_playing_state(
+                        self._cloud_account_service.update_playing_state(
                             self._current_account.id,
                             playing_fid=cloud_file.file_id,
                             local_path=temp_path
@@ -1298,7 +1300,7 @@ class CloudDriveView(QWidget):
 
         # If not in memory, check database
         if not has_local_path and self._current_account:
-            db_file = self._db.get_cloud_file_by_file_id(file.file_id)
+            db_file = self._cloud_file_service.get_file_by_file_id(file.file_id)
             if db_file and db_file.local_path:
                 from pathlib import Path
                 if Path(db_file.local_path).exists():
@@ -1431,7 +1433,7 @@ class CloudDriveView(QWidget):
             if size_diff <= tolerance:
                 # Update database with local path
                 if self._current_account:
-                    self._db.update_cloud_file_local_path(
+                    self._cloud_file_service.update_local_path(
                         file.file_id,
                         self._current_account.id,
                         str(local_file_path)
@@ -1499,7 +1501,7 @@ class CloudDriveView(QWidget):
 
             # Update database
             if self._current_account:
-                self._db.update_cloud_file_local_path(
+                self._cloud_file_service.update_local_path(
                     file.file_id,
                     self._current_account.id,
                     local_path
@@ -1590,7 +1592,7 @@ class CloudDriveView(QWidget):
 
         # Update token if changed
         if updated_token:
-            self._db.update_cloud_account_token(account.id, updated_token)
+            self._cloud_account_service.update_token(account.id, updated_token)
             account.access_token = updated_token
             # Also update current account if it's the same
             if self._current_account and self._current_account.id == account.id:
@@ -1806,7 +1808,7 @@ class CloudDriveView(QWidget):
 
             if result and result.get('status') == 'success':
                 # Update account in database
-                self._db.update_cloud_account_token(account.id, cookie_str)
+                self._cloud_account_service.update_token(account.id, cookie_str)
                 account.access_token = cookie_str
 
                 # Update account name if changed
@@ -1819,7 +1821,7 @@ class CloudDriveView(QWidget):
                 QTimer.singleShot(1000, dialog.accept)
 
                 # Refresh account list
-                accounts = self._db.get_cloud_accounts()
+                accounts = self._cloud_account_service.get_accounts()
                 self._populate_account_list(accounts)
             else:
                 status_label.setText(t("cookie_invalid"))
@@ -1838,10 +1840,10 @@ class CloudDriveView(QWidget):
         )
 
         if reply == QMessageBox.Yes:
-            self._db.delete_cloud_account(account.id)
+            self._cloud_account_service.delete_account(account.id)
 
             # Reload accounts
-            accounts = self._db.get_cloud_accounts(provider="quark")
+            accounts = self._cloud_account_service.get_accounts(provider="quark")
             self._populate_account_list(accounts)
 
             # Reset current account if needed
@@ -2116,28 +2118,27 @@ class CloudDriveView(QWidget):
             )
 
             if success:
-                # Update tracks table in database
-                track = self._db.get_track_by_cloud_file_id(file.file_id)
+                # Update tracks table in database via LibraryService
+                track = self._library_service.get_track_by_cloud_file_id(file.file_id)
                 if track:
                     # Update existing track
-                    conn = self._db._get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE tracks SET title = ?, artist = ?, album = ? WHERE id = ?",
-                        (new_title, new_artist, new_album, track.id)
+                    self._library_service.update_track_metadata(
+                        track.id,
+                        title=new_title,
+                        artist=new_artist,
+                        album=new_album
                     )
-                    conn.commit()
                 else:
                     # Check if track exists by path
-                    track = self._db.get_track_by_path(file.local_path)
+                    track = self._library_service.get_track_by_path(file.local_path)
                     if track:
-                        conn = self._db._get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE tracks SET title = ?, artist = ?, album = ?, cloud_file_id = ? WHERE id = ?",
-                            (new_title, new_artist, new_album, file.file_id, track.id)
+                        self._library_service.update_track_metadata(
+                            track.id,
+                            title=new_title,
+                            artist=new_artist,
+                            album=new_album,
+                            cloud_file_id=file.file_id
                         )
-                        conn.commit()
 
                 # Update CloudFile display name
                 file.name = new_title
@@ -2443,7 +2444,7 @@ class CloudDriveView(QWidget):
                 return True
 
         # Select the account
-        accounts = self._db.get_cloud_accounts()
+        accounts = self._cloud_account_service.get_accounts()
         target_account = None
 
         for account in accounts:
@@ -2509,7 +2510,7 @@ class CloudDriveView(QWidget):
         from domain.cloud import CloudFile
 
         # Select the account in UI
-        accounts = self._db.get_cloud_accounts()
+        accounts = self._cloud_account_service.get_accounts()
         target_account = None
         for account in accounts:
             if account.id == account_id:

@@ -12,9 +12,12 @@ from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
 from repositories.track_repository import SqliteTrackRepository
 from services.library import LibraryService
+from services.library.favorites_service import FavoritesService
+from services.library.play_history_service import PlayHistoryService
 from services.library.file_organization_service import FileOrganizationService
 from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
+from services.cloud import CloudAccountService, CloudFileService
 from system.config import ConfigManager
 from system.event_bus import EventBus
 
@@ -51,6 +54,10 @@ class Bootstrap:
         self._playback_service: Optional[PlaybackService] = None
         self._queue_service: Optional[QueueService] = None
         self._library_service: Optional[LibraryService] = None
+        self._favorites_service: Optional[FavoritesService] = None
+        self._play_history_service: Optional[PlayHistoryService] = None
+        self._cloud_account_service: Optional[CloudAccountService] = None
+        self._cloud_file_service: Optional[CloudFileService] = None
         self._cover_service: Optional[CoverService] = None
         self._file_org_service: Optional["FileOrganizationService"] = None
         self._online_music_service: Optional["OnlineMusicService"] = None
@@ -168,6 +175,46 @@ class Bootstrap:
             # Initialize albums/artists tables if needed
             self._library_service.init_albums_artists()
         return self._library_service
+
+    @property
+    def favorites_service(self) -> FavoritesService:
+        """Get favorites service."""
+        if self._favorites_service is None:
+            self._favorites_service = FavoritesService(
+                db_manager=self.db,
+                event_bus=self.event_bus,
+            )
+        return self._favorites_service
+
+    @property
+    def play_history_service(self) -> PlayHistoryService:
+        """Get play history service."""
+        if self._play_history_service is None:
+            self._play_history_service = PlayHistoryService(
+                db_manager=self.db,
+                event_bus=self.event_bus,
+            )
+        return self._play_history_service
+
+    @property
+    def cloud_account_service(self) -> CloudAccountService:
+        """Get cloud account service."""
+        if self._cloud_account_service is None:
+            self._cloud_account_service = CloudAccountService(
+                db_manager=self.db,
+                event_bus=self.event_bus,
+            )
+        return self._cloud_account_service
+
+    @property
+    def cloud_file_service(self) -> CloudFileService:
+        """Get cloud file service."""
+        if self._cloud_file_service is None:
+            self._cloud_file_service = CloudFileService(
+                db_manager=self.db,
+                event_bus=self.event_bus,
+            )
+        return self._cloud_file_service
 
     @property
     def cover_service(self) -> CoverService:

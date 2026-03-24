@@ -30,7 +30,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
-from infrastructure.database import DatabaseManager
 from domain.track import Track
 from services.playback import PlaybackService
 from domain.playback import PlaybackState
@@ -54,21 +53,25 @@ class LibraryView(QWidget):
     )  # Signal when tracks should be added to a playlist
 
     def __init__(
-            self, db_manager: DatabaseManager, player: PlaybackService, config_manager: ConfigManager = None,
+            self, library_service, favorites_service, play_history_service, player: PlaybackService, config_manager: ConfigManager = None,
             cover_service: CoverService = None, parent=None
     ):
         """
         Initialize library view.
 
         Args:
-            db_manager: Database manager
+            library_service: Library service for track operations
+            favorites_service: Favorites service for favorite operations
+            play_history_service: Play history service for history operations
             player: Player controller
             config_manager: Configuration manager for AI settings
             cover_service: Cover service for downloading album art
             parent: Parent widget
         """
         super().__init__(parent)
-        self._db = db_manager
+        self._library_service = library_service
+        self._favorites_service = favorites_service
+        self._play_history_service = play_history_service
         self._player = player
         self._config = config_manager
         self._cover_service = cover_service
@@ -424,9 +427,9 @@ class LibraryView(QWidget):
 
         text = self._search_input.text()
         if text:
-            tracks = self._db.search_tracks(text)
+            tracks = self._library_service.search_tracks(text)
         else:
-            tracks = self._db.get_all_tracks()
+            tracks = self._library_service.get_all_tracks()
         self._populate_table(tracks)
         self._status_label.setText(f"{len(tracks)} {t('tracks')}")
 
@@ -438,7 +441,7 @@ class LibraryView(QWidget):
         self._loading_label.setVisible(True)
         self._tracks_table.setVisible(False)
 
-        favorites = self._db.get_favorites_with_cloud()
+        favorites = self._favorites_service.get_favorites_with_cloud()
         self._populate_favorites_table(favorites)
         self._status_label.setText(f"{len(favorites)} {t('favorites_word')}")
 
@@ -506,11 +509,11 @@ class LibraryView(QWidget):
         self._loading_label.setVisible(True)
         self._tracks_table.setVisible(False)
 
-        history = self._db.get_play_history()
+        history = self._play_history_service.get_history()
 
         tracks = []
         for entry in history:
-            track = self._db.get_track(entry.track_id)
+            track = self._library_service.get_track(entry.track_id)
             if track:
                 tracks.append((track, entry.played_at))
 
@@ -528,7 +531,7 @@ class LibraryView(QWidget):
     def _load_artists(self):
         """Load artists view."""
         # Get all unique artists
-        tracks = self._db.get_all_tracks()
+        tracks = self._library_service.get_all_tracks()
         artists = {}
         for track in tracks:
             if track.artist not in artists:
@@ -548,7 +551,7 @@ class LibraryView(QWidget):
     def _load_albums(self):
         """Load albums view."""
         # Get all unique albums
-        tracks = self._db.get_all_tracks()
+        tracks = self._library_service.get_all_tracks()
         albums = {}
         for track in tracks:
             key = f"{track.artist} - {track.album}"
@@ -623,7 +626,7 @@ class LibraryView(QWidget):
                 self._tracks_table.setItem(row, 3, duration_item)
 
                 # Favorite indicator (check if actually favorited)
-                is_fav = self._db.is_favorite(track.id)
+                is_fav = self._favorites_service.is_favorite(track_id=track.id)
                 fav_text = "★" if is_fav else ""
                 fav_item = QTableWidgetItem(fav_text)
                 fav_item.setForeground(
@@ -712,12 +715,12 @@ class LibraryView(QWidget):
         # 根据当前视图决定搜索范围
         if self._current_view == "all":
             # 在所有 tracks 中搜索
-            tracks = self._db.search_tracks(query)
+            tracks = self._library_service.search_tracks(query)
             status_text = f'{len(tracks)} {t("results_for")} "{query}"'
 
         elif self._current_view == "favorites":
             # 在收藏的 tracks 中搜索
-            all_favorites = self._db.get_favorites()
+            all_favorites = self._favorites_service.get_favorites()
             tracks = self._filter_tracks_by_query(all_favorites, query)
             status_text = (
                 f'{len(tracks)} {t("results_for")} "{query}" {t("in_favorites")}'
@@ -725,10 +728,10 @@ class LibraryView(QWidget):
 
         elif self._current_view == "history":
             # 在历史记录中搜索
-            history = self._db.get_play_history()
+            history = self._play_history_service.get_history()
             tracks = []
             for entry in history:
-                track = self._db.get_track(entry.track_id)
+                track = self._library_service.get_track(entry.track_id)
                 if track and self._track_matches_query(track, query):
                     tracks.append(track)
             status_text = (
@@ -753,11 +756,11 @@ class LibraryView(QWidget):
                 local_path = track_dict.get("path")
 
                 if cloud_file_id:
-                    track = self._db.get_track_by_cloud_file_id(cloud_file_id)
+                    track = self._library_service.get_track_by_cloud_file_id(cloud_file_id)
                     if track:
                         new_track_id = track.id
                 elif local_path:
-                    track = self._db.get_track_by_path(local_path)
+                    track = self._library_service.get_track_by_path(local_path)
                     if track:
                         new_track_id = track.id
 
@@ -938,13 +941,13 @@ class LibraryView(QWidget):
                 is_cloud = track_id.get("type") == "cloud"
                 if is_cloud:
                     cloud_file_id = track_id.get("cloud_file_id")
-                    is_favorited = self._db.is_favorite(cloud_file_id=cloud_file_id)
+                    is_favorited = self._favorites_service.is_favorite(cloud_file_id=cloud_file_id)
                 else:
                     tid = track_id.get("id")
                     if tid:
-                        is_favorited = self._db.is_favorite(track_id=tid)
+                        is_favorited = self._favorites_service.is_favorite(track_id=tid)
             else:
-                is_favorited = self._db.is_favorite(track_id=track_id)
+                is_favorited = self._favorites_service.is_favorite(track_id=track_id)
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -1160,14 +1163,14 @@ class LibraryView(QWidget):
         for track_info in track_ids:
             track_id = track_info["id"]
             row = track_info["row"]
-            if self._db.is_favorite(track_id=track_id):
-                self._db.remove_favorite(track_id=track_id)
+            if self._favorites_service.is_favorite(track_id=track_id):
+                self._favorites_service.remove_favorite(track_id=track_id)
                 removed_count += 1
                 bus.emit_favorite_change(track_id, False, is_cloud=False)
                 if self._current_view == "favorites":
                     rows_to_remove.append(row)
             else:
-                self._db.add_favorite(track_id=track_id)
+                self._favorites_service.add_favorite(track_id=track_id)
                 added_count += 1
                 bus.emit_favorite_change(track_id, True, is_cloud=False)
 
@@ -1177,14 +1180,14 @@ class LibraryView(QWidget):
             cloud_account_id = cloud_file.get("cloud_account_id")
             row = cloud_file.get("row")
             if cloud_file_id:
-                if self._db.is_favorite(cloud_file_id=cloud_file_id):
-                    self._db.remove_favorite(cloud_file_id=cloud_file_id)
+                if self._favorites_service.is_favorite(cloud_file_id=cloud_file_id):
+                    self._favorites_service.remove_favorite(cloud_file_id=cloud_file_id)
                     removed_count += 1
                     bus.emit_favorite_change(cloud_file_id, False, is_cloud=True)
                     if self._current_view == "favorites":
                         rows_to_remove.append(row)
                 else:
-                    self._db.add_favorite(cloud_file_id=cloud_file_id, cloud_account_id=cloud_account_id)
+                    self._favorites_service.add_favorite(cloud_file_id=cloud_file_id, cloud_account_id=cloud_account_id)
                     added_count += 1
                     bus.emit_favorite_change(cloud_file_id, True, is_cloud=True)
 
@@ -1204,9 +1207,9 @@ class LibraryView(QWidget):
             # Update only the favorite column for affected rows
             for row, (item_id, is_cloud) in rows_to_update.items():
                 if is_cloud:
-                    is_fav = self._db.is_favorite(cloud_file_id=item_id)
+                    is_fav = self._favorites_service.is_favorite(cloud_file_id=item_id)
                 else:
-                    is_fav = self._db.is_favorite(track_id=item_id)
+                    is_fav = self._favorites_service.is_favorite(track_id=item_id)
                 self._update_favorite_cell(row, is_fav)
 
         if added_count > 0 and removed_count == 0:
@@ -1276,7 +1279,6 @@ class LibraryView(QWidget):
         add_tracks_to_playlist(
             self,
             bootstrap.library_service,
-            self._db,
             track_ids,
             "[LibraryView]"
         )
@@ -1318,7 +1320,7 @@ class LibraryView(QWidget):
             return
 
         # Get first track for initial values
-        first_track = self._db.get_track(track_ids[0])
+        first_track = self._library_service.get_track(track_ids[0])
         if not first_track:
             return
 
@@ -1567,7 +1569,7 @@ class LibraryView(QWidget):
 
                 success_count = 0
                 for i, track_id in enumerate(track_ids):
-                    track = self._db.get_track(track_id)
+                    track = self._library_service.get_track(track_id)
                     if not track:
                         continue
 
@@ -1592,7 +1594,7 @@ class LibraryView(QWidget):
                     )
 
                     if success:
-                        self._db.update_track(
+                        self._library_service.update_track_metadata(
                             track_id,
                             title=track.title,
                             artist=save_artist,
@@ -1632,7 +1634,7 @@ class LibraryView(QWidget):
                 )
 
                 if success:
-                    self._db.update_track(
+                    self._library_service.update_track_metadata(
                         track_ids[0],
                         title=new_title,
                         artist=new_artist,
@@ -1689,7 +1691,7 @@ class LibraryView(QWidget):
         if not track_id:
             return
 
-        track = self._db.get_track(track_id)
+        track = self._library_service.get_track(track_id)
         if not track:
             return
 
@@ -1781,13 +1783,13 @@ class LibraryView(QWidget):
         removed_count = 0
         # Remove local tracks
         for track_id in track_ids:
-            if self._db.remove_track(track_id):
+            if self._library_service.delete_track(track_id):
                 removed_count += 1
 
         # Remove cloud file favorites
         for cloud_file_id in cloud_file_ids:
             if cloud_file_id:
-                self._db.remove_favorite(cloud_file_id=cloud_file_id)
+                self._favorites_service.remove_favorite(cloud_file_id=cloud_file_id)
                 removed_count += 1
 
         if removed_count > 0:
@@ -1827,7 +1829,7 @@ class LibraryView(QWidget):
         # Get track info for confirmation and later updates
         track_info_list = []
         for track_id in track_ids:
-            track = self._db.get_track(track_id)
+            track = self._library_service.get_track(track_id)
             if track:
                 track_info_list.append((track_id, track))
 
@@ -1854,15 +1856,7 @@ class LibraryView(QWidget):
         for track_id, track in track_info_list:
             try:
                 # Remove from database first
-                if self._db.remove_track(track_id):
-                    # Update albums and artists tables
-                    self._db.update_albums_on_track_deleted(
-                        track.album, track.artist, track.duration
-                    )
-                    self._db.update_artists_on_track_deleted(
-                        track.artist, track.album
-                    )
-
+                if self._library_service.delete_track(track_id):
                     # Try to delete the file from disk (skip if no local path - online tracks)
                     try:
                         # Skip if no local path (online/cloud tracks)
@@ -1958,10 +1952,10 @@ class LibraryView(QWidget):
             progress = Signal(int, int)  # current, total
             finished_signal = Signal(list, int, int)  # enhanced_ids, enhanced_count, failed_count
 
-            def __init__(self, track_ids, db, base_url, api_key, model):
+            def __init__(self, track_ids, library_service, base_url, api_key, model):
                 super().__init__()
                 self._track_ids = track_ids
-                self._db = db
+                self._library_service = library_service
                 self._base_url = base_url
                 self._api_key = api_key
                 self._model = model
@@ -1979,7 +1973,7 @@ class LibraryView(QWidget):
                 for i, track_id in enumerate(self._track_ids):
                     if self._cancelled:
                         break
-                    track = self._db.get_track(track_id)
+                    track = self._library_service.get_track(track_id)
                     if track:
                         # Skip tracks without local path (online/cloud tracks)
                         if not track.path or not track.path.strip():
@@ -2024,7 +2018,7 @@ class LibraryView(QWidget):
                             logger.error(f"Failed to save metadata: {e}")
 
                         # Update database
-                        self._db.update_track(
+                        self._library_service.update_track_metadata(
                             track_id,
                             title=enhanced.get('title'),
                             artist=enhanced.get('artist'),
@@ -2052,7 +2046,7 @@ class LibraryView(QWidget):
         progress_dialog.setAutoReset(False)
 
         # Create and start worker
-        worker = AIEnhanceWorker(track_ids, self._db, base_url, api_key, model)
+        worker = AIEnhanceWorker(track_ids, self._library_service, base_url, api_key, model)
 
         def on_progress(current, total):
             progress_dialog.setValue(current)
@@ -2094,7 +2088,7 @@ class LibraryView(QWidget):
                 track_id = title_item.data(Qt.UserRole)
                 if track_id in track_ids:
                     # Get updated track from database
-                    track = self._db.get_track(track_id)
+                    track = self._library_service.get_track(track_id)
                     if track:
                         # Update title
                         is_currently_playing = track.id == self._current_playing_track_id
@@ -2175,10 +2169,10 @@ class LibraryView(QWidget):
             progress = Signal(int, int, int)  # current, total, track_id
             finished_signal = Signal(list, int, int)  # identified_ids, success_count, failed_count
 
-            def __init__(self, track_ids, db, api_key):
+            def __init__(self, track_ids, library_service, api_key):
                 super().__init__()
                 self._track_ids = track_ids
-                self._db = db
+                self._library_service = library_service
                 self._api_key = api_key
                 self._cancelled = False
 
@@ -2195,7 +2189,7 @@ class LibraryView(QWidget):
 
                     self.progress.emit(i, len(self._track_ids), track_id)
 
-                    track = self._db.get_track(track_id)
+                    track = self._library_service.get_track(track_id)
                     if not track:
                         failed_count += 1
                         continue
@@ -2212,7 +2206,7 @@ class LibraryView(QWidget):
                     )
 
                     if enhanced and enhanced.get('title'):
-                        self._db.update_track(
+                        self._library_service.update_track_metadata(
                             track_id,
                             title=enhanced.get('title'),
                             artist=enhanced.get('artist'),
@@ -2243,7 +2237,7 @@ class LibraryView(QWidget):
         progress_dialog.setAutoReset(False)
 
         # Create and start worker
-        worker = AcoustIDWorker(track_ids, self._db, api_key)
+        worker = AcoustIDWorker(track_ids, self._library_service, api_key)
 
         def on_progress(current, total, track_id):
             progress_dialog.setValue(current)
@@ -2294,7 +2288,7 @@ class LibraryView(QWidget):
         # Get track objects
         tracks = []
         for track_id in track_ids:
-            track = self._db.get_track(track_id)
+            track = self._library_service.get_track(track_id)
             if track:
                 tracks.append(track)
 
@@ -2332,7 +2326,7 @@ class LibraryView(QWidget):
         # Get track objects
         tracks = []
         for track_id in track_ids:
-            track = self._db.get_track(track_id)
+            track = self._library_service.get_track(track_id)
             if track:
                 tracks.append(track)
 

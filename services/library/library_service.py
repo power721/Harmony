@@ -76,6 +76,18 @@ class LibraryService:
         """Get a track by ID."""
         return self._track_repo.get_by_id(track_id)
 
+    def get_track_by_path(self, path: str) -> Optional[Track]:
+        """Get a track by file path."""
+        if self._db:
+            return self._db.get_track_by_path(path)
+        return None
+
+    def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
+        """Get a track by cloud file ID."""
+        if self._db:
+            return self._db.get_track_by_cloud_file_id(cloud_file_id)
+        return None
+
     def get_all_tracks(self) -> List[Track]:
         """Get all tracks in the library."""
         return self._track_repo.get_all()
@@ -184,6 +196,56 @@ class LibraryService:
             )
 
         return result
+
+    def update_track_metadata(
+        self,
+        track_id: int,
+        title: str = None,
+        artist: str = None,
+        album: str = None,
+        cloud_file_id: str = None
+    ) -> bool:
+        """
+        Update track metadata directly.
+
+        This is a lightweight update that doesn't trigger album/artist recalculation.
+        Used for cloud file metadata updates.
+
+        Args:
+            track_id: Track ID
+            title: New title
+            artist: New artist
+            album: New album
+            cloud_file_id: Cloud file ID to associate
+
+        Returns:
+            True if updated successfully
+        """
+        if not self._db:
+            return False
+
+        track = self._track_repo.get_by_id(track_id)
+        if not track:
+            return False
+
+        # Update track object
+        if title is not None:
+            track.title = title
+        if artist is not None:
+            track.artist = artist
+        if album is not None:
+            track.album = album
+        if cloud_file_id is not None:
+            track.cloud_file_id = cloud_file_id
+
+        # Use db_manager's update_track for direct database update
+        return self._db.update_track(
+            track_id,
+            title=track.title,
+            artist=track.artist,
+            album=track.album,
+            cloud_file_id=track.cloud_file_id
+        )
 
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the library."""
@@ -510,3 +572,56 @@ class LibraryService:
             'errors': errors,
             'merged': is_merge
         }
+
+    # ===== Cover Update Operations =====
+
+    def update_artist_cover(self, artist_name: str, cover_path: str) -> bool:
+        """
+        Update cover path for an artist.
+
+        Args:
+            artist_name: Artist name
+            cover_path: Path to cover image
+
+        Returns:
+            True if updated successfully
+        """
+        if not self._db:
+            return False
+
+        import sqlite3
+        conn = self._db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE artists
+            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE name = ?
+        """, (cover_path, artist_name))
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def update_album_cover(self, album_name: str, artist: str, cover_path: str) -> bool:
+        """
+        Update cover path for an album.
+
+        Args:
+            album_name: Album name
+            artist: Artist name
+            cover_path: Path to cover image
+
+        Returns:
+            True if updated successfully
+        """
+        if not self._db:
+            return False
+
+        import sqlite3
+        conn = self._db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE albums
+            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE name = ? AND artist = ?
+        """, (cover_path, album_name, artist))
+        conn.commit()
+        return cursor.rowcount > 0

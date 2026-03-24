@@ -1490,7 +1490,6 @@ class OnlineDetailView(QWidget):
         add_tracks_to_playlist(
             self,
             bootstrap.library_service,
-            self._db,
             track_ids,
             "[OnlineDetailView]"
         )
