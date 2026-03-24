@@ -1237,33 +1237,31 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # Get position before deletion
         cursor.execute(
-            """
-            DELETE
-            FROM playlist_items
-            WHERE playlist_id = ?
-              AND track_id = ?
-            """,
+            "SELECT position FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
+            (playlist_id, track_id),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return False
+
+        position = row["position"]
+
+        # Delete the track
+        cursor.execute(
+            "DELETE FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
             (playlist_id, track_id),
         )
 
-        # Reorder remaining items
-        if cursor.rowcount > 0:
-            cursor.execute(
-                """
-                UPDATE playlist_items
-                SET position = position - 1
-                WHERE playlist_id = ?
-                  AND position > (SELECT position
-                                  FROM playlist_items
-                                  WHERE playlist_id = ?
-                                    AND track_id = ?)
-                """,
-                (playlist_id, playlist_id, track_id),
-            )
+        # Reorder remaining items using saved position
+        cursor.execute(
+            "UPDATE playlist_items SET position = position - 1 WHERE playlist_id = ? AND position > ?",
+            (playlist_id, position),
+        )
 
         conn.commit()
-        return cursor.rowcount > 0
+        return True
 
     def delete_playlist(self, playlist_id: int) -> bool:
         """Delete a playlist."""

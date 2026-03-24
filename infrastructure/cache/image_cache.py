@@ -89,14 +89,17 @@ class ImageCache:
         cutoff = time.time() - days * 86400
         deleted = 0
 
-        try:
-            for f in cls.CACHE_DIR.iterdir():
+        for f in cls.CACHE_DIR.iterdir():
+            try:
                 if f.is_file() and f.stat().st_mtime < cutoff:
                     f.unlink()
                     deleted += 1
                     logger.debug(f"Deleted old cache: {f}")
-        except Exception as e:
-            logger.warning(f"Error during cache cleanup: {e}")
+            except FileNotFoundError:
+                # File was deleted by another process - ignore
+                pass
+            except OSError as e:
+                logger.debug(f"Could not delete cache file {f}: {e}")
 
         if deleted > 0:
             logger.info(f"Cleaned up {deleted} cached images older than {days} days")

@@ -141,12 +141,15 @@ class QQMusicQRLogin:
                         cookies = {}
                         if 'Set-Cookie' in response.headers:
                             cookie_header = response.headers['Set-Cookie']
-                            # Parse cookies
+                            # Parse Set-Cookie headers (may be comma-separated)
                             for cookie in cookie_header.split(','):
+                                cookie = cookie.strip()
                                 if '=' in cookie:
-                                    parts = cookie.strip().split('=')[0].split(';')
-                                    cookie_name = parts[0].strip()
-                                    cookies[cookie_name] = cookie_header
+                                    # Split on ';' first to get name=value pair
+                                    # Set-Cookie format: name=value; Path=/; Domain=.qq.com
+                                    name_value = cookie.split(';')[0].strip()
+                                    key, value = name_value.split('=', 1)
+                                    cookies[key.strip()] = value.strip()
 
                         result_data['cookies'] = cookies
 

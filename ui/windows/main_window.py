@@ -1141,15 +1141,16 @@ class MainWindow(QMainWindow):
         cloud_file = self._db.get_cloud_file_by_file_id(cloud_file_id)
         if cloud_file:
             # Create PlaylistItem from cloud file
-            item = PlaylistItem.from_cloud_file(cloud_file, account_id)
+            item = PlaylistItem.from_cloud_file(cloud_file, account_id, provider=account.provider)
             self._playback.engine.load_playlist_items([item])
             self._playback.engine.play()
         else:
             # File not in cache, need to get from cloud
             logger.warning(f"[MainWindow] Cloud file {cloud_file_id} not found in cache")
             # Fallback: create basic item with file_id
+            source = TrackSource.QUARK if account.provider.lower() == "quark" else TrackSource.BAIDU
             item = PlaylistItem(
-                source=TrackSource.QUARK,
+                source=source,
                 cloud_file_id=cloud_file_id,
                 cloud_account_id=account_id,
                 title="Cloud Track",
@@ -1382,7 +1383,6 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
-        logger.debug(f"[MainWindow] _on_track_changed called")
         # Reset lyric line tracking
         self._current_lyric_line = None
 

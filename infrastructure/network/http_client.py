@@ -101,6 +101,7 @@ class HttpClient:
             True if download successful
         """
         final_headers = {**self.default_headers, **(headers or {})}
+        response = None
 
         try:
             response = requests.get(url, headers=final_headers, stream=True,
@@ -123,3 +124,6 @@ class HttpClient:
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
             return False
+        finally:
+            if response:
+                response.close()

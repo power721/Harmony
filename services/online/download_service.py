@@ -205,7 +205,6 @@ class OnlineDownloadService:
 
             # Emit metadata loaded event
             if metadata:
-                logger.debug(f"[OnlineDownloadService] Emitting online_track_metadata_loaded for: {song_mid}")
                 self._event_bus.online_track_metadata_loaded.emit(song_mid, metadata)
 
             return cached_path

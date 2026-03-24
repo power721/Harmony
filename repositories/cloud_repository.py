@@ -158,12 +158,15 @@ class SqliteCloudRepository:
             account_email=row["account_email"],
             access_token=row["access_token"],
             refresh_token=row["refresh_token"],
+            token_expires_at=row["token_expires_at"],
             is_active=row["is_active"],
             last_folder_path=row["last_folder_path"],
             last_fid_path=row["last_fid_path"],
             last_playing_fid=row["last_playing_fid"],
             last_position=row["last_position"],
             last_playing_local_path=row["last_playing_local_path"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )
 
     def _row_to_file(self, row: sqlite3.Row) -> CloudFile:
@@ -180,4 +183,6 @@ class SqliteCloudRepository:
             duration=row["duration"],
             metadata=row["metadata"],
             local_path=row["local_path"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )

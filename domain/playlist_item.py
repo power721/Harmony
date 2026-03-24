@@ -2,10 +2,13 @@
 Unified playlist item model for local and cloud playback.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 from .track import TrackSource
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from domain.track import Track
@@ -322,7 +325,8 @@ class PlaylistItem:
                         duration = track.duration or duration
                         track_id = track.id
                         needs_metadata = False
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Error fetching track metadata from DB: {e}")
                 pass  # Ignore errors, use item values
 
         # Determine the correct local_path to use
@@ -332,8 +336,8 @@ class PlaylistItem:
                 track = db.get_track(track_id)
                 if track and track.path:
                     local_path = track.path
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error fetching track path from DB: {e}")
 
         # Check if local file actually exists
         file_exists = local_path and Path(local_path).exists()

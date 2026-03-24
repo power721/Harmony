@@ -87,22 +87,26 @@ class SqliteQueueRepository:
         """Save the play queue."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        # Clear existing queue
-        cursor.execute("DELETE FROM play_queue")
-        # Insert new items
-        for item in items:
-            cursor.execute("""
-                           INSERT INTO play_queue (position, source, track_id, cloud_file_id,
-                                                   cloud_account_id, local_path, title, artist, album, duration, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                           """, (
-                               item.position, item.source, item.track_id,
-                               item.cloud_file_id, item.cloud_account_id, item.local_path,
-                               item.title, item.artist, item.album, item.duration,
-                               item.created_at or datetime.now()
-                           ))
-        conn.commit()
-        return True
+        try:
+            # Clear existing queue
+            cursor.execute("DELETE FROM play_queue")
+            # Insert new items
+            for item in items:
+                cursor.execute("""
+                               INSERT INTO play_queue (position, source, track_id, cloud_file_id,
+                                                       cloud_account_id, local_path, title, artist, album, duration, created_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               """, (
+                                   item.position, item.source, item.track_id,
+                                   item.cloud_file_id, item.cloud_account_id, item.local_path,
+                                   item.title, item.artist, item.album, item.duration,
+                                   item.created_at or datetime.now()
+                               ))
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            return False
 
     def clear(self) -> bool:
         """Clear the saved play queue."""

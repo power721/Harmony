@@ -6,6 +6,7 @@ with support for caching, progress tracking, and download cancellation.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, Dict, TYPE_CHECKING
 
@@ -147,6 +148,7 @@ class CloudDownloadWorker(QThread):
 
             total_size = int(response.headers.get('content-length', 0))
             downloaded = 0
+            last_emitted_mb = 0  # Track last emitted MB threshold
 
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -157,13 +159,16 @@ class CloudDownloadWorker(QThread):
                         f.write(chunk)
                         downloaded += len(chunk)
 
-                        # Emit progress periodically
-                        if total_size > 0 and downloaded % (1024 * 1024) == 0:
-                            self.download_progress.emit(
-                                self._cloud_file.file_id,
-                                downloaded,
-                                total_size
-                            )
+                        # Emit progress every 1MB threshold crossed
+                        if total_size > 0:
+                            current_mb = downloaded // (1024 * 1024)
+                            if current_mb > last_emitted_mb:
+                                last_emitted_mb = current_mb
+                                self.download_progress.emit(
+                                    self._cloud_file.file_id,
+                                    downloaded,
+                                    total_size
+                                )
 
             return True
 
@@ -210,6 +215,7 @@ class CloudDownloadService(QObject):
         """Initialize the download service."""
         super().__init__(parent)
         self._active_downloads: Dict[str, CloudDownloadWorker] = {}
+        self._downloads_lock = threading.Lock()
         self._cached_paths: Dict[str, str] = {}  # file_id -> local_path
         self._download_dir = "data/cloud_downloads"
 
@@ -237,11 +243,17 @@ class CloudDownloadService(QObject):
         file_id = cloud_file.file_id
 
         # Check if already downloading
-        if file_id in self._active_downloads:
-            if priority:
-                self.cancel_download(file_id)
+        with self._downloads_lock:
+            if file_id in self._active_downloads:
+                if priority:
+                    worker = self._active_downloads[file_id]
+                else:
+                    return False
             else:
-                return False
+                worker = None
+
+        if worker:
+            self.cancel_download(file_id)
 
         # Check cache
         cached_path = self.get_cached_path(file_id, cloud_file, account)
@@ -262,7 +274,8 @@ class CloudDownloadService(QObject):
         worker.download_completed.connect(self._on_download_completed)
         worker.download_error.connect(self._on_download_error)
 
-        self._active_downloads[file_id] = worker
+        with self._downloads_lock:
+            self._active_downloads[file_id] = worker
         self.download_started.emit(file_id)
         worker.start()
 
@@ -278,11 +291,16 @@ class CloudDownloadService(QObject):
         Returns:
             True if download was cancelled
         """
-        if file_id in self._active_downloads:
-            worker = self._active_downloads[file_id]
+        with self._downloads_lock:
+            if file_id in self._active_downloads:
+                worker = self._active_downloads[file_id]
+                del self._active_downloads[file_id]
+            else:
+                worker = None
+
+        if worker:
             worker.cancel()
             worker.wait(1000)  # Wait up to 1 second
-            del self._active_downloads[file_id]
             return True
         return False
 
@@ -337,7 +355,8 @@ class CloudDownloadService(QObject):
 
     def is_downloading(self, file_id: str) -> bool:
         """Check if a file is currently being downloaded."""
-        return file_id in self._active_downloads
+        with self._downloads_lock:
+            return file_id in self._active_downloads
 
     def get_download_progress(self, file_id: str) -> tuple:
         """
@@ -346,24 +365,26 @@ class CloudDownloadService(QObject):
         Returns:
             Tuple of (current_bytes, total_bytes) or (0, 0) if not downloading
         """
-        if file_id in self._active_downloads:
-            worker = self._active_downloads[file_id]
-            # This is approximate since we don't track exact progress
-            return (0, 0)
+        with self._downloads_lock:
+            if file_id in self._active_downloads:
+                # This is approximate since we don't track exact progress
+                return (0, 0)
         return (0, 0)
 
     def _on_download_completed(self, file_id: str, local_path: str):
         """Handle download completion."""
-        if file_id in self._active_downloads:
-            del self._active_downloads[file_id]
+        with self._downloads_lock:
+            if file_id in self._active_downloads:
+                del self._active_downloads[file_id]
 
         self._cached_paths[file_id] = local_path
         self.download_completed.emit(file_id, local_path)
 
     def _on_download_error(self, file_id: str, error: str):
         """Handle download error."""
-        if file_id in self._active_downloads:
-            del self._active_downloads[file_id]
+        with self._downloads_lock:
+            if file_id in self._active_downloads:
+                del self._active_downloads[file_id]
 
         self.download_error.emit(file_id, error)
 
@@ -373,5 +394,7 @@ class CloudDownloadService(QObject):
 
     def cleanup(self):
         """Cancel all active downloads and cleanup."""
-        for file_id in list(self._active_downloads.keys()):
+        with self._downloads_lock:
+            file_ids = list(self._active_downloads.keys())
+        for file_id in file_ids:
             self.cancel_download(file_id)

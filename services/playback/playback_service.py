@@ -6,6 +6,7 @@ favorites management, and EventBus integration.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
@@ -82,6 +83,9 @@ class PlaybackService(QObject):
         # Online download workers (song_mid -> QThread)
         self._online_download_workers: dict = {}
 
+        # Lock for serializing database write operations
+        self._db_lock = threading.Lock()
+
         # Connect engine signals
         self._connect_engine_signals()
 
@@ -123,7 +127,6 @@ class PlaybackService(QObject):
 
     def _on_metadata_updated(self, track_id: int):
         """Handle metadata update from manual edit - update play_queue."""
-        logger.debug(f"[PlaybackService] _on_metadata_updated called: track_id={track_id}")
         # Get updated track from database
         track = self._db.get_track(track_id)
         if not track:
@@ -161,9 +164,6 @@ class PlaybackService(QObject):
             song_mid: Song MID
             metadata: Metadata dict with title, artist, album, duration, etc.
         """
-        import traceback
-        stack = ''.join(traceback.format_stack()[-4:-1])
-        logger.debug(f"[PlaybackService] _on_online_track_metadata_loaded called: song_mid={song_mid}\nStack:\n{stack}")
         # Update playlist items that match this song_mid (stored in cloud_file_id)
         updated = False
         is_current_track = False
@@ -525,7 +525,7 @@ class PlaybackService(QObject):
 
         for i, cf in enumerate(self._cloud_files):
             local_path = self._get_cached_path(cf.file_id)
-            item = PlaylistItem.from_cloud_file(cf, account.id, local_path)
+            item = PlaylistItem.from_cloud_file(cf, account.id, local_path, provider=account.provider)
             if cf.file_id == cloud_file.file_id:
                 start_index = i
             items.append(item)
@@ -574,7 +574,7 @@ class PlaybackService(QObject):
             else:
                 local_path = self._get_cached_path(cf.file_id)
 
-            item = PlaylistItem.from_cloud_file(cf, account.id, local_path)
+            item = PlaylistItem.from_cloud_file(cf, account.id, local_path, provider=account.provider)
 
             # For already downloaded files, ensure track record exists
             if local_path:
@@ -616,8 +616,6 @@ class PlaybackService(QObject):
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
         """
-        logger.debug(f"[PlaybackService] on_cloud_file_downloaded called: cloud_file_id={cloud_file_id}")
-
         # Skip if this is an online track (QQ Music) - handled by on_online_track_downloaded
         current_item = self._engine.current_playlist_item
         if current_item and current_item.source == TrackSource.QQ:
@@ -760,7 +758,8 @@ class PlaybackService(QObject):
             queue_item = item.to_play_queue_item(i)
             queue_items.append(queue_item)
 
-        self._db.save_play_queue(queue_items)
+        with self._db_lock:
+            self._db.save_play_queue(queue_items)
 
         # Save current index and play mode
         self._config.set("queue_current_index", current_idx)
@@ -908,7 +907,6 @@ class PlaybackService(QObject):
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
-        logger.debug(f"[PlaybackService] _on_track_changed called: track_id={track_dict.get('id')}")
         self._current_track_id = track_dict.get("id")
 
         item = self._engine.current_playlist_item
@@ -1155,7 +1153,8 @@ class PlaybackService(QObject):
         existing = self._db.get_track_by_cloud_file_id(song_mid)
         if existing:
             # Update existing track with local path
-            self._db.update_track_path(existing.id, local_path)
+            with self._db_lock:
+                self._db.update_track_path(existing.id, local_path)
             logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
             return existing.id
 
@@ -1184,7 +1183,8 @@ class PlaybackService(QObject):
             source=TrackSource.QQ,  # Online music from QQ
         )
 
-        track_id = self._db.add_track(track)
+        with self._db_lock:
+            track_id = self._db.add_track(track)
         return track_id
 
     def _preload_next_cloud_track(self):

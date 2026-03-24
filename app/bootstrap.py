@@ -63,10 +63,10 @@ class Bootstrap:
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
 
     @classmethod
-    def instance(cls) -> "Bootstrap":
+    def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
         """Get singleton instance."""
         if cls._instance is None:
-            cls._instance = cls()
+            cls._instance = cls(db_path)
         return cls._instance
 
     # ===== Infrastructure =====
