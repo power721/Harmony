@@ -187,7 +187,6 @@ class PlaylistItem:
             "duration": self.duration,
             "cover_path": self.cover_path,
             "source": self.source.value,
-            "source": self.source.value,
             "cloud_file_id": self.cloud_file_id,
             "cloud_account_id": self.cloud_account_id,
             "needs_download": self.needs_download,
