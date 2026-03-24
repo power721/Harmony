@@ -1090,7 +1090,7 @@ class PlaybackService(QObject):
             self._engine.play_after_download(updated_index, local_path)
 
         # Save queue to persist the updated metadata
-        self.save_queue()
+        # self.save_queue()
 
     def _save_online_track_to_library(self, song_mid: str, local_path: str) -> Optional[int]:
         """

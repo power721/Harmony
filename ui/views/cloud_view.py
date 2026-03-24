@@ -69,7 +69,7 @@ class CloudDriveView(QWidget):
         self._current_playing_file_id = ""  # Currently playing file ID
 
         self._setup_ui()
-        self._load_accounts()
+        self._data_loaded = False  # Track if cloud data has been loaded
 
         # Connect to EventBus for download completion (for auto-play next track)
         self._event_bus = EventBus.instance()
@@ -394,6 +394,13 @@ class CloudDriveView(QWidget):
                 width: 0px;
             }
         """)
+
+    def showEvent(self, event):
+        """Load cloud data when view is shown for the first time."""
+        super().showEvent(event)
+        if not self._data_loaded:
+            self._data_loaded = True
+            self._load_accounts()
 
     def _load_accounts(self):
         """Load available cloud accounts and auto-select the last used account."""
