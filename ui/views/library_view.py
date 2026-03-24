@@ -1748,6 +1748,13 @@ class LibraryView(QWidget):
         if not track:
             return
 
+        # Check if track has a local path (skip online/cloud tracks)
+        if not track.path or not track.path.strip():
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(self, "Error", t("no_local_file"))
+            return
+
         file_path = Path(track.path)
         if not file_path.exists():
             from PySide6.QtWidgets import QMessageBox
@@ -1911,8 +1918,14 @@ class LibraryView(QWidget):
                         track.artist, track.album
                     )
 
-                    # Try to delete the file from disk
+                    # Try to delete the file from disk (skip if no local path - online tracks)
                     try:
+                        # Skip if no local path (online/cloud tracks)
+                        if not track.path or not track.path.strip():
+                            # No local file to delete, but we removed it from DB
+                            deleted_count += 1
+                            continue
+
                         path_obj = Path(track.path)
                         if path_obj.exists():
                             # Delete all lyrics files (.lrc, .yrc, .qrc) if they exist
@@ -2023,6 +2036,9 @@ class LibraryView(QWidget):
                         break
                     track = self._db.get_track(track_id)
                     if track:
+                        # Skip tracks without local path (online/cloud tracks)
+                        if not track.path or not track.path.strip():
+                            continue
                         filename = Path(track.path).name
                         tracks_info.append((i, track_id, track.path, filename))
 

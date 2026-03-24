@@ -645,8 +645,11 @@ class QueueView(QWidget):
             track = db.get_track(track_id)
             if track:
                 from pathlib import Path
+                from domain.track import TrackSource
 
-                if Path(track.path).exists():
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,
                         "path": track.path,
@@ -680,8 +683,11 @@ class QueueView(QWidget):
             track = db.get_track(track_id)
             if track:
                 from pathlib import Path
+                from domain.track import TrackSource
 
-                if Path(track.path).exists():
+                # Include online tracks (empty path) and existing local files
+                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,
                         "path": track.path,

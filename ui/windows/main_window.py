@@ -890,13 +890,17 @@ class MainWindow(QMainWindow):
         """Play a list of tracks."""
         if tracks:
             from domain.playlist_item import PlaylistItem
+            from domain.track import TrackSource
             from pathlib import Path
 
             # Create PlaylistItems with full track info (including local_path)
             items = []
             for track in tracks:
-                if track.id and track.id > 0 and Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
+                if track.id and track.id > 0:
+                    # Include online tracks (empty path) and existing local files
+                    is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                    if is_online or Path(track.path).exists():
+                        items.append(PlaylistItem.from_track(track))
 
             if items:
                 self._playback.engine.clear_playlist()

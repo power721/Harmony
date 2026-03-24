@@ -46,9 +46,17 @@ def calculate_target_path(track: Track, target_dir: str) -> tuple[Path, Path]:
 
     Returns:
         (audio_path, lyrics_path) 元组
+
+    Raises:
+        ValueError: 如果 track.path 为空或无效
     """
-    ext = Path(track.path).suffix
-    title = sanitize_filename(track.title or Path(track.path).stem)
+    # Validate track has a local path
+    if not track.path or not track.path.strip():
+        raise ValueError(f"Track '{track.title}' has no local path")
+
+    track_path = Path(track.path)
+    ext = track_path.suffix
+    title = sanitize_filename(track.title or track_path.stem)
 
     # 规则1: 有专辑和歌手 → 歌手/专辑/歌曲
     if track.album and track.artist:
