@@ -1246,7 +1246,7 @@ class PlaybackService(QObject):
         service.set_download_dir(self._config.get_cloud_download_dir())
         service.download_file(cloud_file, account)
 
-    def _save_cloud_track_to_library(self, file_id: str, local_path: str) -> str:
+    def _save_cloud_track_to_library(self, file_id: str, local_path: str, source: TrackSource = None) -> str:
         """
         Save downloaded cloud track to library with metadata and cover art.
 
@@ -1258,10 +1258,28 @@ class PlaybackService(QObject):
         Args:
             file_id: Cloud file ID
             local_path: Local path of downloaded file
+            source: Track source (QUARK, BAIDU, or QQ). If None, infers from cloud_account.
 
         Returns:
             cover_path: Path to the extracted cover art, or None
         """
+        # Determine source if not provided
+        if source is None:
+            if self._cloud_account:
+                provider = self._cloud_account.provider.lower()
+                if provider == "quark":
+                    source = TrackSource.QUARK
+                elif provider == "baidu":
+                    source = TrackSource.BAIDU
+                else:
+                    source = TrackSource.LOCAL  # Fallback for unknown providers
+            else:
+                # Try to get source from current playlist item
+                current_item = self._engine.current_playlist_item
+                if current_item and current_item.cloud_file_id == file_id:
+                    source = current_item.source
+                else:
+                    source = TrackSource.QQ  # Default fallback
         from services.metadata.metadata_service import MetadataService
         from services.lyrics.lyrics_service import LyricsService
         from utils.helpers import is_filename_like
@@ -1373,7 +1391,7 @@ class PlaybackService(QObject):
             duration=duration,
             cloud_file_id=file_id,
             cover_path=cover_path,
-            source=TrackSource.QQ,  # Online music from QQ
+            source=source,  # Use determined source (QUARK, BAIDU, or QQ)
         )
 
         self._db.add_track(track)

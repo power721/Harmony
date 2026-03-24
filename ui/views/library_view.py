@@ -78,6 +78,7 @@ class LibraryView(QWidget):
         self._current_view = "all"  # all, favorites, history
         self._current_playing_track_id = None  # Track currently playing
         self._current_playing_row = -1  # Row of currently playing track
+        self._track_id_to_row = {}  # Dict for O(1) row lookup by track_id
         self._view_search_texts = {
             "all": "",
             "favorites": "",
@@ -159,9 +160,9 @@ class LibraryView(QWidget):
         # Tracks table
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(5)
+        self._tracks_table.setColumnCount(6)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("title"), t("artist"), t("album"), t("duration"), ""]
+            [t("title"), t("artist"), t("album"), t("duration"), t("source"), ""]
         )
 
         # Configure table
@@ -511,9 +512,13 @@ class LibraryView(QWidget):
 
         history = self._play_history_service.get_history()
 
+        # Batch query tracks by IDs (avoid N+1 query)
+        track_ids = [entry.track_id for entry in history]
+        tracks_map = {t.id: t for t in self._library_service.get_tracks_by_ids(track_ids)}
+
         tracks = []
         for entry in history:
-            track = self._library_service.get_track(entry.track_id)
+            track = tracks_map.get(entry.track_id)
             if track:
                 tracks.append((track, entry.played_at))
 
@@ -573,6 +578,9 @@ class LibraryView(QWidget):
         # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor
 
+        # Clear and rebuild track_id -> row mapping for O(1) lookup
+        self._track_id_to_row.clear()
+
         # Block UI updates during population
         self._tracks_table.setUpdatesEnabled(False)
         self._tracks_table.setRowCount(len(tracks))
@@ -581,6 +589,9 @@ class LibraryView(QWidget):
             # Batch size for UI updates (process in chunks to avoid blocking)
             batch_size = 50
             for row, track in enumerate(tracks):
+                # Build track_id -> row mapping
+                self._track_id_to_row[track.id] = row
+
                 # Title - add play icon if currently playing
                 is_currently_playing = track.id == self._current_playing_track_id
                 if is_currently_playing:
@@ -681,15 +692,12 @@ class LibraryView(QWidget):
             # Clear current selection
             self._tracks_table.clearSelection()
 
-            # Find and select each track
+            # Find and select each track using O(1) lookup
             for track_id in track_ids:
-                # Iterate through all rows to find matching track ID
-                for row in range(self._tracks_table.rowCount()):
-                    item = self._tracks_table.item(row, 0)
-                    if item and item.data(Qt.UserRole) == track_id:
-                        # Select the row
-                        self._tracks_table.selectRow(row)
-                        break
+                row = self._track_id_to_row.get(track_id)
+                if row is not None:
+                    # Select the row
+                    self._tracks_table.selectRow(row)
 
             # Scroll to first selected item
             selected_items = self._tracks_table.selectedItems()
@@ -729,9 +737,12 @@ class LibraryView(QWidget):
         elif self._current_view == "history":
             # 在历史记录中搜索
             history = self._play_history_service.get_history()
+            # Batch query tracks by IDs (avoid N+1 query)
+            track_ids = [entry.track_id for entry in history]
+            tracks_map = {t.id: t for t in self._library_service.get_tracks_by_ids(track_ids)}
             tracks = []
             for entry in history:
-                track = self._library_service.get_track(entry.track_id)
+                track = tracks_map.get(entry.track_id)
                 if track and self._track_matches_query(track, query):
                     tracks.append(track)
             status_text = (
@@ -803,63 +814,65 @@ class LibraryView(QWidget):
         """Set the playing status for a specific track in the table."""
         from PySide6.QtGui import QBrush, QColor
 
-        # Find the row with this track
-        for row in range(self._tracks_table.rowCount()):
-            title_item = self._tracks_table.item(row, 0)
-            if title_item:
-                item_track_id = title_item.data(Qt.UserRole)
-                if item_track_id == track_id:
-                    # Get the original title without icon
-                    current_text = title_item.text()
-                    # Remove any existing icons
-                    original_title = current_text.replace("▶️ ", "").replace("⏸️ ", "")
+        # O(1) lookup by track_id
+        row = self._track_id_to_row.get(track_id)
+        if row is None:
+            return
 
-                    if is_playing:
-                        # Determine which icon to show
-                        if self._player.engine.state == PlaybackState.PLAYING:
-                            icon = "▶️ "
-                        else:
-                            icon = "⏸️ "
+        title_item = self._tracks_table.item(row, 0)
+        if not title_item:
+            return
 
-                        new_text = f"{icon}{original_title}"
+        # Get the original title without icon
+        current_text = title_item.text()
+        # Remove any existing icons
+        original_title = current_text.replace("▶️ ", "").replace("⏸️ ", "")
 
-                        # Update text
-                        title_item.setText(new_text)
+        if is_playing:
+            # Determine which icon to show
+            if self._player.engine.state == PlaybackState.PLAYING:
+                icon = "▶️ "
+            else:
+                icon = "⏸️ "
 
-                        # Update font and color
-                        if not update_icon_only:
-                            font = title_item.font()
-                            font.setBold(True)
-                            title_item.setFont(font)
-                            title_item.setForeground(QBrush(QColor("#1db954")))
-                    else:
-                        # Remove playing indicator
-                        title_item.setText(original_title)
+            new_text = f"{icon}{original_title}"
 
-                        # Reset font and color
-                        if not update_icon_only:
-                            font = title_item.font()
-                            font.setBold(False)
-                            title_item.setFont(font)
-                            title_item.setForeground(QBrush(QColor("#e0e0e0")))
-                    break
+            # Update text
+            title_item.setText(new_text)
+
+            # Update font and color
+            if not update_icon_only:
+                font = title_item.font()
+                font.setBold(True)
+                title_item.setFont(font)
+                title_item.setForeground(QBrush(QColor("#1db954")))
+        else:
+            # Remove playing indicator
+            title_item.setText(original_title)
+
+            # Reset font and color
+            if not update_icon_only:
+                font = title_item.font()
+                font.setBold(False)
+                title_item.setFont(font)
+                title_item.setForeground(QBrush(QColor("#e0e0e0")))
 
     def _scroll_to_playing_track(self):
         """Scroll to the currently playing track."""
         if self._current_playing_track_id is None:
             return
 
-        # Find the row with the current playing track
-        for row in range(self._tracks_table.rowCount()):
-            title_item = self._tracks_table.item(row, 0)
-            if title_item:
-                track_id = title_item.data(Qt.UserRole)
-                if track_id == self._current_playing_track_id:
-                    # Select the row
-                    self._tracks_table.selectRow(row)
-                    # Scroll to the item
-                    self._tracks_table.scrollToItem(title_item)
-                    break
+        # O(1) lookup by track_id
+        row = self._track_id_to_row.get(self._current_playing_track_id)
+        if row is None:
+            return
+
+        title_item = self._tracks_table.item(row, 0)
+        if title_item:
+            # Select the row
+            self._tracks_table.selectRow(row)
+            # Scroll to the item
+            self._tracks_table.scrollToItem(title_item)
 
     def _select_track_by_id(self, track_id: int):
         """
@@ -868,33 +881,33 @@ class LibraryView(QWidget):
         Args:
             track_id: Track ID to select
         """
-        # Find the row with the track
-        for row in range(self._tracks_table.rowCount()):
-            title_item = self._tracks_table.item(row, 0)
-            if title_item:
-                item_track_id = title_item.data(Qt.UserRole)
-                if item_track_id == track_id:
-                    # Clear previous selection
-                    self._tracks_table.clearSelection()
-                    # Select the row
-                    self._tracks_table.selectRow(row)
-                    break
+        # O(1) lookup by track_id
+        row = self._track_id_to_row.get(track_id)
+        if row is None:
+            return
+
+        # Clear previous selection
+        self._tracks_table.clearSelection()
+        # Select the row
+        self._tracks_table.selectRow(row)
 
     def _select_and_scroll_to_current(self):
         """Select and scroll to the currently playing track."""
-        if self._current_playing_track_id is not None:
-            # Find the row with the current playing track
-            for row in range(self._tracks_table.rowCount()):
-                title_item = self._tracks_table.item(row, 0)
-                if title_item:
-                    track_id = title_item.data(Qt.UserRole)
-                    if track_id == self._current_playing_track_id:
-                        # Clear previous selection and select this row
-                        self._tracks_table.clearSelection()
-                        self._tracks_table.selectRow(row)
-                        # Scroll to the item with center positioning
-                        self._tracks_table.scrollToItem(title_item)
-                        break
+        if self._current_playing_track_id is None:
+            return
+
+        # O(1) lookup by track_id
+        row = self._track_id_to_row.get(self._current_playing_track_id)
+        if row is None:
+            return
+
+        title_item = self._tracks_table.item(row, 0)
+        if title_item:
+            # Clear previous selection and select this row
+            self._tracks_table.clearSelection()
+            self._tracks_table.selectRow(row)
+            # Scroll to the item with center positioning
+            self._tracks_table.scrollToItem(title_item)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
         """Handle item double click."""
@@ -2081,48 +2094,54 @@ class LibraryView(QWidget):
         # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor
 
-        # Find and update rows for the given track IDs
-        for row in range(self._tracks_table.rowCount()):
+        # Use O(1) lookup for each track_id
+        for track_id in track_ids:
+            row = self._track_id_to_row.get(track_id)
+            if row is None:
+                continue
+
+            # Get updated track from database
+            track = self._library_service.get_track(track_id)
+            if not track:
+                continue
+
             title_item = self._tracks_table.item(row, 0)
-            if title_item:
-                track_id = title_item.data(Qt.UserRole)
-                if track_id in track_ids:
-                    # Get updated track from database
-                    track = self._library_service.get_track(track_id)
-                    if track:
-                        # Update title
-                        is_currently_playing = track.id == self._current_playing_track_id
-                        icon_prefix = ""
-                        if is_currently_playing:
-                            if self._player.engine.state == PlaybackState.PLAYING:
-                                icon_prefix = "▶️ "
-                            else:
-                                icon_prefix = "⏸️ "
+            if not title_item:
+                continue
 
-                        title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
-                        title_item.setText(title_text)
-                        title_item.setForeground(QBrush(QColor("#1db954" if is_currently_playing else "#e0e0e0")))
+            # Update title
+            is_currently_playing = track.id == self._current_playing_track_id
+            icon_prefix = ""
+            if is_currently_playing:
+                if self._player.engine.state == PlaybackState.PLAYING:
+                    icon_prefix = "▶️ "
+                else:
+                    icon_prefix = "⏸️ "
 
-                        if is_currently_playing:
-                            font = title_item.font()
-                            font.setBold(True)
-                            title_item.setFont(font)
-                        else:
-                            font = title_item.font()
-                            font.setBold(False)
-                            title_item.setFont(font)
+            title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
+            title_item.setText(title_text)
+            title_item.setForeground(QBrush(QColor("#1db954" if is_currently_playing else "#e0e0e0")))
 
-                        # Update artist
-                        artist_item = self._tracks_table.item(row, 1)
-                        if artist_item:
-                            artist_item.setText(track.artist or t("unknown"))
+            if is_currently_playing:
+                font = title_item.font()
+                font.setBold(True)
+                title_item.setFont(font)
+            else:
+                font = title_item.font()
+                font.setBold(False)
+                title_item.setFont(font)
 
-                        # Update album
-                        album_item = self._tracks_table.item(row, 2)
-                        if album_item:
-                            album_item.setText(track.album or t("unknown"))
+            # Update artist
+            artist_item = self._tracks_table.item(row, 1)
+            if artist_item:
+                artist_item.setText(track.artist or t("unknown"))
 
-                        logger.debug(f"Refreshed row {row} for track {track_id}")
+            # Update album
+            album_item = self._tracks_table.item(row, 2)
+            if album_item:
+                album_item.setText(track.album or t("unknown"))
+
+            logger.debug(f"Refreshed row {row} for track {track_id}")
 
     def _acoustid_identify_selected(self):
         """Identify selected tracks using AcoustID fingerprinting."""

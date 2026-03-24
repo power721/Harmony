@@ -17,6 +17,10 @@ class TrackRepository(Protocol):
         """Get a track by ID."""
         ...
 
+    def get_by_ids(self, track_ids: List[TrackId]) -> List[Track]:
+        """Get multiple tracks by IDs in batch."""
+        ...
+
     def get_by_path(self, path: str) -> Optional[Track]:
         """Get a track by file path."""
         ...

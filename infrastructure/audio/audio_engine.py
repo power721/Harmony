@@ -55,6 +55,7 @@ class PlayerEngine(QObject):
         self._temp_files: List[str] = []  # Track temporary files for cleanup
         self._pending_seek: int = 0  # Position to seek before playing (in ms)
         self._pending_play: bool = False  # Whether to play after seek
+        self._cloud_file_id_to_index: dict = {}  # Dict for O(1) lookup by cloud_file_id
 
         # Connect signals
         self._player.positionChanged.connect(self._on_position_changed)
@@ -65,6 +66,15 @@ class PlayerEngine(QObject):
 
         # Set initial volume
         self.set_volume(70)
+
+    def _rebuild_cloud_file_id_index(self):
+        """Rebuild the cloud_file_id -> index mapping."""
+        self._cloud_file_id_to_index.clear()
+        for i, item in enumerate(self._playlist):
+            if item.cloud_file_id:
+                # Only keep first occurrence to avoid ambiguity
+                if item.cloud_file_id not in self._cloud_file_id_to_index:
+                    self._cloud_file_id_to_index[item.cloud_file_id] = i
 
     @property
     def playlist(self) -> List[dict]:
@@ -130,6 +140,7 @@ class PlayerEngine(QObject):
                 self._playlist.append(PlaylistItem.from_dict(track))
         self._original_playlist = self._playlist.copy()  # Save original order
         self._current_index = -1
+        self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
     def load_playlist_items(self, items: List[PlaylistItem]):
@@ -142,12 +153,14 @@ class PlayerEngine(QObject):
         self._playlist = items.copy()
         self._original_playlist = items.copy()  # Save original order
         self._current_index = -1
+        self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
     def clear_playlist(self):
         """Clear the playlist."""
         self._playlist.clear()
         self._original_playlist.clear()
+        self._cloud_file_id_to_index.clear()
         self._current_index = -1
         self.stop()
         self.playlist_changed.emit()
@@ -171,9 +184,13 @@ class PlayerEngine(QObject):
             track: Track dictionary or PlaylistItem
         """
         if isinstance(track, PlaylistItem):
-            self._playlist.append(track)
+            item = track
         else:
-            self._playlist.append(PlaylistItem.from_dict(track))
+            item = PlaylistItem.from_dict(track)
+        self._playlist.append(item)
+        # Update cloud_file_id index if applicable
+        if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
+            self._cloud_file_id_to_index[item.cloud_file_id] = len(self._playlist) - 1
         self.playlist_changed.emit()
 
     def insert_track(self, index: int, track: Union[dict, PlaylistItem]):
@@ -189,6 +206,8 @@ class PlayerEngine(QObject):
             self._playlist.insert(index, item)
             if self._current_index >= index:
                 self._current_index += 1
+            # Rebuild index since all indices after insert position change
+            self._rebuild_cloud_file_id_index()
             self.playlist_changed.emit()
 
     def remove_track(self, index: int):
@@ -205,6 +224,8 @@ class PlayerEngine(QObject):
                 self._current_index = -1
             elif self._current_index > index:
                 self._current_index -= 1
+            # Rebuild index since all indices after removal change
+            self._rebuild_cloud_file_id_index()
             self.playlist_changed.emit()
 
     def update_track_path(self, index: int, local_path: str):
@@ -279,8 +300,10 @@ class PlayerEngine(QObject):
                 item.needs_metadata = needs_metadata
                 return expected_index
 
-        # Fall back to searching for the first matching item
-        for i, item in enumerate(self._playlist):
+        # O(1) lookup by cloud_file_id
+        i = self._cloud_file_id_to_index.get(cloud_file_id)
+        if i is not None and 0 <= i < len(self._playlist):
+            item = self._playlist[i]
             if item.cloud_file_id == cloud_file_id:
                 if local_path is not None:
                     item.local_path = local_path
@@ -311,7 +334,10 @@ class PlayerEngine(QObject):
         Returns:
             Index of removed item, or None if not found
         """
-        for i, item in enumerate(self._playlist):
+        # O(1) lookup by cloud_file_id
+        i = self._cloud_file_id_to_index.get(cloud_file_id)
+        if i is not None and 0 <= i < len(self._playlist):
+            item = self._playlist[i]
             if item.cloud_file_id == cloud_file_id:
                 self.remove_track(i)
                 return i
@@ -627,6 +653,7 @@ class PlayerEngine(QObject):
                 pass
 
         self._current_index = 0
+        self._rebuild_cloud_file_id_index()
 
     def _restore_playlist_order(self):
         """Restore the playlist to original order."""
@@ -651,6 +678,8 @@ class PlayerEngine(QObject):
                     break
             else:
                 self._current_index = 0
+
+        self._rebuild_cloud_file_id_index()
 
     def shuffle_and_play(self, item_to_play: PlaylistItem = None):
         """
@@ -678,6 +707,8 @@ class PlayerEngine(QObject):
                 self._current_index = 0
         else:
             self._current_index = 0
+
+        self._rebuild_cloud_file_id_index()
 
     def is_shuffle_mode(self) -> bool:
         """Check if currently in shuffle mode."""

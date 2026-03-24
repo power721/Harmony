@@ -43,6 +43,19 @@ class SqliteTrackRepository:
             return self._row_to_track(row)
         return None
 
+    def get_by_ids(self, track_ids: List[TrackId]) -> List[Track]:
+        """Get multiple tracks by IDs in batch."""
+        if not track_ids:
+            return []
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(track_ids))
+        cursor.execute(f"SELECT * FROM tracks WHERE id IN ({placeholders})", track_ids)
+        rows = cursor.fetchall()
+        # Return tracks in the order of input IDs
+        track_map = {row["id"]: self._row_to_track(row) for row in rows}
+        return [track_map[tid] for tid in track_ids if tid in track_map]
+
     def get_by_path(self, path: str) -> Optional[Track]:
         """Get a track by file path."""
         conn = self._get_connection()
