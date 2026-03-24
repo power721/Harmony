@@ -162,7 +162,7 @@ class LibraryView(QWidget):
         self._tracks_table.setObjectName("tracksTable")
         self._tracks_table.setColumnCount(6)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("title"), t("artist"), t("album"), t("duration"), t("source"), ""]
+            [t("source"), t("title"), t("artist"), t("album"), t("duration"), ""]
         )
 
         # Configure table
@@ -183,19 +183,22 @@ class LibraryView(QWidget):
         header.setStretchLastSection(False)
 
         # Set resize modes - Title stretches to fill remaining space
+        # Source: fixed width
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(0, 70)
         # Title: stretch to fill all remaining space
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
         # Artist: fixed width
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(1, 120)
-        # Album: fixed width
         header.setSectionResizeMode(2, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(2, 150)
+        self._tracks_table.setColumnWidth(2, 120)
+        # Album: fixed width
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(3, 150)
         # Duration: fit content
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         # Favorites: fixed small width
-        header.setSectionResizeMode(4, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(4, 40)
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(5, 40)
 
         # Styling - Modern, eye-friendly design
         self._tracks_table.setStyleSheet("""
@@ -340,7 +343,7 @@ class LibraryView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("title"), t("artist"), t("album"), t("duration"), ""]
+            [t("source"), t("title"), t("artist"), t("album"), t("duration"), ""]
         )
 
         # Update title based on current view
@@ -483,27 +486,35 @@ class LibraryView(QWidget):
             # Cloud items have gray text
             text_color = QBrush(QColor("#808080")) if is_undownloaded_cloud else QBrush(QColor("#e0e0e0"))
 
+            # Source
+            source_value = item.get("source", "Local")
+            source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
+            source_text = t(source_key_map.get(source_value, "source_local"))
+            source_item = QTableWidgetItem(source_text)
+            source_item.setForeground(text_color)
+            self._tracks_table.setItem(row, 0, source_item)
+
             # Title
             title_item = QTableWidgetItem(item.get("title", ""))
             title_item.setData(Qt.UserRole, track_data)
             title_item.setForeground(text_color)
-            self._tracks_table.setItem(row, 0, title_item)
+            self._tracks_table.setItem(row, 1, title_item)
 
             # Artist
             artist_item = QTableWidgetItem(item.get("artist", "") or t("unknown"))
             artist_item.setForeground(text_color)
-            self._tracks_table.setItem(row, 1, artist_item)
+            self._tracks_table.setItem(row, 2, artist_item)
 
             # Album
             album_item = QTableWidgetItem(item.get("album", "") or t("unknown"))
             album_item.setForeground(text_color)
-            self._tracks_table.setItem(row, 2, album_item)
+            self._tracks_table.setItem(row, 3, album_item)
 
             # Duration
             # format_duration imported at top
             duration_item = QTableWidgetItem(format_duration(item.get("duration", 0)))
             duration_item.setForeground(text_color)
-            self._tracks_table.setItem(row, 3, duration_item)
+            self._tracks_table.setItem(row, 4, duration_item)
 
     def _load_history(self):
         """Load play history."""
@@ -592,6 +603,14 @@ class LibraryView(QWidget):
                 # Build track_id -> row mapping
                 self._track_id_to_row[track.id] = row
 
+                # Source
+                source_value = track.source.value if hasattr(track, 'source') and track.source else "Local"
+                source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
+                source_text = t(source_key_map.get(source_value, "source_local"))
+                source_item = QTableWidgetItem(source_text)
+                source_item.setForeground(QBrush(QColor("#808080")))
+                self._tracks_table.setItem(row, 0, source_item)
+
                 # Title - add play icon if currently playing
                 is_currently_playing = track.id == self._current_playing_track_id
                 if is_currently_playing:
@@ -619,22 +638,22 @@ class LibraryView(QWidget):
                     title_item.setFont(font)
                     title_item.setForeground(QBrush(QColor("#1db954")))
 
-                self._tracks_table.setItem(row, 0, title_item)
+                self._tracks_table.setItem(row, 1, title_item)
 
                 # Artist
                 artist_item = QTableWidgetItem(track.artist or t("unknown"))
                 artist_item.setForeground(QBrush(QColor("#b0b0b0")))
-                self._tracks_table.setItem(row, 1, artist_item)
+                self._tracks_table.setItem(row, 2, artist_item)
 
                 # Album
                 album_item = QTableWidgetItem(track.album or t("unknown"))
                 album_item.setForeground(QBrush(QColor("#b0b0b0")))
-                self._tracks_table.setItem(row, 2, album_item)
+                self._tracks_table.setItem(row, 3, album_item)
 
                 # Duration
                 duration_item = QTableWidgetItem(format_duration(track.duration))
                 duration_item.setForeground(QBrush(QColor("#909090")))
-                self._tracks_table.setItem(row, 3, duration_item)
+                self._tracks_table.setItem(row, 4, duration_item)
 
                 # Favorite indicator (check if actually favorited)
                 is_fav = self._favorites_service.is_favorite(track_id=track.id)
@@ -643,7 +662,7 @@ class LibraryView(QWidget):
                 fav_item.setForeground(
                     QBrush(QColor("#ffd700" if is_fav else "#505050"))
                 )
-                self._tracks_table.setItem(row, 4, fav_item)
+                self._tracks_table.setItem(row, 5, fav_item)
 
                 # Process events periodically to keep UI responsive
                 if (row + 1) % batch_size == 0:
@@ -819,7 +838,7 @@ class LibraryView(QWidget):
         if row is None:
             return
 
-        title_item = self._tracks_table.item(row, 0)
+        title_item = self._tracks_table.item(row, 1)
         if not title_item:
             return
 
@@ -1258,7 +1277,7 @@ class LibraryView(QWidget):
         fav_item.setForeground(
             QBrush(QColor("#ffd700" if is_favorite else "#505050"))
         )
-        self._tracks_table.setItem(row, 4, fav_item)
+        self._tracks_table.setItem(row, 5, fav_item)
 
     def _add_to_playlist(self):
         """Add selected tracks to a playlist."""
@@ -2105,7 +2124,7 @@ class LibraryView(QWidget):
             if not track:
                 continue
 
-            title_item = self._tracks_table.item(row, 0)
+            title_item = self._tracks_table.item(row, 1)
             if not title_item:
                 continue
 
