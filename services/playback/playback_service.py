@@ -46,6 +46,7 @@ class PlaybackService(QObject):
     """
 
     source_changed = Signal(str)  # "local" or "cloud"
+    _metadata_processed = Signal(str, str, int, str, str, str, float, str)  # Internal signal for metadata
 
     def __init__(
             self,
@@ -82,6 +83,9 @@ class PlaybackService(QObject):
 
         # Online download workers (song_mid -> QThread)
         self._online_download_workers: dict = {}
+
+        # Connect internal signal for thread-safe metadata updates
+        self._metadata_processed.connect(self._on_metadata_processed)
 
         # NOTE: _db_lock removed - DBWriteWorker now handles serialization
 
@@ -545,8 +549,9 @@ class PlaybackService(QObject):
         self._cloud_files = cloud_files
         self._set_source("cloud")
 
-        # Build playlist items
+        # Build playlist items - fast path, no blocking operations
         items = []
+        files_to_process = []  # Files that need background metadata processing
 
         for i, cf in enumerate(cloud_files):
             local_path = ""
@@ -558,9 +563,9 @@ class PlaybackService(QObject):
 
             item = PlaylistItem.from_cloud_file(cf, account.id, local_path, provider=account.provider)
 
-            # For already downloaded files, ensure track record exists
+            # For already downloaded files, try fast path first
             if local_path:
-                self._save_cloud_track_to_library(cf.file_id, local_path)
+                # Try to get existing track record (fast DB lookup)
                 track = self._db.get_track_by_cloud_file_id(cf.file_id)
                 if track:
                     item.track_id = track.id
@@ -570,9 +575,14 @@ class PlaybackService(QObject):
                     item.duration = track.duration or item.duration
                     item.cover_path = track.cover_path
                     item.needs_metadata = False
+                else:
+                    # No existing record - defer metadata extraction to background
+                    files_to_process.append((cf.file_id, local_path, account.provider))
+                    item.needs_metadata = True
 
             items.append(item)
 
+        # Start playback immediately
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
@@ -590,6 +600,10 @@ class PlaybackService(QObject):
         self._config.set_playback_source("cloud")
         self._config.set_cloud_account_id(account.id)
 
+        # Process metadata in background thread
+        if files_to_process:
+            self._process_metadata_async(files_to_process)
+
     def on_cloud_file_downloaded(self, cloud_file_id: str, local_path: str):
         """
         Called when a cloud file has been downloaded.
@@ -606,51 +620,17 @@ class PlaybackService(QObject):
 
         self._downloaded_files[cloud_file_id] = local_path
 
-        # Update cloud_files table with local_path
+        # Update cloud_files table with local_path (fast DB operation)
         if self._cloud_account:
             self._db.update_cloud_file_local_path(
                 cloud_file_id, self._cloud_account.id, local_path
             )
 
-        # Extract metadata and save to library
-        cover_path = self._save_cloud_track_to_library(cloud_file_id, local_path)
+        # Determine provider
+        provider = self._cloud_account.provider if self._cloud_account else "quark"
 
-        # Get track from database to retrieve metadata
-        track = self._db.get_track_by_cloud_file_id(cloud_file_id)
-
-        # Update playlist item directly in engine's internal list
-        if track:
-            updated_index = self._engine.update_playlist_item(
-                cloud_file_id=cloud_file_id,
-                local_path=local_path,
-                track_id=track.id,
-                title=track.title,
-                artist=track.artist,
-                album=track.album,
-                duration=track.duration,
-                cover_path=cover_path,
-                needs_download=False,
-                needs_metadata=False
-            )
-        else:
-            updated_index = self._engine.update_playlist_item(
-                cloud_file_id=cloud_file_id,
-                local_path=local_path,
-                cover_path=cover_path,
-                needs_download=False
-            )
-
-        # Play if this is current track
-        if updated_index is not None and updated_index == self._engine.current_index:
-            self._engine.play_after_download(updated_index, local_path)
-            # Note: play_after_download already emits current_track_changed signal
-            # which will be handled by _on_track_changed -> emit_track_change
-
-        # Save queue to persist the updated metadata
-        self.save_queue()
-
-        # Preload next cloud track
-        self._preload_next_cloud_track()
+        # Process metadata in background thread
+        self._process_metadata_async([(cloud_file_id, local_path, provider)])
 
     # ===== Favorites Management =====
 
@@ -1509,3 +1489,83 @@ class PlaybackService(QObject):
         if self._cover_service:
             return self._cover_service.save_cover_from_metadata(track_path, cover_data)
         return None
+
+    def _process_metadata_async(self, files: List[tuple]):
+        """
+        Process metadata for cloud files in background thread.
+
+        Args:
+            files: List of (file_id, local_path, provider) tuples
+        """
+        def process():
+            for file_id, local_path, provider in files:
+                try:
+                    # Determine TrackSource
+                    if provider.lower() == "quark":
+                        source = TrackSource.QUARK
+                    elif provider.lower() == "baidu":
+                        source = TrackSource.BAIDU
+                    else:
+                        source = TrackSource.LOCAL
+
+                    # Extract metadata and save to library
+                    cover_path = self._save_cloud_track_to_library(file_id, local_path, source)
+
+                    # Get track from database
+                    track = self._db.get_track_by_cloud_file_id(file_id)
+
+                    # Emit signal to update UI in main thread
+                    if track:
+                        self._metadata_processed.emit(
+                            file_id,
+                            local_path,
+                            track.id,
+                            track.title or "",
+                            track.artist or "",
+                            track.album or "",
+                            track.duration or 0.0,
+                            cover_path or ""
+                        )
+                except Exception as e:
+                    logger.error(f"[PlaybackService] Error processing metadata for {file_id}: {e}")
+
+        # Start background thread
+        thread = threading.Thread(target=process, daemon=True)
+        thread.start()
+
+    def _on_metadata_processed(
+            self,
+            cloud_file_id: str,
+            local_path: str,
+            track_id: int,
+            title: str,
+            artist: str,
+            album: str,
+            duration: float,
+            cover_path: str
+    ):
+        """Handle metadata processing completion (called from main thread via signal)."""
+        # Update playlist item in engine
+        updated_index = self._engine.update_playlist_item(
+            cloud_file_id=cloud_file_id,
+            local_path=local_path,
+            track_id=track_id,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cover_path=cover_path if cover_path else None,
+            needs_download=False,
+            needs_metadata=False
+        )
+
+        # Play if this is current track (for on_cloud_file_downloaded case)
+        if updated_index is not None and updated_index == self._engine.current_index:
+            self._engine.play_after_download(updated_index, local_path)
+
+        # Save queue to persist the updated metadata
+        self.save_queue()
+
+        # Preload next cloud track
+        self._preload_next_cloud_track()
+

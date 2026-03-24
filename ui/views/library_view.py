@@ -492,11 +492,11 @@ class LibraryView(QWidget):
             source_text = t(source_key_map.get(source_value, "source_local"))
             source_item = QTableWidgetItem(source_text)
             source_item.setForeground(text_color)
+            source_item.setData(Qt.UserRole, track_data)
             self._tracks_table.setItem(row, 0, source_item)
 
             # Title
             title_item = QTableWidgetItem(item.get("title", ""))
-            title_item.setData(Qt.UserRole, track_data)
             title_item.setForeground(text_color)
             self._tracks_table.setItem(row, 1, title_item)
 
@@ -609,6 +609,7 @@ class LibraryView(QWidget):
                 source_text = t(source_key_map.get(source_value, "source_local"))
                 source_item = QTableWidgetItem(source_text)
                 source_item.setForeground(QBrush(QColor("#808080")))
+                source_item.setData(Qt.UserRole, track.id)
                 self._tracks_table.setItem(row, 0, source_item)
 
                 # Title - add play icon if currently playing
@@ -626,7 +627,6 @@ class LibraryView(QWidget):
 
                 title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
                 title_item = QTableWidgetItem(title_text)
-                title_item.setData(Qt.UserRole, track.id)
                 title_item.setForeground(QBrush(QColor("#e0e0e0")))
 
                 # Make currently playing row bold and green
