@@ -224,6 +224,33 @@ jobs:
           cp -r Harmony/* Harmony-portable/
           tar -czvf Harmony-$VERSION-linux-portable.tar.gz Harmony-portable
 
+      - name: Analyze bundle size
+        run: |
+          echo "==> Bundle size overview"
+
+          du -sh dist/* || true
+
+          echo ""
+          echo "==> Top 20 largest files"
+          find dist/$APP_NAME -type f -exec du -h {} + 2>/dev/null \
+            | sort -hr | head -n 20
+
+          echo ""
+          echo "==> _internal breakdown"
+          du -sh dist/$APP_NAME/_internal/* 2>/dev/null || true
+
+          echo ""
+          echo "==> Qt plugins breakdown"
+          du -sh dist/$APP_NAME/_internal/PySide6/Qt/plugins/* 2>/dev/null || true
+
+          echo ""
+          echo "==> lib directory breakdown"
+          du -sh dist/$APP_NAME/_internal/lib/* 2>/dev/null || true
+
+          echo ""
+          echo "==> ffmpeg size"
+          du -sh AppDir/usr/bin/ffmpeg 2>/dev/null || true
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

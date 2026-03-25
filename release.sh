@@ -65,9 +65,10 @@ echo "==> Pruning Qt plugins (CI-only)"
 WHITELIST="build_analysis/qt_plugins_whitelist.txt"
 
 if [ ! -f "$WHITELIST" ] || [ ! -s "$WHITELIST" ]; then
-    echo "⚠ whitelist missing, using built-in fallback"
+    echo "⚠ whitelist missing, using fallback"
 
-    cat > /tmp/qt_plugins_fallback.txt <<EOF
+    WHITELIST="/tmp/qt_plugins_fallback.txt"
+    cat > "$WHITELIST" <<EOF
 platforms/libqxcb.so
 imageformats/libqjpeg.so
 imageformats/libqpng.so
@@ -76,19 +77,24 @@ audio/libqtaudio_alsa.so
 audio/libqtaudio_pulse.so
 multimedia/libqtmedia_ffmpeg.so
 EOF
-
-    WHITELIST="/tmp/qt_plugins_fallback.txt"
 fi
 
 echo "==> Using whitelist:"
 cat "$WHITELIST"
 
-# 执行裁剪
-find "$PLUGIN_DIR" -type f -name "*.so" | while read -r file; do
-    rel="${file#$PLUGIN_DIR/}"
+# 🔥 关键：关闭 set -e（只在这段）
+set +e
 
+if [ ! -d "$PLUGIN_DIR" ]; then
+    echo "❌ Plugin dir not found: $PLUGIN_DIR"
+    exit 1
+fi
+
+while IFS= read -r file; do
+    rel="${file#$PLUGIN_DIR/}"
     keep=false
-    while read -r k; do
+
+    while IFS= read -r k || [ -n "$k" ]; do
         k=$(echo "$k" | tr -d '\r')
         if [[ "$rel" == "$k" || "$rel" == *"$k" ]]; then
             keep=true
@@ -99,10 +105,16 @@ find "$PLUGIN_DIR" -type f -name "*.so" | while read -r file; do
     if [ "$keep" = false ]; then
         rm -f "$file"
     fi
-done
 
-# 清理空目录
+done < <(find "$PLUGIN_DIR" -type f -name "*.so")
+
+# 清理空目录（不报错）
 find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
+
+# 🔥 恢复 set -e
+set -e
+
+echo "==> Qt plugin prune done"
 
 # -------------------------
 # 4. 依赖收集
