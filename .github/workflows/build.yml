@@ -56,36 +56,35 @@ jobs:
         run: |
           uv sync --frozen
           source .venv/bin/activate
+          source scripts/qt_env.sh
 
           echo "==> Collecting Qt plugins..."
 
-          QT_QPA_PLATFORM=offscreen QT_DEBUG_PLUGINS=1 python << 'EOF' 2> qt_plugins.log
-            from PySide6.QtWidgets import QApplication
-            from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-            from PySide6.QtCore import QUrl
-            import sys
+          python << 'EOF' 2> qt_plugins.log
+          from PySide6.QtWidgets import QApplication
+          from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+          from PySide6.QtCore import QUrl
+          import sys
+    
+          app = QApplication(sys.argv)
+    
+          player = QMediaPlayer()
+          audio = QAudioOutput()
+          player.setAudioOutput(audio)
+    
+          player.setSource(QUrl("file:///tmp/test.mp3"))
+          player.play()
+    
+          for _ in range(10):
+            app.processEvents()
+    
+          EOF
             
-            app = QApplication(sys.argv)
-            
-            player = QMediaPlayer()
-            audio = QAudioOutput()
-            player.setAudioOutput(audio)
-            
-            # 关键：触发音频 backend
-            player.setSource(QUrl("file:///tmp/test.mp3"))
-            player.play()
-            
-            # 多跑几次事件循环（确保插件加载）
-            for _ in range(5):
-                app.processEvents()
-            
-            EOF
-            
-                      echo "==> Extracting plugins..."
-            
-                      mkdir -p build_analysis
-            
-                      python << 'EOF'
+          echo "==> Extracting plugins..."
+
+          mkdir -p build_analysis
+
+          python << 'EOF'
             import re
             
             plugins = set()

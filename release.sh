@@ -16,6 +16,8 @@ APPDIR="AppDir"
 WHITELIST_FILE="build_analysis/qt_plugins_whitelist.txt"
 NO_UPX="${1:-}"
 
+source scripts/qt_env.sh
+
 echo "=============================================="
 echo "  $APP_NAME v$APP_VERSION - Release Build"
 echo "=============================================="
@@ -242,6 +244,42 @@ if [ "$NO_UPX" != "--no-upx" ]; then
 else
     echo "  Skipping (--no-upx specified)"
 fi
+
+echo ""
+echo "==> [7.5] Runtime self-check (Qt + Multimedia)"
+
+# 找到输出目录
+OUTPUT_DIR="dist/$APP_NAME"
+
+# 兼容不同结构
+APP_BIN="$OUTPUT_DIR/$APP_NAME"
+if [ ! -f "$APP_BIN" ]; then
+    APP_BIN=$(find "$OUTPUT_DIR" -type f -name "$APP_NAME" | head -n 1)
+fi
+
+if [ ! -f "$APP_BIN" ]; then
+    echo "❌ Executable not found"
+    exit 1
+fi
+
+echo "Testing: $APP_BIN"
+
+# 使用 CI Qt 环境
+source scripts/qt_env.sh
+
+QT_DEBUG_PLUGINS=1 "$APP_BIN" --version > /dev/null 2> runtime.log || true
+
+# -------------------------
+# 核心检测：音频 backend
+# -------------------------
+if ! grep -q "libqtmedia_ffmpeg" runtime.log; then
+    echo "❌ ERROR: Qt ffmpeg backend NOT loaded"
+    echo "---- runtime.log (tail) ----"
+    tail -n 50 runtime.log
+    exit 1
+fi
+
+echo "✅ Multimedia backend OK"
 
 # Step 8: Create AppDir
 echo "==> [8/10] Creating AppDir structure"
