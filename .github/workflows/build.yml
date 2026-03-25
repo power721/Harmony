@@ -233,16 +233,19 @@ jobs:
           uv sync --extra dev
 
       - name: Build executable
+        env:
+          APP_VERSION: ${{ github.ref_name || 'nightly' }}
         run: |
           $env:PATH = "C:\Windows\System32;" + $env:PATH
           uv run python build.py windows
+          Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}.exe"
 
       - name: Create portable ZIP
         env:
           APP_VERSION: ${{ github.ref_name || 'nightly' }}
         run: |
           mkdir -p dist/Harmony-portable
-          cp dist/Harmony.exe dist/Harmony-portable/
+          cp dist/Harmony-${env:APP_VERSION}.exe dist/Harmony-portable/Harmony.exe
           cp -r translations dist/Harmony-portable/ 2>$null || true
 
           Set-Content -Path "dist/Harmony-portable/README.txt" -Value @"
@@ -256,7 +259,7 @@ jobs:
           - Visual C++ Redistributable 2015-2022
           "@
 
-          Compress-Archive -Path "dist/Harmony-portable/*" -DestinationPath "dist/Harmony-${env:APP_VERSION}-portable.zip" -Force
+          Compress-Archive -Path "dist/Harmony-portable/*" -DestinationPath "dist/Harmony-Windows-${env:APP_VERSION}-portable.zip" -Force
         shell: pwsh
 
       - name: Upload artifacts
@@ -264,7 +267,7 @@ jobs:
         with:
           name: harmony-windows
           path: |
-            dist/Harmony.exe
+            dist/Harmony-*.exe
             dist/Harmony-*-portable.zip
           retention-days: 30
 

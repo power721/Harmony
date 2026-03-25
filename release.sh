@@ -142,30 +142,6 @@ build_app() {
 }
 
 # -------------------------
-# Runtime 检测
-# -------------------------
-check_runtime() {
-    echo "==> Runtime self-check"
-
-    APP_BIN=$(find dist -type f -name "$APP_NAME" | head -n 1)
-    "$APP_BIN" --version > runtime.log 2>&1 || true
-
-    if grep -q "Could not load the Qt platform plugin" runtime.log; then
-        echo "❌ Qt platform plugin error"
-        tail -n 20 runtime.log
-        return 1
-    fi
-
-    if ! grep -qiE "ffmpeg|avcodec|media" runtime.log; then
-        echo "❌ ffmpeg backend missing"
-        tail -n 20 runtime.log
-        return 1
-    fi
-
-    echo "✅ Runtime OK"
-}
-
-# -------------------------
 # 构建执行
 # -------------------------
 build_app safe

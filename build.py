@@ -31,7 +31,7 @@ if getattr(sys, 'frozen', False):
 
 # Project info
 APP_NAME = "Harmony"
-APP_VERSION = "1.0.0"
+APP_VERSION = os.environ.get("APP_VERSION", "1.0.0")
 AUTHOR = "Harmony Player"
 DESCRIPTION = "Modern Music Player with Spotify-like Interface"
 
@@ -344,6 +344,13 @@ def collect_hidden_imports() -> list:
         except Exception as e:
             print(f"Warning: Could not collect mutagen submodules: {e}")
 
+        # QQ音乐 API
+        try:
+            hiddenimports += collect_submodules("qqmusic_api")
+            print("Collected submodules for: qqmusic_api")
+        except Exception as e:
+            print(f"Warning: Could not collect qqmusic_api submodules: {e}")
+
         # 其他依赖
         for package in ["PIL", "qrcode", "bs4", "lxml"]:
             try:
@@ -633,6 +640,57 @@ def find_gstreamer_plugins() -> tuple:
     return binaries, datas
 
 
+def create_windows_version_file() -> Path:
+    """Create Windows version file for PyInstaller."""
+    version_file = PROJECT_ROOT / "version_info.txt"
+
+    # Parse version string
+    version_parts = APP_VERSION.lstrip('v').split('.')
+    while len(version_parts) < 4:
+        version_parts.append('0')
+    major, minor, patch, build = version_parts[:4]
+
+    content = f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({major}, {minor}, {patch}, {build}),
+    prodvers=({major}, {minor}, {patch}, {build}),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040904B0',
+          [
+            StringStruct(u'CompanyName', u'{AUTHOR}'),
+            StringStruct(u'FileDescription', u'{DESCRIPTION}'),
+            StringStruct(u'FileVersion', u'{APP_VERSION}'),
+            StringStruct(u'InternalName', u'{APP_NAME}'),
+            StringStruct(u'LegalCopyright', u'Copyright 2024 {AUTHOR}'),
+            StringStruct(u'OriginalFilename', u'{APP_NAME}.exe'),
+            StringStruct(u'ProductName', u'{APP_NAME}'),
+            StringStruct(u'ProductVersion', u'{APP_VERSION}'),
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)
+"""
+
+    with open(version_file, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    print(f"Created Windows version file: {version_file}")
+    return version_file
+
+
 def clean_build_dirs():
     """Clean build and dist directories."""
     print("Cleaning build directories...")
@@ -715,6 +773,12 @@ def build_executable(
         print(f"Using icon: {icon_path}")
     else:
         print("No icon found, building without icon")
+
+    # Add version file for Windows
+    if target_platform == "windows":
+        version_file = create_windows_version_file()
+        cmd.extend(["--version-file", str(version_file)])
+        print(f"Using version file: {version_file}")
 
     # Add data files
     data_files = collect_data_files()
