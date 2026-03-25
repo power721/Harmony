@@ -213,7 +213,7 @@ EOF
 chmod +x "$APPDIR/AppRun"
 
 # 图标与桌面文件
-cp icons/icon.png "$APPDIR/$APP_NAME.png"
+cp icon.png "$APPDIR/$APP_NAME.png"
 cat > "$APPDIR/$APP_NAME.desktop" << EOF
 [Desktop Entry]
 Name=Harmony
