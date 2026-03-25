@@ -970,6 +970,7 @@ class LibraryView(QWidget):
 
         is_favorited = False
         is_cloud = False
+        is_qq_source = False  # QQ Music source
         cloud_file_id = None
         if track_id:
             if isinstance(track_id, dict):
@@ -981,8 +982,16 @@ class LibraryView(QWidget):
                     tid = track_id.get("id")
                     if tid:
                         is_favorited = self._favorites_service.is_favorite(track_id=tid)
+                        # Check if QQ Music source
+                        track = self._library_service.get_track(tid)
+                        if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
+                            is_qq_source = True
             else:
                 is_favorited = self._favorites_service.is_favorite(track_id=track_id)
+                # Check if QQ Music source
+                track = self._library_service.get_track(track_id)
+                if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
+                    is_qq_source = True
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -1026,12 +1035,16 @@ class LibraryView(QWidget):
 
         menu.addSeparator()
 
-        # Edit media info action
+        # Edit media info action (disabled for QQ Music source)
         edit_action = menu.addAction(t("edit_media_info"))
-        edit_action.triggered.connect(lambda: self._edit_media_info())
+        if is_qq_source:
+            edit_action.setEnabled(False)
+            edit_action.setToolTip(t("qq_music_edit_disabled"))
+        else:
+            edit_action.triggered.connect(lambda: self._edit_media_info())
 
-        # AI enhance metadata action (only for local tracks)
-        if not is_cloud and self._config:
+        # AI enhance metadata action (only for local tracks, disabled for QQ Music)
+        if not is_cloud and self._config and not is_qq_source:
             ai_enabled = self._config.get_ai_enabled()
             ai_enhance_action = menu.addAction(t("ai_enhance_metadata"))
             ai_enhance_action.setEnabled(ai_enabled)
@@ -1040,7 +1053,7 @@ class LibraryView(QWidget):
             else:
                 ai_enhance_action.setToolTip(t("ai_enable_first"))
 
-            # AcoustID identify action (only for local tracks)
+            # AcoustID identify action (only for local tracks, disabled for QQ Music)
             acoustid_enabled = self._config.get_acoustid_enabled()
             acoustid_action = menu.addAction(t("acoustid_identify"))
             acoustid_action.setEnabled(acoustid_enabled)
@@ -1049,8 +1062,8 @@ class LibraryView(QWidget):
             else:
                 acoustid_action.setToolTip(t("acoustid_enable_first"))
 
-        # Download cover action (only for local tracks)
-        if not is_cloud and self._cover_service:
+        # Download cover action (only for local tracks, disabled for QQ Music)
+        if not is_cloud and self._cover_service and not is_qq_source:
             download_cover_action = menu.addAction(t("download_cover_manual"))
             download_cover_action.triggered.connect(lambda: self._download_cover())
 

@@ -601,13 +601,13 @@ class PlayerControls(QWidget):
                         logger.info(
                             f"[PlayerControls] Metadata updated for current track {track_id}, "
                             f"title={track.title}, artist={track.artist}, cover_path={track.cover_path}")
-                        QTimer.singleShot(100, lambda: self._load_cover_art_async(updated_track))
+                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
             else:
                 # Fallback: reload with current track
                 logger.info(f"[PlayerControls] Metadata updated for current track {track_id}, reloading cover")
-                QTimer.singleShot(100, lambda: self._load_cover_art_async(current_track))
+                QTimer.singleShot(100, lambda t=current_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
 
     def _on_cover_updated(self, item_id, is_cloud: bool = False):
         """Handle cover update from EventBus."""
@@ -650,7 +650,7 @@ class PlayerControls(QWidget):
                             "cover_path": track.cover_path,
                             "source_type": "local",
                         }
-                        QTimer.singleShot(100, lambda t=updated_track: self._load_cover_art_async(t))
+                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
                         return
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
@@ -668,7 +668,7 @@ class PlayerControls(QWidget):
                         updated_track["cover_path"] = track.cover_path  # Use database cover_path
                         logger.info(
                             f"[PlayerControls] Reloaded cloud track metadata: artist={track.artist}, album={track.album}, cover_path={track.cover_path}")
-                        QTimer.singleShot(100, lambda t=updated_track: self._load_cover_art_async(t))
+                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
                         return
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated cloud track: {e}")
@@ -681,7 +681,7 @@ class PlayerControls(QWidget):
             track_copy = dict(current_track)
             # Clear cover_path so that _load_cover_art_async will search for the new cached cover
             track_copy["cover_path"] = None
-            QTimer.singleShot(100, lambda t=track_copy: self._load_cover_art_async(t))
+            QTimer.singleShot(100, lambda t=track_copy, v=self._cover_load_version: self._load_cover_art_async(t, v))
 
     def _update_favorite_button_style(self, is_favorite: bool):
         """Update favorite button style based on favorite status."""

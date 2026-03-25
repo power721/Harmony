@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.14.3",
+    "certifi>=2024.0.0",
     "lxml>=6.0.2",
     "mutagen>=1.47.0",
     "openai>=2.29.0",
@@ -19,4 +20,11 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "requests>=2.32.5",
     "shiboken6>=6.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyinstaller>=6.0.0",
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
 ]

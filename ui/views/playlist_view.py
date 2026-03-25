@@ -603,6 +603,18 @@ class PlaylistView(QWidget):
         if not item:
             return
 
+        # Check if QQ Music source
+        row = item.row()
+        title_item = self._tracks_table.item(row, 0)
+        is_qq_source = False
+        track_id = None
+        if title_item:
+            track_id = title_item.data(Qt.UserRole)
+            if track_id:
+                track = self._db.get_track(track_id)
+                if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
+                    is_qq_source = True
+
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
@@ -629,7 +641,11 @@ class PlaylistView(QWidget):
         menu.addSeparator()
 
         edit_action = QAction(t("edit_media_info"), self)
-        edit_action.triggered.connect(lambda: self._edit_media_info())
+        if is_qq_source:
+            edit_action.setEnabled(False)
+            edit_action.setToolTip(t("qq_music_edit_disabled"))
+        else:
+            edit_action.triggered.connect(lambda: self._edit_media_info())
         menu.addAction(edit_action)
 
         menu.exec_(self._tracks_table.mapToGlobal(pos))

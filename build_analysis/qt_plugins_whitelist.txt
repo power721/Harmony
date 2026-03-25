@@ -1,0 +1,13 @@
+iconengines/libqsvgicon.so
+imageformats/libqgif.so
+imageformats/libqico.so
+imageformats/libqjpeg.so
+imageformats/libqpng.so
+imageformats/libqsvg.so
+multimedia/libffmpegmediaplugin.so
+platforminputcontexts/libfcitx5platforminputcontextplugin.so
+platforminputcontexts/libfcitxplatforminputcontextplugin.so
+platforminputcontexts/libibusplatforminputcontextplugin.so
+platforms/libqminimal.so
+platforms/libqoffscreen.so
+platforms/libqxcb.so

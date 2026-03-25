@@ -1176,15 +1176,16 @@ class DatabaseManager:
         return cursor.rowcount > 0
 
     def update_track(
-            self, track_id: int, title: str = None, artist: str = None, album: str = None
+            self, track_id: int, title: str = None, artist: str = None, album: str = None,
+            cloud_file_id: int = None
     ) -> bool:
         """Update track metadata in the database."""
-        future = self._submit_write(self._do_update_track, track_id, title, artist, album)
+        future = self._submit_write(self._do_update_track, track_id, title, artist, album, cloud_file_id)
         return future.result(timeout=10.0)
 
     def update_track_async(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            callback: Callable[[bool], None] = None
+            cloud_file_id: int = None, callback: Callable[[bool], None] = None
     ) -> None:
         """
         Update track metadata asynchronously without blocking.
@@ -1194,16 +1195,18 @@ class DatabaseManager:
             title: New title (optional)
             artist: New artist (optional)
             album: New album (optional)
+            cloud_file_id: New cloud file ID (optional)
             callback: Optional callback called with success boolean on completion
         """
         if callback:
-            future = self._submit_write(self._do_update_track, track_id, title, artist, album)
+            future = self._submit_write(self._do_update_track, track_id, title, artist, album, cloud_file_id)
             future.add_done_callback(lambda f: callback(f.result()))
         else:
-            self._submit_write_async(self._do_update_track, track_id, title, artist, album)
+            self._submit_write_async(self._do_update_track, track_id, title, artist, album, cloud_file_id)
 
     def _do_update_track(
-            self, track_id: int, title: str = None, artist: str = None, album: str = None, conn: sqlite3.Connection = None
+            self, track_id: int, title: str = None, artist: str = None, album: str = None,
+            cloud_file_id: int = None, conn: sqlite3.Connection = None
     ) -> bool:
         """Internal method to update track metadata (runs in write worker)."""
         if conn is None:
@@ -1222,6 +1225,9 @@ class DatabaseManager:
         if album is not None:
             updates.append("album = ?")
             params.append(album)
+        if cloud_file_id is not None:
+            updates.append("cloud_file_id = ?")
+            params.append(cloud_file_id)
 
         if not updates:
             return False
