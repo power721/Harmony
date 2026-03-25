@@ -889,12 +889,12 @@ class LibraryView(QWidget):
         if row is None:
             return
 
-        title_item = self._tracks_table.item(row, 0)
-        if title_item:
+        item = self._tracks_table.item(row, 0)
+        if item:
             # Select the row
             self._tracks_table.selectRow(row)
             # Scroll to the item
-            self._tracks_table.scrollToItem(title_item)
+            self._tracks_table.scrollToItem(item)
 
     def _select_track_by_id(self, track_id: int):
         """
@@ -923,21 +923,21 @@ class LibraryView(QWidget):
         if row is None:
             return
 
-        title_item = self._tracks_table.item(row, 0)
-        if title_item:
+        item = self._tracks_table.item(row, 0)
+        if item:
             # Clear previous selection and select this row
             self._tracks_table.clearSelection()
             self._tracks_table.selectRow(row)
             # Scroll to the item with center positioning
-            self._tracks_table.scrollToItem(title_item)
+            self._tracks_table.scrollToItem(item)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
         """Handle item double click."""
         # Get track data from the first column
         row = item.row()
-        title_item = self._tracks_table.item(row, 0)
-        if title_item:
-            track_data = title_item.data(Qt.UserRole)
+        item = self._tracks_table.item(row, 0)
+        if item:
+            track_data = item.data(Qt.UserRole)
             if track_data:
                 if isinstance(track_data, dict) and track_data.get("type") == "cloud":
                     # Undownloaded cloud file
@@ -1037,11 +1037,7 @@ class LibraryView(QWidget):
 
         # Edit media info action (disabled for QQ Music source)
         edit_action = menu.addAction(t("edit_media_info"))
-        if is_qq_source:
-            edit_action.setEnabled(False)
-            edit_action.setToolTip(t("qq_music_edit_disabled"))
-        else:
-            edit_action.triggered.connect(lambda: self._edit_media_info())
+        edit_action.triggered.connect(lambda: self._edit_media_info())
 
         # AI enhance metadata action (only for local tracks, disabled for QQ Music)
         if not is_cloud and self._config and not is_qq_source:
@@ -2167,12 +2163,12 @@ class LibraryView(QWidget):
                 title_item.setFont(font)
 
             # Update artist
-            artist_item = self._tracks_table.item(row, 1)
+            artist_item = self._tracks_table.item(row, 2)
             if artist_item:
                 artist_item.setText(track.artist or t("unknown"))
 
             # Update album
-            album_item = self._tracks_table.item(row, 2)
+            album_item = self._tracks_table.item(row, 3)
             if album_item:
                 album_item.setText(track.album or t("unknown"))
 
