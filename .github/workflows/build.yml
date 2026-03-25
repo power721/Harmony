@@ -19,150 +19,103 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1 \
-            libglib2.0-0 \
-            libpulse0 \
-            libxcb1 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-shape0 \
-            libxcb-xfixes0 \
-            libxcb-xinerama0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            libfuse2 \
-            libfuse2t64 \
-            libxcb-cursor0 \
-            ffmpeg \
-            upx
-      - name: Generate Qt plugin whitelist (CI)
+            libgl1 libglib2.0-0 libpulse0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 \
+            libxcb-xkb1 libxkbcommon-x11-0 libxcb-cursor0 \
+            libfuse2 xvfb ffmpeg
+
+      - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |
           uv sync --frozen
-          source .venv/bin/activate
-          source scripts/qt_env.sh
-
-          echo "==> Collecting Qt plugins..."
-
-          python << 'EOF' 2> qt_plugins.log
+          mkdir -p build_analysis
+          
+          echo "==> Running app in virtual framebuffer to sniff plugins..."
+          # 开启 QT_DEBUG_PLUGINS 并通过 xvfb 模拟显示
+          export QT_DEBUG_PLUGINS=1
+          export QT_QPA_PLATFORM=xcb
+          
+          xvfb-run uv run python << 'EOF' 2> qt_plugins.log
+          import sys
           from PySide6.QtWidgets import QApplication
           from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-          from PySide6.QtCore import QUrl
-          import sys
-    
+          from PySide6.QtCore import QUrl, QTimer
+          
           app = QApplication(sys.argv)
-    
           player = QMediaPlayer()
           audio = QAudioOutput()
           player.setAudioOutput(audio)
-    
-          player.setSource(QUrl("file:///tmp/test.mp3"))
-          player.play()
-    
-          for _ in range(10):
-            app.processEvents()
-    
+          # 触发插件加载
+          player.setSource(QUrl("https://www.w3schools.com/html/horse.mp3")) 
+          
+          # 运行 3 秒后自动退出
+          QTimer.singleShot(3000, app.quit)
+          app.exec()
           EOF
-            
-          echo "==> Extracting plugins..."
-
-          mkdir -p build_analysis
-
+          
+          echo "==> Extracting whitelist..."
           python << 'EOF'
-            import re
-            
-            plugins = set()
-            
-            with open("qt_plugins.log", "r", errors="ignore") as f:
-                for line in f:
-                    if "loaded library" in line and "plugins" in line:
-                        try:
-                            path = line.split('"')[1]
-                            rel = path.split("plugins/")[-1]
-                            plugins.add(rel)
-                        except:
-                            pass
-            
-            # -------------------------
-            # 强制补充（音频安全）
-            # -------------------------
-            plugins.update([
-                "platforms/libqxcb.so",
-                "multimedia/libqtmedia_ffmpeg.so",
-            ])
-            
-            # 可选增强（避免输入法问题）
-            plugins.update([
-                "platforminputcontexts/libfcitx5platforminputcontextplugin.so"
-            ])
-            
-            with open("build_analysis/qt_plugins_whitelist.txt", "w") as f:
-                for p in sorted(plugins):
-                    f.write(p + "\n")
-            
-            print(f"Generated {len(plugins)} plugins")
+          import re
+          plugins = set()
+          try:
+              with open("qt_plugins.log", "r", errors="ignore") as f:
+                  for line in f:
+                      if "loaded library" in line and "plugins" in line:
+                          path = line.split('"')[1]
+                          rel = path.split("plugins/")[-1]
+                          plugins.add(rel)
+          except Exception as e:
+              print(f"Warning during log parsing: {e}")
+          
+          # 强制补充核心多媒体插件
+          plugins.update([
+              "platforms/libqxcb.so",
+              "multimedia/libqtmedia_ffmpeg.so",
+              "audio/libqtaudio_alsa.so",
+              "audio/libqtaudio_pulse.so"
+          ])
+          
+          with open("build_analysis/qt_plugins_whitelist.txt", "w") as f:
+              for p in sorted(plugins):
+                  f.write(p + "\n")
+          print(f"Total plugins whitelisted: {len(plugins)}")
           EOF
-
-          echo "==> Whitelist preview"
-          cat build_analysis/qt_plugins_whitelist.txt
 
       - name: Build AppImage
         env:
-          APP_VERSION: ${{ github.ref_name || env.APP_VERSION }}
+          APP_VERSION: ${{ github.ref_name || 'nightly' }}
         run: |
           chmod +x release.sh
           ./release.sh
 
       - name: Create portable tarball
-        env:
-          APP_VERSION: ${{ github.ref_name || env.APP_VERSION }}
         run: |
+          VERSION=${{ github.ref_name || 'nightly' }}
           cd dist
-          # Create portable package from the built onedir
           mkdir -p Harmony-portable
           cp -r Harmony/* Harmony-portable/
-
-          # Create README
-          cat > Harmony-portable/README.txt << EOF
-          Harmony v$APP_VERSION - Linux Portable
-
-          This is a portable version. No installation required.
-
-          To run:
-            ./Harmony-portable/Harmony
-
-          System Requirements:
-            - glibc 2.31 or later
-            - ALSA or PulseAudio
-          EOF
-
-          # Create tarball
-          tar -czvf Harmony-$APP_VERSION-linux-portable.tar.gz Harmony-portable
+          tar -czvf Harmony-$VERSION-linux-portable.tar.gz Harmony-portable
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: harmony-linux
+          name: harmony-linux-build
           path: |
             dist/*.AppImage
             dist/*.tar.gz
-          retention-days: 30
+          retention-days: 7
 
   build-macos:
     runs-on: macos-latest
