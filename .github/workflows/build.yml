@@ -31,11 +31,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgl1 libglib2.0-0 libpulse0 \
-            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 \
-            libxcb-xkb1 libxkbcommon-x11-0 libxcb-cursor0 \
-            libfuse2 xvfb ffmpeg
+          libgl1 \
+          libegl1 \
+          libopengl0 \
+          libglib2.0-0 \
+          libpulse0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-shape0 \
+          libxcb-xfixes0 \
+          libxcb-xinerama0 \
+          libxcb-xkb1 \
+          libxcb-cursor0 \
+          libxkbcommon-x11-0 \
+          libfuse2 \
+          xvfb \
+          ffmpeg \
+          strip
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |
@@ -271,6 +286,7 @@ jobs:
           find artifacts -name "*.dmg" -exec cp {} release-assets/ \;
           find artifacts -name "*.exe" -exec cp {} release-assets/ \;
           find artifacts -name "*.zip" -exec cp {} release-assets/ \;
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
           ls -la release-assets/
 
       - name: Create Release
