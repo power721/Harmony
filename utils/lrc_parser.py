@@ -346,7 +346,16 @@ def find_current_word(words: List[LyricWord], t: float) -> Optional[LyricWord]:
 
 
 def find_current_line(lines: List[LyricLine], t: float) -> Optional[LyricLine]:
-    for line in lines:
+    """Find the current lyric line using binary search (O(log n))."""
+    if not lines:
+        return None
+
+    # Binary search for the line that contains time t
+    times = [line.time for line in lines]
+    i = bisect.bisect_right(times, t) - 1
+
+    if i >= 0:
+        line = lines[i]
         if line.time <= t <= line.end:
             return line
     return None

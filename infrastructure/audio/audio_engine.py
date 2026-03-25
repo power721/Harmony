@@ -206,8 +206,13 @@ class PlayerEngine(QObject):
             self._playlist.insert(index, item)
             if self._current_index >= index:
                 self._current_index += 1
-            # Rebuild index since all indices after insert position change
-            self._rebuild_cloud_file_id_index()
+            # Incremental index update - shift all indices >= index by 1
+            for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
+                if idx >= index:
+                    self._cloud_file_id_to_index[cloud_id] = idx + 1
+            # Add new item's cloud_file_id if present
+            if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
+                self._cloud_file_id_to_index[item.cloud_file_id] = index
             self.playlist_changed.emit()
 
     def remove_track(self, index: int):
@@ -218,14 +223,18 @@ class PlayerEngine(QObject):
             index: Index of track to remove
         """
         if 0 <= index < len(self._playlist):
-            self._playlist.pop(index)
+            removed_item = self._playlist.pop(index)
+            # Incremental index update - remove the item and shift indices > index
+            if removed_item.cloud_file_id and removed_item.cloud_file_id in self._cloud_file_id_to_index:
+                del self._cloud_file_id_to_index[removed_item.cloud_file_id]
+            for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
+                if idx > index:
+                    self._cloud_file_id_to_index[cloud_id] = idx - 1
             if self._current_index == index:
                 self.stop()
                 self._current_index = -1
             elif self._current_index > index:
                 self._current_index -= 1
-            # Rebuild index since all indices after removal change
-            self._rebuild_cloud_file_id_index()
             self.playlist_changed.emit()
 
     def update_track_path(self, index: int, local_path: str):
@@ -514,8 +523,7 @@ class PlayerEngine(QObject):
 
         # Check if track needs download or file doesn't exist
         if item and (item.needs_download or not item.local_path or not Path(item.local_path).exists()):
-            if item:
-                item.needs_download = True
+            item.needs_download = True
             self.track_needs_download.emit(item)
         elif item and item.local_path and Path(item.local_path).exists():
             self._player.play()

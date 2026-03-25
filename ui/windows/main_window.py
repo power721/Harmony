@@ -2213,10 +2213,10 @@ class MainWindow(QMainWindow):
                         duplicate_count += 1
 
                 if duplicate_count == 0:
-                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
+                    msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
                     QMessageBox.information(self, t("success"), msg)
                 elif added_count == 0:
-                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
+                    msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
                     QMessageBox.warning(self, t("duplicate"), msg)
                 else:
                     msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)

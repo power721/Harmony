@@ -2,6 +2,8 @@
 SQLite implementation of QueueRepository.
 """
 
+import logging
+import sqlite3
 from datetime import datetime
 from typing import List, TYPE_CHECKING
 
@@ -88,8 +90,9 @@ class SqliteQueueRepository(BaseRepository):
                                ))
             conn.commit()
             return True
-        except Exception:
+        except sqlite3.Error as e:
             conn.rollback()
+            logging.error(f"Failed to save play queue: {e}")
             return False
 
     def clear(self) -> bool:

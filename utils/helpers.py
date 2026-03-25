@@ -72,11 +72,9 @@ def sanitize_filename(filename: str) -> str:
     Returns:
         Sanitized filename
     """
-    # Remove invalid characters for filenames
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, '')
-    return filename.strip()
+    # Re-export from file_helpers for backward compatibility
+    from utils.file_helpers import sanitize_filename as _sanitize
+    return _sanitize(filename)
 
 
 def truncate_text(text: str, max_length: int, suffix: str = '...') -> str:

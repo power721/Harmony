@@ -385,6 +385,8 @@ class QQMusicClient:
             return {}
 
         # Try quality fallback
+        if quality not in APIConfig.QUALITY_FALLBACK:
+            quality = APIConfig.QUALITY_FALLBACK[0]
         for q in APIConfig.QUALITY_FALLBACK:
             if APIConfig.QUALITY_FALLBACK.index(q) < APIConfig.QUALITY_FALLBACK.index(quality):
                 continue

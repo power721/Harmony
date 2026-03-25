@@ -267,7 +267,6 @@ class OnlineDownloadService:
                 metadata["language"] = online_metadata["language"]
             if online_metadata.get("publish_date"):
                 metadata["publish_date"] = online_metadata["publish_date"]
-            print(metadata)
             MetadataService.save_metadata(local_path, metadata["title"], metadata["artist"], metadata["album"])
 
         return metadata if metadata else None

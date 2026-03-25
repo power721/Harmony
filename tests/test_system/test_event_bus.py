@@ -7,6 +7,15 @@ from unittest.mock import Mock, MagicMock
 from PySide6.QtCore import QObject
 
 
+@pytest.fixture(autouse=True)
+def reset_event_bus():
+    """Reset EventBus singleton before and after each test for isolation."""
+    from system.event_bus import EventBus
+    EventBus.reset()
+    yield
+    EventBus.reset()
+
+
 class TestEventBus:
     """Test EventBus singleton."""
 

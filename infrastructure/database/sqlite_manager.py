@@ -611,6 +611,26 @@ class DatabaseManager:
 
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
+        # Current schema version - increment when making schema changes
+        CURRENT_SCHEMA_VERSION = 1
+
+        # Create db_meta table for schema version tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS db_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
+        # Get current schema version
+        cursor.execute("SELECT value FROM db_meta WHERE key = 'schema_version'")
+        row = cursor.fetchone()
+        stored_version = int(row[0]) if row else 0
+        schema_changed = stored_version < CURRENT_SCHEMA_VERSION
+
+        if schema_changed:
+            logger.info(f"[Database] Schema version changed: {stored_version} -> {CURRENT_SCHEMA_VERSION}")
+
         # Migration 1: Add source column to tracks table
         cursor.execute("PRAGMA table_info(tracks)")
         track_columns = [col[1] for col in cursor.fetchall()]
@@ -752,13 +772,14 @@ class DatabaseManager:
             logger.info("[Database] play_queue migration completed")
 
         # Migration 2: Initialize FTS5 index for existing tracks
+        # Only validate/rebuild FTS when schema has changed (not on every startup)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracks_fts'")
         fts_exists = cursor.fetchone() is not None
 
         cursor.execute("SELECT COUNT(*) FROM tracks")
         tracks_count = cursor.fetchone()[0]
 
-        if tracks_count > 0:
+        if tracks_count > 0 and schema_changed:
             if fts_exists:
                 # FTS table exists, check if it needs to be repopulated
                 cursor.execute("SELECT COUNT(*) FROM tracks_fts")
@@ -802,6 +823,14 @@ class DatabaseManager:
                                SELECT id, COALESCE(title, ''), COALESCE(artist, ''), COALESCE(album, '')
                                FROM tracks
                                """)
+
+        # Update schema version after all migrations complete
+        if schema_changed:
+            cursor.execute(
+                "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('schema_version', ?)",
+                (str(CURRENT_SCHEMA_VERSION),)
+            )
+            logger.info(f"[Database] Schema version updated to {CURRENT_SCHEMA_VERSION}")
 
     # Track operations
 

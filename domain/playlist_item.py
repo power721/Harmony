@@ -141,7 +141,7 @@ class PlaylistItem:
             PlaylistItem instance
         """
         # Determine source from saved value or infer from other fields
-        source_str = data.get("source") or data.get("source")
+        source_str = data.get("source")
         if source_str:
             try:
                 source = TrackSource(source_str)

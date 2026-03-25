@@ -401,7 +401,7 @@ class QQMusicService:
                 cover = result.get('logo', '') or result.get('cover', '')
 
             return {
-                'id': dirinfo.get('id', '') if dirinfo else '' or result.get('tid', '') or result.get('dissid', '') or str(playlist_id),
+                'id': dirinfo.get('id', '') if dirinfo else (result.get('tid', '') or result.get('dissid', '') or str(playlist_id)),
                 'name': name,
                 'creator': creator,
                 'cover': cover,

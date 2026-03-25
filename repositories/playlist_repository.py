@@ -99,16 +99,13 @@ class SqlitePlaylistRepository(BaseRepository):
             try:
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                # Get next position
-                cursor.execute("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
-                row = cursor.fetchone()
-                # Use is not None check because MAX can return 0 which is falsy
-                position = (row[0] if row[0] is not None else -1) + 1
-
+                # Use atomic INSERT with subquery to avoid race condition
                 cursor.execute("""
                                INSERT OR IGNORE INTO playlist_items (playlist_id, track_id, position)
-                               VALUES (?, ?, ?)
-                               """, (playlist_id, track_id, position))
+                               SELECT ?, ?, COALESCE(MAX(position), -1) + 1
+                               FROM playlist_items
+                               WHERE playlist_id = ?
+                               """, (playlist_id, track_id, playlist_id))
                 conn.commit()
                 return cursor.rowcount > 0
             except sqlite3.OperationalError as e:

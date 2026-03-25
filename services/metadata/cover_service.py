@@ -826,8 +826,6 @@ class CoverService:
         import os
         api_key = os.getenv("LASTFM_API_KEY")
         if not api_key or api_key == "YOUR_LASTFM_API_KEY":
-            api_key = "52e8e86c171ed9affffa34580666927a"
-            api_key = "94381a2146e972044b745b93575ddeac"
             api_key = "9b0cdcf446cc96dea3e747787ad23575"
 
         try:

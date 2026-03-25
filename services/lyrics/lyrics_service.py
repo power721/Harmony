@@ -757,7 +757,7 @@ class LyricsService:
 
             song_id = data['result']['songs'][0]['id']
             for item in data['result']['songs']:
-                if item['artists'][0]['name'] == artist:
+                if item.get('artists') and item['artists'][0]['name'] == artist:
                     song_id = item['id']
                     break
 

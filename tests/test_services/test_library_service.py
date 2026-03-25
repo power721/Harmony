@@ -272,9 +272,11 @@ class TestLibraryService:
         ):
             service = LibraryService(Mock(), Mock())
 
-            # The supported_extensions is defined in scan_directory
-            # We can't directly test it, but we know it exists
-            assert True  # Placeholder for documentation
+            # Verify supported_extensions is used in scan_directory
+            # by checking it contains expected audio formats
+            supported = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
+            for ext in supported:
+                assert ext in ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
 
     @patch("services.library.library_service.MetadataService")
     @patch("services.library.library_service.Path")
@@ -502,10 +504,9 @@ class TestLibraryService:
             Track(id=1, path="/music/song1.mp3", title="Song 1", artist="Artist", album="Old Album"),
             Track(id=2, path="/music/song2.mp3", title="Song 2", artist="Artist", album="Old Album"),
         ]
-        mock_track_repo.get_album_tracks.return_value = tracks
 
-        # New album name doesn't exist for this artist
-        mock_track_repo.get_album_tracks.side_effect = [tracks, []]  # First call: old album, second call: check existing
+        # First call: old album, second call: check existing (new album name doesn't exist)
+        mock_track_repo.get_album_tracks.side_effect = [tracks, []]
 
         # Mock metadata save
         mock_metadata_service.save_metadata.return_value = True

@@ -185,7 +185,7 @@ class LibraryView(QWidget):
         # Set resize modes - Title stretches to fill remaining space
         # Source: fixed width
         header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 70)
+        self._tracks_table.setColumnWidth(0, 80)
         # Title: stretch to fill all remaining space
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         # Artist: fixed width

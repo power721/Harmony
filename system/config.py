@@ -587,8 +587,9 @@ class ConfigManager:
         # Save full credential JSON
         try:
             self.set(SettingKey.QQMUSIC_CREDENTIAL, json.dumps(credential, ensure_ascii=False))
-        except:
-            pass
+        except (TypeError, ValueError) as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to save QQ Music credential: {e}")
 
     def clear_qqmusic_credential(self):
         """Clear QQ Music credentials."""

@@ -3,9 +3,9 @@ import sys
 import bisect
 from typing import List
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtCore import QTimer, Signal, Qt, QRectF
+from PySide6.QtGui import QFont, QColor, QPainter, QFontMetrics
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QApplication
 
 from system import t
 from utils.lrc_parser import LyricLine, LyricWord, detect_and_parse, detect_format

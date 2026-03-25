@@ -123,6 +123,12 @@ class HttpClient:
 
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
+            # Clean up incomplete file on failure
+            if Path(dest_path).exists():
+                try:
+                    Path(dest_path).unlink()
+                except OSError:
+                    pass
             return False
         finally:
             if response:

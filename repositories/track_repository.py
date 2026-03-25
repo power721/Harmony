@@ -193,8 +193,8 @@ class SqliteTrackRepository(BaseRepository):
 
         # Try to use albums table first
         if use_cache:
-            cursor.execute("SELECT COUNT(*) as count FROM albums")
-            if cursor.fetchone()["count"] > 0:
+            cursor.execute("SELECT 1 FROM albums LIMIT 1")
+            if cursor.fetchone() is not None:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
                     FROM albums
@@ -287,8 +287,8 @@ class SqliteTrackRepository(BaseRepository):
 
         # Try to use artists table first
         if use_cache:
-            cursor.execute("SELECT COUNT(*) as count FROM artists")
-            if cursor.fetchone()["count"] > 0:
+            cursor.execute("SELECT 1 FROM artists LIMIT 1")
+            if cursor.fetchone() is not None:
                 cursor.execute("""
                     SELECT name, cover_path, song_count, album_count
                     FROM artists
@@ -305,37 +305,31 @@ class SqliteTrackRepository(BaseRepository):
                     for row in rows
                 ]
 
-        # Fallback to direct query (slower)
+        # Fallback to direct query with subquery for cover (single query, no N+1)
         cursor.execute("""
             SELECT
-                artist as name,
+                t.artist as name,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
-            FROM tracks
-            WHERE artist IS NOT NULL AND artist != ''
-            GROUP BY artist
+                COUNT(DISTINCT t.album) as album_count,
+                (SELECT cover_path FROM tracks t2
+                 WHERE t2.artist = t.artist AND t2.cover_path IS NOT NULL
+                 LIMIT 1) as cover_path
+            FROM tracks t
+            WHERE t.artist IS NOT NULL AND t.artist != ''
+            GROUP BY t.artist
             ORDER BY song_count DESC
         """)
         rows = cursor.fetchall()
 
-        artists = []
-        for row in rows:
-            # Get cover from first track of artist
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE artist = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (row["name"],))
-            cover_row = cursor.fetchone()
-            cover_path = cover_row["cover_path"] if cover_row else None
-
-            artists.append(Artist(
+        return [
+            Artist(
                 name=row["name"] or "",
-                cover_path=cover_path,
+                cover_path=row["cover_path"],
                 song_count=row["song_count"] or 0,
                 album_count=row["album_count"] or 0,
-            ))
-        return artists
+            )
+            for row in rows
+        ]
 
     def get_artist_by_name(self, artist_name: str) -> Optional['Artist']:
         """
@@ -353,8 +347,8 @@ class SqliteTrackRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use artists table first
-        cursor.execute("SELECT COUNT(*) as count FROM artists")
-        if cursor.fetchone()["count"] > 0:
+        cursor.execute("SELECT 1 FROM artists LIMIT 1")
+        if cursor.fetchone() is not None:
             cursor.execute("""
                 SELECT name, cover_path, song_count, album_count
                 FROM artists
@@ -472,8 +466,8 @@ class SqliteTrackRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use albums table first
-        cursor.execute("SELECT COUNT(*) as count FROM albums")
-        if cursor.fetchone()["count"] > 0:
+        cursor.execute("SELECT 1 FROM albums LIMIT 1")
+        if cursor.fetchone() is not None:
             if artist:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration

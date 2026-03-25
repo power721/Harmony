@@ -239,7 +239,7 @@ Another line"""
         assert len(lyrics) == 1
         assert lyrics[0].time == 1.5
 
-    def test_parse_lric_without_text(self):
+    def test_parse_lrc_without_text(self):
         """Test parsing LRC lines without text content."""
         lrc_text = """[00:01.00]
 [00:02.00]Some text"""
@@ -250,7 +250,7 @@ Another line"""
         assert lyrics[0].text == " "
         assert lyrics[1].text == "Some text"
 
-    def test_parse_lric_only_metadata(self):
+    def test_parse_lrc_only_metadata(self):
         """Test parsing LRC with only metadata."""
         lrc_text = """[ti:Song Title]
 [ar:Artist]"""

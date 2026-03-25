@@ -83,6 +83,7 @@ class PlaybackService(QObject):
 
         # Online download workers (song_mid -> QThread)
         self._online_download_workers: dict = {}
+        self._online_download_lock = threading.Lock()
 
         # Connect internal signal for thread-safe metadata updates
         self._metadata_processed.connect(self._on_metadata_processed)
@@ -941,15 +942,16 @@ class PlaybackService(QObject):
         song_mid = item.cloud_file_id
 
         # Check if already downloading this song
-        if song_mid in self._online_download_workers:
-            existing = self._online_download_workers[song_mid]
-            if existing.isRunning():
-                logger.info(f"[PlaybackService] Already downloading: {song_mid}")
-                return
-            else:
-                # Clean up finished worker properly
-                del self._online_download_workers[song_mid]
-                existing.deleteLater()
+        with self._online_download_lock:
+            if song_mid in self._online_download_workers:
+                existing = self._online_download_workers[song_mid]
+                if existing.isRunning():
+                    logger.info(f"[PlaybackService] Already downloading: {song_mid}")
+                    return
+                else:
+                    # Clean up finished worker properly
+                    del self._online_download_workers[song_mid]
+                    existing.deleteLater()
 
         # Get download service from Bootstrap
         from app.bootstrap import Bootstrap
@@ -989,17 +991,19 @@ class PlaybackService(QObject):
         def on_finished(mid, path):
             self.on_online_track_downloaded(mid, path)
             # Remove from dict after completion
-            if mid in self._online_download_workers:
-                worker_obj = self._online_download_workers.pop(mid)
-                # Don't call wait() here - we're in the worker thread!
-                # Just schedule deletion, Qt will handle it safely
-                worker_obj.deleteLater()
+            with self._online_download_lock:
+                if mid in self._online_download_workers:
+                    worker_obj = self._online_download_workers.pop(mid)
+                    # Don't call wait() here - we're in the worker thread!
+                    # Just schedule deletion, Qt will handle it safely
+                    worker_obj.deleteLater()
 
         # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
         worker.download_finished.connect(on_finished, Qt.DirectConnection)
 
         # Store in dict and start
-        self._online_download_workers[song_mid] = worker
+        with self._online_download_lock:
+            self._online_download_workers[song_mid] = worker
         worker.start()
 
     def _download_cloud_track(self, item: PlaylistItem):
@@ -1182,8 +1186,9 @@ class PlaybackService(QObject):
 
         # Skip if already downloading
         song_mid = item.cloud_file_id
-        if song_mid in self._online_download_workers and self._online_download_workers[song_mid].isRunning():
-            return
+        with self._online_download_lock:
+            if song_mid in self._online_download_workers and self._online_download_workers[song_mid].isRunning():
+                return
 
         logger.info(f"[PlaybackService] Preloading online track: {item.title}")
         self._download_online_track(item)
@@ -1266,7 +1271,7 @@ class PlaybackService(QObject):
 
         # Extract metadata from downloaded file
         metadata = MetadataService.extract_metadata(local_path)
-        new_title = metadata.get("title", Path(local_path).stem)
+        new_title = metadata.get("title", Path(local_path).stem if local_path else "")
         new_artist = metadata.get("artist", "")
         new_album = metadata.get("album", "")
         new_duration = metadata.get("duration", 0)
