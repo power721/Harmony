@@ -42,7 +42,7 @@ prune_qt_plugins() {
     else
         # Safe Mode: 仅保留核心多媒体和显示组件
         echo "  Using safe-list fallback"
-        SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts multimedia mediaservice audio)
+        SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts multimedia mediaservice audio xcbglintegrations wayland)
         for dir in "$PLUGIN_DIR"/*; do
             name=$(basename "$dir")
             keep=false
@@ -71,6 +71,7 @@ build_app() {
       --add-data "ui:ui" \
       --add-data "translations:translations" \
       --add-data "icons:icons" \
+      --add-data "icon.png:." \
       "$ENTRY"
 
     collect_xcb_deps
@@ -125,6 +126,13 @@ collect_xcb_deps() {
     copy_lib libXext.so.6
     copy_lib libXrender.so.1
 
+    copy_lib libxcb-util.so.1
+    copy_lib libxcb-xkb.so.1
+    copy_lib libxkbfile.so.1
+    copy_lib libfontconfig.so.1
+    copy_lib libfreetype.so.6
+    copy_lib libdbus-1.so.3
+
     copy_lib libGL.so.1
 
     echo "==> xcb dependencies collected"
@@ -157,7 +165,7 @@ check_runtime() {
     # -------------------------
     # 检查 2：multimedia backend
     # -------------------------
-    if ! grep -q "libqtmedia_ffmpeg" runtime.log; then
+    if ! grep -q -Ei "ffmpeg|media|backend" runtime.log; then
         echo "❌ ffmpeg backend missing"
         tail -n 20 runtime.log
         return 1
