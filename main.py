@@ -17,27 +17,6 @@ import os
 import logging
 from pathlib import Path
 
-# Setup input method for Linux
-def setup_input_method():
-    """Setup input method environment for Chinese input on Linux."""
-    if sys.platform == "linux":
-        # Check if fcitx5 is running
-        if os.path.exists("/usr/bin/fcitx5") or os.environ.get("QT_IM_MODULE") == "fcitx":
-            # Add system Qt plugin path to load fcitx5 input method plugin
-            # The system fcitx5 plugin is built for Qt 6.4.2 but may work with newer versions
-            system_plugin_path = "/usr/lib/x86_64-linux-gnu/qt6/plugins"
-            if os.path.exists(system_plugin_path):
-                # Prepend system path to QT_PLUGIN_PATH
-                current_path = os.environ.get("QT_PLUGIN_PATH", "")
-                if current_path:
-                    os.environ["QT_PLUGIN_PATH"] = f"{system_plugin_path}:{current_path}"
-                else:
-                    os.environ["QT_PLUGIN_PATH"] = system_plugin_path
-            # Ensure QT_IM_MODULE is set
-            if not os.environ.get("QT_IM_MODULE"):
-                os.environ["QT_IM_MODULE"] = "fcitx"
-
-
 # Setup SSL certificates for PyInstaller bundle
 def setup_ssl_certificates():
     """Setup SSL certificates for HTTPS connections in PyInstaller bundle."""
@@ -67,9 +46,6 @@ def setup_ssl_certificates():
             os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
         except ImportError:
             pass
-
-# Setup input method before Qt application starts
-setup_input_method()
 
 # Setup SSL before any HTTPS requests
 setup_ssl_certificates()

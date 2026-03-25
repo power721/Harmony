@@ -50,7 +50,7 @@ jobs:
           libfuse2 \
           xvfb \
           ffmpeg \
-          strip
+          binutils
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |

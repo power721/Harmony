@@ -8,56 +8,77 @@
 
 1. PySide6 自带的 Qt 插件目录缺少 fcitx5 输入法插件
 2. 系统的 fcitx5-frontend-qt6 插件编译于 Qt 6.4.2
-3. PySide6 6.6.0 使用 Qt 6.6.0，版本不匹配导致符号错误
-4. PySide6 6.4.2 需要 Python < 3.12，而系统只有 Python 3.12
+3. PySide6 使用不同版本的 Qt（如 6.11.0），版本不匹配导致符号错误：
+   ```
+   undefined symbol: _ZN22QWindowSystemInterface22handleExtendedKeyEventE..., version Qt_6_PRIVATE_API
+   ```
 
 ## 解决方案
 
-创建 Python 3.11 的 conda 环境，安装 PySide6 6.4.2，复制系统 fcitx5 插件。
+### 方案一：编译 fcitx5 插件（推荐）
 
-### 步骤
+运行提供的脚本编译匹配 PySide6 Qt 版本的 fcitx5 插件：
 
 ```bash
-# 1. 创建 Python 3.11 环境
-conda create -n harmony python=3.11 -y
-
-# 2. 激活环境
-conda activate harmony
-
-# 3. 安装依赖（会安装 PySide6 6.6.0）
-pip install -r requirements.txt
-
-# 4. 降级 PySide6 到 6.4.2（匹配系统 fcitx5 插件）
-pip install PySide6==6.4.2
-
-# 5. 复制系统 fcitx5 插件到 PySide6
-cp /usr/lib/x86_64-linux-gnu/qt6/plugins/platforminputcontexts/libfcitx5platforminputcontextplugin.so \
-   ~/Miniforge3/envs/harmony/lib/python3.11/site-packages/PySide6/Qt/plugins/platforminputcontexts/
+chmod +x scripts/build_fcitx5_qt6.sh
+./scripts/build_fcitx5_qt6.sh
 ```
 
-### 运行应用
+脚本会：
+1. 安装编译依赖
+2. 使用 aqtinstall 安装匹配的 Qt SDK
+3. 从源码编译 fcitx5-qt6 插件
+4. 安装到 PySide6 插件目录
+
+### 方案二：使用 ibus 兼容模式
+
+如果不想编译，可以安装 ibus 并配置 fcitx5 的 ibus 支持：
 
 ```bash
-conda activate harmony
+# 安装 ibus
+sudo apt install ibus
+
+# 设置环境变量
+export QT_IM_MODULE=ibus
+export GTK_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+
+# 运行应用
 python main.py
 ```
 
-## 注意事项
+注意：此方案需要 fcitx5 支持 ibus 协议，可能需要额外配置。
 
-- 不要运行 `pip install -r requirements.txt`，否则会升级 PySide6 到 6.6.0
-- 如需更新其他依赖，手动指定版本，避免升级 PySide6：
-  ```bash
-  pip install <package> --no-deps  # 不更新依赖
-  ```
-- 或在 requirements.txt 中锁定 PySide6 版本为 6.4.2
+### 方案三：降级 PySide6（不推荐）
+
+降级 PySide6 到匹配系统 Qt 插件的版本：
+
+```bash
+pip install PySide6==6.4.2
+```
+
+缺点：失去新功能和 bug 修复。
+
+## 验证
+
+编译安装后，运行以下命令验证插件是否正确加载：
+
+```bash
+QT_DEBUG_PLUGINS=1 python main.py 2>&1 | grep -i fcitx
+```
+
+应该看到类似输出：
+```
+qt.core.library: ".../libfcitx5platforminputcontextplugin.so" loaded library
+```
 
 ## 环境要求
 
-- Ubuntu 24.04 (Noble)
+- Linux Mint 22 / Ubuntu 24.04 (Noble)
 - fcitx5-frontend-qt6 >= 5.1.4
-- conda/Miniforge
-- Python 3.11
+- Python 3.11+
 
 ## 相关文件
 
-- `main.py`: 设置 `QT_IM_MODULE=fcitx5` 环境变量
+- `main.py`: 设置输入法环境变量
+- `scripts/build_fcitx5_qt6.sh`: fcitx5 插件编译脚本
