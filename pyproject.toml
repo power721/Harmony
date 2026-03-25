@@ -28,3 +28,8 @@ dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]
