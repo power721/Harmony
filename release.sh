@@ -73,6 +73,7 @@ build_app() {
       --add-data "icons:icons" \
       "$ENTRY"
 
+    collect_xcb_deps
     prune_qt_plugins "$MODE"
 
     echo "==> Stripping binaries"
@@ -80,25 +81,93 @@ build_app() {
       -exec strip --strip-unneeded {} + 2>/dev/null || true
 }
 
+collect_xcb_deps() {
+    echo "==> Collecting Qt xcb dependencies"
+
+    TARGET_DIR=$(find dist -type d -path "*_internal" | head -n 1)
+
+    if [ -z "$TARGET_DIR" ]; then
+        echo "❌ Cannot find _internal dir"
+        return 1
+    fi
+
+    mkdir -p "$TARGET_DIR/lib"
+
+    copy_lib() {
+        local libname=$1
+        local path=$(ldconfig -p | grep "$libname" | head -n1 | awk '{print $NF}')
+        if [ -f "$path" ]; then
+            echo "  + $libname"
+            cp -L "$path" "$TARGET_DIR/lib/"
+        else
+            echo "  ⚠ Missing $libname"
+        fi
+    }
+
+    # -------------------------
+    # Qt xcb 必备依赖（核心）
+    # -------------------------
+    copy_lib libxcb.so.1
+    copy_lib libxcb-cursor.so.0
+    copy_lib libxcb-xinerama.so.0
+    copy_lib libxcb-randr.so.0
+    copy_lib libxcb-render.so.0
+    copy_lib libxcb-shape.so.0
+    copy_lib libxcb-xfixes.so.0
+    copy_lib libxcb-keysyms.so.1
+    copy_lib libxcb-image.so.0
+    copy_lib libxcb-icccm.so.4
+
+    copy_lib libxkbcommon.so.0
+    copy_lib libxkbcommon-x11.so.0
+
+    copy_lib libX11.so.6
+    copy_lib libXext.so.6
+    copy_lib libXrender.so.1
+
+    copy_lib libGL.so.1
+
+    echo "==> xcb dependencies collected"
+}
+
 # -------------------------
 # Runtime 自检
 # -------------------------
 check_runtime() {
     echo "==> Runtime self-check"
+
     APP_BIN=$(find dist -type f -name "$APP_NAME" | head -n 1)
 
-    # 开启插件调试模式进行检测
-    QT_QPA_PLATFORM=xcb QT_DEBUG_PLUGINS=1 \
-        "$APP_BIN" --version > /dev/null 2> runtime.log || true
+    if [ ! -f "$APP_BIN" ]; then
+        echo "❌ Executable not found"
+        return 1
+    fi
 
-    if grep -q "libqtmedia_ffmpeg" runtime.log; then
-        echo "✅ Runtime OK (FFmpeg backend found)"
-        return 0
-    else
-        echo "❌ Runtime check FAILED"
+    export QT_DEBUG_PLUGINS=1
+    export QT_QPA_PLATFORM=minimal   # ✅ 核心修复
+
+    "$APP_BIN" --version > /dev/null 2> runtime.log || true
+
+    # -------------------------
+    # 检查 1：Qt 是否正常启动
+    # -------------------------
+    if grep -q "Could not load the Qt platform plugin" runtime.log; then
+        echo "❌ Qt platform plugin failed"
         tail -n 20 runtime.log
         return 1
     fi
+
+    # -------------------------
+    # 检查 2：multimedia backend
+    # -------------------------
+    if ! grep -q "libqtmedia_ffmpeg" runtime.log; then
+        echo "❌ ffmpeg backend missing"
+        tail -n 20 runtime.log
+        return 1
+    fi
+
+    echo "✅ Runtime OK"
+    return 0
 }
 
 # -------------------------
@@ -121,11 +190,24 @@ cp -r "dist/$APP_NAME"/* "$APPDIR/usr/bin/"
 # 写入 AppRun
 cat > "$APPDIR/AppRun" << 'EOF'
 #!/usr/bin/env bash
-HERE="$(dirname "$(readlink -f "$0")")"
-export PATH="$HERE/usr/bin:$PATH"
-export LD_LIBRARY_PATH="$HERE/usr/bin:$HERE/usr/bin/_internal:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="$HERE/usr/bin/_internal/PySide6/Qt/plugins"
-exec "$HERE/usr/bin/Harmony" "$@"
+SELF=$(readlink -f "$0")
+HERE=${SELF%/*}
+
+export PATH="${HERE}/usr/bin:${PATH}"
+
+export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
+
+export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
+
+# 防止 OpenGL 崩溃
+export QT_XCB_GL_INTEGRATION=none
+
+# fallback（无 DISPLAY）
+if [ -z "$DISPLAY" ]; then
+  export QT_QPA_PLATFORM=minimal
+fi
+
+exec "${HERE}/usr/bin/Harmony" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 
