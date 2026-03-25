@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+#
+# Harmony Music Player - Release Build Script
+#
+# Produces optimized AppImage for distribution
+#
+# Usage: ./release.sh [--no-upx]
+#
+
+set -e
+
+APP_NAME="Harmony"
+APP_VERSION="${APP_VERSION:-1.0.0}"
+ENTRY="main.py"
+APPDIR="AppDir"
+WHITELIST_FILE="build_analysis/qt_plugins_whitelist.txt"
+NO_UPX="${1:-}"
+
+echo "=============================================="
+echo "  $APP_NAME v$APP_VERSION - Release Build"
+echo "=============================================="
+echo ""
+
+# Step 1: Sync dependencies
+echo "==> [1/10] Syncing dependencies (uv)"
+uv sync --extra dev --frozen
+
+# Step 2: Clean old build
+echo "==> [2/10] Cleaning old build artifacts"
+rm -rf build dist *.spec "$APPDIR"
+
+# Step 3: Detect Qt path
+echo "==> [3/10] Detecting library paths"
+QT_PATH=$(uv run python -c "import PySide6; import os; print(os.path.dirname(PySide6.__file__))")
+echo "Qt Path: $QT_PATH"
+
+# Detect OpenSSL
+SSL_LIBS=""
+SSL_SO=$(uv run python -c "import _ssl; print(_ssl.__file__)" 2>/dev/null || echo "")
+if [ -n "$SSL_SO" ] && [ -f "$SSL_SO" ]; then
+    while IFS= read -r line; do
+        if [[ "$line" == *"libssl.so"* ]] || [[ "$line" == *"libcrypto.so"* ]]; then
+            lib_path=$(echo "$line" | sed 's/.*=> //' | sed 's/ (.*//')
+            if [ -f "$lib_path" ]; then
+                SSL_LIBS="$SSL_LIBS --add-binary $lib_path:."
+                echo "  OpenSSL: $lib_path"
+            fi
+        fi
+    done < <(ldd "$SSL_SO" 2>/dev/null)
+fi
+
+# Step 4: PyInstaller build
+echo "==> [4/10] Building with PyInstaller"
+
+uv run pyinstaller \
+  --name "$APP_NAME" \
+  --noconfirm \
+  --windowed \
+  --clean \
+  --onedir \
+  --additional-hooks-dir=hooks \
+  --exclude-module tkinter \
+  --exclude-module unittest \
+  --exclude-module test \
+  --exclude-module pytest \
+  --exclude-module matplotlib \
+  --exclude-module numpy \
+  --exclude-module pandas \
+  --exclude-module scipy \
+  --exclude-module torch \
+  --exclude-module tensorflow \
+  --exclude-module IPython \
+  --exclude-module jupyter \
+  --exclude-module notebook \
+  --hidden-import=PySide6.QtCore \
+  --hidden-import=PySide6.QtGui \
+  --hidden-import=PySide6.QtWidgets \
+  --hidden-import=PySide6.QtMultimedia \
+  --hidden-import=PySide6.QtMultimediaWidgets \
+  --hidden-import=PySide6.QtNetwork \
+  --hidden-import=PySide6.QtSvg \
+  --hidden-import=ssl \
+  --hidden-import=_ssl \
+  --collect-all certifi \
+  --add-data "ui:ui" \
+  --add-data "translations:translations" \
+  --add-data "icons:icons" \
+  --add-data "icon.png:. " \
+  $SSL_LIBS \
+  "$ENTRY"
+
+# Step 5: Qt plugin pruning
+echo "==> [5/10] Pruning Qt plugins (whitelist-based)"
+
+PLUGIN_DIR="dist/$APP_NAME/_internal/PySide6/Qt/plugins"
+if [ ! -d "$PLUGIN_DIR" ]; then
+    PLUGIN_DIR="dist/$APP_NAME/PySide6/Qt/plugins"
+fi
+
+if [ -d "$PLUGIN_DIR" ] && [ -f "$WHITELIST_FILE" ]; then
+    echo "Using whitelist: $WHITELIST_FILE"
+
+    # Read whitelist
+    mapfile -t KEEP_LIST < "$WHITELIST_FILE"
+
+    # Process plugins
+    removed_count=0
+    while IFS= read -r -d '' file; do
+        rel="${file#$PLUGIN_DIR/}"
+        keep=false
+
+        for k in "${KEEP_LIST[@]}"; do
+            k_norm=$(echo "$k" | tr -d '\r')
+            if [[ "$rel" == "$k_norm" ]] || [[ "$rel" == *"$k_norm" ]]; then
+                keep=true
+                break
+            fi
+        done
+
+        if [ "$keep" = false ]; then
+            rm -f "$file"
+            ((removed_count++))
+        fi
+    done < <(find "$PLUGIN_DIR" -type f -print0 2>/dev/null)
+
+    # Remove empty directories
+    find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null
+
+    echo "  Removed $removed_count unused plugins"
+else
+    echo "  WARNING: Whitelist or plugin dir not found"
+fi
+
+# Step 6: Strip binaries
+echo "==> [6/10] Stripping binaries"
+
+find "dist/$APP_NAME" -type f \( -name "*.so*" -o -name "*.pyd" -o -perm /111 \) \
+    -exec strip --strip-unneeded {} + 2>/dev/null || true
+
+echo "  Done"
+
+# Step 7: UPX compression
+echo "==> [7/10] UPX compression"
+
+if [ "$NO_UPX" != "--no-upx" ]; then
+    if command -v upx &> /dev/null; then
+        # Compress main binaries (not .so files, they may cause issues)
+        find "dist/$APP_NAME" -type f -name "*.so*" -size +100k \
+            -exec upx --best --lzma {} + 2>/dev/null || true
+
+        # Compress Python shared library
+        find "dist/$APP_NAME" -type f -name "libpython*.so*" \
+            -exec upx --best --lzma {} + 2>/dev/null || true
+
+        echo "  Done"
+    else
+        echo "  UPX not found, skipping"
+    fi
+else
+    echo "  Skipping (--no-upx specified)"
+fi
+
+# Step 8: Create AppDir
+echo "==> [8/10] Creating AppDir structure"
+
+rm -rf "$APPDIR"
+mkdir -p "$APPDIR/usr/bin"
+mkdir -p "$APPDIR/usr/share/applications"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+# Copy application
+cp -r "dist/$APP_NAME"/* "$APPDIR/usr/bin/"
+
+# Create AppRun
+cat > "$APPDIR/AppRun" << 'APPRUN_EOF'
+#!/usr/bin/env bash
+SELF=$(readlink -f "$0")
+HERE=${SELF%/*}
+
+export PATH="${HERE}/usr/bin:${PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${LD_LIBRARY_PATH}"
+
+# Qt plugin path
+export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
+
+exec "${HERE}/usr/bin/Harmony" "$@"
+APPRUN_EOF
+chmod +x "$APPDIR/AppRun"
+
+# Create desktop file
+cat > "$APPDIR/$APP_NAME.desktop" << EOF
+[Desktop Entry]
+Name=Harmony
+Comment=Modern Music Player
+Exec=Harmony
+Icon=$APP_NAME
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;Qt;
+Keywords=music;player;audio;
+EOF
+
+# Copy icon
+cp icon.png "$APPDIR/$APP_NAME.png"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+cp icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
+
+# Link desktop file
+ln -sf "$APP_NAME.desktop" "$APPDIR/usr/share/applications/$APP_NAME.desktop"
+
+# Step 9: Build AppImage
+echo "==> [9/10] Building AppImage"
+
+# Download appimagetool if needed
+APPIMAGETOOL="appimagetool-x86_64.AppImage"
+if [ ! -f "$APPIMAGETOOL" ]; then
+    echo "Downloading appimagetool..."
+    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/$APPIMAGETOOL"
+    chmod +x "$APPIMAGETOOL"
+fi
+
+# Set architecture
+export ARCH=x86_64
+
+# Build AppImage
+"./$APPIMAGETOOL" "$APPDIR" "dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
+
+# Step 10: Report
+echo "==> [10/10] Build complete"
+
+SIZE=$(du -sh "dist/$APP_NAME-$APP_VERSION-x86_64.AppImage" | cut -f1)
+
+echo ""
+echo "=============================================="
+echo "  Release Build Complete!"
+echo "=============================================="
+echo ""
+echo "AppImage: dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
+echo "Size: $SIZE"
+echo ""
+echo "To run: chmod +x dist/$APP_NAME-$APP_VERSION-x86_64.AppImage && ./dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
+echo ""

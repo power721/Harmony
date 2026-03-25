@@ -7,12 +7,6 @@ on:
   pull_request:
     branches: [ master, main ]
   workflow_dispatch:
-    inputs:
-      build_all:
-        description: 'Build all platforms'
-        required: false
-        default: 'true'
-        type: boolean
 
 env:
   APP_NAME: Harmony
@@ -55,68 +49,22 @@ jobs:
             libxkbcommon-x11-0 \
             libfuse2 \
             libasound2 \
-            ffmpeg
+            ffmpeg \
+            upx
 
-      - name: Install Python dependencies
+      - name: Build AppImage
+        env:
+          APP_VERSION: ${{ github.ref_name || env.APP_VERSION }}
         run: |
-          uv sync --extra dev
-
-      - name: Build executable
-        run: |
-          chmod +x build.sh build.py
-          uv run python build.py linux
-
-      - name: Create AppImage
-        run: |
-          # Download appimagetool
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
-          chmod +x /tmp/appimagetool
-
-          # Create AppDir
-          mkdir -p dist/Harmony.AppDir/usr/bin
-          mkdir -p dist/Harmony.AppDir/usr/share/applications
-          mkdir -p dist/Harmony.AppDir/usr/share/icons/hicolor/256x256/apps
-
-          cp dist/Harmony dist/Harmony.AppDir/usr/bin/
-
-          # Copy icon
-          cp icon.png dist/Harmony.AppDir/Harmony.png
-
-          # Create desktop file
-          cat > dist/Harmony.AppDir/usr/share/applications/Harmony.desktop << EOF
-          [Desktop Entry]
-          Name=Harmony
-          Comment=Modern Music Player
-          Exec=Harmony
-          Icon=Harmony
-          Terminal=false
-          Type=Application
-          Categories=AudioVideo;Audio;Player;Qt;
-          EOF
-
-          ln -sf usr/share/applications/Harmony.desktop dist/Harmony.AppDir/Harmony.desktop
-
-          # Create AppRun
-          cat > dist/Harmony.AppDir/AppRun << 'EOF'
-          #!/bin/bash
-          SELF=$(readlink -f "$0")
-          HERE=${SELF%/*}
-          export PATH="${HERE}/usr/bin:${PATH}"
-          export LD_LIBRARY_PATH="${HERE}:${LD_LIBRARY_PATH}"
-          exec "${HERE}/usr/bin/Harmony" "$@"
-          EOF
-          chmod +x dist/Harmony.AppDir/AppRun
-
-          # Build AppImage
-          ARCH=x86_64 /tmp/appimagetool dist/Harmony.AppDir dist/Harmony-${{ env.APP_VERSION }}-x86_64.AppImage
+          chmod +x release.sh
+          ./release.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: harmony-linux
           path: |
-            dist/Harmony
-            dist/Harmony-${{ env.APP_VERSION }}-x86_64.AppImage
+            dist/*.AppImage
           retention-days: 30
 
   build-macos:
@@ -125,31 +73,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Free disk space (aggressive)
+      - name: Free disk space
         run: |
-          echo "Before cleanup:"
-          df -h
-
-          # Delete Xcode (largest)
           sudo rm -rf /Applications/Xcode*.app
-
-          # Delete iOS simulator
           sudo rm -rf /Library/Developer/CoreSimulator
-
-          # Delete Android
           sudo rm -rf /usr/local/lib/android
-
-          # Delete Homebrew cache
           sudo rm -rf /opt/homebrew
-
-          # Delete toolcache
           sudo rm -rf /Users/runner/hostedtoolcache
-
-          # pip cache
           rm -rf ~/.cache/pip
-
-          echo "After cleanup:"
-          df -h
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -161,16 +92,16 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           uv sync --extra dev
 
       - name: Build executable
         run: |
-          chmod +x build.sh build.py build_macos.sh
+          chmod +x build.py build_macos.sh
           uv run python build.py macos
 
-      - name: Ensure .app bundle
+      - name: Create app bundle
         run: |
           if [ ! -d "dist/Harmony.app" ]; then
             mkdir -p dist/Harmony.app/Contents/MacOS
@@ -202,10 +133,7 @@ jobs:
           EOF
           fi
 
-      - name: Create ZIP
-        run: |
           cd dist
-          ls -lah
           zip -r Harmony-${{ env.APP_VERSION }}-macos.zip Harmony.app
 
       - name: Upload artifacts
@@ -233,13 +161,12 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           uv sync --extra dev
 
       - name: Build executable
         run: |
-          # Add System32 to PATH so PyInstaller can resolve MFPlat.dll, PROPSYS.dll, etc.
           $env:PATH = "C:\Windows\System32;" + $env:PATH
           uv run python build.py windows
 
@@ -249,7 +176,6 @@ jobs:
           cp dist/Harmony.exe dist/Harmony-portable/
           cp -r translations dist/Harmony-portable/ 2>$null || true
 
-          # Create README
           Set-Content -Path "dist/Harmony-portable/README.txt" -Value @"
           Harmony v${{ env.APP_VERSION }}
 
