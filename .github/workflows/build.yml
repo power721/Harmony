@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,7 +49,6 @@ jobs:
           libxkbcommon-x11-0 \
           libfuse2 \
           xvfb \
-          ffmpeg \
           binutils \
           build-essential \
           cmake \
@@ -59,7 +58,13 @@ jobs:
           libgl1-mesa-dev \
           libxkbcommon-dev \
           libwayland-dev \
+          libstdc++6 \
           wayland-protocols
+
+      - name: Download static ffmpeg
+        run: |
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg-release-amd64-static.tar.xz
 
       - name: Get Qt version for cache key
         id: qt-version
@@ -68,6 +73,12 @@ jobs:
           QT_VERSION=$(uv run python -c "from PySide6.QtCore import QLibraryInfo; print(QLibraryInfo.version().toString())")
           echo "version=$QT_VERSION" >> $GITHUB_OUTPUT
           echo "Qt version: $QT_VERSION"
+
+      - name: Cache Qt plugin analysis
+        uses: actions/cache@v4
+        with:
+          path: build_analysis/qt_plugins_whitelist.txt
+          key: qt-plugins-${{ steps.qt-version.outputs.version }}
 
       - name: Cache fcitx5 Qt6 plugin
         id: cache-fcitx5
@@ -109,7 +120,12 @@ jobs:
         run: |
           uv sync --frozen
           mkdir -p build_analysis
-          
+          if [ -f build_analysis/qt_plugins_whitelist.txt ]; then
+            echo "==> Using cached plugin whitelist"
+            cat build_analysis/qt_plugins_whitelist.txt
+            exit 0
+          fi
+
           echo "==> Running app in virtual framebuffer to sniff plugins..."
           # 开启 QT_DEBUG_PLUGINS 并通过 xvfb 模拟显示
           export QT_DEBUG_PLUGINS=1
@@ -164,6 +180,7 @@ jobs:
       - name: Build AppImage
         env:
           APP_VERSION: ${{ github.ref_name || 'nightly' }}
+          FFMPEG_STATIC_DIR: ${{ github.workspace }}/ffmpeg-*-amd64-static
         run: |
           chmod +x release.sh
           ./release.sh

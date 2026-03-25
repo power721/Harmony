@@ -72,6 +72,46 @@ QT_DEBUG_PLUGINS=1 python main.py 2>&1 | grep -i fcitx
 qt.core.library: ".../libfcitx5platforminputcontextplugin.so" loaded library
 ```
 
+## AppImage 打包支持
+
+从 v1.0.0 起，AppImage 已内置 fcitx5 和 ibus 输入法支持：
+
+### 输入法自动检测
+
+AppImage 会自动检测并配置输入法：
+
+- 检测到 fcitx5 运行时 → 使用 fcitx5
+- 检测到 ibus 运行时 → 使用 ibus
+
+### Wayland 支持
+
+AppImage 同时支持 Wayland 和 X11：
+
+- **默认使用 XCB/X11**（更稳定）
+- 设置 `HARMONY_WAYLAND=1` 使用 Wayland
+
+```bash
+# 默认 X11 模式
+./Harmony-1.0.0-x86_64.AppImage
+
+# 使用 Wayland
+HARMONY_WAYLAND=1 ./Harmony-1.0.0-x86_64.AppImage
+```
+
+### 调试模式
+
+```bash
+# 启用调试输出
+HARMONY_DEBUG=1 ./Harmony-1.0.0-x86_64.AppImage
+```
+
+输出包括：
+- AppDir 路径
+- 系统信息
+- glibc 版本
+- Qt 平台选择
+- 输入法模块
+
 ## 环境要求
 
 - Linux Mint 22 / Ubuntu 24.04 (Noble)
@@ -82,3 +122,4 @@ qt.core.library: ".../libfcitx5platforminputcontextplugin.so" loaded library
 
 - `main.py`: 设置输入法环境变量
 - `scripts/build_fcitx5_qt6.sh`: fcitx5 插件编译脚本
+- `release.sh`: AppImage 构建脚本（自动打包输入法插件）

@@ -107,6 +107,15 @@ EOF
 #!/bin/bash
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
+
+# Debug mode - set HARMONY_DEBUG=1 to enable
+if [ "$HARMONY_DEBUG" = "1" ]; then
+    echo "=== Harmony Debug Mode ==="
+    echo "AppDir: $HERE"
+    echo "System: $(uname -a)"
+    echo "glibc: $(ldd --version | head -1)"
+fi
+
 export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
 
@@ -114,11 +123,41 @@ export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bi
 export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
 export QT_DEBUG_PLUGINS=0
 
-# OpenGL fallback
-export QT_XCB_GL_INTEGRATION=none
-export LIBGL_ALWAYS_SOFTWARE=1
+# 平台选择 - 默认使用 XCB (更稳定)，设置 HARMONY_WAYLAND=1 使用 Wayland
+if [ "$HARMONY_WAYLAND" = "1" ] && [ -n "$WAYLAND_DISPLAY" ]; then
+    # Wayland mode
+    export QT_QPA_PLATFORM=wayland
+else
+    # XCB/X11 mode (default, more stable)
+    export QT_QPA_PLATFORM=xcb
+fi
 
-if [ -z "$DISPLAY" ]; then
+# 输入法支持 - 可通过 HARMONY_IM=ibus/fcitx 手动指定
+if [ -n "$HARMONY_IM" ]; then
+    # 手动指定输入法
+    export QT_IM_MODULE="$HARMONY_IM"
+    export GTK_IM_MODULE="$HARMONY_IM"
+    export XMODIFIERS="@im=$HARMONY_IM"
+elif [ -z "$QT_IM_MODULE" ]; then
+    # 自动检测（仅当未设置时）
+    if pgrep -x "fcitx5" &>/dev/null; then
+        export QT_IM_MODULE=fcitx
+        export GTK_IM_MODULE=fcitx
+        export XMODIFIERS=@im=fcitx
+    elif pgrep -x "ibus-daemon" &>/dev/null; then
+        export QT_IM_MODULE=ibus
+        export GTK_IM_MODULE=ibus
+        export XMODIFIERS=@im=ibus
+    fi
+fi
+
+# OpenGL fallback (可通过 HARMONY_GL=1 禁用)
+if [ "$HARMONY_GL" != "1" ]; then
+    export QT_XCB_GL_INTEGRATION=none
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
+if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
   echo "Error: No display server found"
   exit 1
 fi

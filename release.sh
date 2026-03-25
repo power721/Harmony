@@ -1,207 +1,188 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 APP_NAME="Harmony"
 APP_VERSION="${APP_VERSION:-1.0.0}"
 ENTRY="main.py"
 APPDIR="AppDir"
-WHITELIST_FILE="build_analysis/qt_plugins_whitelist.txt"
-
-echo "==> [1/6] Syncing dependencies with uv"
-uv sync --frozen
-
-[ -f "scripts/qt_env.sh" ] && source scripts/qt_env.sh
+TRACE_FILE="build_cache/qt_plugins.txt"
 
 echo "=============================================="
-echo "  $APP_NAME $APP_VERSION - Release Build"
+echo "  $APP_NAME $APP_VERSION - FINAL BUILD"
 echo "=============================================="
 
-# -------------------------
-# Qt 插件精简
-# -------------------------
-prune_qt_plugins() {
-    local MODE=$1
-    echo "==> Pruning Qt plugins ($MODE mode)"
+echo "==> Embedding static ffmpeg"
 
-    PLUGIN_DIR=$(find dist -type d -path "*PySide6/Qt/plugins" | head -n 1)
-    [ -d "$PLUGIN_DIR" ] || { echo "⚠ Plugin dir not found"; return; }
+FF_DIR=$(ls -d $FFMPEG_STATIC_DIR 2>/dev/null | head -n1)
 
-    if [ "$MODE" = "aggressive" ] && [ -f "$WHITELIST_FILE" ]; then
-        mapfile -t KEEP_LIST < "$WHITELIST_FILE"
-        find "$PLUGIN_DIR" -type f | while read -r file; do
-            rel="${file#$PLUGIN_DIR/}"
-            keep=false
-            for k in "${KEEP_LIST[@]}"; do
-                k=$(echo "$k" | tr -d '\r')
-                [[ "$rel" == "$k" || "$rel" == *"$k" ]] && keep=true && break
-            done
-            [ "$keep" = false ] && rm -f "$file"
-        done
-    else
-        echo "  Using safe-list fallback"
-        SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts multimedia mediaservice audio xcbglintegrations wayland)
-        for dir in "$PLUGIN_DIR"/*; do
-            name=$(basename "$dir")
-            keep=false
-            for k in "${SAFE_DIRS[@]}"; do
-                [[ "$name" == "$k" ]] && keep=true && break
-            done
-            [ "$keep" = false ] && rm -rf "$dir"
-        done
-    fi
-
-    find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
-}
-
-# -------------------------
-# 递归收集依赖（核心修复）
-# -------------------------
-collect_deps_recursive() {
-    local file=$1
-    local TARGET_DIR=$2
-
-    ldd "$file" | grep "=> /" | awk '{print $3}' | while read -r dep; do
-        [ -f "$dep" ] || continue
-
-        base=$(basename "$dep")
-        if [ ! -f "$TARGET_DIR/$base" ]; then
-            echo "  + $base"
-            cp -L "$dep" "$TARGET_DIR/"
-            collect_deps_recursive "$dep" "$TARGET_DIR"
-        fi
-    done
-}
-
-# -------------------------
-# 收集 Qt + xcb + ffmpeg
-# -------------------------
-collect_runtime_deps() {
-    echo "==> Collecting runtime dependencies"
-
-    INTERNAL_DIR=$(find dist -type d -path "*_internal" | head -n 1)
-    [ -z "$INTERNAL_DIR" ] && { echo "❌ _internal not found"; exit 1; }
-
-    LIB_DIR="$INTERNAL_DIR/lib"
-    mkdir -p "$LIB_DIR"
-
-    PLUGIN_DIR="$INTERNAL_DIR/PySide6/Qt/plugins"
-
-    # 🔥 1. xcb 平台插件依赖
-    echo "==> Resolving xcb dependencies"
-    collect_deps_recursive "$PLUGIN_DIR/platforms/libqxcb.so" "$LIB_DIR"
-
-    # 🔥 2. OpenGL
-    collect_deps_recursive "$(ldconfig -p | grep libGL.so.1 | head -n1 | awk '{print $NF}')" "$LIB_DIR"
-
-    # 🔥 3. Qt Multimedia → ffmpeg
-    echo "==> Collecting ffmpeg"
-
-    for lib in libavcodec.so libavformat.so libavutil.so libswresample.so libswscale.so; do
-        path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
-        if [ -f "$path" ]; then
-            echo "  + $lib"
-            cp -L "$path" "$LIB_DIR/"
-            collect_deps_recursive "$path" "$LIB_DIR"
-        else
-            echo "  ⚠ Missing $lib"
-        fi
-    done
-
-    echo "==> Runtime deps done"
-}
-
-# -------------------------
-# 构建
-# -------------------------
-build_app() {
-    local MODE=$1
-    echo "==> Building mode: $MODE"
-
-    rm -rf dist *.spec
-
-    uv run pyinstaller \
-      --name "$APP_NAME" \
-      --noconfirm --windowed --clean --onedir \
-      --additional-hooks-dir=hooks \
-      --collect-all PySide6.QtMultimedia \
-      --collect-all certifi \
-      --collect-all qqmusic_api \
-      --hidden-import=PySide6.QtMultimedia \
-      --add-data "ui:ui" \
-      --add-data "translations:translations" \
-      --add-data "icons:icons" \
-      --add-data "icon.png:." \
-      "$ENTRY"
-
-    prune_qt_plugins "$MODE"
-    collect_runtime_deps
-
-    echo "==> Stripping binaries"
-    find dist/"$APP_NAME" -type f \( -name "*.so*" -o -perm /111 \) \
-      -exec strip --strip-unneeded {} + 2>/dev/null || true
-}
-
-# -------------------------
-# 构建执行
-# -------------------------
-build_app safe
-
-# -------------------------
-# AppImage
-# -------------------------
-echo "==> [3/6] Preparing AppDir"
-rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin"
-
-cp -r "dist/$APP_NAME"/* "$APPDIR/usr/bin/"
-
-# 🔥 AppRun（已修复）
-cat > "$APPDIR/AppRun" << 'EOF'
-#!/usr/bin/env bash
-SELF=$(readlink -f "$0")
-HERE=${SELF%/*}
-
-export PATH="${HERE}/usr/bin:${PATH}"
-
-export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
-
-export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
-
-# OpenGL fallback
-export QT_XCB_GL_INTEGRATION=none
-export LIBGL_ALWAYS_SOFTWARE=1
-
-# 禁止无头运行
-if [ -z "$DISPLAY" ]; then
-  echo "❌ No display server found"
-  exit 1
+if [ -d "$FF_DIR" ]; then
+    mkdir -p "$APPDIR/usr/bin/ffmpeg"
+    cp "$FF_DIR/ffmpeg" "$APPDIR/usr/bin/ffmpeg/"
+    cp "$FF_DIR/ffprobe" "$APPDIR/usr/bin/ffmpeg/"
+    chmod +x "$APPDIR/usr/bin/ffmpeg/"*
+    echo "  ✓ static ffmpeg embedded"
+else
+    echo "  ❌ static ffmpeg not found"
+    exit 1
 fi
 
-exec "${HERE}/usr/bin/Harmony" "$@"
-EOF
+mkdir -p build_cache
 
-chmod +x "$APPDIR/AppRun"
+# -------------------------
+# 1. 环境
+# -------------------------
+uv sync --frozen
+rm -rf dist build *.spec "$APPDIR"
 
+# -------------------------
+# 2. PyInstaller
+# -------------------------
+uv run pyinstaller \
+  --name "$APP_NAME" \
+  --noconfirm --windowed --clean --onedir \
+  --collect-all PySide6 \
+  --collect-all PySide6.QtMultimedia \
+  --collect-all certifi \
+  --hidden-import=PySide6.QtMultimedia \
+  --add-data "ui:ui" \
+  --add-data "translations:translations" \
+  --add-data "icons:icons" \
+  --add-data "icon.png:." \
+  "$ENTRY"
+
+APP_PATH="dist/$APP_NAME"
+INTERNAL="$APP_PATH/_internal"
+LIB_DIR="$INTERNAL/lib"
+PLUGIN_DIR="$INTERNAL/PySide6/Qt/plugins"
+
+mkdir -p "$LIB_DIR"
+
+# -------------------------
+# 3. Qt 插件裁剪（缓存版）
+# -------------------------
+if [ ! -f "$TRACE_FILE" ]; then
+    echo "==> First run: tracing Qt plugins"
+
+    QT_DEBUG_PLUGINS=1 "$APP_PATH/$APP_NAME" --version \
+      > /dev/null 2> trace.log || true
+
+    grep -oE 'loaded library ".+\.so"' trace.log \
+      | sed 's/loaded library "//;s/"//' \
+      | xargs -n1 basename \
+      | sort -u > "$TRACE_FILE" || true
+fi
+
+echo "==> Using plugin cache:"
+cat "$TRACE_FILE"
+
+echo "==> Pruning Qt plugins"
+find "$PLUGIN_DIR" -type f -name "*.so" | while read -r f; do
+    if ! grep -q "$(basename "$f")" "$TRACE_FILE"; then
+        rm -f "$f"
+    fi
+done
+
+find "$PLUGIN_DIR" -type d -empty -delete || true
+
+# -------------------------
+# 4. 依赖收集
+# -------------------------
+collect_deps() {
+    ldd "$1" 2>/dev/null | grep "=> /" | awk '{print $3}' | while read -r dep; do
+        [ -f "$dep" ] || continue
+        base=$(basename "$dep")
+        if [ ! -f "$LIB_DIR/$base" ]; then
+            cp -L "$dep" "$LIB_DIR/"
+            collect_deps "$dep"
+        fi
+    done
+}
+
+collect_deps "$PLUGIN_DIR/platforms/libqxcb.so"
+
+# xcb 必补
+for lib in \
+    libxkbcommon.so.0 \
+    libxkbcommon-x11.so.0 \
+    libxcb-icccm.so.4 \
+    libxcb-image.so.0 \
+    libxcb-keysyms.so.1 \
+    libxcb-render-util.so.0 \
+    libxcb-xinerama.so.0 \
+    libxcb-xkb.so.1; do
+
+    path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
+    [ -f "$path" ] && cp -L "$path" "$LIB_DIR/"
+done
+
+# libstdc++
+for lib in libstdc++.so.6 libgcc_s.so.1; do
+    path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
+    [ -f "$path" ] && cp -L "$path" "$LIB_DIR/"
+done
+
+# ffmpeg
+for lib in \
+    libavcodec.so.60 \
+    libavformat.so.60 \
+    libavutil.so.58 \
+    libswresample.so.4; do
+
+    path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
+    [ -f "$path" ] && cp -L "$path" "$LIB_DIR/"
+done
+
+# -------------------------
+# 5. Strip
+# -------------------------
+find "$APP_PATH" -type f \( -name "*.so*" -o -perm /111 \) \
+  -exec strip --strip-unneeded {} + 2>/dev/null || true
+
+# -------------------------
+# 6. AppDir
+# -------------------------
+mkdir -p "$APPDIR/usr/bin"
+cp -r "$APP_PATH"/* "$APPDIR/usr/bin/"
+
+mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+cp icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
 cp icon.png "$APPDIR/$APP_NAME.png"
 
 cat > "$APPDIR/$APP_NAME.desktop" << EOF
 [Desktop Entry]
-Name=Harmony
-Exec=Harmony
+Name=$APP_NAME
+Exec=$APP_NAME
 Icon=$APP_NAME
 Type=Application
 Categories=AudioVideo;
 EOF
 
-echo "==> [4/6] Building AppImage"
-APPIMAGETOOL=appimagetool-x86_64.AppImage
+# AppRun（优化版）
+cat > "$APPDIR/AppRun" << 'EOF'
+#!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "$0")")"
 
+export PATH="$HERE/usr/bin/ffmpeg:$HERE/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HERE/usr/bin/_internal/lib:$LD_LIBRARY_PATH"
+export QT_PLUGIN_PATH="$HERE/usr/bin/_internal/PySide6/Qt/plugins"
+
+export QT_QPA_PLATFORM=xcb
+
+exec "$HERE/usr/bin/Harmony" "$@"
+EOF
+
+chmod +x "$APPDIR/AppRun"
+
+# -------------------------
+# 7. AppImage
+# -------------------------
+APPIMAGETOOL=appimagetool-x86_64.AppImage
 [ -f "$APPIMAGETOOL" ] || {
     wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/$APPIMAGETOOL
     chmod +x "$APPIMAGETOOL"
 }
 
-ARCH=x86_64 "./$APPIMAGETOOL" "$APPDIR" "dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
+ARCH=x86_64 "./$APPIMAGETOOL" "$APPDIR" "dist/$APP_NAME-$APP_VERSION.AppImage"
 
-echo "✨ Build Complete"
+echo "✅ FINAL BUILD DONE"
 ls -lh dist/

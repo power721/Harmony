@@ -1484,10 +1484,12 @@ class MainWindow(QMainWindow):
             # Update window title to show current track
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
-        else:
-            # Paused or stopped - restore original title
+        elif state == "paused":
+            # Paused - restore original title
             if self._original_title:
                 self.setWindowTitle(self._original_title)
+        # Note: "stopped" state is typically a transient state during track changes
+        # Don't restore title on stopped to avoid title flickering
 
     def _load_lyrics_async(self, path: str, title: str, artist: str,
                            song_mid: str = None, is_online: bool = False):
