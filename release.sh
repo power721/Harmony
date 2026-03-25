@@ -60,61 +60,33 @@ mkdir -p "$LIB_DIR"
 # -------------------------
 # 3. Qt 插件裁剪（缓存版）
 # -------------------------
-echo "==> Pruning Qt plugins (CI-only)"
-
-WHITELIST="build_analysis/qt_plugins_whitelist.txt"
-
-if [ ! -f "$WHITELIST" ] || [ ! -s "$WHITELIST" ]; then
-    echo "⚠ whitelist missing, using fallback"
-
-    WHITELIST="/tmp/qt_plugins_fallback.txt"
-    cat > "$WHITELIST" <<EOF
-platforms/libqxcb.so
-imageformats/libqjpeg.so
-imageformats/libqpng.so
-iconengines/libqsvgicon.so
-audio/libqtaudio_alsa.so
-audio/libqtaudio_pulse.so
-multimedia/libqtmedia_ffmpeg.so
-EOF
-fi
-
-echo "==> Using whitelist:"
-cat "$WHITELIST"
-
-# 🔥 关键：关闭 set -e（只在这段）
-set +e
+echo "==> Pruning Qt plugins (SAFE MODE)"
 
 if [ ! -d "$PLUGIN_DIR" ]; then
     echo "❌ Plugin dir not found: $PLUGIN_DIR"
     exit 1
 fi
 
-while IFS= read -r file; do
-    rel="${file#$PLUGIN_DIR/}"
-    keep=false
+# 只删除明确不需要的大模块（安全）
+REMOVE_DIRS=(
+    "qml"
+    "scenegraph"
+    "renderers"
+    "geometryloaders"
+    "position"
+    "sensors"
+    "webview"
+    "webengine"   # ⚠ 很大，但如果你不用 QtWebEngine 可以删
+)
 
-    while IFS= read -r k || [ -n "$k" ]; do
-        k=$(echo "$k" | tr -d '\r')
-        if [[ "$rel" == "$k" || "$rel" == *"$k" ]]; then
-            keep=true
-            break
-        fi
-    done < "$WHITELIST"
-
-    if [ "$keep" = false ]; then
-        rm -f "$file"
+for dir in "${REMOVE_DIRS[@]}"; do
+    if [ -d "$PLUGIN_DIR/$dir" ]; then
+        echo "  - removing $dir"
+        rm -rf "$PLUGIN_DIR/$dir"
     fi
+done
 
-done < <(find "$PLUGIN_DIR" -type f -name "*.so")
-
-# 清理空目录（不报错）
-find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
-
-# 🔥 恢复 set -e
-set -e
-
-echo "==> Qt plugin prune done"
+echo "==> Qt plugin prune done (SAFE MODE)"
 
 # -------------------------
 # 4. 依赖收集
