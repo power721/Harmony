@@ -472,27 +472,32 @@ def find_qt_plugins() -> list:
     """收集Qt插件目录"""
     binaries = []
 
-    # 获取site-packages路径
+    # 获取PySide6插件路径
     try:
-        import site
-        site_packages = None
-        for sp in site.getsitepackages():
-            if 'site-packages' in sp:
-                site_packages = sp
-                break
-        if not site_packages:
-            site_packages = site.getsitepackages()[0]
-
-        qt_plugins = os.path.join(site_packages, "PySide6", "plugins")
+        from PySide6.QtCore import QLibraryInfo
+        qt_plugins = QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)
+        print(f"[INFO] Qt plugins path: {qt_plugins}")
 
         # 需要打包的Qt插件目录
-        plugin_dirs = ["platforms", "imageformats", "multimedia", "audio", "mediaservice"]
+        # platforminputcontexts: 输入法支持 (fcitx5, ibus等)
+        plugin_dirs = [
+            "platforms",
+            "platforminputcontexts",  # 输入法插件
+            "imageformats",
+            "multimedia",
+            "audio",
+            "mediaservice",
+            "platformthemes",  # 平台主题
+            "xcbglintegrations",  # XCB OpenGL集成
+        ]
 
         for plugin_name in plugin_dirs:
             plugin_path = os.path.join(qt_plugins, plugin_name)
             if os.path.exists(plugin_path):
-                binaries.append((plugin_path, f"PySide6/plugins/{plugin_name}"))
+                binaries.append((plugin_path, f"PySide6/Qt/plugins/{plugin_name}"))
                 print(f"[INFO] Found Qt plugin: {plugin_name}")
+            else:
+                print(f"[WARN] Qt plugin not found: {plugin_name}")
 
     except Exception as e:
         print(f"Warning: Could not find Qt plugins: {e}")

@@ -114,6 +114,10 @@ HERE=${SELF%/*}
 export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}:${LD_LIBRARY_PATH}"
 
+# Qt plugins path - 输入法支持
+export QT_PLUGIN_PATH="${HERE}/usr/bin/PySide6/Qt/plugins:${HERE}/PySide6/Qt/plugins:${QT_PLUGIN_PATH}"
+export QT_DEBUG_PLUGINS=0
+
 # GStreamer plugin path
 export GST_PLUGIN_PATH="${HERE}/gstreamer-1.0:${HERE}/usr/lib/gstreamer-1.0"
 export GST_PLUGIN_SYSTEM_PATH="${HERE}/gstreamer-1.0:${HERE}/usr/lib/gstreamer-1.0"

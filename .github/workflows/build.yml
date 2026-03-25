@@ -50,7 +50,61 @@ jobs:
           libfuse2 \
           xvfb \
           ffmpeg \
-          binutils
+          binutils \
+          # fcitx5 插件构建依赖
+          build-essential \
+          cmake \
+          extra-cmake-modules \
+          libfcitx5core-dev \
+          libfcitx5utils-dev \
+          libgl1-mesa-dev \
+          libxkbcommon-dev \
+          libwayland-dev \
+          wayland-protocols
+
+      - name: Get Qt version for cache key
+        id: qt-version
+        run: |
+          uv sync --frozen
+          QT_VERSION=$(uv run python -c "from PySide6.QtCore import QLibraryInfo; print(QLibraryInfo.version().toString())")
+          echo "version=$QT_VERSION" >> $GITHUB_OUTPUT
+          echo "Qt version: $QT_VERSION"
+
+      - name: Cache fcitx5 Qt6 plugin
+        id: cache-fcitx5
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/fcitx5-qt6-plugin
+          key: fcitx5-qt6-${{ steps.qt-version.outputs.version }}-${{ runner.os }}
+
+      - name: Build or restore fcitx5 Qt6 plugin
+        run: |
+          # 获取 PySide6 插件路径
+          PYSIDE_PLUGIN_PATH=$(uv run python -c "from PySide6.QtCore import QLibraryInfo; print(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))")
+          PLUGIN_DEST="$PYSIDE_PLUGIN_PATH/platforminputcontexts/"
+
+          # 检查缓存
+          CACHED_PLUGIN="$HOME/.cache/fcitx5-qt6-plugin/libfcitx5platforminputcontextplugin.so"
+
+          if [ -f "$CACHED_PLUGIN" ]; then
+            echo "==> Restoring fcitx5 plugin from cache"
+            mkdir -p "$PLUGIN_DEST"
+            cp "$CACHED_PLUGIN" "$PLUGIN_DEST/"
+            echo "Plugin restored from cache"
+          else
+            echo "==> Building fcitx5 Qt6 plugin"
+            chmod +x scripts/build_fcitx5_qt6.sh
+            ./scripts/build_fcitx5_qt6.sh
+
+            # 缓存编译结果
+            mkdir -p "$HOME/.cache/fcitx5-qt6-plugin"
+            cp "$PLUGIN_DEST/libfcitx5platforminputcontextplugin.so" "$HOME/.cache/fcitx5-qt6-plugin/"
+            echo "Plugin cached for future builds"
+          fi
+
+          # 验证插件存在
+          ls -la "$PLUGIN_DEST"
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |
