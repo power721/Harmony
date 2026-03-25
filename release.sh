@@ -173,12 +173,13 @@ check_runtime() {
 # -------------------------
 # 主流程
 # -------------------------
-build_app aggressive
-if ! check_runtime; then
-    echo "⚠ Aggressive mode failed, falling back to safe mode..."
-    build_app safe
-    check_runtime || { echo "❌ Critical failure"; exit 1; }
-fi
+build_app safe
+#build_app aggressive
+#if ! check_runtime; then
+#    echo "⚠ Aggressive mode failed, falling back to safe mode..."
+#    build_app safe
+#    check_runtime || { echo "❌ Critical failure"; exit 1; }
+#fi
 
 # -------------------------
 # AppImage 打包
