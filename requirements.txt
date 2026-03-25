@@ -1,6 +1,7 @@
 # Qt and GUI
-PySide6==6.4.2
-PySide6-Addons==6.4.2
+# NOTE: PySide6 6.5+ uses FFmpeg backend for multimedia on all platforms
+PySide6>=6.5.0
+PySide6-Addons>=6.5.0
 
 # Audio metadata
 mutagen==1.47.0

@@ -29,7 +29,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
 
       - name: Install system dependencies
         run: |
@@ -50,25 +54,17 @@ jobs:
             libxcb-xkb1 \
             libxkbcommon-x11-0 \
             libfuse2 \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-plugins-ugly \
-            gstreamer1.0-libav \
-            gstreamer1.0-tools \
-            libgstreamer1.0-0 \
-            libgstreamer-plugins-base1.0-0
+            libasound2 \
+            ffmpeg
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+          uv sync --extra dev
 
       - name: Build executable
         run: |
           chmod +x build.sh build.py
-          python build.py linux
+          uv run python build.py linux
 
       - name: Create AppImage
         run: |
@@ -100,19 +96,13 @@ jobs:
 
           ln -sf usr/share/applications/Harmony.desktop dist/Harmony.AppDir/Harmony.desktop
 
-          # Create AppRun with GStreamer environment
+          # Create AppRun
           cat > dist/Harmony.AppDir/AppRun << 'EOF'
           #!/bin/bash
           SELF=$(readlink -f "$0")
           HERE=${SELF%/*}
           export PATH="${HERE}/usr/bin:${PATH}"
           export LD_LIBRARY_PATH="${HERE}:${LD_LIBRARY_PATH}"
-
-          # GStreamer plugin path
-          export GST_PLUGIN_PATH="${HERE}/gstreamer-1.0"
-          export GST_PLUGIN_SYSTEM_PATH="${HERE}/gstreamer-1.0"
-          export GST_REGISTRY_UPDATE=no
-
           exec "${HERE}/usr/bin/Harmony" "$@"
           EOF
           chmod +x dist/Harmony.AppDir/AppRun
@@ -140,19 +130,19 @@ jobs:
           echo "Before cleanup:"
           df -h
 
-          # 删除 Xcode（最大头）
+          # Delete Xcode (largest)
           sudo rm -rf /Applications/Xcode*.app
 
-          # 删除 iOS 模拟器
+          # Delete iOS simulator
           sudo rm -rf /Library/Developer/CoreSimulator
 
-          # 删除 Android
+          # Delete Android
           sudo rm -rf /usr/local/lib/android
 
-          # 删除 Homebrew 缓存
+          # Delete Homebrew cache
           sudo rm -rf /opt/homebrew
 
-          # 删除 toolcache（⚠️ 很关键）
+          # Delete toolcache
           sudo rm -rf /Users/runner/hostedtoolcache
 
           # pip cache
@@ -165,18 +155,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+          uv sync --extra dev
 
       - name: Build executable
         run: |
           chmod +x build.sh build.py build_macos.sh
-          python build.py macos
+          uv run python build.py macos
 
       - name: Ensure .app bundle
         run: |
@@ -235,19 +227,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
+          uv sync --extra dev
 
       - name: Build executable
         run: |
           # Add System32 to PATH so PyInstaller can resolve MFPlat.dll, PROPSYS.dll, etc.
           $env:PATH = "C:\Windows\System32;" + $env:PATH
-          python build.py windows
+          uv run python build.py windows
 
       - name: Create portable ZIP
         run: |
