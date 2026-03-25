@@ -51,7 +51,6 @@ jobs:
           xvfb \
           ffmpeg \
           binutils \
-          # fcitx5 插件构建依赖
           build-essential \
           cmake \
           extra-cmake-modules \
