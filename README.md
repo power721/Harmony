@@ -87,30 +87,30 @@ git clone https://github.com/power721/music-player.git
 cd music-player
 
 # 安装依赖
-pip install -r requirements.txt
+uv sync
 
 # 运行应用
-python main.py
+uv run python main.py
 ```
 
 ### 依赖项
 
-```
-PySide6==6.6.0              # Qt6 GUI 框架
-PySide6-Addons==6.6.0       # Qt6 多媒体支持
-mutagen==1.47.0             # 音频元数据提取
-requests==2.31.0            # HTTP 请求
-beautifulsoup4==4.12.2      # 歌词爬取
-lxml==5.1.0                 # HTML 解析
-pymediainfo==6.1.0          # 媒体信息提取
-qrcode[pil]==8.2            # 二维码生成
-openai>=1.0.0               # AI 元数据增强
-opencc-python-reimplemented==0.1.7  # 繁简转换
-pyacoustid>=1.2.0           # 音频指纹识别
-qqmusic-api-python>=0.3.6   # QQ音乐 API（可选）
-pycryptodome>=3.19.0        # 加密解密（QQ音乐）
-shiboken6                   # Python-C++ 绑定
-```
+依赖项由 `pyproject.toml` 管理，使用 uv 安装：
+
+| 依赖 | 用途 |
+|------|------|
+| PySide6 | Qt6 GUI 框架 |
+| mutagen | 音频元数据提取 |
+| requests | HTTP 请求 |
+| beautifulsoup4 | 歌词爬取 |
+| lxml | HTML 解析 |
+| pymediainfo | 媒体信息提取 |
+| qrcode | 二维码生成 |
+| openai | AI 元数据增强 |
+| opencc-python-reimplemented | 繁简转换 |
+| pyacoustid | 音频指纹识别 |
+| qqmusic-api-python | QQ音乐 API |
+| pycryptodome | 加密解密（QQ音乐） |
 
 ## 使用说明
 
@@ -394,17 +394,17 @@ CREATE TABLE settings (
 
 ```bash
 # 运行所有测试
-python -m pytest tests/
+uv run pytest tests/
 
 # 运行特定测试模块
-python -m pytest tests/test_domain/
-python -m pytest tests/test_repositories/
+uv run pytest tests/test_domain/
+uv run pytest tests/test_repositories/
 
 # 显示测试覆盖率
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 
 # 手动测试
-python main.py
+uv run python main.py
 ```
 
 ### 测试覆盖

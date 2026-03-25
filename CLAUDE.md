@@ -21,19 +21,19 @@ The project prioritizes:
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 Run application:
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 Run tests:
 
 ```bash
-python -m pytest tests/
+uv run pytest tests/
 ```
 
 ---

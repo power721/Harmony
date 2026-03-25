@@ -59,12 +59,39 @@ jobs:
           chmod +x release.sh
           ./release.sh
 
+      - name: Create portable tarball
+        env:
+          APP_VERSION: ${{ github.ref_name || env.APP_VERSION }}
+        run: |
+          cd dist
+          # Create portable package from the built onedir
+          mkdir -p Harmony-portable
+          cp -r Harmony/* Harmony-portable/
+
+          # Create README
+          cat > Harmony-portable/README.txt << EOF
+          Harmony v$APP_VERSION - Linux Portable
+
+          This is a portable version. No installation required.
+
+          To run:
+            ./Harmony-portable/Harmony
+
+          System Requirements:
+            - glibc 2.31 or later
+            - ALSA or PulseAudio
+          EOF
+
+          # Create tarball
+          tar -czvf Harmony-$APP_VERSION-linux-portable.tar.gz Harmony-portable
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: harmony-linux
           path: |
             dist/*.AppImage
+            dist/*.tar.gz
           retention-days: 30
 
   build-macos:
