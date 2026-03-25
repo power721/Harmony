@@ -2445,7 +2445,7 @@ class CloudDriveView(QWidget):
         if local_path and auto_play:
             import os
             if os.path.exists(local_path):
-                print(f"[DEBUG] Fast restore using local path: {local_path}")
+                logger.debug(f"Fast restore using local path: {local_path}")
                 # Use fast restore directly
                 self._fast_restore_playback(account_id, file_fid, local_path, start_position)
                 return True
@@ -2500,10 +2500,10 @@ class CloudDriveView(QWidget):
             # Capture variables to avoid late binding issues
             captured_fid = file_fid
             captured_auto_play = auto_play
-            print(f"[DEBUG] restore_playback_state: file_fid={file_fid}, auto_play={auto_play}")
+            logger.debug(f"restore_playback_state: file_fid={file_fid}, auto_play={auto_play}")
             QTimer.singleShot(500, lambda: self._select_and_play_file_by_fid(captured_fid, captured_auto_play))
         elif file_fid:
-            print(f"[DEBUG] restore_playback_state: file_fid={file_fid}, but _file_table not ready")
+            logger.debug(f"restore_playback_state: file_fid={file_fid}, but _file_table not ready")
             # Wait for table to be ready
             captured_fid = file_fid
             captured_auto_play = auto_play
@@ -2551,17 +2551,17 @@ class CloudDriveView(QWidget):
         )
 
         # Start playback directly
-        print(f"[DEBUG] Fast restore: playing {file_name} from {local_path}")
+        logger.debug(f"Fast restore: playing {file_name} from {local_path}")
         self._play_audio_file(cloud_file, start_position=start_position)
         return True
 
     def _select_and_play_file_by_fid(self, file_fid: str, auto_play: bool = False):
         """Select and optionally play a file in the table by its file ID."""
         start_pos = getattr(self, '_restore_start_position', 0.0)
-        print(
-            f"[DEBUG] _select_and_play_file_by_fid: file_fid={file_fid}, auto_play={auto_play}, start_position={start_pos}")
+        logger.debug(
+            f"_select_and_play_file_by_fid: file_fid={file_fid}, auto_play={auto_play}, start_position={start_pos}")
         if not hasattr(self, '_file_table'):
-            print("[DEBUG] _file_table not found")
+            logger.debug("_file_table not found")
             return
 
         for row in range(self._file_table.rowCount()):
@@ -2572,7 +2572,7 @@ class CloudDriveView(QWidget):
                     # Select the file
                     self._file_table.selectRow(row)
                     self._file_table.scrollToItem(item)
-                    print(f"[DEBUG] Found file: {cloud_file.name}, file_type={cloud_file.file_type}")
+                    logger.debug(f"Found file: {cloud_file.name}, file_type={cloud_file.file_type}")
 
                     # Auto-play the file if requested and it's an audio file
                     if auto_play and cloud_file.file_type == 'audio':
@@ -2580,7 +2580,7 @@ class CloudDriveView(QWidget):
                         # Capture cloud_file and start_position in a closure to avoid late binding
                         captured_file = cloud_file
                         captured_position = getattr(self, '_restore_start_position', 0.0)
-                        print(f"[DEBUG] Restoring with start_position: {captured_position}s")
+                        logger.debug(f"Restoring with start_position: {captured_position}s")
                         QTimer.singleShot(300, lambda f=captured_file, p=captured_position: self._play_audio_file(f,
                                                                                                                   start_position=p))
                     break

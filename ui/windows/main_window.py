@@ -2416,7 +2416,7 @@ class MainWindow(QMainWindow):
 
         # Try to restore saved queue first
         if self._player.restore_queue():
-            print(f"[DEBUG] Restored play queue from database")
+            logger.debug("Restored play queue from database")
 
             # Check if we should auto-play
             was_playing = self._config.get_was_playing()
@@ -2439,7 +2439,7 @@ class MainWindow(QMainWindow):
 
                     # Auto-play if was playing
                     if was_playing:
-                        print(f"[DEBUG] Auto-playing restored track")
+                        logger.debug("Auto-playing restored track")
                         QTimer.singleShot(300, self._player.play)
 
                     # If cloud source, update cloud view
@@ -2454,17 +2454,17 @@ class MainWindow(QMainWindow):
         # Fall back to legacy restore logic
         # Check playback source
         source = self._config.get_playback_source()
-        print(f"[DEBUG] Playback source: {source}")
+        logger.debug(f"Playback source: {source}")
 
         if source == "cloud":
             # Restore cloud playback state
             account_id = self._config.get_cloud_account_id()
-            print(f"[DEBUG] Cloud account_id: {account_id}")
+            logger.debug(f"Cloud account_id: {account_id}")
             if account_id:
                 account = self._db.get_cloud_account(account_id)
                 if account:
                     was_playing = self._config.get_was_playing()
-                    print(f"[DEBUG] Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
+                    logger.debug(f"Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
 
                     def restore_cloud_state():
                         # Extract parent_id from last_fid_path
@@ -2488,21 +2488,21 @@ class MainWindow(QMainWindow):
                     QTimer.singleShot(200, restore_cloud_state)
                     return
                 else:
-                    print(f"[DEBUG] Cloud account {account_id} not found, falling back to local")
+                    logger.debug(f"Cloud account {account_id} not found, falling back to local")
 
         # Restore local track playback state
         current_track_id = self._config.get_current_track_id()
         playback_position = self._config.get_playback_position()
         was_playing = self._config.get_was_playing()
-        print(
-            f"[DEBUG] Local restore: track_id={current_track_id}, position={playback_position}, was_playing={was_playing}")
+        logger.debug(
+            f"Local restore: track_id={current_track_id}, position={playback_position}, was_playing={was_playing}")
 
         if current_track_id and current_track_id > 0:
             def restore_later():
                 track = self._db.get_track(current_track_id)
                 if track:
                     try:
-                        print(f"[DEBUG] Restoring local track: {current_track_id}")
+                        logger.debug(f"Restoring local track: {current_track_id}")
                         self._player.play_track(current_track_id)
 
                         if playback_position > 0:

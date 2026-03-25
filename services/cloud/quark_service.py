@@ -84,11 +84,11 @@ class QuarkDriveService:
                     'qr_url': qr_url
                 }
             else:
-                print(f"[DEBUG] QR code generation failed with status: {data.get('status')}")
-                print(f"[DEBUG] Error message: {data.get('message')}")
+                logger.debug(f"QR code generation failed with status: {data.get('status')}")
+                logger.debug(f"Error message: {data.get('message')}")
         except Exception as e:
             logger.error(f"Quark QR generation error: {e}", exc_info=True)
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
         return None
 
     @classmethod
@@ -128,7 +128,7 @@ class QuarkDriveService:
                     info_data = info_response.json()
 
                     nickname = info_data.get('data', {}).get('nickname', 'Unknown')
-                    print(f"[DEBUG] User nickname: {nickname}")
+                    logger.debug(f"User nickname: {nickname}")
 
                     return {
                         'account_email': nickname,
@@ -140,15 +140,15 @@ class QuarkDriveService:
                     return {'status': 'waiting', 'message': message or 'Waiting for scan'}
                 elif status == 50004002:
                     # QR expired
-                    print(f"[DEBUG] QR code expired")
+                    logger.debug("QR code expired")
                     return {'status': 'expired', 'message': message}
                 else:
-                    print(f"[DEBUG] Unknown status code: {status}")
+                    logger.debug(f"Unknown status code: {status}")
                     return {'status': 'error', 'message': message}
 
             except Exception as e:
                 logger.error(f"Quark login poll error: {e}", exc_info=True)
-                print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                logger.debug(f"Traceback: {traceback.format_exc()}")
 
         return {'status': 'timeout', 'message': 'Login timeout'}
 
@@ -219,11 +219,11 @@ class QuarkDriveService:
                     return files, updated_token
                 return files, None
             else:
-                print(f"[DEBUG] File list API returned error: {data.get('status')}")
-                print(f"[DEBUG] Error message: {data.get('message')}")
+                logger.debug(f"File list API returned error: {data.get('status')}")
+                logger.debug(f"Error message: {data.get('message')}")
         except Exception as e:
             logger.error(f"Quark file list error: {e}", exc_info=True)
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
         return [], None
 
     @classmethod
@@ -264,13 +264,13 @@ class QuarkDriveService:
                         return download_url, updated_token
                     return download_url, None
                 else:
-                    print(f"[DEBUG] No download URL in response")
+                    logger.debug("No download URL in response")
             else:
-                print(f"[DEBUG] API returned error status: {response_data.get('status')}")
-                print(f"[DEBUG] API message: {response_data.get('message')}")
+                logger.debug(f"API returned error status: {response_data.get('status')}")
+                logger.debug(f"API message: {response_data.get('message')}")
         except Exception as e:
             logger.error(f"Quark download URL error: {e}", exc_info=True)
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            logger.debug(f"Traceback: {traceback.format_exc()}")
         return None, None
 
     @classmethod
@@ -294,7 +294,7 @@ class QuarkDriveService:
             response1 = requests.get(url1, headers=headers, timeout=30)
 
             if response1.status_code != 200:
-                print(f"[DEBUG] Failed to get member info: {response1.status_code}")
+                logger.debug(f"Failed to get member info: {response1.status_code}")
                 return None, None
 
             data1 = response1.json()
@@ -311,7 +311,7 @@ class QuarkDriveService:
             updated_token = cls._update_cookie_from_response(updated_token, response2.cookies)
 
             if response2.status_code != 200:
-                print(f"[DEBUG] Failed to get account nickname: {response2.status_code}")
+                logger.debug(f"Failed to get account nickname: {response2.status_code}")
                 # Still return partial info
                 nickname = account_email
             else:

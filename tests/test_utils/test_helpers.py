@@ -111,8 +111,8 @@ class TestSanitizeFilename:
 
     def test_remove_all_invalid_chars(self):
         """Test removing all invalid characters."""
-        invalid = '<>:"/\\|?*'
-        result = sanitize_filename(f"file{invalid}name")
+        # file_helpers version: / and \ become &, others removed
+        result = sanitize_filename('file<>:"|?*name')
         assert result == "filename"
 
     def test_strip_whitespace(self):
@@ -125,11 +125,13 @@ class TestSanitizeFilename:
 
     def test_empty_filename(self):
         """Test handling empty filename."""
-        assert sanitize_filename("") == ""
+        # file_helpers version returns "unnamed" for empty input
+        assert sanitize_filename("") == "unnamed"
 
     def test_only_invalid_chars(self):
         """Test filename with only invalid characters."""
-        assert sanitize_filename("<>:\"") == ""
+        # file_helpers version returns "unnamed" when result is empty
+        assert sanitize_filename('<>:"|?*') == "unnamed"
 
 
 class TestTruncateText:
