@@ -15,7 +15,7 @@ uv sync --frozen
 [ -f "scripts/qt_env.sh" ] && source scripts/qt_env.sh
 
 echo "=============================================="
-echo "  $APP_NAME v$APP_VERSION - Release Build"
+echo "  $APP_NAME $APP_VERSION - Release Build"
 echo "=============================================="
 
 # -------------------------
@@ -143,9 +143,6 @@ check_runtime() {
         return 1
     fi
 
-    export QT_DEBUG_PLUGINS=1
-    export QT_QPA_PLATFORM=minimal   # ✅ 核心修复
-
     "$APP_BIN" --version > /dev/null 2> runtime.log || true
 
     # -------------------------
@@ -229,3 +226,5 @@ APPIMAGETOOL=appimagetool-x86_64.AppImage
 
 ARCH=x86_64 "./$APPIMAGETOOL" "$APPDIR" "dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
 echo "✨ Build Complete: dist/$APP_NAME-$APP_VERSION-x86_64.AppImage"
+
+ls -l dist/

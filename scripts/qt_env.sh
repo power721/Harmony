@@ -6,8 +6,8 @@
 
 # 1️⃣ 检测是否有显示环境
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
-    echo "[QtEnv] No display detected → using offscreen"
-    export QT_QPA_PLATFORM=offscreen
+    echo "[QtEnv] No display detected → using minimal"
+    export QT_QPA_PLATFORM=minimal
 else
     echo "[QtEnv] Display detected → using system default"
 fi

@@ -39,16 +39,17 @@ logger = logging.getLogger(__name__)
 class DetailWorker(QThread):
     """Background worker for loading detail data."""
 
-    detail_loaded = Signal(str, object)  # (type, data)
+    detail_loaded = Signal(str, object, int)  # (type, data, request_id)
 
     def __init__(self, service: OnlineMusicService, detail_type: str, mid: str,
-                 page: int = 1, page_size: int = 30):
+                 page: int = 1, page_size: int = 30, request_id: int = 0):
         super().__init__()
         self._service = service
         self._detail_type = detail_type
         self._mid = mid
         self._page = page
         self._page_size = page_size
+        self._request_id = request_id
 
     def run(self):
         try:
@@ -61,7 +62,7 @@ class DetailWorker(QThread):
             else:
                 data = None
 
-            self.detail_loaded.emit(self._detail_type, data)
+            self.detail_loaded.emit(self._detail_type, data, self._request_id)
         except Exception as e:
             logger.error(f"Failed to load detail: {e}")
 
@@ -69,24 +70,25 @@ class DetailWorker(QThread):
 class AlbumListWorker(QThread):
     """Background worker for loading artist albums."""
 
-    albums_loaded = Signal(list, int)  # (albums list, total count)
+    albums_loaded = Signal(list, int, int)  # (albums list, total count, request_id)
 
-    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0):
+    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0, request_id: int = 0):
         super().__init__()
         self._service = service
         self._singer_mid = singer_mid
         self._number = number
         self._begin = begin
+        self._request_id = request_id
 
     def run(self):
         try:
             result = self._service.get_artist_albums(self._singer_mid, number=self._number, begin=self._begin)
             albums = result.get('albums', [])
             total = result.get('total', 0)
-            self.albums_loaded.emit(albums, total)
+            self.albums_loaded.emit(albums, total, self._request_id)
         except Exception as e:
             logger.error(f"Failed to load artist albums: {e}", exc_info=True)
-            self.albums_loaded.emit([], 0)
+            self.albums_loaded.emit([], 0, self._request_id)
 
 
 class AlbumCoverLoader(QThread):
@@ -817,35 +819,47 @@ class OnlineDetailView(QWidget):
 
     def _load_detail(self):
         """Load detail data."""
-        if self._detail_worker and self._detail_worker.isRunning():
-            self._detail_worker.terminate()
+        # Increment request ID to invalidate any pending requests
+        self._request_id = getattr(self, '_request_id', 0) + 1
+        current_request_id = self._request_id
 
         self._detail_worker = DetailWorker(
             self._service,
             self._detail_type,
             self._mid,
             self._current_page,
-            self._page_size
+            self._page_size,
+            request_id=current_request_id
         )
-        self._detail_worker.detail_loaded.connect(self._on_detail_loaded)
+        self._detail_worker.detail_loaded.connect(self._on_detail_loaded, Qt.QueuedConnection)
         self._detail_worker.start()
 
-    def _on_detail_loaded(self, detail_type: str, data: Optional[Dict]):
+    def _on_detail_loaded(self, detail_type: str, data: Optional[Dict], request_id: int):
         """Handle detail loaded."""
+        # Ignore outdated requests
+        if request_id != self._request_id:
+            logger.debug(f"Ignoring outdated detail request {request_id}, current is {self._request_id}")
+            return
+
         if not data:
             self._name_label.setText(t("detail_not_available"))
             self._secondary_label.setText(t("qqmusic_login_required"))
             return
 
-        if detail_type == "artist":
-            self._display_artist_detail(data)
-        elif detail_type == "album":
-            self._display_album_detail(data)
-        elif detail_type == "playlist":
-            self._display_playlist_detail(data)
+        try:
+            if detail_type == "artist":
+                self._display_artist_detail(data)
+            elif detail_type == "album":
+                self._display_album_detail(data)
+            elif detail_type == "playlist":
+                self._display_playlist_detail(data)
+        except Exception as e:
+            logger.error(f"Failed to display detail: {e}", exc_info=True)
 
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
+        logger.debug(f"Displaying artist detail: {data.get('name', 'Unknown')}")
+
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
         self._extra_label.setText("")
@@ -936,11 +950,12 @@ class OnlineDetailView(QWidget):
         import requests
 
         class CoverLoader(QThread):
-            loaded = Signal(QPixmap)
+            loaded = Signal(QPixmap, int)  # (pixmap, request_id)
 
-            def __init__(self, url):
+            def __init__(self, url, request_id=0):
                 super().__init__()
                 self.url = url
+                self._request_id = request_id
 
             def run(self):
                 try:
@@ -953,17 +968,25 @@ class OnlineDetailView(QWidget):
                         ImageCache.set(self.url, image_data)
                     pixmap = QPixmap()
                     if pixmap.loadFromData(image_data):
-                        self.loaded.emit(pixmap)
+                        self.loaded.emit(pixmap, self._request_id)
                 except Exception as e:
                     logger.debug(f"Failed to load cover: {e}")
 
-        if hasattr(self, '_cover_loader'):
-            self._cover_loader.terminate()
+        # Increment cover request ID
+        self._cover_request_id = getattr(self, '_cover_request_id', 0) + 1
+        current_request_id = self._cover_request_id
 
-        self._cover_loader = CoverLoader(url)
-        self._cover_loader.loaded.connect(lambda pixmap: self._cover_label.setPixmap(
-            pixmap.scaled(self._cover_label.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        ))
+        self._cover_loader = CoverLoader(url, request_id=current_request_id)
+
+        def on_cover_loaded(pixmap, request_id):
+            # Ignore outdated requests
+            if request_id != self._cover_request_id:
+                return
+            self._cover_label.setPixmap(
+                pixmap.scaled(self._cover_label.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            )
+
+        self._cover_loader.loaded.connect(on_cover_loaded, Qt.QueuedConnection)
         self._cover_loader.start()
 
     def _on_cover_clicked(self, event):
@@ -1198,24 +1221,27 @@ class OnlineDetailView(QWidget):
 
     def _display_songs(self, songs: List[OnlineTrack]):
         """Display songs in table."""
-        self._songs_table.setRowCount(len(songs))
+        try:
+            self._songs_table.setRowCount(len(songs))
 
-        for i, song in enumerate(songs):
-            # Index
-            self._songs_table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
+            for i, song in enumerate(songs):
+                # Index
+                self._songs_table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
 
-            # Title
-            self._songs_table.setItem(i, 1, QTableWidgetItem(song.title))
+                # Title
+                self._songs_table.setItem(i, 1, QTableWidgetItem(song.title))
 
-            # Artist
-            self._songs_table.setItem(i, 2, QTableWidgetItem(song.singer_name))
+                # Artist
+                self._songs_table.setItem(i, 2, QTableWidgetItem(song.singer_name))
 
-            # Album
-            self._songs_table.setItem(i, 3, QTableWidgetItem(song.album_name))
+                # Album
+                self._songs_table.setItem(i, 3, QTableWidgetItem(song.album_name))
 
-            # Duration
-            duration_str = format_duration(song.duration) if song.duration else ""
-            self._songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
+                # Duration
+                duration_str = format_duration(song.duration) if song.duration else ""
+                self._songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
+        except Exception as e:
+            logger.error(f"Failed to display songs: {e}", exc_info=True)
 
     def _load_artist_albums(self, append: bool = False):
         """Load artist albums in background.
@@ -1227,8 +1253,9 @@ class OnlineDetailView(QWidget):
             self._albums_section.hide()
             return
 
-        if self._album_list_worker and self._album_list_worker.isRunning():
-            self._album_list_worker.terminate()
+        # Increment request ID to invalidate any pending requests
+        self._album_request_id = getattr(self, '_album_request_id', 0) + 1
+        current_request_id = self._album_request_id
 
         begin = self._albums_loaded if append else 0
         number = 10
@@ -1236,17 +1263,22 @@ class OnlineDetailView(QWidget):
         # Store append flag for callback
         self._albums_append = append
 
-        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin)
+        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin, request_id=current_request_id)
         self._album_list_worker.albums_loaded.connect(self._on_albums_loaded, Qt.QueuedConnection)
         self._album_list_worker.start()
 
-    def _on_albums_loaded(self, albums: List[Dict[str, Any]], total: int = 0):
+    def _on_albums_loaded(self, albums: List[Dict[str, Any]], total: int = 0, request_id: int = 0):
         """Handle artist albums loaded.
 
         Args:
             albums: List of album data
             total: Total album count from API
+            request_id: Request ID for validation
         """
+        # Ignore outdated requests
+        if request_id != self._album_request_id:
+            return
+
         append = getattr(self, '_albums_append', False)
 
         if not append:
