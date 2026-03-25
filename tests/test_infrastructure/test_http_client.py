@@ -3,7 +3,7 @@ Tests for HttpClient infrastructure component.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 from infrastructure.network.http_client import HttpClient
 
 
@@ -30,30 +30,34 @@ class TestHttpClient:
         assert isinstance(client.default_headers, dict)
         assert "User-Agent" in client.default_headers
 
-    @patch('infrastructure.network.http_client.requests.get')
-    def test_get_request(self, mock_get):
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_get_request(self, mock_session_class):
         """Test GET request."""
+        mock_session = MagicMock()
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_get.return_value = mock_response
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
 
         client = HttpClient()
         response = client.get("http://example.com")
 
-        mock_get.assert_called_once()
+        mock_session.get.assert_called_once()
         assert response.status_code == 200
 
-    @patch('infrastructure.network.http_client.requests.post')
-    def test_post_request_json(self, mock_post):
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_post_request_json(self, mock_session_class):
         """Test POST request with JSON."""
+        mock_session = MagicMock()
         mock_response = Mock()
         mock_response.status_code = 201
-        mock_post.return_value = mock_response
+        mock_session.post.return_value = mock_response
+        mock_session_class.return_value = mock_session
 
         client = HttpClient()
         response = client.post("http://example.com", json={"key": "value"})
 
-        mock_post.assert_called_once()
+        mock_session.post.assert_called_once()
         assert response.status_code == 201
 
     def test_has_download_method(self):
@@ -74,3 +78,16 @@ class TestHttpClient:
         """Test timeout can be set."""
         client = HttpClient(timeout=120)
         assert client.timeout == 120
+
+    def test_close_method(self):
+        """Test close method releases resources."""
+        client = HttpClient()
+        assert hasattr(client, 'close')
+        assert callable(client.close)
+        # Should not raise
+        client.close()
+
+    def test_context_manager(self):
+        """Test HttpClient can be used as context manager."""
+        with HttpClient() as client:
+            assert client is not None

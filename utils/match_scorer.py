@@ -77,6 +77,27 @@ class MatchScorer:
         'lrclib': 3,
     }
 
+    # Precompiled regex patterns for normalization
+    _PATTERNS_TO_REMOVE = [
+        re.compile(r'\s*\(official\s*(music\s*)?video\)', re.IGNORECASE),
+        re.compile(r'\s*\[official\s*(music\s*)?video\]', re.IGNORECASE),
+        re.compile(r'\s*\(mv\)', re.IGNORECASE),
+        re.compile(r'\s*\[mv\]', re.IGNORECASE),
+        re.compile(r'\s*\(lyric\s*video\)', re.IGNORECASE),
+        re.compile(r'\s*\[lyric\s*video\]', re.IGNORECASE),
+        re.compile(r'\s*\(audio\)', re.IGNORECASE),
+        re.compile(r'\s*\[audio\]', re.IGNORECASE),
+        re.compile(r'\s*-?\s*official\s*audio', re.IGNORECASE),
+        re.compile(r'\s*-?\s*lyrics', re.IGNORECASE),
+        re.compile(r'\s*\(explicit\)', re.IGNORECASE),
+        re.compile(r'\s*\[explicit\]', re.IGNORECASE),
+        re.compile(r'\s*\(radio\s*edit\)', re.IGNORECASE),
+        re.compile(r'\s*\[radio\s*edit\]', re.IGNORECASE),
+        re.compile(r'\s*\(remix\)', re.IGNORECASE),
+        re.compile(r'\s*\[remix\]', re.IGNORECASE),
+    ]
+    _PUNCTUATION_PATTERN = re.compile(r'[^\w\s\u4e00-\u9fff\u3400-\u4dbf]')
+
     @classmethod
     def calculate_score(cls, track: TrackInfo, result: SearchResult, mode: str = 'lyrics') -> float:
         """
@@ -367,32 +388,13 @@ class MatchScorer:
         # Convert to lowercase
         s = s.lower()
 
-        # Remove common suffixes
-        patterns_to_remove = [
-            r'\s*\(official\s*(music\s*)?video\)',
-            r'\s*\[official\s*(music\s*)?video\]',
-            r'\s*\(mv\)',
-            r'\s*\[mv\]',
-            r'\s*\(lyric\s*video\)',
-            r'\s*\[lyric\s*video\]',
-            r'\s*\(audio\)',
-            r'\s*\[audio\]',
-            r'\s*-?\s*official\s*audio',
-            r'\s*-?\s*lyrics',
-            r'\s*\(explicit\)',
-            r'\s*\[explicit\]',
-            r'\s*\(radio\s*edit\)',
-            r'\s*\[radio\s*edit\]',
-            r'\s*\(remix\)',
-            r'\s*\[remix\]',
-        ]
-
-        for pattern in patterns_to_remove:
-            s = re.sub(pattern, '', s, flags=re.IGNORECASE)
+        # Remove common suffixes using precompiled patterns
+        for pattern in cls._PATTERNS_TO_REMOVE:
+            s = pattern.sub('', s)
 
         # Remove punctuation except for CJK characters
         # Keep letters, numbers, CJK characters, and spaces
-        s = re.sub(r'[^\w\s\u4e00-\u9fff\u3400-\u4dbf]', '', s)
+        s = cls._PUNCTUATION_PATTERN.sub('', s)
 
         # Normalize whitespace
         s = ' '.join(s.split())

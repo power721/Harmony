@@ -2609,6 +2609,24 @@ class MainWindow(QMainWindow):
                 self._lyrics_download_thread.terminate()
                 self._lyrics_download_thread.wait()
 
+        # Disconnect EventBus signals to prevent memory leaks and callbacks to destroyed objects
+        try:
+            self._event_bus.track_changed.disconnect(self._on_track_changed)
+        except RuntimeError:
+            pass  # Already disconnected
+        try:
+            self._event_bus.position_changed.disconnect(self._on_position_changed)
+        except RuntimeError:
+            pass
+        try:
+            self._event_bus.playback_state_changed.disconnect(self._on_playback_state_changed)
+        except RuntimeError:
+            pass
+        try:
+            self._event_bus.download_completed.disconnect(self._on_cloud_download_completed)
+        except RuntimeError:
+            pass
+
         # Close database
         self._db.close()
 

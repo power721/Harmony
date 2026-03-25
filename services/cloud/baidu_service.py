@@ -2,6 +2,7 @@
 Baidu Drive cloud storage service.
 """
 import logging
+import threading
 import traceback
 import time
 import re
@@ -15,18 +16,20 @@ from domain import CloudFile
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Rate limiting
+# Rate limiting (thread-safe)
 _last_request_time = 0
 _request_interval = 0.2  # 200ms between requests
+_rate_limit_lock = threading.Lock()
 
 
 def _rate_limit():
-    """Simple rate limiting for Baidu API."""
+    """Simple rate limiting for Baidu API (thread-safe)."""
     global _last_request_time
-    elapsed = time.time() - _last_request_time
-    if elapsed < _request_interval:
-        time.sleep(_request_interval - elapsed)
-    _last_request_time = time.time()
+    with _rate_limit_lock:
+        elapsed = time.time() - _last_request_time
+        if elapsed < _request_interval:
+            time.sleep(_request_interval - elapsed)
+        _last_request_time = time.time()
 
 
 # Error codes

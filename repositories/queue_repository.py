@@ -76,18 +76,19 @@ class SqliteQueueRepository(BaseRepository):
         try:
             # Clear existing queue
             cursor.execute("DELETE FROM play_queue")
-            # Insert new items
-            for item in items:
-                cursor.execute("""
-                               INSERT INTO play_queue (position, source, track_id, cloud_file_id,
-                                                       cloud_account_id, local_path, title, artist, album, duration, created_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                               """, (
-                                   item.position, item.source, item.track_id,
-                                   item.cloud_file_id, item.cloud_account_id, item.local_path,
-                                   item.title, item.artist, item.album, item.duration,
-                                   item.created_at or datetime.now()
-                               ))
+            # Batch insert using executemany for better performance
+            if items:
+                cursor.executemany("""
+                                   INSERT INTO play_queue (position, source, track_id, cloud_file_id,
+                                                           cloud_account_id, local_path, title, artist, album, duration, created_at)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   """, [
+                                       (item.position, item.source, item.track_id,
+                                        item.cloud_file_id, item.cloud_account_id, item.local_path,
+                                        item.title, item.artist, item.album, item.duration,
+                                        item.created_at or datetime.now())
+                                       for item in items
+                                   ])
             conn.commit()
             return True
         except sqlite3.Error as e:

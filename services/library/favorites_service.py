@@ -46,6 +46,15 @@ class FavoritesService:
         """
         return self._db.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
 
+    def get_all_favorite_track_ids(self) -> set:
+        """
+        Get all favorite local track IDs as a set for O(1) lookup.
+
+        Returns:
+            Set of track IDs that are favorited
+        """
+        return self._db.get_all_favorite_track_ids()
+
     def add_favorite(
         self,
         track_id: int = None,

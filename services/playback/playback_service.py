@@ -941,7 +941,7 @@ class PlaybackService(QObject):
 
         song_mid = item.cloud_file_id
 
-        # Check if already downloading this song
+        # Check if already downloading this song - atomically check and reserve slot
         with self._online_download_lock:
             if song_mid in self._online_download_workers:
                 existing = self._online_download_workers[song_mid]
@@ -953,57 +953,63 @@ class PlaybackService(QObject):
                     del self._online_download_workers[song_mid]
                     existing.deleteLater()
 
-        # Get download service from Bootstrap
-        from app.bootstrap import Bootstrap
-        bootstrap = Bootstrap.instance()
+            # Get download service from Bootstrap
+            from app.bootstrap import Bootstrap
+            bootstrap = Bootstrap.instance()
+            if not bootstrap.online_download_service:
+                logger.error("[PlaybackService] Online download service not available")
+                # Skip to next track - need to release lock first
+                pass
+            else:
+                # Create worker while holding lock to prevent race condition
+                logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
+
+                # Download in background thread
+                from PySide6.QtCore import QThread
+
+                class OnlineDownloadWorker(QThread):
+                    download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
+
+                    def __init__(self, service, song_mid, title):
+                        super().__init__()
+                        self._service = service
+                        self._song_mid = song_mid
+                        self._title = title
+
+                    def run(self):
+                        path = self._service.download(self._song_mid, self._title)
+                        # Always emit, even if path is None (failed)
+                        self.download_finished.emit(self._song_mid, path or "")
+
+                worker = OnlineDownloadWorker(
+                    bootstrap.online_download_service,
+                    song_mid,
+                    item.title
+                )
+
+                # Clean up worker when finished
+                def on_finished(mid, path):
+                    self.on_online_track_downloaded(mid, path)
+                    # Remove from dict after completion
+                    with self._online_download_lock:
+                        if mid in self._online_download_workers:
+                            worker_obj = self._online_download_workers.pop(mid)
+                            # Don't call wait() here - we're in the worker thread!
+                            # Just schedule deletion, Qt will handle it safely
+                            worker_obj.deleteLater()
+
+                # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
+                worker.download_finished.connect(on_finished, Qt.DirectConnection)
+
+                # Store in dict before starting
+                self._online_download_workers[song_mid] = worker
+
+        # Check if we should skip to next track (service not available)
         if not bootstrap.online_download_service:
-            logger.error("[PlaybackService] Online download service not available")
-            # Skip to next track
             self._engine.play_next()
             return
 
-        logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
-
-        # Download in background thread
-        from PySide6.QtCore import QThread
-
-        class OnlineDownloadWorker(QThread):
-            download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
-
-            def __init__(self, service, song_mid, title):
-                super().__init__()
-                self._service = service
-                self._song_mid = song_mid
-                self._title = title
-
-            def run(self):
-                path = self._service.download(self._song_mid, self._title)
-                # Always emit, even if path is None (failed)
-                self.download_finished.emit(self._song_mid, path or "")
-
-        worker = OnlineDownloadWorker(
-            bootstrap.online_download_service,
-            song_mid,
-            item.title
-        )
-
-        # Clean up worker when finished
-        def on_finished(mid, path):
-            self.on_online_track_downloaded(mid, path)
-            # Remove from dict after completion
-            with self._online_download_lock:
-                if mid in self._online_download_workers:
-                    worker_obj = self._online_download_workers.pop(mid)
-                    # Don't call wait() here - we're in the worker thread!
-                    # Just schedule deletion, Qt will handle it safely
-                    worker_obj.deleteLater()
-
-        # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
-        worker.download_finished.connect(on_finished, Qt.DirectConnection)
-
-        # Store in dict and start
-        with self._online_download_lock:
-            self._online_download_workers[song_mid] = worker
+        # Start worker outside lock to avoid blocking
         worker.start()
 
     def _download_cloud_track(self, item: PlaylistItem):

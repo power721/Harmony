@@ -281,6 +281,19 @@ class DatabaseManager:
                        CREATE INDEX IF NOT EXISTS idx_play_history_played_at
                            ON play_history(played_at DESC)
                        """)
+        # Additional indexes for common queries
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
+                           ON tracks(cloud_file_id)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_source
+                           ON tracks(source)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_created_at
+                           ON tracks(created_at DESC)
+                       """)
 
         # Create cloud_accounts table
         cursor.execute("""
@@ -857,6 +870,32 @@ class DatabaseManager:
         future = self._submit_write(self._do_add_track, track_data)
         return future.result(timeout=10.0)
 
+    def add_track_async(self, track: Track, callback: Callable[[int], None] = None) -> None:
+        """
+        Add a track asynchronously without blocking.
+
+        Args:
+            track: Track to add
+            callback: Optional callback called with track ID on completion
+        """
+        track_data = {
+            'path': track.path,
+            'title': track.title,
+            'artist': track.artist,
+            'album': track.album,
+            'duration': track.duration,
+            'cover_path': track.cover_path,
+            'created_at': track.created_at or datetime.now(),
+            'cloud_file_id': track.cloud_file_id,
+            'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
+        }
+
+        if callback:
+            future = self._submit_write(self._do_add_track, track_data)
+            future.add_done_callback(lambda f: callback(f.result()))
+        else:
+            self._submit_write_async(self._do_add_track, track_data)
+
     def _do_add_track(self, track_data: dict, conn: sqlite3.Connection = None) -> int:
         """Internal method to add a track (runs in write worker)."""
         if conn is None:
@@ -1111,6 +1150,20 @@ class DatabaseManager:
         future = self._submit_write(self._do_delete_track, track_id)
         return future.result(timeout=10.0)
 
+    def delete_track_async(self, track_id: int, callback: Callable[[bool], None] = None) -> None:
+        """
+        Delete a track asynchronously without blocking.
+
+        Args:
+            track_id: Track ID to delete
+            callback: Optional callback called with success boolean on completion
+        """
+        if callback:
+            future = self._submit_write(self._do_delete_track, track_id)
+            future.add_done_callback(lambda f: callback(f.result()))
+        else:
+            self._submit_write_async(self._do_delete_track, track_id)
+
     def _do_delete_track(self, track_id: int, conn: sqlite3.Connection = None) -> bool:
         """Internal method to delete a track (runs in write worker)."""
         if conn is None:
@@ -1128,6 +1181,26 @@ class DatabaseManager:
         """Update track metadata in the database."""
         future = self._submit_write(self._do_update_track, track_id, title, artist, album)
         return future.result(timeout=10.0)
+
+    def update_track_async(
+            self, track_id: int, title: str = None, artist: str = None, album: str = None,
+            callback: Callable[[bool], None] = None
+    ) -> None:
+        """
+        Update track metadata asynchronously without blocking.
+
+        Args:
+            track_id: Track ID to update
+            title: New title (optional)
+            artist: New artist (optional)
+            album: New album (optional)
+            callback: Optional callback called with success boolean on completion
+        """
+        if callback:
+            future = self._submit_write(self._do_update_track, track_id, title, artist, album)
+            future.add_done_callback(lambda f: callback(f.result()))
+        else:
+            self._submit_write_async(self._do_update_track, track_id, title, artist, album)
 
     def _do_update_track(
             self, track_id: int, title: str = None, artist: str = None, album: str = None, conn: sqlite3.Connection = None
@@ -1644,6 +1717,13 @@ class DatabaseManager:
         else:
             cursor.execute("SELECT 1 FROM favorites WHERE cloud_file_id = ?", (cloud_file_id,))
         return cursor.fetchone() is not None
+
+    def get_all_favorite_track_ids(self) -> set:
+        """Get all favorite local track IDs as a set for O(1) lookup."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT track_id FROM favorites WHERE track_id IS NOT NULL")
+        return {row["track_id"] for row in cursor.fetchall()}
 
     def get_favorites(self) -> List[Track]:
         """Get all favorite tracks (including downloaded cloud files with track_id)."""

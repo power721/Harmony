@@ -241,19 +241,22 @@ class CloudDownloadService(QObject):
             True if download started, False if already downloading
         """
         file_id = cloud_file.file_id
+        worker_to_cancel = None
 
-        # Check if already downloading
+        # Check if already downloading and handle cancellation atomically
         with self._downloads_lock:
             if file_id in self._active_downloads:
                 if priority:
-                    worker = self._active_downloads[file_id]
+                    # Get worker to cancel outside lock
+                    worker_to_cancel = self._active_downloads[file_id]
+                    del self._active_downloads[file_id]
                 else:
                     return False
-            else:
-                worker = None
 
-        if worker:
-            self.cancel_download(file_id)
+        # Cancel the worker outside the lock to avoid blocking
+        if worker_to_cancel:
+            worker_to_cancel.cancel()
+            worker_to_cancel.wait(1000)  # Wait up to 1 second
 
         # Check cache
         cached_path = self.get_cached_path(file_id, cloud_file, account)
@@ -275,6 +278,10 @@ class CloudDownloadService(QObject):
         worker.download_error.connect(self._on_download_error)
 
         with self._downloads_lock:
+            # Double-check: another thread might have started downloading
+            if file_id in self._active_downloads:
+                # Another thread started, don't create duplicate
+                return False
             self._active_downloads[file_id] = worker
         self.download_started.emit(file_id)
         worker.start()

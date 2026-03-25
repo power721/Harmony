@@ -592,6 +592,9 @@ class LibraryView(QWidget):
         # Clear and rebuild track_id -> row mapping for O(1) lookup
         self._track_id_to_row.clear()
 
+        # Batch load all favorite track IDs for O(1) lookup (N queries -> 1 query)
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+
         # Block UI updates during population
         self._tracks_table.setUpdatesEnabled(False)
         self._tracks_table.setRowCount(len(tracks))
@@ -655,8 +658,8 @@ class LibraryView(QWidget):
                 duration_item.setForeground(QBrush(QColor("#909090")))
                 self._tracks_table.setItem(row, 4, duration_item)
 
-                # Favorite indicator (check if actually favorited)
-                is_fav = self._favorites_service.is_favorite(track_id=track.id)
+                # Favorite indicator (check if actually favorited) - O(1) set lookup
+                is_fav = track.id in favorite_ids
                 fav_text = "★" if is_fav else ""
                 fav_item = QTableWidgetItem(fav_text)
                 fav_item.setForeground(

@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # Icons directory path
 ICONS_DIR = Path(__file__).parent.parent / "icons"
 
+# Icon cache: key = f"{icon_name}_{color}_{size}", value = QIcon
+_ICON_CACHE: dict = {}
+
 # Icon colors for different states
 class IconColor:
     DEFAULT = "#c0c0c0"
@@ -105,6 +108,11 @@ def get_icon(icon_name: str, color: str = IconColor.DEFAULT, size: int = 24) -> 
     Returns:
         QIcon object, or empty QIcon if file not found
     """
+    # Check cache first
+    cache_key = f"{icon_name}_{color}_{size}"
+    if cache_key in _ICON_CACHE:
+        return _ICON_CACHE[cache_key]
+
     icon_path = ICONS_DIR / icon_name
     if not icon_path.exists():
         logger.warning(f"Icon file not found: {icon_path}")
@@ -127,7 +135,9 @@ def get_icon(icon_name: str, color: str = IconColor.DEFAULT, size: int = 24) -> 
         renderer.render(painter)
         painter.end()
 
-        return QIcon(pixmap)
+        icon = QIcon(pixmap)
+        _ICON_CACHE[cache_key] = icon
+        return icon
 
     except Exception as e:
         logger.error(f"Error loading icon {icon_name}: {e}")

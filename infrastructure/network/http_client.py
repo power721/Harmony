@@ -3,6 +3,7 @@ HTTP client wrapper for network requests.
 """
 
 import logging
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 import requests
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class HttpClient:
-    """Wrapper around requests library with common configuration."""
+    """Wrapper around requests library with common configuration and connection pooling."""
 
     def __init__(self, default_headers: Dict[str, str] = None, timeout: int = 30):
         """
@@ -25,6 +26,8 @@ class HttpClient:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         self.timeout = timeout
+        self._session = requests.Session()
+        self._session.headers.update(self.default_headers)
 
     def get(self, url: str, params: Dict = None, headers: Dict = None,
             timeout: int = None) -> requests.Response:
@@ -40,9 +43,8 @@ class HttpClient:
         Returns:
             Response object
         """
-        final_headers = {**self.default_headers, **(headers or {})}
-        return requests.get(url, params=params, headers=final_headers,
-                            timeout=timeout or self.timeout)
+        return self._session.get(url, params=params, headers=headers,
+                                 timeout=timeout or self.timeout)
 
     def get_content(self, url: str, params: Dict = None, headers: Dict = None,
                     timeout: int = None) -> Optional[bytes]:
@@ -81,9 +83,8 @@ class HttpClient:
         Returns:
             Response object
         """
-        final_headers = {**self.default_headers, **(headers or {})}
-        return requests.post(url, json=json, data=data, headers=final_headers,
-                             timeout=timeout or self.timeout)
+        return self._session.post(url, json=json, data=data, headers=headers,
+                                  timeout=timeout or self.timeout)
 
     def download(self, url: str, dest_path: str, headers: Dict = None,
                  chunk_size: int = 8192, progress_callback=None) -> bool:
@@ -100,12 +101,11 @@ class HttpClient:
         Returns:
             True if download successful
         """
-        final_headers = {**self.default_headers, **(headers or {})}
         response = None
 
         try:
-            response = requests.get(url, headers=final_headers, stream=True,
-                                    timeout=self.timeout)
+            response = self._session.get(url, headers=headers, stream=True,
+                                         timeout=self.timeout)
             response.raise_for_status()
 
             total_size = int(response.headers.get('content-length', 0))
@@ -133,3 +133,14 @@ class HttpClient:
         finally:
             if response:
                 response.close()
+
+    def close(self):
+        """Close the session and release resources."""
+        self._session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
