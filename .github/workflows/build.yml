@@ -59,7 +59,7 @@ jobs:
 
           echo "==> Collecting Qt plugins..."
 
-          QT_DEBUG_PLUGINS=1 python << 'EOF' 2> qt_plugins.log
+          QT_QPA_PLATFORM=offscreen QT_DEBUG_PLUGINS=1 python << 'EOF' 2> qt_plugins.log
             from PySide6.QtWidgets import QApplication
             from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
             from PySide6.QtCore import QUrl
