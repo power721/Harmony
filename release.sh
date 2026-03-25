@@ -90,46 +90,106 @@ uv run pyinstaller \
   "$ENTRY"
 
 # Step 5: Qt plugin pruning
-echo "==> [5/10] Pruning Qt plugins (whitelist-based)"
+echo "==> [5/10] Safe Qt plugin pruning"
 
 PLUGIN_DIR="dist/$APP_NAME/_internal/PySide6/Qt/plugins"
+
 if [ ! -d "$PLUGIN_DIR" ]; then
     PLUGIN_DIR="dist/$APP_NAME/PySide6/Qt/plugins"
 fi
 
-if [ -d "$PLUGIN_DIR" ] && [ -f "$WHITELIST_FILE" ]; then
+if [ ! -d "$PLUGIN_DIR" ]; then
+    echo "⚠ Plugin directory not found, skip pruning"
+    exit 0
+fi
+
+echo "Plugin dir: $PLUGIN_DIR"
+
+# -------------------------
+# 安全集合（必须保留）
+# -------------------------
+SAFE_DIRS=(
+  platforms
+  imageformats
+  iconengines
+  platforminputcontexts
+  multimedia
+  mediaservice
+  audio
+)
+
+SAFE_FILES=(
+  libqxcb.so
+  libqtmedia_ffmpeg.so
+)
+
+# -------------------------
+# 读取 whitelist（安全方式）
+# -------------------------
+AUTO_LIST=()
+
+if [ -f "$WHITELIST_FILE" ]; then
     echo "Using whitelist: $WHITELIST_FILE"
 
-    # Read whitelist
-    mapfile -t KEEP_LIST < "$WHITELIST_FILE"
+    # 防止 CRLF / 空行 / set -e 崩溃
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(echo "$line" | tr -d '\r')
+        [ -n "$line" ] && AUTO_LIST+=("$line")
+    done < "$WHITELIST_FILE"
 
-    # Process plugins
-    removed_count=0
-    while IFS= read -r -d '' file; do
-        rel="${file#$PLUGIN_DIR/}"
-        keep=false
+    echo "Loaded ${#AUTO_LIST[@]} whitelist entries"
+else
+    echo "⚠ Whitelist not found, fallback to safe mode"
+fi
 
-        for k in "${KEEP_LIST[@]}"; do
-            k_norm=$(echo "$k" | tr -d '\r')
-            if [[ "$rel" == "$k_norm" ]] || [[ "$rel" == *"$k_norm" ]]; then
+echo "Pruning plugins..."
+
+# -------------------------
+# 遍历文件（避免 find 导致 set -e 崩）
+# -------------------------
+FILES=$(find "$PLUGIN_DIR" -type f 2>/dev/null || true)
+
+for file in $FILES; do
+    rel="${file#$PLUGIN_DIR/}"
+    keep=false
+
+    # 安全目录
+    for d in "${SAFE_DIRS[@]}"; do
+        if [[ "$rel" == "$d/"* ]]; then
+            keep=true
+            break
+        fi
+    done
+
+    # 关键文件
+    if [ "$keep" = false ]; then
+        for f in "${SAFE_FILES[@]}"; do
+            if [[ "$rel" == *"$f" ]]; then
                 keep=true
                 break
             fi
         done
+    fi
 
-        if [ "$keep" = false ]; then
-            rm -f "$file"
-            ((removed_count++))
-        fi
-    done < <(find "$PLUGIN_DIR" -type f -print0 2>/dev/null)
+    # 自动 whitelist
+    if [ "$keep" = false ] && [ ${#AUTO_LIST[@]} -gt 0 ]; then
+        for k in "${AUTO_LIST[@]}"; do
+            if [[ "$rel" == "$k" ]] || [[ "$rel" == *"$k" ]]; then
+                keep=true
+                break
+            fi
+        done
+    fi
 
-    # Remove empty directories
-    find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null
+    # 删除
+    if [ "$keep" = false ]; then
+        echo "  Removing: $rel"
+        rm -f "$file" || true
+    fi
+done
 
-    echo "  Removed $removed_count unused plugins"
-else
-    echo "  WARNING: Whitelist or plugin dir not found"
-fi
+# 删除空目录（不能让它失败）
+find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
 
 # Step 6: Strip binaries
 echo "==> [6/10] Stripping binaries"
