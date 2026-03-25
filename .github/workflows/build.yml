@@ -48,7 +48,7 @@ jobs:
             libxcb-xkb1 \
             libxkbcommon-x11-0 \
             libfuse2 \
-            libasound2 \
+            libfuse2t64 \
             ffmpeg \
             upx
 
