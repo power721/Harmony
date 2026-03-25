@@ -88,7 +88,7 @@ check_runtime() {
     APP_BIN=$(find dist -type f -name "$APP_NAME" | head -n 1)
 
     # 开启插件调试模式进行检测
-    QT_QPA_PLATFORM=offscreen QT_DEBUG_PLUGINS=1 \
+    QT_QPA_PLATFORM=xcb QT_DEBUG_PLUGINS=1 \
         "$APP_BIN" --version > /dev/null 2> runtime.log || true
 
     if grep -q "libqtmedia_ffmpeg" runtime.log; then
