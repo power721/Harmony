@@ -576,40 +576,26 @@ class PlayerEngine(QObject):
             self.current_track_changed.emit(item_copy.to_dict())
 
     def play_next(self):
-        """Play the next track."""
+        """Play the next track. Manual skip ignores single track loop mode."""
         need_stop = False
         with self._playlist_lock:
             if not self._playlist:
                 return
 
-            # Handle loop one mode - stay on current track
-            if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
-                is_loop_one = True
-                current_index = self._current_index
-                play_mode = self._play_mode
-            else:
-                is_loop_one = False
-                # Move to next track
-                self._current_index += 1
+            # Move to next track (manual skip ignores single track loop mode)
+            self._current_index += 1
 
-                if self._current_index >= len(self._playlist):
-                    if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
-                        # Reshuffle for random loop mode
-                        if self._play_mode == PlayMode.RANDOM_LOOP:
-                            self._shuffle_playlist_locked()
-                        self._current_index = 0
-                    else:
-                        self._current_index = len(self._playlist) - 1
-                        need_stop = True
+            if self._current_index >= len(self._playlist):
+                if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                    # Reshuffle for random loop mode
+                    if self._play_mode == PlayMode.RANDOM_LOOP:
+                        self._shuffle_playlist_locked()
+                    self._current_index = 0
+                else:
+                    self._current_index = len(self._playlist) - 1
+                    need_stop = True
 
-                current_index = self._current_index
-                play_mode = self._play_mode
-
-        # Handle loop one mode outside lock
-        if is_loop_one:
-            self._player.setPosition(0)
-            self._player.play()
-            return
+            current_index = self._current_index
 
         if need_stop:
             self.stop()
@@ -634,23 +620,13 @@ class PlayerEngine(QObject):
             self._player.play()
 
     def play_previous(self):
-        """Play the previous track."""
+        """Play the previous track. Manual skip ignores single track loop mode."""
         with self._playlist_lock:
             if not self._playlist:
                 return
 
-            # Handle loop one mode - stay on current track
-            if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
-                is_loop_one = True
-            else:
-                is_loop_one = False
-
-        if is_loop_one:
-            self._player.setPosition(0)
-            self._player.play()
-            return
-
         # Check if we should go to previous track or restart current
+        # Manual skip ignores single track loop mode
         # Only restart if we have a valid position and it's > 3 seconds
         current_pos = self._player.position()
         should_restart = current_pos > 3000
