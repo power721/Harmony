@@ -89,6 +89,17 @@ uv run pyinstaller \
   $SSL_LIBS \
   "$ENTRY"
 
+if [ -f "build_analysis/qt_plugins_whitelist.txt" ]; then
+  WHITELIST_FILE="build_analysis/qt_plugins_whitelist.txt"
+  echo "Using CI-generated whitelist"
+else
+  echo "⚠ No whitelist found, fallback to safe mode"
+  WHITELIST_FILE=""
+fi
+
+ls -l build_analysis || true
+cat "$WHITELIST_FILE" || true
+
 # Step 5: Qt plugin pruning
 echo "==> [5/10] Safe Qt plugin pruning"
 
@@ -190,6 +201,18 @@ done
 
 # 删除空目录（不能让它失败）
 find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
+
+echo ""
+echo "==> Verifying multimedia backend"
+
+PLUGIN_DIR=$(find dist -type d -path "*Qt/plugins" | head -n 1)
+
+if ! find "$PLUGIN_DIR" -name "*ffmpeg*" | grep -q .; then
+  echo "❌ ERROR: Qt ffmpeg backend missing!"
+  exit 1
+fi
+
+echo "✅ ffmpeg backend OK"
 
 # Step 6: Strip binaries
 echo "==> [6/10] Stripping binaries"
