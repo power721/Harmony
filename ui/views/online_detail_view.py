@@ -838,7 +838,6 @@ class OnlineDetailView(QWidget):
         """Handle detail loaded."""
         # Ignore outdated requests
         if request_id != self._request_id:
-            logger.debug(f"Ignoring outdated detail request {request_id}, current is {self._request_id}")
             return
 
         if not data:
@@ -858,8 +857,6 @@ class OnlineDetailView(QWidget):
 
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
-        logger.debug(f"Displaying artist detail: {data.get('name', 'Unknown')}")
-
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
         self._extra_label.setText("")
