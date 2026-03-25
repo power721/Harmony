@@ -60,19 +60,33 @@ mkdir -p "$LIB_DIR"
 # -------------------------
 # 3. Qt 插件裁剪（缓存版）
 # -------------------------
+echo "==> Tracing Qt plugins"
+
+mkdir -p build_cache
+TRACE_FILE="build_cache/qt_plugins.txt"
+
 if [ ! -f "$TRACE_FILE" ]; then
     echo "==> First run: tracing Qt plugins"
 
-    QT_DEBUG_PLUGINS=1 "$APP_PATH/$APP_NAME" --version \
-      > /dev/null 2> trace.log || true
+    QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb \
+    xvfb-run -a "$APP_PATH/$APP_NAME" --version \
+        > /dev/null 2> trace.log || true
 
-    grep -oE 'loaded library ".+\.so"' trace.log \
-      | sed 's/loaded library "//;s/"//' \
-      | xargs -n1 basename \
-      | sort -u > "$TRACE_FILE" || true
+    if [ ! -s trace.log ]; then
+        echo "⚠ trace failed, using fallback plugins"
+        cat > "$TRACE_FILE" <<EOF
+platforms/libqxcb.so
+imageformats/libqjpeg.so
+EOF
+    else
+        grep -oE 'loaded library ".+\.so"' trace.log \
+          | sed 's/loaded library "//;s/"//' \
+          | xargs -r -n1 basename \
+          | sort -u > "$TRACE_FILE"
+    fi
 fi
 
-echo "==> Using plugin cache:"
+echo "==> Using plugin list:"
 cat "$TRACE_FILE"
 
 echo "==> Pruning Qt plugins"
