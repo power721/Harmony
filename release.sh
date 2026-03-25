@@ -125,6 +125,7 @@ build_app() {
       --additional-hooks-dir=hooks \
       --collect-all PySide6.QtMultimedia \
       --collect-all certifi \
+      --collect-all qqmusic_api \
       --hidden-import=PySide6.QtMultimedia \
       --add-data "ui:ui" \
       --add-data "translations:translations" \
