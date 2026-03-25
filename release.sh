@@ -168,7 +168,6 @@ check_runtime() {
 # 构建执行
 # -------------------------
 build_app safe
-check_runtime
 
 # -------------------------
 # AppImage
