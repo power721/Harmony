@@ -291,7 +291,7 @@ jobs:
         run: |
           $env:PATH = "C:\Windows\System32;" + $env:PATH
           uv run python build.py windows
-          Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}.exe"
+          Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}-windows.exe"
 
       - name: Create portable ZIP
         env:
@@ -312,7 +312,7 @@ jobs:
           - Visual C++ Redistributable 2015-2022
           "@
 
-          Compress-Archive -Path "dist/Harmony-portable/*" -DestinationPath "dist/Harmony-Windows-${env:APP_VERSION}-portable.zip" -Force
+          Compress-Archive -Path "dist/Harmony-portable/*" -DestinationPath "dist/Harmony-${env:APP_VERSION}-windows-portable.zip" -Force
         shell: pwsh
 
       - name: Upload artifacts
