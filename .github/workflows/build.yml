@@ -118,64 +118,95 @@ jobs:
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |
-          uv sync --frozen
           mkdir -p build_analysis
-          if [ -f build_analysis/qt_plugins_whitelist.txt ]; then
-            echo "==> Using cached plugin whitelist"
-            cat build_analysis/qt_plugins_whitelist.txt
-            exit 0
-          fi
 
-          echo "==> Running app in virtual framebuffer to sniff plugins..."
-          # 开启 QT_DEBUG_PLUGINS 并通过 xvfb 模拟显示
+          echo "==> Running Qt plugin analysis..."
+
           export QT_DEBUG_PLUGINS=1
           export QT_QPA_PLATFORM=xcb
-          
-          xvfb-run uv run python << 'EOF' 2> qt_plugins.log
+
+          xvfb-run -a uv run python << 'EOF' 2> qt_plugins.log || true
           import sys
           from PySide6.QtWidgets import QApplication
           from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
           from PySide6.QtCore import QUrl, QTimer
-          
+
           app = QApplication(sys.argv)
           player = QMediaPlayer()
           audio = QAudioOutput()
           player.setAudioOutput(audio)
-          # 触发插件加载
-          player.setSource(QUrl("https://www.w3schools.com/html/horse.mp3")) 
-          
-          # 运行 3 秒后自动退出
+          player.setSource(QUrl("https://www.w3schools.com/html/horse.mp3"))
+
           QTimer.singleShot(3000, app.quit)
           app.exec()
           EOF
-          
-          echo "==> Extracting whitelist..."
+
+          echo "==> Parsing plugins..."
+
           python << 'EOF'
+          import os
           import re
-          plugins = set()
+
+          whitelist = set()
+
           try:
               with open("qt_plugins.log", "r", errors="ignore") as f:
                   for line in f:
                       if "loaded library" in line and "plugins" in line:
                           path = line.split('"')[1]
                           rel = path.split("plugins/")[-1]
-                          plugins.add(rel)
+                          whitelist.add(rel)
           except Exception as e:
-              print(f"Warning during log parsing: {e}")
-          
-          # 强制补充核心多媒体插件
-          plugins.update([
+              print("Parse error:", e)
+
+          # fallback 插件（关键）
+          fallback = {
               "platforms/libqxcb.so",
-              "multimedia/libqtmedia_ffmpeg.so",
+              "imageformats/libqjpeg.so",
+              "imageformats/libqpng.so",
+              "iconengines/libqsvgicon.so",
+              "platforminputcontexts/libfcitx5platforminputcontextplugin.so",
               "audio/libqtaudio_alsa.so",
-              "audio/libqtaudio_pulse.so"
-          ])
-          
+              "audio/libqtaudio_pulse.so",
+              "multimedia/libqtmedia_ffmpeg.so"
+          }
+
+          # 如果分析失败 → fallback
+          if not whitelist:
+              print("⚠ Using fallback plugin list")
+              whitelist = fallback
+          else:
+              print(f"Detected plugins: {len(whitelist)}")
+              whitelist |= fallback  # 合并（更稳）
+
+          os.makedirs("build_analysis", exist_ok=True)
+
           with open("build_analysis/qt_plugins_whitelist.txt", "w") as f:
-              for p in sorted(plugins):
+              for p in sorted(whitelist):
                   f.write(p + "\n")
-          print(f"Total plugins whitelisted: {len(plugins)}")
+
+          print("Final plugin count:", len(whitelist))
           EOF
+
+          echo "==> Final whitelist:"
+          cat build_analysis/qt_plugins_whitelist.txt
+
+      - name: Validate plugin whitelist
+        run: |
+          echo "==> Validating whitelist"
+
+          if [ ! -f build_analysis/qt_plugins_whitelist.txt ]; then
+            echo "❌ whitelist not generated"
+            exit 1
+          fi
+
+          if [ ! -s build_analysis/qt_plugins_whitelist.txt ]; then
+            echo "❌ whitelist is empty"
+            exit 1
+          fi
+
+          echo "Whitelist OK:"
+          cat build_analysis/qt_plugins_whitelist.txt
 
       - name: Build AppImage
         env:

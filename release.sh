@@ -60,43 +60,49 @@ mkdir -p "$LIB_DIR"
 # -------------------------
 # 3. Qt 插件裁剪（缓存版）
 # -------------------------
-echo "==> Tracing Qt plugins"
+echo "==> Pruning Qt plugins (CI-only)"
 
-mkdir -p build_cache
-TRACE_FILE="build_cache/qt_plugins.txt"
+WHITELIST="build_analysis/qt_plugins_whitelist.txt"
 
-if [ ! -f "$TRACE_FILE" ]; then
-    echo "==> First run: tracing Qt plugins"
+if [ ! -f "$WHITELIST" ] || [ ! -s "$WHITELIST" ]; then
+    echo "⚠ whitelist missing, using built-in fallback"
 
-    QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb \
-    xvfb-run -a "$APP_PATH/$APP_NAME" --version \
-        > /dev/null 2> trace.log || true
-
-    if [ ! -s trace.log ]; then
-        echo "⚠ trace failed, using fallback plugins"
-        cat > "$TRACE_FILE" <<EOF
+    cat > /tmp/qt_plugins_fallback.txt <<EOF
 platforms/libqxcb.so
 imageformats/libqjpeg.so
+imageformats/libqpng.so
+iconengines/libqsvgicon.so
+audio/libqtaudio_alsa.so
+audio/libqtaudio_pulse.so
+multimedia/libqtmedia_ffmpeg.so
 EOF
-    else
-        grep -oE 'loaded library ".+\.so"' trace.log \
-          | sed 's/loaded library "//;s/"//' \
-          | xargs -r -n1 basename \
-          | sort -u > "$TRACE_FILE"
-    fi
+
+    WHITELIST="/tmp/qt_plugins_fallback.txt"
 fi
 
-echo "==> Using plugin list:"
-cat "$TRACE_FILE"
+echo "==> Using whitelist:"
+cat "$WHITELIST"
 
-echo "==> Pruning Qt plugins"
-find "$PLUGIN_DIR" -type f -name "*.so" | while read -r f; do
-    if ! grep -q "$(basename "$f")" "$TRACE_FILE"; then
-        rm -f "$f"
+# 执行裁剪
+find "$PLUGIN_DIR" -type f -name "*.so" | while read -r file; do
+    rel="${file#$PLUGIN_DIR/}"
+
+    keep=false
+    while read -r k; do
+        k=$(echo "$k" | tr -d '\r')
+        if [[ "$rel" == "$k" || "$rel" == *"$k" ]]; then
+            keep=true
+            break
+        fi
+    done < "$WHITELIST"
+
+    if [ "$keep" = false ]; then
+        rm -f "$file"
     fi
 done
 
-find "$PLUGIN_DIR" -type d -empty -delete || true
+# 清理空目录
+find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
 
 # -------------------------
 # 4. 依赖收集
