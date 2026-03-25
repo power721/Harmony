@@ -49,8 +49,79 @@ jobs:
             libxkbcommon-x11-0 \
             libfuse2 \
             libfuse2t64 \
+            libxcb-cursor0 \
             ffmpeg \
             upx
+      - name: Generate Qt plugin whitelist (CI)
+        run: |
+          uv sync --frozen
+          source .venv/bin/activate
+
+          echo "==> Collecting Qt plugins..."
+
+          QT_DEBUG_PLUGINS=1 python << 'EOF' 2> qt_plugins.log
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PySide6.QtCore import QUrl
+            import sys
+            
+            app = QApplication(sys.argv)
+            
+            player = QMediaPlayer()
+            audio = QAudioOutput()
+            player.setAudioOutput(audio)
+            
+            # 关键：触发音频 backend
+            player.setSource(QUrl("file:///tmp/test.mp3"))
+            player.play()
+            
+            # 多跑几次事件循环（确保插件加载）
+            for _ in range(5):
+                app.processEvents()
+            
+            EOF
+            
+                      echo "==> Extracting plugins..."
+            
+                      mkdir -p build_analysis
+            
+                      python << 'EOF'
+            import re
+            
+            plugins = set()
+            
+            with open("qt_plugins.log", "r", errors="ignore") as f:
+                for line in f:
+                    if "loaded library" in line and "plugins" in line:
+                        try:
+                            path = line.split('"')[1]
+                            rel = path.split("plugins/")[-1]
+                            plugins.add(rel)
+                        except:
+                            pass
+            
+            # -------------------------
+            # 强制补充（音频安全）
+            # -------------------------
+            plugins.update([
+                "platforms/libqxcb.so",
+                "multimedia/libqtmedia_ffmpeg.so",
+            ])
+            
+            # 可选增强（避免输入法问题）
+            plugins.update([
+                "platforminputcontexts/libfcitx5platforminputcontextplugin.so"
+            ])
+            
+            with open("build_analysis/qt_plugins_whitelist.txt", "w") as f:
+                for p in sorted(plugins):
+                    f.write(p + "\n")
+            
+            print(f"Generated {len(plugins)} plugins")
+          EOF
+
+          echo "==> Whitelist preview"
+          cat build_analysis/qt_plugins_whitelist.txt
 
       - name: Build AppImage
         env:
