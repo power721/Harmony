@@ -298,7 +298,7 @@ jobs:
           APP_VERSION: ${{ github.ref_name || 'nightly' }}
         run: |
           mkdir -p dist/Harmony-portable
-          cp dist/Harmony-${env:APP_VERSION}.exe dist/Harmony-portable/Harmony.exe
+          cp dist/Harmony-${env:APP_VERSION}-windows.exe dist/Harmony-portable/Harmony.exe
           cp -r translations dist/Harmony-portable/ 2>$null || true
 
           Set-Content -Path "dist/Harmony-portable/README.txt" -Value @"
