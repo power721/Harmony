@@ -315,35 +315,12 @@ jobs:
           uv run python build.py windows
           Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}-windows.exe"
 
-      - name: Create portable ZIP
-        env:
-          APP_VERSION: ${{ github.ref_name || 'nightly' }}
-        run: |
-          mkdir -p dist/Harmony-portable
-          cp dist/Harmony-${env:APP_VERSION}-windows.exe dist/Harmony-portable/Harmony.exe
-          cp -r translations dist/Harmony-portable/ 2>$null || true
-
-          Set-Content -Path "dist/Harmony-portable/README.txt" -Value @"
-          Harmony v${env:APP_VERSION}
-
-          This is a portable version. No installation required.
-          Just run Harmony.exe
-
-          System Requirements:
-          - Windows 10 or later
-          - Visual C++ Redistributable 2015-2022
-          "@
-
-          Compress-Archive -Path "dist/Harmony-portable/*" -DestinationPath "dist/Harmony-${env:APP_VERSION}-windows-portable.zip" -Force
-        shell: pwsh
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: harmony-windows
           path: |
             dist/Harmony-*.exe
-            dist/Harmony-*-portable.zip
           retention-days: 30
 
   release:

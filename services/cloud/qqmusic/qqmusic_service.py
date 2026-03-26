@@ -73,6 +73,7 @@ class QQMusicService:
     async def refresh_credential(self) -> Optional[Dict[str, Any]]:
         """
         Refresh the credential using refresh_token.
+        Uses local implementation without external dependencies.
 
         Returns:
             New credential dict or None if refresh failed
@@ -86,64 +87,21 @@ class QQMusicService:
             return None
 
         try:
-            from qqmusic_api.login import Credential
+            import asyncio
 
-            # Create Credential object from stored data
-            cred = Credential(
-                musicid=int(self._credential.get('musicid', 0) or 0),
-                musickey=self._credential.get('musickey', ''),
-                login_type=self._credential.get('login_type') or self._credential.get('loginType', 2),
-                openid=self._credential.get('openid', ''),
-                refresh_token=self._credential.get('refresh_token', ''),
-                access_token=self._credential.get('access_token', ''),
-                expired_at=self._credential.get('expired_at', 0),
-                unionid=self._credential.get('unionid', ''),
-                str_musicid=self._credential.get('str_musicid', ''),
-                refresh_key=self._credential.get('refresh_key', ''),
-                encrypt_uin=self._credential.get('encrypt_uin') or self._credential.get('encryptUin', ''),
-                extra_fields=self._credential.get('extra_fields', ''),
+            # Run synchronous refresh in executor
+            loop = asyncio.get_event_loop()
+            new_credential = await loop.run_in_executor(
+                None,
+                self.client.refresh_credential
             )
 
-            # Check if can refresh
-            can_refresh = await cred.can_refresh()
-            if not can_refresh:
-                logger.warning("Credential cannot be refreshed")
-                return None
-
-            # Perform refresh
-            await cred.refresh()
-
-            # Extract new credential data
-            new_credential = {}
-            for attr in ['musicid', 'musickey', 'login_type', 'openid',
-                         'refresh_token', 'access_token', 'expired_at',
-                         'unionid', 'str_musicid', 'refresh_key',
-                         'encrypt_uin']:
-                if hasattr(cred, attr):
-                    value = getattr(cred, attr)
-                    if attr == 'musicid':
-                        new_credential[attr] = str(value) if value else ''
-                    else:
-                        new_credential[attr] = value
-
-            # Merge extra_fields into main dict (contains musickeyCreateTime, keyExpiresIn, etc.)
-            if hasattr(cred, 'extra_fields') and isinstance(cred.extra_fields, dict):
-                new_credential.update(cred.extra_fields)
-                # Map API field names to our storage format
-                if 'keyExpiresIn' in new_credential:
-                    new_credential['key_expires_in'] = new_credential['keyExpiresIn']
-                if 'musickeyCreateTime' in new_credential:
-                    new_credential['musickey_createtime'] = new_credential['musickeyCreateTime']
-
-            # Add create time for refresh tracking
-            new_credential['musickey_createtime'] = int(time.time())
-
-            logger.info(f"Credential refreshed successfully, new expired_at: {new_credential.get('expired_at')}")
+            if new_credential:
+                # Update internal credential
+                self._credential = new_credential
+                logger.info(f"Credential refreshed successfully")
             return new_credential
 
-        except ImportError:
-            logger.error("qqmusic_api library not installed for credential refresh")
-            return None
         except Exception as e:
             logger.error(f"Failed to refresh credential: {e}")
             return None

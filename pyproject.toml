@@ -17,8 +17,6 @@ dependencies = [
     "pymediainfo>=7.0.1",
     "pyside6>=6.11.0",
     "pyside6-addons>=6.11.0",
-    "pyzbar>=0.1.9",
-    "qqmusic-api-python>=0.4.1",
     "qrcode[pil]>=8.2",
     "requests>=2.32.5",
     "shiboken6>=6.11.0",
@@ -26,7 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pyinstaller>=6.0.0",
+    "pyinstaller>=6.19.0",
     "pytest>=7.0.0",
     "ruff>=0.1.0",
 ]

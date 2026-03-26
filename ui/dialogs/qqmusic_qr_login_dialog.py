@@ -1,9 +1,9 @@
 """
 QQ Music QR code login dialog.
-Uses qqmusic_api library for QR code login.
+Uses local implementation without qqmusic_api dependency.
 """
-import asyncio
 import logging
+import time
 from io import BytesIO
 from typing import Optional
 
@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, Slot
 from PySide6.QtGui import QPixmap, QImage
 
+from services.cloud.qqmusic.qr_login import (
+    QQMusicQRLogin, QRLoginType, QRCodeLoginEvents, QR, Credential
+)
 from system.i18n import t, get_language
 
 logger = logging.getLogger(__name__)
@@ -34,7 +37,6 @@ class QRLoginThread(QThread):
         super().__init__()
         self.login_type = login_type
         self._running = True
-        self._loop = None
 
     def stop(self):
         """Stop the polling thread."""
@@ -43,74 +45,93 @@ class QRLoginThread(QThread):
     def run(self):
         """Run QR code login polling."""
         try:
-            # Import qqmusic_api
-            from qqmusic_api.login import get_qrcode, check_qrcode, QRLoginType, QRCodeLoginEvents
-
-            # Map string to enum
-            login_type_enum = QRLoginType.QQ if self.login_type == 'qq' else QRLoginType.WX
+            login_type = QRLoginType.WX if self.login_type == 'wx' else QRLoginType.QQ
             is_wechat = self.login_type == 'wx'
             logger.info(f"Starting QR login with type: {self.login_type} (is_wechat: {is_wechat})")
 
-            # Run async function in thread
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-            try:
-                credential = self._loop.run_until_complete(self._qr_login(login_type_enum, is_wechat))
-                if credential and self._running:
-                    # Use as_dict() for reliable extraction of all fields
-                    try:
-                        cred_dict = credential.as_dict()
-                        # Merge extra_fields into main dict (contains musickeyCreateTime, keyExpiresIn, etc.)
-                        if 'extra_fields' in cred_dict and isinstance(cred_dict['extra_fields'], dict):
-                            cred_dict.update(cred_dict.pop('extra_fields'))
-                        elif 'extra_fields' in cred_dict:
-                            cred_dict.pop('extra_fields', None)
-                    except Exception:
-                        # Fallback to manual extraction
-                        cred_dict = {}
-                        for attr in ['musicid', 'musickey', 'login_type', 'openid', 'refresh_token',
-                                     'access_token', 'expired_at', 'unionid', 'str_musicid',
-                                     'refresh_key', 'encrypt_uin', 'extra_fields']:
-                            if hasattr(credential, attr):
-                                val = getattr(credential, attr, None)
-                                if attr == 'musicid' and val is not None:
-                                    cred_dict[attr] = str(val)
-                                elif attr == 'extra_fields' and isinstance(val, dict):
-                                    cred_dict.update(val)
-                                else:
-                                    cred_dict[attr] = val
+            client = QQMusicQRLogin()
 
-                    # Ensure musicid is string
-                    if 'musicid' in cred_dict and cred_dict['musicid'] is not None:
-                        cred_dict['musicid'] = str(cred_dict['musicid'])
+            # Get QR code
+            app_name = t("qqmusic_wx_login").replace("登录", "").strip() if is_wechat else "QQ"
+            self.status_update.emit(t("qqmusic_fetching_qr"))
 
-                    # Add create time for refresh tracking
-                    import time
-                    cred_dict['musickey_createtime'] = int(time.time())
+            qr = client.get_qrcode(login_type)
+            if not qr:
+                if self._running:
+                    self.login_failed.emit(t("qqmusic_login_failed_detail").format(error="Failed to get QR code"))
+                return
 
-                    # Map API response field names to our storage format
-                    if 'keyExpiresIn' in cred_dict:
-                        cred_dict['key_expires_in'] = cred_dict.pop('keyExpiresIn')
-                    if 'loginType' in cred_dict:
-                        cred_dict['login_type'] = cred_dict.pop('loginType')
-                    if 'encryptUin' in cred_dict:
-                        cred_dict['encrypt_uin'] = cred_dict.pop('encryptUin')
+            if not self._running:
+                return
 
-                    logger.info(f"Login success, musicid: {cred_dict.get('musicid')}, "
-                               f"login_type: {cred_dict.get('login_type')}, "
-                               f"has_refresh_key: {bool(cred_dict.get('refresh_key'))}, "
-                               f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}, "
-                               f"encrypt_uin: {cred_dict.get('encrypt_uin')}")
-                    self.login_success.emit(cred_dict)
-            finally:
-                if self._loop and not self._loop.is_closed():
-                    self._loop.close()
-                self._loop = None
+            # Emit QR code image for display
+            self.qr_code_ready.emit(qr.data)
+            logger.debug(f"QR code obtained, type: {qr.qr_type}, identifier: {qr.identifier[:20]}...")
 
-        except ImportError as e:
-            logger.error(f"QR login error: {e}")
+            # Poll for login status
+            self.status_update.emit(t("qqmusic_scan_with_app").format(app=app_name))
+
+            poll_count = 0
+            max_polls = 120  # 2 minutes
+
+            while poll_count < max_polls and self._running:
+                try:
+                    event, credential = client.check_qrcode(qr)
+
+                    if not self._running:
+                        return
+
+                    if event == QRCodeLoginEvents.SCAN:
+                        self.status_update.emit(t("qqmusic_waiting_scan"))
+
+                    elif event == QRCodeLoginEvents.CONF:
+                        self.status_update.emit(t("qqmusic_scan_confirmed"))
+
+                    elif event == QRCodeLoginEvents.DONE:
+                        self.status_update.emit(t("qqmusic_logging_in"))
+
+                        if credential:
+                            # Convert credential to dict
+                            cred_dict = credential.as_dict()
+
+                            # Add create time for refresh tracking
+                            cred_dict['musickey_createtime'] = int(time.time())
+
+                            # Ensure musicid is string
+                            if 'musicid' in cred_dict and cred_dict['musicid'] is not None:
+                                cred_dict['musicid'] = str(cred_dict['musicid'])
+
+                            logger.info(f"Login success, musicid: {cred_dict.get('musicid')}, "
+                                       f"login_type: {cred_dict.get('login_type')}, "
+                                       f"has_refresh_key: {bool(cred_dict.get('refresh_key'))}, "
+                                       f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}, "
+                                       f"encrypt_uin: {cred_dict.get('encrypt_uin')}")
+
+                            self.login_success.emit(cred_dict)
+                        else:
+                            self.login_failed.emit("Login succeeded but no credential returned")
+                        return
+
+                    elif event == QRCodeLoginEvents.TIMEOUT:
+                        self.login_timeout.emit()
+                        return
+
+                    elif event == QRCodeLoginEvents.REFUSE:
+                        self.login_refused.emit()
+                        return
+
+                    poll_count += 1
+                    self.msleep(1000)  # Poll every second
+
+                except Exception as e:
+                    logger.debug(f"Poll error: {e}")
+                    poll_count += 1
+                    self.msleep(1000)
+
+            # Timeout
             if self._running:
-                self.login_failed.emit(t("qqmusic_api_not_installed"))
+                self.login_timeout.emit()
+
         except Exception as e:
             logger.error(f"QR login error: {e}")
             if self._running:
@@ -120,69 +141,6 @@ class QRLoginThread(QThread):
         """Stop the thread and wait for it to finish."""
         self._running = False
         return self.wait(timeout_ms)
-
-    async def _qr_login(self, login_type, is_wechat: bool):
-        """Execute QR code login process."""
-        from qqmusic_api.login import get_qrcode, check_qrcode, QRCodeLoginEvents
-        from pyzbar.pyzbar import decode
-        from PIL import Image
-
-        # Get QR code
-        app_name = t("qqmusic_wx_login").replace("登录", "").strip() if is_wechat else "QQ"
-        self.status_update.emit(t("qqmusic_fetching_qr"))
-        qr = await get_qrcode(login_type)
-
-        # Check if still running
-        if not self._running:
-            return None
-
-        # Emit QR code image for display
-        logger.debug(f"QR code: {qr}")
-        self.qr_code_ready.emit(qr.data)
-
-        # Poll for login status
-        self.status_update.emit(t("qqmusic_scan_with_app").format(app=app_name))
-
-        poll_count = 0
-        max_polls = 120  # 2 minutes
-
-        while poll_count < max_polls and self._running:
-            try:
-                event, credential = await check_qrcode(qr)
-
-                if not self._running:
-                    return None
-
-                if event == QRCodeLoginEvents.SCAN:
-                    self.status_update.emit(t("qqmusic_waiting_scan"))
-
-                elif event == QRCodeLoginEvents.CONF:
-                    self.status_update.emit(t("qqmusic_scan_confirmed"))
-
-                elif event == QRCodeLoginEvents.DONE:
-                    self.status_update.emit(t("qqmusic_logging_in"))
-                    return credential
-
-                elif event == QRCodeLoginEvents.TIMEOUT:
-                    self.login_timeout.emit()
-                    return None
-
-                elif event == QRCodeLoginEvents.REFUSE:
-                    self.login_refused.emit()
-                    return None
-
-                poll_count += 1
-                await asyncio.sleep(1)  # Poll every second
-
-            except Exception as e:
-                logger.debug(f"Poll error: {e}")
-                poll_count += 1
-                await asyncio.sleep(1)
-
-        # Timeout
-        if self._running:
-            self.login_timeout.emit()
-        return None
 
 
 class QQMusicQRLoginDialog(QDialog):
