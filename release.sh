@@ -133,6 +133,13 @@ build_app() {
       --add-data "icon.png:." \
       "$ENTRY"
 
+    # 保留 Qt 的，删 Python 的
+    rm dist/Harmony/_internal/lib/libicudata.so.*
+    rm dist/Harmony/_internal/lib/libicui18n.so.*
+    rm dist/Harmony/_internal/lib/libicuuc.so.*
+
+    rm dist/Harmony/_internal/lib/libgtk-3.so.*
+
     prune_qt_plugins "$MODE"
     collect_runtime_deps
 
