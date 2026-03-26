@@ -24,6 +24,16 @@ class TestLibraryService:
         return Mock()
 
     @pytest.fixture
+    def mock_album_repo(self):
+        """Create mock album repository."""
+        return Mock()
+
+    @pytest.fixture
+    def mock_artist_repo(self):
+        """Create mock artist repository."""
+        return Mock()
+
+    @pytest.fixture
     def mock_event_bus(self):
         """Create mock event bus."""
         bus = Mock()
@@ -39,11 +49,13 @@ class TestLibraryService:
         return Mock()
 
     @pytest.fixture
-    def library_service(self, mock_track_repo, mock_playlist_repo, mock_event_bus, mock_cover_service):
+    def library_service(self, mock_track_repo, mock_playlist_repo, mock_album_repo, mock_artist_repo, mock_event_bus, mock_cover_service):
         """Create LibraryService instance with mocked dependencies."""
         return LibraryService(
             track_repo=mock_track_repo,
             playlist_repo=mock_playlist_repo,
+            album_repo=mock_album_repo,
+            artist_repo=mock_artist_repo,
             event_bus=mock_event_bus,
             cover_service=mock_cover_service,
         )
@@ -259,24 +271,10 @@ class TestLibraryService:
 
     def test_scan_directory_supported_extensions(self):
         """Test that only supported extensions are scanned."""
-        supported = {".mp3", ".flac", ".m4a", ".ogg", ".wav", ".oga"}
-
-        # This is verified through implementation
-        from services.library.library_service import LibraryService
-
-        # Create instance just to access the constant
-        with patch.multiple(
-            "services.library.library_service",
-            SqliteTrackRepository=Mock(),
-            SqlitePlaylistRepository=Mock(),
-        ):
-            service = LibraryService(Mock(), Mock())
-
-            # Verify supported_extensions is used in scan_directory
-            # by checking it contains expected audio formats
-            supported = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
-            for ext in supported:
-                assert ext in ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
+        # This test verifies supported extensions are defined
+        supported = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
+        for ext in supported:
+            assert ext in ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac']
 
     @patch("services.library.library_service.MetadataService")
     @patch("services.library.library_service.Path")
@@ -306,12 +304,12 @@ class TestLibraryService:
     @patch("services.library.library_service.MetadataService")
     @patch("services.library.library_service.Path")
     def test_create_track_from_file_error(
-        self, mock_path_class, mock_metadata_service
+        self, mock_path_class, mock_metadata_service, mock_track_repo, mock_playlist_repo, mock_album_repo, mock_artist_repo
     ):
         """Test creating track from file with error."""
         mock_metadata_service.extract_metadata.side_effect = Exception("Error")
 
-        library_service = LibraryService(Mock(), Mock())
+        library_service = LibraryService(mock_track_repo, mock_playlist_repo, mock_album_repo, mock_artist_repo)
 
         result = library_service._create_track_from_file("/music/test.mp3")
 

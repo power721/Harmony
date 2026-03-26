@@ -175,6 +175,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 t.artist,
                 t.album,
                 t.duration,
+                t.source,
                 t.cover_path
             FROM favorites f
             LEFT JOIN tracks t ON f.track_id = t.id

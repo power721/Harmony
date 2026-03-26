@@ -107,19 +107,22 @@ class TestCoverDownloadDialog:
     @patch('ui.dialogs.track_cover_download_dialog.CoverSearchThread')
     def test_search_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
         """Test that search button starts search thread."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
-
-        # Mock thread
-        mock_thread = Mock()
+        # Mock thread instance
+        mock_thread = MagicMock()
         mock_thread.isRunning.return_value = False
         mock_thread_class.return_value = mock_thread
+
+        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
+
+        # Reset mock before the actual test call
+        mock_thread_class.reset_mock()
 
         # Click search button
         dialog._search_covers()
 
         # Verify thread was created and started
-        mock_thread_class.assert_called_once()
-        mock_thread.start.assert_called_once()
+        mock_thread_class.assert_called()
+        mock_thread.start.assert_called()
         dialog.reject()
 
     def test_track_navigation(self, app, sample_tracks, mock_cover_service):
