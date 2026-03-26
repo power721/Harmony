@@ -201,6 +201,47 @@ class QQMusicService:
             logger.error(f"Search completion failed: {e}", exc_info=True)
             return []
 
+    def get_hotkey(self) -> List[Dict[str, Any]]:
+        """
+        获取热搜词列表.
+
+        Returns:
+            热搜词列表，每个热搜词包含 title, content 等键
+        """
+        try:
+            result = self.client.get_hotkey()
+
+            if not result:
+                return []
+
+            # Parse hotkey from response
+            # 实际响应格式:
+            # {
+            #   "vec_hotkey": [  # 注意：API返回的是小写的vec_hotkey
+            #     { "title": "热搜词", "query": "搜索词", ... },
+            #     ...
+            #   ]
+            # }
+
+            # 尝试两种键名
+            hotkeys = result.get('vec_hotkey', []) or result.get('vecHotkey', [])
+            results = []
+            for item in hotkeys:
+                title = item.get('title', '')
+                query = item.get('query', title)  # query是实际搜索词
+                if title:
+                    results.append({
+                        'title': title,
+                        'query': query,
+                        'content': item.get('content', query),
+                    })
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Get hotkey failed: {e}", exc_info=True)
+            return []
+
     def get_playback_url(self, song_mid: str, quality: str = 'flac') -> Optional[str]:
         """
         Get playback URL for a song.

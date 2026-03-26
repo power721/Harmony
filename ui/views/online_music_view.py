@@ -28,8 +28,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QCompleter,
     QListView,
+    QScrollArea,
+    QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
 from PySide6.QtGui import QCursor, QColor, QBrush, QAction
 
 
@@ -155,6 +157,137 @@ class CompletionWorker(QThread):
             self.completion_ready.emit([])
 
 
+class HotkeyWorker(QThread):
+    """Background worker for fetching hot search keywords."""
+
+    hotkey_ready = Signal(list)  # List of hotkey suggestions
+
+    def __init__(self, qqmusic_service):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+
+    def run(self):
+        try:
+            if self._qqmusic_service:
+                hotkeys = self._qqmusic_service.get_hotkey()
+                self.hotkey_ready.emit(hotkeys)
+            else:
+                logger.debug("No QQ Music service available for hotkey")
+                self.hotkey_ready.emit([])
+        except Exception as e:
+            logger.error(f"Get hotkey failed: {e}")
+            self.hotkey_ready.emit([])
+
+
+class HotkeyPopup(QWidget):
+    """Popup widget for displaying hot search keywords."""
+
+    hotkey_clicked = Signal(str)  # Emitted when a hotkey is clicked
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 使用 Window 标志，允许交互但不显示在任务栏
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)  # 显示时不激活窗口
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Setup UI components."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Container with border
+        container = QWidget()
+        container.setObjectName("hotkeyContainer")
+        container.setStyleSheet("""
+            #hotkeyContainer {
+                background-color: #2a2a2a;
+                border: 1px solid #3a3a3a;
+                border-radius: 8px;
+            }
+        """)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(12, 8, 12, 8)
+        container_layout.setSpacing(4)
+
+        # Title
+        title = QLabel("🔥 " + t("hot_search"))
+        title.setStyleSheet("color: #1db954; font-size: 14px; font-weight: bold;")
+        container_layout.addWidget(title)
+
+        # Hotkey list container (using flow layout with tags)
+        self._hotkey_container = QWidget()
+        self._hotkey_layout = QHBoxLayout(self._hotkey_container)
+        self._hotkey_layout.setContentsMargins(0, 0, 0, 0)
+        self._hotkey_layout.setSpacing(8)
+        self._hotkey_layout.addStretch()
+        container_layout.addWidget(self._hotkey_container)
+
+        layout.addWidget(container)
+
+    def set_hotkeys(self, hotkeys: List[Dict[str, Any]]):
+        """Set hotkey list."""
+        # Clear existing buttons
+        while self._hotkey_layout.count() > 1:
+            item = self._hotkey_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Add hotkey buttons (limit to 10)
+        for i, item in enumerate(hotkeys[:10]):
+            title = item.get('title', '')
+            query = item.get('query', title)  # query是实际搜索词
+            if not title:
+                continue
+
+            btn = QPushButton(f"{i + 1}. {title}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a3a3a;
+                    color: #e0e0e0;
+                    border: none;
+                    border-radius: 12px;
+                    padding: 6px 12px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #1db954;
+                    color: #ffffff;
+                }
+            """)
+            # 使用query字段进行搜索
+            btn.clicked.connect(lambda checked, q=query: self._on_hotkey_clicked(q))
+            self._hotkey_layout.insertWidget(self._hotkey_layout.count() - 1, btn)
+
+    def _on_hotkey_clicked(self, query: str):
+        """Handle hotkey button click."""
+        self.hide()
+        self.hotkey_clicked.emit(query)
+
+    def show_at(self, global_pos: QPoint):
+        """Show popup at global position."""
+        self.move(global_pos)
+        self.show()
+
+
+class SearchInputWithHotkey(QLineEdit):
+    """Custom search input that emits focus events."""
+
+    focus_gained = Signal()
+    focus_lost = Signal()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.focus_gained.emit()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.focus_lost.emit()
+
+
 class OnlineMusicView(QWidget):
     """View for searching and browsing online music."""
 
@@ -203,6 +336,11 @@ class OnlineMusicView(QWidget):
         self._selected_top_id: Optional[int] = None
         self._top_lists_loaded = False  # Track if top lists have been loaded
         self._is_top_list_view = True  # True when viewing top list, False when viewing search results
+
+        # Hotkey state
+        self._hotkey_worker: Optional[HotkeyWorker] = None
+        self._hotkey_popup: Optional[HotkeyPopup] = None
+        self._hotkeys: List[Dict[str, Any]] = []  # Cached hotkeys
 
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
@@ -316,12 +454,16 @@ class OnlineMusicView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Search input with built-in clear button
-        self._search_input = QLineEdit()
+        self._search_input = SearchInputWithHotkey()
         self._search_input.setPlaceholderText(t("search_online_music"))
         self._search_input.returnPressed.connect(self._on_search)
         self._search_input.textChanged.connect(self._on_search_text_changed)
         self._search_input.setFixedHeight(50)
         self._search_input.setClearButtonEnabled(True)
+
+        # Connect focus events for hotkey popup
+        self._search_input.focus_gained.connect(self._on_search_focus_gained)
+        self._search_input.focus_lost.connect(self._on_search_focus_lost)
 
         # Setup completer for search suggestions
         self._completer = CustomQCompleter(self)
@@ -783,8 +925,80 @@ class OnlineMusicView(QWidget):
 
         self._do_search()
 
+    def _on_search_focus_gained(self):
+        """Handle search input focus gained - show hotkey popup if empty."""
+        text = self._search_input.text().strip()
+        if not text and self._qqmusic_service:
+            self._show_hotkey_popup()
+
+    def _on_search_focus_lost(self):
+        """Handle search input focus lost - hide hotkey popup."""
+        # Delay hiding to allow click on hotkey items
+        QTimer.singleShot(100, self._hide_hotkey_popup)
+
+    def _show_hotkey_popup(self):
+        """Show hotkey popup below search input."""
+        if not self._hotkey_popup:
+            self._hotkey_popup = HotkeyPopup(self)
+            self._hotkey_popup.hotkey_clicked.connect(self._on_hotkey_clicked)
+
+        # Use cached hotkeys if available
+        if self._hotkeys:
+            self._hotkey_popup.set_hotkeys(self._hotkeys)
+            # Position popup below search input
+            input_rect = self._search_input.rect()
+            global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
+            self._hotkey_popup.show_at(global_pos)
+        else:
+            # Fetch hotkeys
+            self._load_hotkeys()
+
+    def _hide_hotkey_popup(self):
+        """Hide hotkey popup."""
+        if self._hotkey_popup and self._hotkey_popup.isVisible():
+            # Only hide if search input doesn't have focus anymore
+            if not self._search_input.hasFocus():
+                self._hotkey_popup.hide()
+
+    def _load_hotkeys(self):
+        """Load hotkey suggestions from QQ Music."""
+        if not self._qqmusic_service:
+            return
+
+        if self._hotkey_worker and self._hotkey_worker.isRunning():
+            self._hotkey_worker.terminate()
+
+        self._hotkey_worker = HotkeyWorker(self._qqmusic_service)
+        self._hotkey_worker.hotkey_ready.connect(self._on_hotkey_ready)
+        self._hotkey_worker.start()
+
+    def _on_hotkey_ready(self, hotkeys: List[Dict[str, Any]]):
+        """Handle hotkey suggestions ready."""
+        if hotkeys:
+            self._hotkeys = hotkeys
+            # Show popup if search input is still empty and focused
+            text = self._search_input.text().strip()
+            if not text and self._search_input.hasFocus():
+                if not self._hotkey_popup:
+                    self._hotkey_popup = HotkeyPopup(self)
+                    self._hotkey_popup.hotkey_clicked.connect(self._on_hotkey_clicked)
+                self._hotkey_popup.set_hotkeys(hotkeys)
+                # Position popup below search input
+                input_rect = self._search_input.rect()
+                global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
+                self._hotkey_popup.show_at(global_pos)
+
+    def _on_hotkey_clicked(self, title: str):
+        """Handle hotkey button click."""
+        self._search_input.setText(title)
+        self._on_search()
+
     def _on_search_text_changed(self, text: str):
         """Handle search text change - show top lists when cleared."""
+        # Hide hotkey popup when user starts typing
+        if text and self._hotkey_popup and self._hotkey_popup.isVisible():
+            self._hotkey_popup.hide()
+
         if not text and self._current_keyword:
             # Text was cleared, go back to top lists
             self._current_keyword = ""

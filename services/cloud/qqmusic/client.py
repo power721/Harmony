@@ -367,6 +367,19 @@ class QQMusicClient:
 
         return self._make_request('music.smartboxCgi.SmartBoxCgi', 'GetSmartBoxResult', params)
 
+    def get_hotkey(self) -> Dict:
+        """
+        获取热搜词列表.
+
+        Returns:
+            热搜词字典，包含 vecHotkey 列表
+        """
+        params = {
+            'search_id': get_search_id(),
+        }
+
+        return self._make_request('music.musicsearch.HotkeyService', 'GetHotkeyForQQMusicMobile', params)
+
     def get_song_url(self, song_mid: str, quality: str = 'flac') -> Dict:
         """
         Get playback URL for a song.
