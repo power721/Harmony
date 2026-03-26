@@ -15,6 +15,7 @@ from .lyrics_download_dialog import LyricsDownloadDialog
 from .track_cover_download_dialog import TrackCoverDownloadDialog, CoverDownloadDialog
 from .artist_rename_dialog import ArtistRenameDialog
 from .album_rename_dialog import AlbumRenameDialog
+from .edit_media_info_dialog import EditMediaInfoDialog
 
 __all__ = [
     'QQMusicQRLoginDialog',
@@ -31,4 +32,5 @@ __all__ = [
     'CoverDownloadDialog',
     'ArtistRenameDialog',
     'AlbumRenameDialog',
+    'EditMediaInfoDialog',
 ]

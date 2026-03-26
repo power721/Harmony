@@ -5,9 +5,6 @@ import logging
 import shutil
 from pathlib import Path
 
-from app import Bootstrap
-from services.ai import AcoustIDService, AIMetadataService
-
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -25,11 +22,13 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QDialog,
+    QProgressDialog,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
+from app import Bootstrap
 from domain.track import Track
 from services.playback import PlaybackService
 from domain.playback import PlaybackState
@@ -39,6 +38,9 @@ from system.i18n import t
 from system.config import ConfigManager
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
+from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
+from ui.workers.ai_enhance_worker import AIEnhanceWorker
+from ui.workers.acoustid_worker import AcoustIDWorker
 
 
 class LibraryView(QWidget):
@@ -1328,18 +1330,6 @@ class LibraryView(QWidget):
 
     def _edit_media_info(self):
         """Edit media information for selected tracks (batch edit support)."""
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QLabel,
-            QLineEdit,
-            QDialogButtonBox,
-            QFormLayout,
-            QCheckBox,
-            QProgressBar,
-        )
-        from services import MetadataService
-
         selected_items = self._tracks_table.selectedItems()
         if not selected_items:
             return
@@ -1362,340 +1352,8 @@ class LibraryView(QWidget):
         if not track_ids:
             return
 
-        # Get first track for initial values
-        first_track = self._library_service.get_track(track_ids[0])
-        if not first_track:
-            return
-
-        is_batch_edit = len(track_ids) > 1
-
-        dialog = QDialog(self)
-        if is_batch_edit:
-            dialog.setWindowTitle(
-                f"{t('edit_media_info_title')} ({len(track_ids)} {t('tracks')})"
-            )
-        else:
-            dialog.setWindowTitle(t("edit_media_info_title"))
-        dialog.setMinimumWidth(450)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-                font-size: 13px;
-            }
-            QLineEdit {
-                background-color: #181818;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QCheckBox {
-                color: #ffffff;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #1db954;
-                border: 2px solid #1db954;
-                border-radius: 3px;
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #181818;
-                border: 2px solid #404040;
-                border-radius: 3px;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #808080;
-            }
-        """)
-
-        layout = QVBoxLayout(dialog)
-
-        # Info label for batch edit
-        if is_batch_edit:
-            info_label = QLabel(
-                f"{t('batch_edit_info')}: {len(track_ids)} {t('tracks')}"
-            )
-            info_label.setStyleSheet(
-                "color: #1db954; font-size: 14px; padding: 10px; background-color: #1a1a1a; border-radius: 4px;"
-            )
-            layout.addWidget(info_label)
-
-        form_layout = QFormLayout()
-        form_layout.setSpacing(10)
-        form_layout.setLabelAlignment(Qt.AlignRight)
-
-        # Only show title field for single track edit
-        title_input = None
-        if not is_batch_edit:
-            title_input = QLineEdit(first_track.title or "")
-            title_input.setPlaceholderText(t("enter_title"))
-            form_layout.addRow(t("title") + ":", title_input)
-
-        artist_input = QLineEdit(first_track.artist or "")
-        artist_input.setPlaceholderText(t("enter_artist"))
-        album_input = QLineEdit(first_track.album or "")
-        album_input.setPlaceholderText(t("enter_album"))
-
-        # For batch edit, add checkboxes to control which fields to update
-        if is_batch_edit:
-            update_artist_cb = QCheckBox(t("update_artist"))
-            update_artist_cb.setChecked(True)
-            update_album_cb = QCheckBox(t("update_album"))
-            update_album_cb.setChecked(True)
-
-            form_layout.addRow(t("artist") + ":", artist_input)
-            form_layout.addRow("", update_artist_cb)
-            form_layout.addRow(t("album") + ":", album_input)
-            form_layout.addRow("", update_album_cb)
-        else:
-            form_layout.addRow(t("artist") + ":", artist_input)
-            form_layout.addRow(t("album") + ":", album_input)
-
-            # Show file information for single track
-            from pathlib import Path
-
-            try:
-                track_file = Path(first_track.path)
-                file_size = track_file.stat().st_size
-                file_size_str = self._format_file_size(file_size)
-
-                # Get audio codec info using mutagen
-                import mutagen
-
-                audio_info = mutagen.File(first_track.path)
-                media_info = []
-
-                if audio_info and hasattr(audio_info, "info"):
-                    info = audio_info.info
-                    # Bitrate
-                    if hasattr(info, "bitrate") and info.bitrate:
-                        media_info.append(f"{info.bitrate // 1000} kbps")
-
-                    # Sample rate
-                    if hasattr(info, "sample_rate") and info.sample_rate:
-                        media_info.append(f"{info.sample_rate // 1000} kHz")
-
-                    # Length/Duration
-                    if hasattr(info, "length") and info.length:
-                        minutes = int(info.length // 60)
-                        seconds = int(info.length % 60)
-                        media_info.append(f"{minutes}:{seconds:02d}")
-
-                # Format (codec)
-                if audio_info:
-                    mime_type = audio_info.mime if hasattr(audio_info, "mime") else []
-                    if mime_type:
-                        format_str = mime_type[0].split("/")[-1].upper()
-                        media_info.append(format_str)
-                    else:
-                        # Try to get format from type
-                        if hasattr(audio_info, "type"):
-                            media_info.append(audio_info.type)
-
-                # Create info text
-                file_info_text = f"{file_size_str}"
-                if media_info:
-                    file_info_text += f" | {' | '.join(media_info)}"
-
-                info_label = QLabel(file_info_text)
-                info_label.setStyleSheet("color: #808080; font-size: 11px;")
-
-                # File path
-                path_label = QLabel(first_track.path)
-                path_label.setStyleSheet("color: #606060; font-size: 10px;")
-                path_label.setWordWrap(True)
-
-                # Add both labels in a vertical layout
-                info_container = QWidget()
-                info_layout = QVBoxLayout(info_container)
-                info_layout.setContentsMargins(0, 0, 0, 0)
-                info_layout.setSpacing(2)
-                info_layout.addWidget(info_label)
-                info_layout.addWidget(path_label)
-
-                form_layout.addRow(t("file") + ":", info_container)
-
-            except Exception as e:
-                logger.error(f"Error displaying track info: {e}", exc_info=True)
-                # Fallback to just show path if there's an error
-                path_label = QLabel(first_track.path)
-                path_label.setStyleSheet("color: #808080; font-size: 11px;")
-                path_label.setWordWrap(True)
-                form_layout.addRow(t("file") + ":", path_label)
-
-        layout.addLayout(form_layout)
-
-        # Progress bar for batch edit
-        progress_bar = None
-        if is_batch_edit:
-            progress_bar = QProgressBar()
-            progress_bar.setVisible(False)
-            progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 2px solid #404040;
-                    border-radius: 5px;
-                    text-align: center;
-                    color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #1db954;
-                    border-radius: 3px;
-                }
-            """)
-            layout.addWidget(progress_bar)
-
-        buttons = QDialogButtonBox()
-        ok_button = QPushButton(t("save"))
-        ok_button.setObjectName("saveBtn")
-        cancel_button = QPushButton(t("cancel"))
-        cancel_button.setProperty("role", "cancel")
-
-        buttons.addButton(ok_button, QDialogButtonBox.AcceptRole)
-        buttons.addButton(cancel_button, QDialogButtonBox.RejectRole)
-
-        layout.addWidget(buttons)
-
-        def save_changes():
-            if is_batch_edit:
-                # Batch edit mode
-                new_artist = artist_input.text().strip()
-                new_album = album_input.text().strip()
-
-                if not update_artist_cb.isChecked() and not update_album_cb.isChecked():
-                    QMessageBox.warning(
-                        self, t("warning"), t("select_fields_to_update")
-                    )
-                    return
-
-                if not new_artist and not new_album:
-                    QMessageBox.warning(self, t("warning"), t("enter_artist_or_album"))
-                    return
-
-                # Show progress
-                if progress_bar:
-                    progress_bar.setVisible(True)
-                    progress_bar.setMaximum(len(track_ids))
-                    ok_button.setEnabled(False)
-                    ok_button.setText(t("saving") + "...")
-
-                success_count = 0
-                for i, track_id in enumerate(track_ids):
-                    track = self._library_service.get_track(track_id)
-                    if not track:
-                        continue
-
-                    # Determine values to save
-                    save_artist = (
-                        new_artist
-                        if (update_artist_cb.isChecked() and new_artist)
-                        else track.artist
-                    )
-                    save_album = (
-                        new_album
-                        if (update_album_cb.isChecked() and new_album)
-                        else track.album
-                    )
-
-                    # Save to file
-                    success = MetadataService.save_metadata(
-                        track.path,
-                        title=track.title,
-                        artist=save_artist,
-                        album=save_album,
-                    )
-
-                    if success:
-                        self._library_service.update_track_metadata(
-                            track_id,
-                            title=track.title,
-                            artist=save_artist,
-                            album=save_album,
-                        )
-                        # Emit metadata_updated signal to update play_queue
-                        EventBus.instance().metadata_updated.emit(track_id)
-                        success_count += 1
-
-                    # Update progress
-                    if progress_bar:
-                        progress_bar.setValue(i + 1)
-
-                if success_count > 0:
-                    QMessageBox.information(
-                        self,
-                        t("success"),
-                        f"{t('batch_save_success')}: {success_count}/{len(track_ids)}",
-                    )
-                    # Refresh only the updated rows
-                    self._refresh_tracks_in_table(track_ids)
-                else:
-                    QMessageBox.warning(self, "Error", t("media_save_failed"))
-
-                dialog.accept()
-            else:
-                # Single track edit mode
-                new_title = title_input.text().strip() or first_track.title
-                new_artist = artist_input.text().strip() or first_track.artist
-                new_album = album_input.text().strip() or first_track.album
-
-                success = MetadataService.save_metadata(
-                    first_track.path,
-                    title=new_title,
-                    artist=new_artist,
-                    album=new_album,
-                )
-
-                if success:
-                    self._library_service.update_track_metadata(
-                        track_ids[0],
-                        title=new_title,
-                        artist=new_artist,
-                        album=new_album,
-                    )
-                    # Emit metadata_updated signal to update play_queue
-                    EventBus.instance().metadata_updated.emit(track_ids[0])
-                    QMessageBox.information(self, t("success"), t("media_saved"))
-                    # Refresh only the updated row
-                    self._refresh_tracks_in_table(track_ids)
-                else:
-                    QMessageBox.warning(self, "Error", t("media_save_failed"))
-
-                dialog.accept()
-
-        ok_button.clicked.connect(save_changes)
-        cancel_button.clicked.connect(dialog.reject)
-
+        dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
+        dialog.tracks_updated.connect(self._refresh_tracks_in_table)
         dialog.exec_()
 
     def _open_file_location(self):
@@ -1952,9 +1610,6 @@ class LibraryView(QWidget):
 
     def _ai_enhance_selected(self):
         """Enhance metadata for selected tracks using AI (batch mode)."""
-        from PySide6.QtCore import QThread, Signal
-        from pathlib import Path
-
         if not self._config:
             QMessageBox.warning(self, t("warning"), t("ai_config_not_found"))
             return
@@ -1990,97 +1645,7 @@ class LibraryView(QWidget):
         api_key = self._config.get_ai_api_key()
         model = self._config.get_ai_model()
 
-        # Create worker thread with batch processing
-        class AIEnhanceWorker(QThread):
-            progress = Signal(int, int)  # current, total
-            finished_signal = Signal(list, int, int)  # enhanced_ids, enhanced_count, failed_count
-
-            def __init__(self, track_ids, library_service, base_url, api_key, model):
-                super().__init__()
-                self._track_ids = track_ids
-                self._library_service = library_service
-                self._base_url = base_url
-                self._api_key = api_key
-                self._model = model
-                self._cancelled = False
-
-            def run(self):
-                from services.metadata.metadata_service import MetadataService
-
-                enhanced_count = 0
-                failed_count = 0
-                enhanced_track_ids = []
-
-                # Collect all tracks and filenames
-                tracks_info = []  # [(index, track_id, track_path, filename)]
-                for i, track_id in enumerate(self._track_ids):
-                    if self._cancelled:
-                        break
-                    track = self._library_service.get_track(track_id)
-                    if track:
-                        # Skip tracks without local path (online/cloud tracks)
-                        if not track.path or not track.path.strip():
-                            continue
-                        filename = Path(track.path).name
-                        tracks_info.append((i, track_id, track.path, filename))
-
-                if not tracks_info:
-                    self.finished_signal.emit([], 0, len(self._track_ids))
-                    return
-
-                # Extract filenames for batch processing
-                filenames = [info[3] for info in tracks_info]
-
-                # Batch call AI
-                self.progress.emit(0, len(tracks_info))
-                batch_results = AIMetadataService.enhance_metadata_batch(
-                    filenames=filenames,
-                    base_url=self._base_url,
-                    api_key=self._api_key,
-                    model=self._model,
-                )
-
-                # Apply results
-                for idx, (orig_idx, track_id, track_path, filename) in enumerate(tracks_info):
-                    if self._cancelled:
-                        break
-
-                    self.progress.emit(idx + 1, len(tracks_info))
-
-                    if idx in batch_results:
-                        enhanced = batch_results[idx]
-                        # Update file metadata
-                        try:
-                            MetadataService.save_metadata(
-                                track_path,
-                                title=enhanced.get('title'),
-                                artist=enhanced.get('artist'),
-                                album=enhanced.get('album')
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to save metadata: {e}")
-
-                        # Update database
-                        self._library_service.update_track_metadata(
-                            track_id,
-                            title=enhanced.get('title'),
-                            artist=enhanced.get('artist'),
-                            album=enhanced.get('album')
-                        )
-                        # Emit metadata_updated signal to update play_queue
-                        EventBus.instance().metadata_updated.emit(track_id)
-                        enhanced_count += 1
-                        enhanced_track_ids.append(track_id)
-                    else:
-                        failed_count += 1
-
-                self.finished_signal.emit(enhanced_track_ids, enhanced_count, failed_count)
-
-            def cancel(self):
-                self._cancelled = True
-
         # Create progress dialog
-        from PySide6.QtWidgets import QProgressDialog
         progress_dialog = QProgressDialog(t("ai_enhancing"), t("cancel"), 0, len(track_ids), self)
         progress_dialog.setWindowTitle(t("ai_enhance_metadata"))
         progress_dialog.setWindowModality(Qt.WindowModal)
@@ -2175,8 +1740,6 @@ class LibraryView(QWidget):
 
     def _acoustid_identify_selected(self):
         """Identify selected tracks using AcoustID fingerprinting."""
-        from PySide6.QtCore import QThread
-
         if not self._config:
             QMessageBox.warning(self, t("warning"), t("ai_config_not_found"))
             return
@@ -2213,71 +1776,7 @@ class LibraryView(QWidget):
             QMessageBox.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
-        # Create worker thread
-        class AcoustIDWorker(QThread):
-            progress = Signal(int, int, int)  # current, total, track_id
-            finished_signal = Signal(list, int, int)  # identified_ids, success_count, failed_count
-
-            def __init__(self, track_ids, library_service, api_key):
-                super().__init__()
-                self._track_ids = track_ids
-                self._library_service = library_service
-                self._api_key = api_key
-                self._cancelled = False
-
-            def run(self):
-                from services.metadata.metadata_service import MetadataService
-
-                success_count = 0
-                failed_count = 0
-                identified_track_ids = []
-
-                for i, track_id in enumerate(self._track_ids):
-                    if self._cancelled:
-                        break
-
-                    self.progress.emit(i, len(self._track_ids), track_id)
-
-                    track = self._library_service.get_track(track_id)
-                    if not track:
-                        failed_count += 1
-                        continue
-
-                    # Get current metadata
-                    current_metadata = MetadataService.extract_metadata(track.path) or {}
-
-                    # Identify using AcoustID
-                    enhanced = AcoustIDService.enhance_track(
-                        file_path=track.path,
-                        api_key=self._api_key,
-                        current_metadata=current_metadata,
-                        update_file=True
-                    )
-
-                    if enhanced and enhanced.get('title'):
-                        self._library_service.update_track_metadata(
-                            track_id,
-                            title=enhanced.get('title'),
-                            artist=enhanced.get('artist'),
-                            album=enhanced.get('album')
-                        )
-                        # Emit metadata_updated signal to update play_queue
-                        EventBus.instance().metadata_updated.emit(track_id)
-                        success_count += 1
-                        identified_track_ids.append(track_id)
-                        logger.info(
-                            f"AcoustID identified track {track_id}: {enhanced.get('title')} - {enhanced.get('artist')}")
-                    else:
-                        failed_count += 1
-                        logger.warning(f"AcoustID failed to identify track {track_id}")
-
-                self.finished_signal.emit(identified_track_ids, success_count, failed_count)
-
-            def cancel(self):
-                self._cancelled = True
-
         # Create progress dialog
-        from PySide6.QtWidgets import QProgressDialog
         progress_dialog = QProgressDialog(t("acoustid_identifying"), t("cancel"), 0, len(track_ids), self)
         progress_dialog.setWindowTitle(t("acoustid_identify"))
         progress_dialog.setWindowModality(Qt.WindowModal)
