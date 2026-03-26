@@ -6,7 +6,7 @@ from .album_view import AlbumView
 from .albums_view import AlbumsView
 from .artist_view import ArtistView
 from .artists_view import ArtistsView
-from .cloud_view import CloudDriveView
+from .cloud import CloudDriveView  # Now imported from cloud package
 from .library_view import LibraryView
 from .playlist_view import PlaylistView
 from .queue_view import QueueView

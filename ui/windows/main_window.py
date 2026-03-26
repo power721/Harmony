@@ -47,7 +47,7 @@ from .mini_player import MiniPlayer
 from ui.views.library_view import LibraryView
 from ui.views.playlist_view import PlaylistView
 from ui.views.queue_view import QueueView
-from ui.views.cloud_view import CloudDriveView
+from ui.views.cloud import CloudDriveView
 from ui.views.albums_view import AlbumsView
 from ui.views.artists_view import ArtistsView
 from ui.views.artist_view import ArtistView

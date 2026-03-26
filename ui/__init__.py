@@ -2,7 +2,7 @@
 UI module - PySide6 user interface components.
 """
 
-from .views.cloud_view import CloudDriveView
+from .views.cloud import CloudDriveView
 # Views
 from .views.library_view import LibraryView
 from .views.playlist_view import PlaylistView
