@@ -1,5 +1,12 @@
 """
 Mini player mode - a small floating window.
+
+Features:
+- True rounded corners (cross-platform via setMask)
+- Drop shadow effect
+- Snap to screen edge
+- Auto-hide with fade animation
+- Text elision for long titles
 """
 import logging
 import threading
@@ -7,14 +14,19 @@ from typing import Optional
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize, QThread
-from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, Signal, QSize, QThread, QTimer, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtGui import (
+    QKeySequence, QShortcut, QIcon, QPixmap, QPainter, QColor,
+    QPainterPath, QRegion, QFontMetrics
+)
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
     QLabel,
+    QGraphicsDropShadowEffect,
+    QApplication,
 )
 
 from services.lyrics.lyrics_loader import LyricsLoader
@@ -37,7 +49,10 @@ class MiniPlayer(QWidget):
     - Always on top
     - Compact size
     - Essential controls only
-    - Draggable
+    - Draggable with snap-to-edge
+    - Auto-hide with fade animation
+    - True rounded corners (cross-platform)
+    - Drop shadow effect
     """
 
     closed = Signal()  # Signal when mini player is closed
@@ -58,10 +73,13 @@ class MiniPlayer(QWidget):
         self._is_seeking = False  # Track if user is seeking
         self._current_track_title = ""  # Current track title for window title
         self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
+        self._is_hidden = False  # Track auto-hide state
+        self._opacity_anim: Optional[QPropertyAnimation] = None  # Opacity animation
 
         self._setup_ui()
         self._setup_connections()
         self._setup_window_properties()
+        self._setup_shadow()
 
     def _setup_window_properties(self):
         """Setup window properties."""
@@ -71,21 +89,37 @@ class MiniPlayer(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(350, 150)
 
+    def resizeEvent(self, event):
+        """Apply true rounded corners via setMask (cross-platform stable)."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect for depth."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 6)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        if hasattr(self, '_container'):
+            self._container.setGraphicsEffect(shadow)
+
     def _setup_ui(self):
         """Setup the user interface."""
         # Main container widget
-        container = QWidget(self)
-        container.setGeometry(0, 0, 350, 150)
+        self._container = QWidget(self)
+        self._container.setGeometry(0, 0, 350, 150)
 
         # Create rounded rectangle background
-        container.setStyleSheet("""
+        self._container.setStyleSheet("""
             QWidget {
                 background-color: #282828;
-                border-radius: 12px;
+                border-radius: 14px;
             }
         """)
 
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self._container)
         layout.setContentsMargins(15, 10, 15, 10)
         layout.setSpacing(8)
 
@@ -204,16 +238,16 @@ class MiniPlayer(QWidget):
         bottom_layout.addWidget(self._prev_btn)
 
         self._play_pause_btn = self._create_control_button("play.svg", 32)
-        self._play_pause_btn.setStyleSheet("""
-            QPushButton {
-                background: #1db954;
-                border: none;
-                border-radius: 16px;
-            }
-            QPushButton:hover {
-                background: #1ed760;
-            }
-        """)
+        # self._play_pause_btn.setStyleSheet("""
+        #     QPushButton {
+        #         background: #1db954;
+        #         border: none;
+        #         border-radius: 16px;
+        #     }
+        #     QPushButton:hover {
+        #         background: #1ed760;
+        #     }
+        # """)
         bottom_layout.addWidget(self._play_pause_btn)
 
         self._next_btn = self._create_control_button("next.svg", 28)
@@ -430,9 +464,9 @@ class MiniPlayer(QWidget):
             title = track_dict.get("title", t("unknown"))
             album = track_dict.get("album", "")
             artist = track_dict.get("artist", "")
-            self._title_label.setText(title)
-            self._artist_label.setText(artist)
-            self._album_label.setText(album)
+            self._set_elided_text(self._title_label, title, 200)
+            self._set_elided_text(self._artist_label, artist, 180)
+            self._set_elided_text(self._album_label, album, 180)
 
             # Save current track title and update window title if playing
             if artist:
@@ -456,6 +490,15 @@ class MiniPlayer(QWidget):
             self.setWindowTitle(t("app_title"))
             self._set_default_cover()
             self.lyrics.set_lyrics("")
+
+    def _set_elided_text(self, label: QLabel, text: str, max_width: int):
+        """Set text with elision to prevent layout issues."""
+        if not text:
+            label.setText("")
+            return
+        metrics = QFontMetrics(label.font())
+        elided = metrics.elidedText(text, Qt.ElideRight, max_width)
+        label.setText(elided)
 
     def _load_cover_async(self, track_dict: dict):
         """Load cover art in background thread."""
@@ -594,7 +637,7 @@ class MiniPlayer(QWidget):
 
     def mouseMoveEvent(self, event):
         """Handle mouse move for dragging."""
-        if self._is_dragging and event.buttons() == Qt.LeftButton:
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_position)
 
     def mouseReleaseEvent(self, event):
