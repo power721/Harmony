@@ -238,16 +238,16 @@ class MiniPlayer(QWidget):
         bottom_layout.addWidget(self._prev_btn)
 
         self._play_pause_btn = self._create_control_button("play.svg", 32)
-        # self._play_pause_btn.setStyleSheet("""
-        #     QPushButton {
-        #         background: #1db954;
-        #         border: none;
-        #         border-radius: 16px;
-        #     }
-        #     QPushButton:hover {
-        #         background: #1ed760;
-        #     }
-        # """)
+        self._play_pause_btn.setStyleSheet("""
+            QPushButton {
+                background: #1db954;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:hover {
+                background: #1ed760;
+            }
+        """)
         bottom_layout.addWidget(self._play_pause_btn)
 
         self._next_btn = self._create_control_button("next.svg", 28)

@@ -44,6 +44,7 @@ from domain.track import TrackSource
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
+from ui.qml_mini_player import QmlMiniPlayer
 from ui.views.library_view import LibraryView
 from ui.views.playlist_view import PlaylistView
 from ui.views.queue_view import QueueView
@@ -195,6 +196,8 @@ class MainWindow(QMainWindow):
 
         # Mini player (hidden by default)
         self._mini_player: Optional[MiniPlayer] = None
+        # Use QML mini player (set to True to enable)
+        self._use_qml_mini_player = False
 
         # Lyrics sync
         self._current_lyric_line: Optional[int] = None
@@ -1456,8 +1459,8 @@ class MainWindow(QMainWindow):
         self._current_track_title = f"{title} - {artist}" if artist else title
 
         # Skip lyrics loading if mini player is active (to avoid duplicate loading)
-        if self._mini_player is not None and self._mini_player.isVisible():
-            return
+        # if self._mini_player is not None and self._mini_player.isVisible():
+        #     return
 
         # For online tracks, always try to load lyrics (even without local path)
         if is_online and song_mid:
@@ -2260,8 +2263,15 @@ class MainWindow(QMainWindow):
     def toggle_mini_mode(self):
         """Toggle mini player mode."""
         if self._mini_player is None:
-            # Show mini player
-            self._mini_player = MiniPlayer(self._player)
+            # Show mini player (QML or QWidget based on flag)
+            if self._use_qml_mini_player:
+                try:
+                    self._mini_player = QmlMiniPlayer(self._player)
+                except Exception as e:
+                    logger.warning(f"Failed to create QML mini player, falling back to QWidget: {e}")
+                    self._mini_player = MiniPlayer(self._player)
+            else:
+                self._mini_player = MiniPlayer(self._player)
             self._mini_player.closed.connect(self._on_mini_player_closed)
             self._mini_player.show()
             self.hide()
