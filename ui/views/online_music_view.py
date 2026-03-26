@@ -714,16 +714,8 @@ class OnlineMusicView(QWidget):
             # Refresh QQ Music service with new credentials
             self._refresh_qqmusic_service()
 
-            # Get user info if possible
-            credential = self._config.get("qqmusic.credential") if self._config else None
-            nick = ""
-            if credential:
-                try:
-                    import json
-                    cred_dict = json.loads(credential) if isinstance(credential, str) else credential
-                    nick = cred_dict.get("nick", "") if isinstance(cred_dict, dict) else ""
-                except Exception:
-                    pass
+            # Get nickname from config
+            nick = self._config.get_qqmusic_nick() if self._config else ""
 
             if nick:
                 self._login_status_label.setText(t("qqmusic_logged_in_as").format(nick=nick))
@@ -740,10 +732,7 @@ class OnlineMusicView(QWidget):
         if self._service._has_qqmusic_credential():
             # Logout
             if self._config:
-                self._config.delete("qqmusic.credential")
-                self._config.delete("qqmusic.musicid")
-                self._config.delete("qqmusic.musickey")
-                self._config.delete("qqmusic.login_type")
+                self._config.clear_qqmusic_credential()
             self._update_login_status()
             QMessageBox.information(self, t("logout"), t("logout_success"))
         else:

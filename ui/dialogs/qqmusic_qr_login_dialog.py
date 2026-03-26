@@ -427,6 +427,17 @@ class QQMusicQRLoginDialog(QDialog):
             # Save credentials (full credential dict)
             self.config.set_qqmusic_credential(credential)
 
+            # Get user nickname
+            try:
+                from services.cloud.qqmusic import QQMusicClient
+                client = QQMusicClient(credential)
+                user_info = client.verify_login()
+                if user_info.get('valid') and user_info.get('nick'):
+                    self.config.set_qqmusic_nick(user_info['nick'])
+                    logger.info(f"Got QQ Music nickname: {user_info['nick']}")
+            except Exception as e:
+                logger.warning(f"Failed to get QQ Music nickname: {e}")
+
             # Refresh QQ Music client to use new credentials
             from app.bootstrap import Bootstrap
             Bootstrap.instance().refresh_qqmusic_client()

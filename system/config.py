@@ -57,6 +57,7 @@ class SettingKey:
     QQMUSIC_MUSICKEY = "qqmusic.musickey"
     QQMUSIC_LOGIN_TYPE = "qqmusic.login_type"
     QQMUSIC_CREDENTIAL = "qqmusic.credential"  # Full credential JSON
+    QQMUSIC_NICK = "qqmusic.nick"  # User nickname
     QQMUSIC_QUALITY = "qqmusic.quality"  # Audio quality setting
 
     # Cache cleanup settings
@@ -597,6 +598,25 @@ class ConfigManager:
         self.delete(SettingKey.QQMUSIC_MUSICKEY)
         self.delete(SettingKey.QQMUSIC_LOGIN_TYPE)
         self.delete(SettingKey.QQMUSIC_CREDENTIAL)
+        self.delete(SettingKey.QQMUSIC_NICK)
+
+    def get_qqmusic_nick(self) -> str:
+        """
+        Get QQ Music user nickname.
+
+        Returns:
+            User nickname or empty string
+        """
+        return self.get(SettingKey.QQMUSIC_NICK, "")
+
+    def set_qqmusic_nick(self, nick: str):
+        """
+        Set QQ Music user nickname.
+
+        Args:
+            nick: User nickname
+        """
+        self.set(SettingKey.QQMUSIC_NICK, nick)
 
     def get_qqmusic_quality(self) -> str:
         """

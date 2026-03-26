@@ -767,6 +767,9 @@ class GeneralSettingsDialog(QDialog):
         login_method = t("qqmusic_wx_login") if login_type == 1 else t("qqmusic_qq_login")
 
         if valid:
+            # Save nickname to config
+            if nick:
+                self._config.set_qqmusic_nick(nick)
             self._qqmusic_status_label.setText(
                 f"<span style='color: #1db954;'>✅ {t('qqmusic_logged_in_status')}</span> ({nick}, {login_method}: {musicid})"
             )
