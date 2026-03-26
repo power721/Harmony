@@ -49,7 +49,6 @@ jobs:
           libxkbcommon-x11-0 \
           libfuse2 \
           xvfb \
-          ffmpeg \
           binutils \
           build-essential \
           cmake \
