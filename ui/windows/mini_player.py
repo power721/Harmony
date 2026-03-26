@@ -447,9 +447,9 @@ class MiniPlayer(QWidget):
             title = track_dict.get("title", t("unknown"))
             album = track_dict.get("album", "")
             artist = track_dict.get("artist", "")
-            self._set_elided_text(self._title_label, title, 200)
-            self._set_elided_text(self._artist_label, artist, 180)
-            self._set_elided_text(self._album_label, album, 180)
+            self._set_elided_text(self._title_label, title, 230)
+            self._set_elided_text(self._artist_label, artist, 230)
+            self._set_elided_text(self._album_label, album, 230)
 
             # Save current track title and update window title if playing
             if artist:

@@ -6,7 +6,7 @@ import logging
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
+    from repositories.settings_repository import SqliteSettingsRepository
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -77,14 +77,14 @@ class ConfigManager:
     Settings are stored in the 'settings' table in the SQLite database.
     """
 
-    def __init__(self, db_manager: "DatabaseManager"):
+    def __init__(self, settings_repo: "SqliteSettingsRepository"):
         """
         Initialize config manager.
 
         Args:
-            db_manager: DatabaseManager instance for database operations
+            settings_repo: SettingsRepository instance for settings operations
         """
-        self._db = db_manager
+        self._settings_repo = settings_repo
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -97,7 +97,7 @@ class ConfigManager:
         Returns:
             Configuration value or default
         """
-        return self._db.get_setting(key, default)
+        return self._settings_repo.get(key, default)
 
     def set(self, key: str, value: Any):
         """
@@ -107,7 +107,7 @@ class ConfigManager:
             key: Configuration key
             value: Value to set
         """
-        self._db.set_setting(key, value)
+        self._settings_repo.set(key, value)
 
     def get_multiple(self, keys: list) -> Dict[str, Any]:
         """
@@ -119,7 +119,7 @@ class ConfigManager:
         Returns:
             Dict of key-value pairs
         """
-        return self._db.get_settings(keys)
+        return self._settings_repo.get_all(keys)
 
     def delete(self, key: str):
         """
@@ -128,7 +128,7 @@ class ConfigManager:
         Args:
             key: Configuration key
         """
-        self._db.delete_setting(key)
+        self._settings_repo.delete(key)
 
     # ===== Player settings =====
 

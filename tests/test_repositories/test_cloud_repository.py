@@ -174,15 +174,16 @@ class TestSqliteCloudRepository:
         assert result is False
 
     def test_delete_account(self, cloud_repo, sample_account):
-        """Test deleting a cloud account."""
+        """Test deleting a cloud account (soft delete)."""
         account_id = cloud_repo.add_account(sample_account)
 
         result = cloud_repo.delete_account(account_id)
         assert result is True
 
-        # Verify deletion
+        # Verify soft deletion - account should still exist but be inactive
         retrieved = cloud_repo.get_account_by_id(account_id)
-        assert retrieved is None
+        assert retrieved is not None
+        assert retrieved.is_active is False
 
     def test_delete_account_not_found(self, cloud_repo):
         """Test deleting non-existent account."""
@@ -252,13 +253,13 @@ class TestSqliteCloudRepository:
         assert result is False
 
     def test_delete_account_cascades_files(self, cloud_repo, sample_account, sample_file):
-        """Test that deleting account deletes associated files."""
+        """Test that hard deleting account deletes associated files."""
         account_id = cloud_repo.add_account(sample_account)
         sample_file.account_id = account_id
         cloud_repo.add_file(sample_file)
 
-        # Delete account
-        cloud_repo.delete_account(account_id)
+        # Hard delete account
+        cloud_repo.hard_delete_account(account_id)
 
         # File should be deleted too
         files = cloud_repo.get_files_by_account(account_id)
@@ -273,7 +274,8 @@ class TestSqliteCloudRepository:
 
         assert retrieved.id == account_id
         assert retrieved.provider == "quark"
-        assert isinstance(retrieved.created_at, str)
+        from datetime import datetime
+        assert isinstance(retrieved.created_at, datetime)
 
     def test_row_to_file(self, cloud_repo, sample_account, sample_file):
         """Test conversion of row to CloudFile."""

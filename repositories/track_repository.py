@@ -557,3 +557,82 @@ class SqliteTrackRepository(BaseRepository):
         cursor.execute("UPDATE tracks SET cover_path = ? WHERE id = ?", (cover_path, track_id))
         conn.commit()
         return cursor.rowcount > 0
+
+    def update_fields(
+        self, track_id: TrackId, title: str = None, artist: str = None,
+        album: str = None, cloud_file_id: str = None
+    ) -> bool:
+        """
+        Update specific track fields.
+
+        Args:
+            track_id: Track ID to update
+            title: New title (optional)
+            artist: New artist (optional)
+            album: New album (optional)
+            cloud_file_id: New cloud file ID (optional)
+
+        Returns:
+            True if updated successfully
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        updates = []
+        params = []
+
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+        if artist is not None:
+            updates.append("artist = ?")
+            params.append(artist)
+        if album is not None:
+            updates.append("album = ?")
+            params.append(album)
+        if cloud_file_id is not None:
+            updates.append("cloud_file_id = ?")
+            params.append(cloud_file_id)
+
+        if not updates:
+            return False
+
+        params.append(track_id)
+
+        cursor.execute(
+            f"UPDATE tracks SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def get_playlist_tracks(self, playlist_id: int) -> List[Track]:
+        """Get all tracks in a playlist."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.*
+            FROM tracks t
+            JOIN playlist_items pi ON t.id = pi.track_id
+            WHERE pi.playlist_id = ?
+            ORDER BY pi.position
+        """, (playlist_id,))
+        rows = cursor.fetchall()
+        return [self._row_to_track(row) for row in rows]
+
+    def add_to_playlist(self, playlist_id: int, track_id: TrackId) -> bool:
+        """Add a track to a playlist."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT OR IGNORE INTO playlist_items (playlist_id, track_id, position)
+                SELECT ?, ?, COALESCE(MAX(position), -1) + 1
+                FROM playlist_items
+                WHERE playlist_id = ?
+            """, (playlist_id, track_id, playlist_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.IntegrityError:
+            return False
+

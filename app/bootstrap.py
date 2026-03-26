@@ -14,6 +14,7 @@ from repositories.album_repository import SqliteAlbumRepository
 from repositories.artist_repository import SqliteArtistRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
+from repositories.settings_repository import SqliteSettingsRepository
 from repositories.track_repository import SqliteTrackRepository
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
@@ -58,6 +59,7 @@ class Bootstrap:
         self._history_repo: Optional[SqliteHistoryRepository] = None
         self._album_repo: Optional[SqliteAlbumRepository] = None
         self._artist_repo: Optional[SqliteArtistRepository] = None
+        self._settings_repo: Optional[SqliteSettingsRepository] = None
 
         # Services
         self._playback_service: Optional[PlaybackService] = None
@@ -99,7 +101,7 @@ class Bootstrap:
     def config(self) -> ConfigManager:
         """Get config manager."""
         if self._config is None:
-            self._config = ConfigManager(db_manager=self.db)
+            self._config = ConfigManager(settings_repo=self.settings_repo)
         return self._config
 
     @property
@@ -173,6 +175,13 @@ class Bootstrap:
         if self._artist_repo is None:
             self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self.db)
         return self._artist_repo
+
+    @property
+    def settings_repo(self) -> SqliteSettingsRepository:
+        """Get settings repository."""
+        if self._settings_repo is None:
+            self._settings_repo = SqliteSettingsRepository(self._db_path, db_manager=self.db)
+        return self._settings_repo
 
     # ===== Services =====
 
@@ -253,9 +262,8 @@ class Bootstrap:
         """Get cloud account service."""
         if self._cloud_account_service is None:
             self._cloud_account_service = CloudAccountService(
-                db_manager=self.db,
-                event_bus=self.event_bus,
                 cloud_repo=self.cloud_repo,
+                event_bus=self.event_bus,
             )
         return self._cloud_account_service
 
@@ -264,7 +272,7 @@ class Bootstrap:
         """Get cloud file service."""
         if self._cloud_file_service is None:
             self._cloud_file_service = CloudFileService(
-                db_manager=self.db,
+                cloud_repo=self.cloud_repo,
                 event_bus=self.event_bus,
             )
         return self._cloud_file_service

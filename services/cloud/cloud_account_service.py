@@ -9,7 +9,6 @@ from domain.cloud import CloudAccount
 from system.event_bus import EventBus
 
 if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
     from repositories.cloud_repository import SqliteCloudRepository
 
 logger = logging.getLogger(__name__)
@@ -25,21 +24,18 @@ class CloudAccountService:
 
     def __init__(
         self,
-        db_manager: "DatabaseManager",
+        cloud_repo: "SqliteCloudRepository",
         event_bus: EventBus = None,
-        cloud_repo: "SqliteCloudRepository" = None,
     ):
         """
         Initialize cloud account service.
 
         Args:
-            db_manager: Database manager for data persistence
-            event_bus: Event bus for broadcasting changes
             cloud_repo: Cloud repository for account operations
+            event_bus: Event bus for broadcasting changes
         """
-        self._db = db_manager
-        self._event_bus = event_bus or EventBus.instance()
         self._cloud_repo = cloud_repo
+        self._event_bus = event_bus or EventBus.instance()
 
     def get_accounts(self, provider: str = None) -> List[CloudAccount]:
         """
@@ -51,7 +47,7 @@ class CloudAccountService:
         Returns:
             List of CloudAccount objects
         """
-        return self._db.get_cloud_accounts(provider=provider)
+        return self._cloud_repo.get_all_accounts(provider=provider)
 
     def get_account(self, account_id: int) -> Optional[CloudAccount]:
         """
@@ -63,7 +59,7 @@ class CloudAccountService:
         Returns:
             CloudAccount or None if not found
         """
-        return self._db.get_cloud_account(account_id)
+        return self._cloud_repo.get_account_by_id(account_id)
 
     def create_account(
         self,
@@ -86,7 +82,7 @@ class CloudAccountService:
         Returns:
             New account ID
         """
-        account_id = self._db.create_cloud_account(
+        account_id = self._cloud_repo.create_account(
             provider=provider,
             account_name=account_name,
             account_email=account_email,
@@ -113,7 +109,7 @@ class CloudAccountService:
         Returns:
             True if updated successfully
         """
-        result = self._db.update_cloud_account_token(
+        result = self._cloud_repo.update_account_token(
             account_id=account_id,
             access_token=access_token,
             refresh_token=refresh_token
@@ -143,7 +139,7 @@ class CloudAccountService:
         Returns:
             True if updated successfully
         """
-        return self._db.update_cloud_account_folder(
+        return self._cloud_repo.update_account_folder(
             account_id=account_id,
             folder_id=folder_id,
             folder_path=folder_path,
@@ -170,7 +166,7 @@ class CloudAccountService:
         Returns:
             True if updated successfully
         """
-        return self._db.update_cloud_account_playing_state(
+        return self._cloud_repo.update_account_playing_state(
             account_id=account_id,
             playing_fid=playing_fid,
             position=position,
@@ -187,8 +183,4 @@ class CloudAccountService:
         Returns:
             True if deleted successfully
         """
-        # Use injected cloud_repo for deletion
-        if self._cloud_repo:
-            return self._cloud_repo.delete_account(account_id)
-        # Fallback to db_manager
-        return self._db.delete_cloud_account(account_id)
+        return self._cloud_repo.delete_account(account_id)

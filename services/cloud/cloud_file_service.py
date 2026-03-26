@@ -9,7 +9,7 @@ from domain.cloud import CloudFile
 from system.event_bus import EventBus
 
 if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
+    from repositories.cloud_repository import SqliteCloudRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +22,15 @@ class CloudFileService:
     without directly accessing the database layer.
     """
 
-    def __init__(self, db_manager: "DatabaseManager", event_bus: EventBus = None):
+    def __init__(self, cloud_repo: "SqliteCloudRepository", event_bus: EventBus = None):
         """
         Initialize cloud file service.
 
         Args:
-            db_manager: Database manager for data persistence
+            cloud_repo: Cloud repository for file operations
             event_bus: Event bus for broadcasting changes
         """
-        self._db = db_manager
+        self._cloud_repo = cloud_repo
         self._event_bus = event_bus or EventBus.instance()
 
     def get_files(self, account_id: int, parent_id: str = "") -> List[CloudFile]:
@@ -44,7 +44,7 @@ class CloudFileService:
         Returns:
             List of CloudFile objects
         """
-        return self._db.get_cloud_files(account_id=account_id, parent_id=parent_id)
+        return self._cloud_repo.get_files_by_parent(account_id=account_id, parent_id=parent_id)
 
     def get_file(self, file_id: str, account_id: int) -> Optional[CloudFile]:
         """
@@ -57,7 +57,7 @@ class CloudFileService:
         Returns:
             CloudFile or None if not found
         """
-        return self._db.get_cloud_file(file_id=file_id, account_id=account_id)
+        return self._cloud_repo.get_file(file_id=file_id, account_id=account_id)
 
     def get_file_by_file_id(self, file_id: str) -> Optional[CloudFile]:
         """
@@ -69,7 +69,7 @@ class CloudFileService:
         Returns:
             CloudFile or None if not found
         """
-        return self._db.get_cloud_file_by_file_id(file_id)
+        return self._cloud_repo.get_file_by_file_id(file_id)
 
     def get_file_by_local_path(self, local_path: str) -> Optional[CloudFile]:
         """
@@ -81,7 +81,7 @@ class CloudFileService:
         Returns:
             CloudFile or None if not found
         """
-        return self._db.get_cloud_file_by_local_path(local_path)
+        return self._cloud_repo.get_file_by_local_path(local_path)
 
     def cache_files(self, account_id: int, files: List[CloudFile]) -> bool:
         """
@@ -96,7 +96,7 @@ class CloudFileService:
         Returns:
             True if cached successfully
         """
-        return self._db.cache_cloud_files(account_id=account_id, files=files)
+        return self._cloud_repo.cache_files(account_id=account_id, files=files)
 
     def update_local_path(self, file_id: str, account_id: int, local_path: str) -> bool:
         """
@@ -110,7 +110,7 @@ class CloudFileService:
         Returns:
             True if updated successfully
         """
-        result = self._db.update_cloud_file_local_path(
+        result = self._cloud_repo.update_file_local_path(
             file_id=file_id,
             account_id=account_id,
             local_path=local_path
@@ -126,4 +126,4 @@ class CloudFileService:
         Returns:
             List of CloudFile objects with local_path
         """
-        return self._db.get_all_downloaded_cloud_files()
+        return self._cloud_repo.get_all_downloaded()

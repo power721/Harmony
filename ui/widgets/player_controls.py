@@ -5,7 +5,7 @@ import logging
 import threading
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSize
-from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen, QFont
+from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -15,17 +15,18 @@ from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
 )
-from pathlib import Path
 
 from domain.playback import PlaybackState, PlayMode
 from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.icons import IconName, get_icon
 from utils import format_time
-from ui.icons import IconName, get_icon, IconColor
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+PLAY_ICON_SIZE = 28
 
 
 class PlayerControls(QWidget):
@@ -230,7 +231,7 @@ class PlayerControls(QWidget):
         controls_layout.addWidget(self._prev_btn)
 
         # Play/Pause button
-        self._play_pause_btn = self._create_control_button(IconName.PLAY)
+        self._play_pause_btn = self._create_control_button(IconName.PLAY, size=PLAY_ICON_SIZE)
         self._play_pause_btn.setFixedSize(32, 32)
         self._play_pause_btn.setToolTip(t("play_pause"))
         controls_layout.addWidget(self._play_pause_btn)
@@ -288,13 +289,13 @@ class PlayerControls(QWidget):
 
         return widget
 
-    def _create_control_button(self, icon_name: str, color: str = None) -> QPushButton:
+    def _create_control_button(self, icon_name: str, color: str = None, size: int = 24) -> QPushButton:
         """Create a control button with SVG icon."""
         btn = QPushButton()
         btn.setObjectName("controlBtn")
         btn.setCursor(Qt.PointingHandCursor)
-        btn.setIcon(get_icon(icon_name, color, 24))
-        btn.setIconSize(QSize(24, 24))
+        btn.setIcon(get_icon(icon_name, color, size))
+        btn.setIconSize(QSize(size, size))
 
         return btn
 
@@ -590,13 +591,15 @@ class PlayerControls(QWidget):
                         logger.info(
                             f"[PlayerControls] Metadata updated for current track {track_id}, "
                             f"title={track.title}, artist={track.artist}, cover_path={track.cover_path}")
-                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
+                        QTimer.singleShot(100, lambda t=updated_track,
+                                                      v=self._cover_load_version: self._load_cover_art_async(t, v))
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
             else:
                 # Fallback: reload with current track
                 logger.info(f"[PlayerControls] Metadata updated for current track {track_id}, reloading cover")
-                QTimer.singleShot(100, lambda t=current_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
+                QTimer.singleShot(100,
+                                  lambda t=current_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
 
     def _on_cover_updated(self, item_id, is_cloud: bool = False):
         """Handle cover update from EventBus."""
@@ -639,7 +642,8 @@ class PlayerControls(QWidget):
                             "cover_path": track.cover_path,
                             "source_type": "local",
                         }
-                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
+                        QTimer.singleShot(100, lambda t=updated_track,
+                                                      v=self._cover_load_version: self._load_cover_art_async(t, v))
                         return
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated track: {e}")
@@ -657,7 +661,8 @@ class PlayerControls(QWidget):
                         updated_track["cover_path"] = track.cover_path  # Use database cover_path
                         logger.info(
                             f"[PlayerControls] Reloaded cloud track metadata: artist={track.artist}, album={track.album}, cover_path={track.cover_path}")
-                        QTimer.singleShot(100, lambda t=updated_track, v=self._cover_load_version: self._load_cover_art_async(t, v))
+                        QTimer.singleShot(100, lambda t=updated_track,
+                                                      v=self._cover_load_version: self._load_cover_art_async(t, v))
                         return
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error loading updated cloud track: {e}")
@@ -804,9 +809,9 @@ class PlayerControls(QWidget):
     def _on_state_changed(self, state: PlaybackState):
         """Handle player state change."""
         if state == PlaybackState.PLAYING:
-            self._update_button_icon(self._play_pause_btn, IconName.PAUSE)
+            self._update_button_icon(self._play_pause_btn, IconName.PAUSE, icon_size=PLAY_ICON_SIZE)
         else:
-            self._update_button_icon(self._play_pause_btn, IconName.PLAY)
+            self._update_button_icon(self._play_pause_btn, IconName.PLAY, icon_size=PLAY_ICON_SIZE)
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""
@@ -985,7 +990,8 @@ class PlayerControls(QWidget):
         """
         # Ignore stale results
         if version != self._cover_load_version:
-            logger.debug(f"[PlayerControls] Ignoring stale cover result (version {version}, current {self._cover_load_version})")
+            logger.debug(
+                f"[PlayerControls] Ignoring stale cover result (version {version}, current {self._cover_load_version})")
             return
 
         logger.info(f"[PlayerControls] _show_cover called with: {cover_path}")
