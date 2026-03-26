@@ -9,13 +9,15 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from utils.helpers import get_cache_dir
+
 logger = logging.getLogger(__name__)
 
 
 class ImageCache:
     """Manages cached images for online music views."""
 
-    CACHE_DIR = Path.home() / '.cache' / 'harmony_player' / 'online_images'
+    CACHE_DIR = get_cache_dir('online_images')
 
     # Supported image extensions
     EXTENSIONS = {b'\xff\xd8\xff': '.jpg', b'\x89PNG': '.png', b'GIF8': '.gif'}

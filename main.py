@@ -51,6 +51,55 @@ def setup_ssl_certificates():
 setup_ssl_certificates()
 
 
+class QQMusicApiCachePathInjector:
+    """
+    Meta path finder to inject writable cache path into qqmusic_api.utils.device.
+
+    The qqmusic_api library stores device info in a .cache directory relative to
+    its installation path. This fails when running as an AppImage (read-only FS).
+
+    This injector intercepts the import of qqmusic_api.utils.device and patches
+    the device_path variable before any code uses it.
+    """
+
+    def __init__(self):
+        self._device_path = None
+
+    def get_device_path(self) -> Path:
+        """Get the writable device cache path."""
+        if self._device_path is None:
+            # Import here to avoid circular import
+            from utils.helpers import get_cache_dir
+
+            cache_dir = get_cache_dir('qqmusic_api')
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            self._device_path = cache_dir / 'device.json'
+
+        return self._device_path
+
+    def find_spec(self, fullname, path, target=None):
+        """Hook into import to patch device_path when device module is loaded."""
+        if fullname == 'qqmusic_api.utils.device':
+            # Let the normal import happen first
+            return None
+        return None
+
+    def patch_device_path(self):
+        """Patch the device_path after module is loaded."""
+        try:
+            import qqmusic_api.utils.device as device_module
+            device_module.device_path = self.get_device_path()
+            logging.debug(f"qqmusic_api device cache path set to: {device_module.device_path}")
+        except ImportError:
+            pass  # Module not available, skip patching
+
+
+# Install the injector and patch immediately (handles cases where module is already loaded)
+_injector = QQMusicApiCachePathInjector()
+sys.meta_path.insert(0, _injector)
+_injector.patch_device_path()
+
+
 def get_resource_path(relative_path: str) -> Path:
     """Get absolute path to resource, works for dev and PyInstaller bundle."""
     if getattr(sys, 'frozen', False):

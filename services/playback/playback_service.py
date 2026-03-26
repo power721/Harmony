@@ -25,6 +25,7 @@ from infrastructure.audio import PlayerEngine
 from infrastructure.database import DatabaseManager
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from utils.helpers import get_cache_dir
 
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
@@ -948,7 +949,7 @@ class PlaybackService(QObject):
 
             cover_path = None
             if metadata.get("cover"):
-                cache_dir = Path.home() / ".cache" / "harmony_player" / "covers"
+                cache_dir = get_cache_dir('covers')
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 cover_filename = f"{file_path.stem}.jpg"
                 cover_path = str(cache_dir / cover_filename)

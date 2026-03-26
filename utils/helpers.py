@@ -1,9 +1,40 @@
 """
 Helper utility functions for the music player.
 """
+import sys
+from pathlib import Path
 from typing import List, Tuple, Optional
 
 from system import t
+
+
+def get_cache_dir(subdir: str = '') -> Path:
+    """
+    Get the cache directory for the application.
+
+    Uses platformdirs when running as a frozen executable (AppImage/PyInstaller)
+    for proper cross-platform cache directory resolution.
+    Falls back to ~/.cache/Harmony for development mode.
+
+    Args:
+        subdir: Optional subdirectory name (e.g., 'covers', 'online_images')
+
+    Returns:
+        Path to the cache directory
+    """
+    if getattr(sys, 'frozen', False):
+        try:
+            import platformdirs
+            cache_dir = Path(platformdirs.user_cache_dir('Harmony', 'HarmonyPlayer'))
+        except ImportError:
+            cache_dir = Path.home() / '.cache' / 'Harmony'
+    else:
+        cache_dir = Path.home() / '.cache' / 'Harmony'
+
+    if subdir:
+        cache_dir = cache_dir / subdir
+
+    return cache_dir
 
 
 def format_duration(seconds: float) -> str:

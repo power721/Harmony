@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
 from infrastructure.network import HttpClient
+from utils.helpers import get_cache_dir
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ class CoverService:
     """Service for extracting and fetching album covers."""
 
     # Cache directory
-    CACHE_DIR = Path.home() / '.cache' / 'harmony_player' / 'covers'
+    CACHE_DIR = get_cache_dir('covers')
 
     def __init__(
         self,
