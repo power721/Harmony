@@ -668,12 +668,17 @@ class MainWindow(QMainWindow):
 
     def _on_player_album_clicked(self, album_name: str, artist_name: str):
         """Handle album label click from player controls."""
-        if not album_name or not artist_name:
+        if not album_name:
             return
         # Get Album object by name and artist
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
-        album = bootstrap.library_service.get_album_by_name(album_name, artist_name)
+        album = None
+        if artist_name:
+            album = bootstrap.library_service.get_album_by_name(album_name, artist_name)
+        if not album:
+            # Try without artist (some albums may not have artist info)
+            album = bootstrap.library_service.get_album_by_name(album_name)
         if album:
             self._on_album_clicked(album)
 

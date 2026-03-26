@@ -130,19 +130,9 @@ class PlayerControls(QWidget):
         self._title_label.setObjectName("trackTitle")
         self._title_label.setStyleSheet("color: #ffffff; font-weight: bold;")
 
-        self._artist_label = ClickableLabel()
-        self._artist_label.setObjectName("trackArtist")
-        self._artist_label.setStyleSheet("""
-            QLabel#trackArtist {
-                color: #b3b3b3;
-            }
-            QLabel#trackArtist:hover {
-                color: #1db954;
-                text-decoration: underline;
-            }
-        """)
-        self._artist_label.setCursor(QCursor(Qt.PointingHandCursor))
-        self._artist_label.clicked.connect(self._on_artist_label_clicked)
+        # Multi-artist widget
+        self._artist_widget = MultiArtistWidget()
+        self._artist_widget.artist_clicked.connect(self.artist_clicked.emit)
 
         self._album_label = ClickableLabel()
         self._album_label.setObjectName("trackAlbum")
@@ -160,7 +150,7 @@ class PlayerControls(QWidget):
 
         info_layout.addWidget(self._title_label)
         info_layout.addWidget(self._album_label)
-        info_layout.addWidget(self._artist_label)
+        info_layout.addWidget(self._artist_widget)
         info_layout.addStretch()
 
         layout.addLayout(info_layout)
@@ -587,7 +577,7 @@ class PlayerControls(QWidget):
                         }
                         # Update title and artist labels
                         self._title_label.setText(track.title or t("unknown"))
-                        self._artist_label.setText(track.artist or t("unknown"))
+                        self._artist_widget.set_artists(track.artist or "")
                         logger.info(
                             f"[PlayerControls] Metadata updated for current track {track_id}, "
                             f"title={track.title}, artist={track.artist}, cover_path={track.cover_path}")
@@ -836,7 +826,7 @@ class PlayerControls(QWidget):
             artist = track_dict.get("artist", t("unknown"))
             album = track_dict.get("album", "")
             self._title_label.setText(title)
-            self._artist_label.setText(artist)
+            self._artist_widget.set_artists(artist if artist != t("unknown") else "")
             # Show album only if it exists
             if album:
                 self._album_label.setText(album)
@@ -859,7 +849,7 @@ class PlayerControls(QWidget):
             QTimer.singleShot(100, lambda v=current_version, t=track_dict: self._load_cover_art_async(t, v))
         else:
             self._title_label.setText(t("not_playing"))
-            self._artist_label.setText("")
+            self._artist_widget.clear()
             self._album_label.setText("")
             self._album_label.hide()
             self._cover_label.clear()
@@ -1021,18 +1011,15 @@ class PlayerControls(QWidget):
             except Exception as e:
                 logger.error(f"Error showing cover dialog: {e}")
 
-    def _on_artist_label_clicked(self):
-        """Handle artist label click - emit signal to navigate to artist view."""
-        artist = self._artist_label.text()
-        if artist:
-            self.artist_clicked.emit(artist)
-
     def _on_album_label_clicked(self):
         """Handle album label click - emit signal to navigate to album view."""
         album = self._album_label.text()
-        artist = self._artist_label.text()
-        if album and artist:
-            self.album_clicked.emit(album, artist)
+        if not album:
+            return
+        # Get artist from the first artist in the multi-artist widget
+        artist = self._artist_widget._artists[0] if self._artist_widget._artists else ""
+        # Emit signal - main_window will try to find the album
+        self.album_clicked.emit(album, artist)
 
     def _update_position_display(self):
         """Update position display continuously."""
@@ -1091,6 +1078,72 @@ class ClickableLabel(QLabel):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+
+class MultiArtistWidget(QWidget):
+    """Widget to display multiple clickable artist names."""
+
+    artist_clicked = Signal(str)  # Emits artist name when clicked
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._artists: list[str] = []
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def set_artists(self, artist_string: str):
+        """
+        Set artists from a comma-separated string.
+
+        Parses the string and creates clickable labels for each artist.
+
+        Args:
+            artist_string: Artist string (e.g., "Artist A, Artist B")
+        """
+        from services.metadata import split_artists
+
+        # Clear existing labels
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not artist_string:
+            return
+
+        self._artists = split_artists(artist_string)
+
+        for i, artist_name in enumerate(self._artists):
+            if i > 0:
+                # Add separator
+                sep = QLabel(", ")
+                sep.setStyleSheet("color: #b3b3b3;")
+                self._layout.addWidget(sep)
+
+            label = ClickableLabel(artist_name)
+            label.setStyleSheet("""
+                QLabel {
+                    color: #b3b3b3;
+                }
+                QLabel:hover {
+                    color: #1db954;
+                    text-decoration: underline;
+                }
+            """)
+            label.setCursor(QCursor(Qt.PointingHandCursor))
+            label.clicked.connect(lambda name=artist_name: self.artist_clicked.emit(name))
+            self._layout.addWidget(label)
+
+        self._layout.addStretch()
+
+    def clear(self):
+        """Clear all artists."""
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._artists = []
 
 
 class CoverDialog(QDialog):

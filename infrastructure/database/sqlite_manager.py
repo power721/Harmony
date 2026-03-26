@@ -837,6 +837,37 @@ class DatabaseManager:
                                FROM tracks
                                """)
 
+        # Migration 4: Multi-artist support
+        # Add normalized_name column to artists table
+        cursor.execute("PRAGMA table_info(artists)")
+        artist_columns = [col[1] for col in cursor.fetchall()]
+        if 'normalized_name' not in artist_columns:
+            cursor.execute("ALTER TABLE artists ADD COLUMN normalized_name TEXT")
+            # Populate normalized_name for existing artists
+            cursor.execute("UPDATE artists SET normalized_name = LOWER(name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_artists_normalized ON artists(normalized_name)")
+            logger.info("[Database] Added 'normalized_name' column to artists table")
+
+        # Create track_artists junction table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS track_artists (
+                track_id INTEGER NOT NULL,
+                artist_id INTEGER NOT NULL,
+                position INTEGER DEFAULT 0,
+                PRIMARY KEY (track_id, artist_id),
+                FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+                FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_track_artists_artist
+            ON track_artists(artist_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_track_artists_track
+            ON track_artists(track_id)
+        """)
+
         # Update schema version after all migrations complete
         if schema_changed:
             cursor.execute(

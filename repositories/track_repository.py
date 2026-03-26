@@ -91,6 +91,8 @@ class SqliteTrackRepository(BaseRepository):
 
     def add(self, track: Track) -> TrackId:
         """Add a new track and return its ID."""
+        from services.metadata import split_artists, normalize_artist_name
+
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
@@ -102,8 +104,31 @@ class SqliteTrackRepository(BaseRepository):
                                track.duration, track.cover_path, track.cloud_file_id,
                                track.source.value if hasattr(track, 'source') and track.source else 'Local'
                            ))
+            track_id = cursor.lastrowid
+
+            # Create artist entries and junction records
+            if track.artist:
+                artist_names = split_artists(track.artist)
+                for position, artist_name in enumerate(artist_names):
+                    normalized = normalize_artist_name(artist_name)
+                    # Insert or get artist
+                    cursor.execute("""
+                        INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+                        ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+                    """, (artist_name, normalized, normalized))
+                    # Get artist ID
+                    cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
+                    artist_row = cursor.fetchone()
+                    if artist_row:
+                        artist_id = artist_row[0]
+                        # Create junction record
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                            VALUES (?, ?, ?)
+                        """, (track_id, artist_id, position))
+
             conn.commit()
-            return cursor.lastrowid
+            return track_id
         except sqlite3.IntegrityError:
             # Track already exists
             return 0
@@ -335,6 +360,8 @@ class SqliteTrackRepository(BaseRepository):
         """
         Get a specific artist by name.
 
+        Uses normalized name for case-insensitive matching.
+
         Args:
             artist_name: Artist name
 
@@ -342,18 +369,20 @@ class SqliteTrackRepository(BaseRepository):
             Artist object or None if not found
         """
         from domain.artist import Artist
+        from services.metadata import normalize_artist_name
 
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Try to use artists table first
+        # Try to use artists table first with normalized name
         cursor.execute("SELECT 1 FROM artists LIMIT 1")
         if cursor.fetchone() is not None:
+            normalized = normalize_artist_name(artist_name)
             cursor.execute("""
-                SELECT name, cover_path, song_count, album_count
+                SELECT id, name, cover_path, song_count, album_count
                 FROM artists
-                WHERE name = ?
-            """, (artist_name,))
+                WHERE normalized_name = ?
+            """, (normalized,))
             row = cursor.fetchone()
             if row:
                 return Artist(
@@ -398,20 +427,40 @@ class SqliteTrackRepository(BaseRepository):
         """
         Get all tracks for a specific artist.
 
+        Uses track_artists junction table for multi-artist support.
+        Falls back to direct artist string match if junction table is empty.
+
         Args:
             artist_name: Artist name
 
         Returns:
             List of Track objects by the artist
         """
+        from services.metadata import normalize_artist_name
+
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # First try using junction table with normalized name
+        normalized = normalize_artist_name(artist_name)
         cursor.execute("""
-            SELECT * FROM tracks
-            WHERE artist = ?
-            ORDER BY album, id
-        """, (artist_name,))
+            SELECT t.* FROM tracks t
+            JOIN track_artists ta ON t.id = ta.track_id
+            JOIN artists a ON ta.artist_id = a.id
+            WHERE a.normalized_name = ?
+            ORDER BY t.album, t.id
+        """, (normalized,))
         rows = cursor.fetchall()
+
+        # If no results from junction table, fall back to direct match
+        if not rows:
+            cursor.execute("""
+                SELECT * FROM tracks
+                WHERE artist = ?
+                ORDER BY album, id
+            """, (artist_name,))
+            rows = cursor.fetchall()
+
         return [self._row_to_track(row) for row in rows]
 
     def get_artist_albums(self, artist_name: str) -> List['Album']:
@@ -635,4 +684,104 @@ class SqliteTrackRepository(BaseRepository):
             return cursor.rowcount > 0
         except sqlite3.IntegrityError:
             return False
+
+    # ===== Multi-Artist Operations =====
+
+    def sync_track_artists(self, track_id: TrackId, artist_string: str) -> bool:
+        """
+        Sync track_artists junction records for a track.
+
+        Args:
+            track_id: Track ID
+            artist_string: Artist string to parse
+
+        Returns:
+            True if successful
+        """
+        from services.metadata import split_artists, normalize_artist_name
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Clear existing junction records for this track
+            cursor.execute("DELETE FROM track_artists WHERE track_id = ?", (track_id,))
+
+            # Create new junction records
+            if artist_string:
+                artist_names = split_artists(artist_string)
+                for position, artist_name in enumerate(artist_names):
+                    normalized = normalize_artist_name(artist_name)
+                    # Insert or get artist
+                    cursor.execute("""
+                        INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+                        ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+                    """, (artist_name, normalized, normalized))
+                    # Get artist ID
+                    cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
+                    artist_row = cursor.fetchone()
+                    if artist_row:
+                        artist_id = artist_row[0]
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                            VALUES (?, ?, ?)
+                        """, (track_id, artist_id, position))
+
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+    def update_artist_stats(self) -> int:
+        """
+        Update song_count and album_count for all artists.
+
+        Uses track_artists junction table for accurate counts.
+
+        Returns:
+            Number of artists updated
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Update artist stats using junction table
+        cursor.execute("""
+            UPDATE artists SET
+                song_count = (
+                    SELECT COUNT(DISTINCT ta.track_id)
+                    FROM track_artists ta
+                    WHERE ta.artist_id = artists.id
+                ),
+                album_count = (
+                    SELECT COUNT(DISTINCT t.album)
+                    FROM track_artists ta
+                    JOIN tracks t ON ta.track_id = t.id
+                    WHERE ta.artist_id = artists.id AND t.album IS NOT NULL AND t.album != ''
+                )
+        """)
+
+        conn.commit()
+        return cursor.rowcount
+
+    def get_track_artist_names(self, track_id: TrackId) -> List[str]:
+        """
+        Get list of artist names for a track.
+
+        Args:
+            track_id: Track ID
+
+        Returns:
+            List of artist names in order
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT a.name FROM artists a
+            JOIN track_artists ta ON a.id = ta.artist_id
+            WHERE ta.track_id = ?
+            ORDER BY ta.position
+        """, (track_id,))
+
+        return [row[0] for row in cursor.fetchall()]
 
