@@ -708,3 +708,128 @@ class QQMusicService:
         self._credential = credential
         self.client.credential = credential
         self.client._set_credential_headers()
+
+    def get_home_feed(self) -> List[Dict[str, Any]]:
+        """
+        获取主页推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_home_feed()
+            if not result:
+                return []
+            # Handle different response structures
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # v_shelf is a list of shelves, each containing item_list
+                if 'v_shelf' in result and isinstance(result['v_shelf'], list):
+                    shelves = result['v_shelf']
+                    if shelves and isinstance(shelves[0], dict):
+                        # Get songs from first shelf's item_list
+                        for shelf in shelves:
+                            items = shelf.get('item_list', [])
+                            if items:
+                                return items
+                # Try other common locations
+                for key in ['songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get home feed failed: {e}", exc_info=True)
+            return []
+
+    def get_guess_recommend(self) -> List[Dict[str, Any]]:
+        """
+        获取猜你喜欢推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_guess_recommend()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # trackList is the key for guess recommend
+                for key in ['trackList', 'songlist', 'songs', 'list', 'items', 'data', 'tracks']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get guess recommend failed: {e}", exc_info=True)
+            return []
+
+    def get_radar_recommend(self) -> List[Dict[str, Any]]:
+        """
+        获取雷达推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_radar_recommend()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # VecSongs is the key for radar recommend (capitalized)
+                for key in ['VecSongs', 'songlist', 'songs', 'list', 'items', 'trackList', 'data', 'tracks']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get radar recommend failed: {e}", exc_info=True)
+            return []
+
+    def get_recommend_songlist(self) -> List[Dict[str, Any]]:
+        """
+        获取推荐歌单数据.
+
+        Returns:
+            推荐歌单列表
+        """
+        try:
+            result = self.client.get_recommend_songlist()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # List is the key for recommend songlist (capitalized)
+                for key in ['List', 'songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get recommend songlist failed: {e}", exc_info=True)
+            return []
+
+    def get_recommend_newsong(self) -> List[Dict[str, Any]]:
+        """
+        获取推荐新歌数据.
+
+        Returns:
+            推荐新歌列表
+        """
+        try:
+            result = self.client.get_recommend_newsong()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # songlist is the key for new songs
+                for key in ['songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get recommend newsong failed: {e}", exc_info=True)
+            return []

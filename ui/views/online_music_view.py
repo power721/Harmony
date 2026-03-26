@@ -34,6 +34,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
 from PySide6.QtGui import QCursor, QColor, QBrush, QAction
 
+from ui.widgets.recommend_card import RecommendSection
+
 
 class CustomQCompleter(QCompleter):
     """自定义QCompleter用于搜索建议."""
@@ -177,6 +179,40 @@ class HotkeyWorker(QThread):
         except Exception as e:
             logger.error(f"Get hotkey failed: {e}")
             self.hotkey_ready.emit([])
+
+
+class RecommendWorker(QThread):
+    """Background worker for fetching recommendations."""
+
+    recommend_ready = Signal(str, list)  # (recommend_type, list of recommendations)
+
+    def __init__(self, qqmusic_service, recommend_type: str):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+        self._recommend_type = recommend_type
+
+    def run(self):
+        try:
+            if not self._qqmusic_service:
+                self.recommend_ready.emit(self._recommend_type, [])
+                return
+
+            result = []
+            if self._recommend_type == "home_feed":
+                result = self._qqmusic_service.get_home_feed()
+            elif self._recommend_type == "guess":
+                result = self._qqmusic_service.get_guess_recommend()
+            elif self._recommend_type == "radar":
+                result = self._qqmusic_service.get_radar_recommend()
+            elif self._recommend_type == "songlist":
+                result = self._qqmusic_service.get_recommend_songlist()
+            elif self._recommend_type == "newsong":
+                result = self._qqmusic_service.get_recommend_newsong()
+
+            self.recommend_ready.emit(self._recommend_type, result)
+        except Exception as e:
+            logger.error(f"Get recommendation {self._recommend_type} failed: {e}")
+            self.recommend_ready.emit(self._recommend_type, [])
 
 
 class HotkeyPopup(QWidget):
@@ -342,6 +378,11 @@ class OnlineMusicView(QWidget):
         self._hotkey_popup: Optional[HotkeyPopup] = None
         self._hotkeys: List[Dict[str, Any]] = []  # Cached hotkeys
 
+        # Recommend state
+        self._recommend_workers: List[RecommendWorker] = []
+        self._recommendations: Dict[str, List[Dict[str, Any]]] = {}
+        self._recommendations_loaded = False
+
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
         self._grid_total = 0  # Total results for current grid search
@@ -370,6 +411,11 @@ class OnlineMusicView(QWidget):
         # Search bar
         search_bar = self._create_search_bar()
         layout.addWidget(search_bar)
+
+        # Recommendations section (shown when logged in)
+        self._recommend_section = RecommendSection(self)
+        self._recommend_section.recommendation_clicked.connect(self._on_recommendation_clicked)
+        layout.addWidget(self._recommend_section)
 
         # Type tabs (hidden by default)
         self._tabs = self._create_type_tabs()
@@ -403,10 +449,14 @@ class OnlineMusicView(QWidget):
         self._detail_view.album_clicked.connect(self._on_album_clicked)
         self._stack.addWidget(self._detail_view)
 
-        layout.addWidget(self._stack)
+        layout.addWidget(self._stack, 1)  # Give stretch factor so it doesn't push other widgets
 
         # Apply styles
         self._apply_styles()
+
+        # Load recommendations if logged in (after UI is fully set up)
+        if self._service._has_qqmusic_credential():
+            self._load_recommendations()
 
     def showEvent(self, event):
         """Handle show event - load top lists on first display."""
@@ -869,9 +919,17 @@ class OnlineMusicView(QWidget):
                 self._login_status_label.setText(t("qqmusic_logged_in"))
 
             self._login_btn.setText(t("logout"))
+
+            # Load recommendations when logged in (only if UI is fully set up)
+            if hasattr(self, '_recommend_section'):
+                self._load_recommendations()
         else:
             self._login_status_label.setText(t("qqmusic_not_logged_in"))
             self._login_btn.setText(t("login"))
+
+            # Hide recommendations when not logged in
+            if hasattr(self, '_recommend_section'):
+                self._recommend_section.hide()
 
     def _on_login_clicked(self):
         """Handle login button click."""
@@ -899,6 +957,348 @@ class OnlineMusicView(QWidget):
         logger.info("QQ Music credentials obtained, refreshing service...")
         self._refresh_qqmusic_service()
         self._update_login_status()
+
+    def _load_recommendations(self):
+        """Load all 5 types of recommendations."""
+        if self._recommendations_loaded:
+            return
+
+        self._recommend_section.show_loading()
+        self._recommendations_loaded = True
+
+        # Define 5 recommendation types with their display titles
+        recommend_types = [
+            ("home_feed", t("home_recommend")),
+            ("guess", t("guess_you_like")),
+            ("radar", t("radar_recommend")),
+            ("songlist", t("recommend_playlists")),
+            ("newsong", t("new_songs")),
+        ]
+
+        for recommend_type, title in recommend_types:
+            worker = RecommendWorker(self._qqmusic_service, recommend_type)
+            worker.recommend_ready.connect(self._on_recommend_ready)
+            self._recommend_workers.append(worker)
+            worker.start()
+
+    def _on_recommend_ready(self, recommend_type: str, data: Any):
+        """Handle recommendation data ready."""
+        logger.info(f"Recommendation {recommend_type} loaded: {type(data)}")
+
+        # Debug: Log the actual data structure
+        if isinstance(data, dict):
+            logger.debug(f"  Dict keys: {list(data.keys())[:10]}")
+        elif isinstance(data, list):
+            logger.debug(f"  List length: {len(data)}")
+            if data and isinstance(data[0], dict):
+                logger.debug(f"  First item keys: {list(data[0].keys())[:10]}")
+
+        # Store raw data for parsing
+        self._recommendations[recommend_type] = data
+
+        # Check if all recommendations are loaded
+        expected_types = ["home_feed", "guess", "radar", "songlist", "newsong"]
+        loaded_count = sum(1 for t in expected_types if t in self._recommendations)
+
+        # Only display when all 5 are loaded
+        if loaded_count == len(expected_types):
+            self._display_recommendations()
+
+    def _display_recommendations(self):
+        """Parse and display all loaded recommendations."""
+        cards = []
+
+        # Define order and titles
+        recommend_config = [
+            ("home_feed", t("home_recommend")),
+            ("guess", t("guess_you_like")),
+            ("radar", t("radar_recommend")),
+            ("songlist", t("recommend_playlists")),
+            ("newsong", t("new_songs")),
+        ]
+
+        for recommend_type, title in recommend_config:
+            data = self._recommendations.get(recommend_type)
+            if not data:
+                continue
+
+            parsed = self._parse_recommendation(recommend_type, data)
+            if parsed:
+                parsed['recommend_type'] = recommend_type
+                parsed['title'] = title
+                cards.append(parsed)
+                logger.info(f"Added card for {recommend_type}: cover_url={parsed.get('cover_url')}")
+
+        logger.info(f"Total cards to display: {len(cards)}")
+        if cards:
+            self._recommend_section.load_recommendations(cards)
+
+    def _parse_recommendation(self, recommend_type: str, data: Any) -> Optional[Dict[str, Any]]:
+        """Parse recommendation data to extract card info."""
+        try:
+            # Handle list response (API returns list of songs/playlists)
+            if isinstance(data, list):
+                if not data:
+                    return None
+
+                # Get first item
+                first_item = data[0]
+                if not isinstance(first_item, dict):
+                    return None
+
+                logger.debug(f"Parsing {recommend_type} list item: keys={list(first_item.keys())[:15]}")
+
+                cover_url = None
+                playlist_id = None
+
+                # Handle different response structures based on type
+                if recommend_type == 'songlist':
+                    # Playlist structure: {'Playlist': {...}, 'WhereFrom': ..., 'ext': ...}
+                    # or direct structure with tid/id/disstid
+                    logger.debug(f"songlist first_item keys: {list(first_item.keys())}")
+
+                    playlist_info = first_item.get('Playlist', {})
+                    if isinstance(playlist_info, dict) and playlist_info:
+                        logger.debug(f"songlist Playlist keys: {list(playlist_info.keys())}")
+
+                        # Try nested structures first (basic/content)
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+                                cover_url = cover_url or basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+
+                        if not playlist_id and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+                                cover_url = cover_url or content.get('cover_url') or content.get('cover')
+
+                        # Fallback to direct fields
+                        if not playlist_id:
+                            playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
+                        if not cover_url:
+                            cover_url = playlist_info.get('cover_url') or playlist_info.get('cover') or playlist_info.get('picurl')
+
+                        logger.debug(f"songlist from Playlist: id={playlist_id}, cover={cover_url}")
+                        if not cover_url:
+                            # Try to get from first song
+                            song_list = playlist_info.get('songlist', [])
+                            if song_list:
+                                album = song_list[0].get('album', {})
+                                if isinstance(album, dict):
+                                    album_mid = album.get('mid')
+                                    if album_mid:
+                                        cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                    else:
+                        # Try direct structure - check for various ID fields
+                        playlist_id = (first_item.get('tid') or first_item.get('id') or
+                                      first_item.get('disstid') or first_item.get('dissid'))
+                        cover_url = (first_item.get('cover_url') or first_item.get('cover') or
+                                    first_item.get('picurl') or first_item.get('pic'))
+                        logger.debug(f"songlist direct: id={playlist_id}, cover={cover_url}")
+
+                elif recommend_type == 'radar':
+                    # Radar structure: {'Track': {...}, 'Abt': ..., 'Ext': ...}
+                    track_info = first_item.get('Track', {})
+                    if isinstance(track_info, dict):
+                        album = track_info.get('album', {})
+                        if isinstance(album, dict):
+                            album_mid = album.get('mid')
+                            if album_mid:
+                                cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+                else:
+                    # Song structure: {'album': {...}, 'singer': [...], ...}
+                    # This handles guess, home_feed, newsong types
+                    logger.debug(f"{recommend_type} first_item keys: {list(first_item.keys())}")
+
+                    # Try to get cover from various fields
+                    cover_url = (first_item.get('cover') or first_item.get('picurl') or
+                                first_item.get('cover_url') or first_item.get('pic'))
+
+                    # From album mid (for songs)
+                    if not cover_url:
+                        album_mid = None
+                        album = first_item.get('album', {})
+                        if isinstance(album, dict):
+                            album_mid = album.get('mid')
+                        if not album_mid:
+                            album_mid = first_item.get('albummid') or first_item.get('album_mid')
+
+                        if album_mid:
+                            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+                    # Get playlist ID if available (for playlist-based recommendations)
+                    # For song-based recommendations, we'll use album instead
+                    playlist_id = (first_item.get('id') or first_item.get('disstid') or
+                                  first_item.get('tid') or first_item.get('playlist_id'))
+
+                    logger.debug(f"{recommend_type}: cover_url={cover_url}, playlist_id={playlist_id}")
+
+                return {
+                    'id': playlist_id,
+                    'cover_url': cover_url,
+                    'raw_data': first_item,  # Save first item for click handling
+                    'full_data': data,  # Save full data list for song-based recommendations
+                    'recommend_type': recommend_type,
+                }
+
+            # Handle dict response (API returns dict with embedded list)
+            if isinstance(data, dict):
+                # Log the structure for debugging
+                logger.debug(f"Parsing {recommend_type} dict: keys={list(data.keys())[:10]}")
+
+                # Try to find the main content
+                content = None
+                for key in ['songlist', 'songs', 'list', 'data', 'items', 'playlist']:
+                    if key in data:
+                        content = data[key]
+                        break
+
+                if content and isinstance(content, list) and content:
+                    first_item = content[0]
+                    if isinstance(first_item, dict):
+                        logger.debug(f"  First item keys: {list(first_item.keys())[:15]}")
+
+                        cover_url = None
+                        playlist_id = None
+
+                        # Try various cover sources
+                        cover_url = (first_item.get('cover') or first_item.get('picurl') or
+                                    first_item.get('cover_url') or first_item.get('pic'))
+
+                        if not cover_url:
+                            album = first_item.get('album', {})
+                            if isinstance(album, dict):
+                                album_mid = album.get('mid')
+                                if album_mid:
+                                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+                        playlist_id = (first_item.get('id') or first_item.get('disstid') or
+                                      first_item.get('tid') or data.get('id'))
+
+                        return {
+                            'id': playlist_id,
+                            'cover_url': cover_url,
+                            'raw_data': first_item,  # Save first item for click handling
+                            'full_data': content,  # Save full data list for song-based recommendations
+                            'recommend_type': recommend_type,
+                        }
+
+                # Check for playlist info directly
+                playlist_id = data.get('id') or data.get('disstid')
+                cover_url = data.get('cover') or data.get('picurl') or data.get('pic')
+
+                return {
+                    'id': playlist_id,
+                    'cover_url': cover_url,
+                    'raw_data': data,
+                    'recommend_type': recommend_type,
+                }
+
+            return None
+        except Exception as e:
+            logger.error(f"Failed to parse recommendation {recommend_type}: {e}")
+            return None
+
+    def _on_recommendation_clicked(self, data: Dict[str, Any]):
+        """Handle recommendation card click."""
+        recommend_type = data.get('recommend_type', '')
+        raw_data = data.get('raw_data')
+        card_id = data.get('id')
+        full_data = data.get('full_data')  # Full song list for song-based recommendations
+
+        logger.info(f"Recommendation clicked: {recommend_type}, id={card_id}")
+
+        title = data.get('title', '')
+        cover_url = data.get('cover_url', '')
+
+        if not isinstance(raw_data, dict):
+            logger.warning(f"Invalid raw_data type: {type(raw_data)}")
+            return
+
+        # Handle songlist type - has playlist with songs, load via API
+        if recommend_type == 'songlist':
+            playlist_info = raw_data.get('Playlist', {})
+            if not isinstance(playlist_info, dict) or not playlist_info:
+                playlist_info = raw_data
+
+            # Try to get ID from various nested structures
+            playlist_id = None
+
+            # New structure: basic/content/diy
+            if 'basic' in playlist_info:
+                basic = playlist_info.get('basic', {})
+                if isinstance(basic, dict):
+                    playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+
+            if not playlist_id and 'content' in playlist_info:
+                content = playlist_info.get('content', {})
+                if isinstance(content, dict):
+                    playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+
+            # Fallback to direct fields
+            if not playlist_id:
+                playlist_id = (playlist_info.get('tid') or playlist_info.get('id') or
+                              playlist_info.get('disstid') or playlist_info.get('dissid') or card_id)
+
+            # Try to get cover URL
+            cover_url = None
+            for key in ['cover_url', 'cover', 'picurl', 'pic']:
+                if playlist_info.get(key):
+                    cover_url = playlist_info.get(key)
+                    break
+
+            if not cover_url and 'basic' in playlist_info:
+                basic = playlist_info.get('basic', {})
+                for key in ['cover_url', 'cover', 'picurl', 'pic']:
+                    if basic.get(key):
+                        cover_url = basic.get(key)
+                        break
+
+            logger.debug(f"songlist click: playlist_id={playlist_id}")
+            if playlist_id:
+                logger.info(f"Loading playlist: {playlist_id}")
+                self._detail_view.load_playlist(str(playlist_id), title, "")
+                self._stack.setCurrentWidget(self._detail_view)
+            else:
+                logger.warning(f"Could not find playlist ID for songlist")
+            return
+
+        # Handle radar type - Track info, show all radar songs
+        if recommend_type == 'radar':
+            if full_data and isinstance(full_data, list):
+                logger.info(f"Loading radar songs: {len(full_data)} songs")
+                self._detail_view.load_songs_directly(full_data, title, cover_url)
+                self._stack.setCurrentWidget(self._detail_view)
+            else:
+                # Fallback to album
+                track_info = raw_data.get('Track', raw_data)
+                album = track_info.get('album', {})
+                if isinstance(album, dict) and album.get('mid'):
+                    logger.info(f"Loading radar album: {album.get('mid')}")
+                    self._detail_view.load_album(album.get('mid'), album.get('name', title), "")
+                    self._stack.setCurrentWidget(self._detail_view)
+            return
+
+        # Handle guess, home_feed, newsong types - these return songs, show all songs
+        if recommend_type in ('guess', 'home_feed', 'newsong'):
+            if full_data and isinstance(full_data, list):
+                logger.info(f"Loading {recommend_type} songs: {len(full_data)} songs")
+                self._detail_view.load_songs_directly(full_data, title, cover_url)
+                self._stack.setCurrentWidget(self._detail_view)
+                return
+
+            # Fallback to album if no full_data
+            album = raw_data.get('album', {})
+            if isinstance(album, dict) and album.get('mid'):
+                logger.info(f"Loading album from {recommend_type}: {album.get('mid')}")
+                self._detail_view.load_album(album.get('mid'), album.get('name', title), "")
+                self._stack.setCurrentWidget(self._detail_view)
+                return
+
+        logger.warning(f"Could not determine how to handle recommendation: {recommend_type}")
 
     def _on_search(self):
         """Handle search."""
@@ -1824,6 +2224,10 @@ class OnlineMusicView(QWidget):
             self._albums_page.refresh_ui()
         if hasattr(self, '_playlists_page'):
             self._playlists_page.refresh_ui()
+
+        # Update recommend section
+        if hasattr(self, '_recommend_section'):
+            self._recommend_section.refresh_ui()
 
         # Update detail view
         if hasattr(self, '_detail_view'):

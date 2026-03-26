@@ -816,6 +816,50 @@ class OnlineDetailView(QWidget):
 
         self._load_detail()
 
+    def load_songs_directly(self, songs: List[Dict], title: str = "", cover_url: str = ""):
+        """
+        Load songs directly without API call.
+        Used for displaying recommendation song lists.
+
+        Args:
+            songs: List of song dictionaries from API
+            title: Title for the song list
+            cover_url: Cover URL for the song list
+        """
+        self._detail_type = "playlist"
+        self._mid = ""  # No playlist ID for direct songs
+        self._current_page = 1
+
+        # Set info
+        self._type_label.setText(t("playlist"))
+        self._name_label.setText(title)
+        self._secondary_label.setText("")
+        self._extra_label.setText("")
+        self._stats_label.setText("")
+
+        # Hide albums section
+        self._albums_section.hide()
+
+        # Load cover if provided
+        if cover_url:
+            self._cover_url = cover_url
+            self._load_cover(cover_url)
+
+        # Parse and display songs directly
+        self._total_songs = len(songs)
+        self._page_size = 50
+        self._total_pages = 1  # All songs are already loaded
+        self._tracks = self._parse_songs(songs)
+
+        # Display stats
+        self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Update pagination controls (disable since all songs are loaded)
+        self._update_pagination()
+
+        # Display songs
+        self._display_songs(self._tracks)
+
     def _load_detail(self):
         """Load detail data."""
         # Increment request ID to invalidate any pending requests

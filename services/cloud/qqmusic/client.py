@@ -659,6 +659,53 @@ class QQMusicClient:
 
         return self._make_request('music.musicToplist.Toplist', 'GetDetail', params)
 
+    def get_home_feed(self) -> Dict:
+        """获取主页推荐数据."""
+        data = {
+            "direction": 0,
+            "page": 1,
+            "s_num": 0,
+        }
+        return self._make_request("music.recommend.RecommendFeed", "get_recommend_feed", data)
+
+    def get_guess_recommend(self) -> Dict:
+        """获取猜你喜欢推荐数据."""
+        data = {
+            "id": 99,
+            "num": 5,
+            "from": 0,
+            "scene": 0,
+            "song_ids": [],
+            "ext": {"bluetooth": ""},
+            "should_count_down": 1,
+        }
+        return self._make_request("music.radioProxy.MbTrackRadioSvr", "get_radio_track", data)
+
+    def get_radar_recommend(self) -> Dict:
+        """获取雷达推荐数据."""
+        data = {
+            "Page": 1,
+            "ReqType": 0,
+            "FavSongs": [],
+            "EntranceSongs": [],
+        }
+        return self._make_request("music.recommend.TrackRelationServer", "GetRadarSong", data)
+
+    def get_recommend_songlist(self) -> Dict:
+        """
+        获取推荐歌单数据.
+
+        Returns:
+            推荐歌单字典
+        """
+        data = {"From": 0, "Size": 25}
+        return self._make_request('music.playlist.PlaylistSquare', 'GetRecommendFeed', data)
+
+    def get_recommend_newsong(self) -> Dict:
+        """获取推荐新歌数据."""
+        data = {"type": 5}
+        return self._make_request("newsong.NewSongServer", "get_new_song_info", data)
+
     def query_songs_by_ids(self, song_ids: List[int]) -> List[Dict]:
         """
         Query song info by ids to get mids.
