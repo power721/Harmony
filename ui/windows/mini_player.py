@@ -134,21 +134,22 @@ class MiniPlayer(QWidget):
         top_layout.addStretch()
 
         # Close button
-        self._close_btn = QPushButton("×")
+        self._close_btn = QPushButton()
         self._close_btn.setFixedSize(26, 26)
         self._close_btn.setCursor(Qt.PointingHandCursor)
+        icons_dir = Path(__file__).parent.parent.parent / "icons"
+        close_icon_path = icons_dir / "times.svg"
+        if close_icon_path.exists():
+            self._close_btn.setIcon(QIcon(str(close_icon_path)))
+            self._close_btn.setIconSize(QSize(14, 14))
         self._close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
-                color: #b3b3b3;
-                font-size: 22px;
-                font-weight: bold;
             }
             QPushButton:hover {
-                color: #ffffff;
                 background-color: #404040;
-                border-radius: 14px;
+                border-radius: 13px;
             }
         """)
         top_layout.addWidget(self._close_btn)
@@ -475,11 +476,11 @@ class MiniPlayer(QWidget):
             # Check if this is an online QQ Music track
             source = track_dict.get("source", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source == "online"
+            is_qq_music = source == "QQ"
 
-            if is_online and cloud_file_id:
+            if is_qq_music and cloud_file_id:
                 # For online QQ Music tracks, get cover directly by song_mid
-                logger.debug(f"[MiniPlayer] Getting cover for online track: song_mid={cloud_file_id}")
+                logger.debug(f"[MiniPlayer] Getting cover for QQ Music track: song_mid={cloud_file_id}")
                 try:
                     cover_service = self._player.cover_service
                     if cover_service:
@@ -547,11 +548,11 @@ class MiniPlayer(QWidget):
             # Check if this is an online QQ Music track with song_mid
             source = track_dict.get("source", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source == "online"
+            is_qq_music = source == "QQ"
 
-            if is_online and cloud_file_id:
+            if is_qq_music and cloud_file_id:
                 # For online QQ Music tracks, get lyrics by song_mid
-                logger.debug(f"[MiniPlayer] Getting lyrics for online track: song_mid={cloud_file_id}")
+                logger.debug(f"[MiniPlayer] Getting lyrics for QQ Music track: song_mid={cloud_file_id}")
                 try:
                     lyrics = LyricsService.get_lyrics_by_qqmusic_mid(cloud_file_id)
                     if lyrics:

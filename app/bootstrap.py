@@ -263,11 +263,15 @@ class Bootstrap:
             # Try to create QQMusicService if credential is available
             qqmusic = None
             if self.config:
-                musicid = self.config.get("qqmusic.musicid")
-                if musicid:
+                # Use get_qqmusic_credential() to get full credential including refresh_token
+                credential = self.config.get_qqmusic_credential()
+                if credential and credential.get('musicid') and credential.get('musickey'):
                     try:
-                        qqmusic = QQMusicService({"musicid": musicid})
-                        logger.info("QQMusicService initialized for OnlineMusicService")
+                        qqmusic = QQMusicService(credential)
+                        logger.info(f"QQMusicService initialized for OnlineMusicService, "
+                                   f"musicid={credential.get('musicid')}, "
+                                   f"has_refresh_key={bool(credential.get('refresh_key'))}, "
+                                   f"has_refresh_token={bool(credential.get('refresh_token'))}")
                     except Exception as e:
                         logger.debug(f"Failed to initialize QQMusicService: {e}")
 

@@ -699,7 +699,8 @@ class OnlineMusicView(QWidget):
                 self._service._qqmusic = self._qqmusic_service
                 # Update download service reference too
                 self._download_service._qqmusic = self._qqmusic_service
-                logger.debug("QQ Music service refreshed with credentials")
+                logger.debug(f"QQ Music service initialized with credential, musicid={cred_dict.get('musicid')}, "
+                            f"has_refresh_key={bool(cred_dict.get('refresh_key'))}")
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
 
