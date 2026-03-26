@@ -1066,19 +1066,35 @@ class OnlineMusicView(QWidget):
                             basic = playlist_info.get('basic', {})
                             if isinstance(basic, dict):
                                 playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
-                                cover_url = cover_url or basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                                # Cover can be a URL string or a dict with urls
+                                basic_cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                                if basic_cover:
+                                    if isinstance(basic_cover, dict):
+                                        cover_url = basic_cover.get('default_url') or basic_cover.get('small_url')
+                                    else:
+                                        cover_url = basic_cover
 
                         if not playlist_id and 'content' in playlist_info:
                             content = playlist_info.get('content', {})
                             if isinstance(content, dict):
                                 playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
-                                cover_url = cover_url or content.get('cover_url') or content.get('cover')
+                                content_cover = content.get('cover_url') or content.get('cover')
+                                if content_cover and not cover_url:
+                                    if isinstance(content_cover, dict):
+                                        cover_url = content_cover.get('default_url') or content_cover.get('small_url')
+                                    else:
+                                        cover_url = content_cover
 
                         # Fallback to direct fields
                         if not playlist_id:
                             playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
                         if not cover_url:
-                            cover_url = playlist_info.get('cover_url') or playlist_info.get('cover') or playlist_info.get('picurl')
+                            direct_cover = playlist_info.get('cover_url') or playlist_info.get('cover') or playlist_info.get('picurl')
+                            if direct_cover:
+                                if isinstance(direct_cover, dict):
+                                    cover_url = direct_cover.get('default_url') or direct_cover.get('small_url')
+                                else:
+                                    cover_url = direct_cover
 
                         logger.debug(f"songlist from Playlist: id={playlist_id}, cover={cover_url}")
                         if not cover_url:
@@ -1094,8 +1110,13 @@ class OnlineMusicView(QWidget):
                         # Try direct structure - check for various ID fields
                         playlist_id = (first_item.get('tid') or first_item.get('id') or
                                       first_item.get('disstid') or first_item.get('dissid'))
-                        cover_url = (first_item.get('cover_url') or first_item.get('cover') or
-                                    first_item.get('picurl') or first_item.get('pic'))
+                        direct_cover = (first_item.get('cover_url') or first_item.get('cover') or
+                                       first_item.get('picurl') or first_item.get('pic'))
+                        if direct_cover:
+                            if isinstance(direct_cover, dict):
+                                cover_url = direct_cover.get('default_url') or direct_cover.get('small_url')
+                            else:
+                                cover_url = direct_cover
                         logger.debug(f"songlist direct: id={playlist_id}, cover={cover_url}")
 
                 elif recommend_type == 'radar':
@@ -1269,9 +1290,20 @@ class OnlineMusicView(QWidget):
         # Handle radar type - Track info, show all radar songs
         if recommend_type == 'radar':
             if full_data and isinstance(full_data, list):
-                logger.info(f"Loading radar songs: {len(full_data)} songs")
-                self._detail_view.load_songs_directly(full_data, title, cover_url)
-                self._stack.setCurrentWidget(self._detail_view)
+                # Radar data format: [{'Track': {...}, 'Abt': ..., 'Ext': ...}, ...]
+                # Need to extract Track from each item
+                songs = []
+                for item in full_data:
+                    if isinstance(item, dict):
+                        track = item.get('Track', item)
+                        if isinstance(track, dict):
+                            songs.append(track)
+                logger.info(f"Loading radar songs: {len(songs)} songs")
+                if songs:
+                    self._detail_view.load_songs_directly(songs, title, cover_url)
+                    self._stack.setCurrentWidget(self._detail_view)
+                else:
+                    logger.warning("No valid radar songs found")
             else:
                 # Fallback to album
                 track_info = raw_data.get('Track', raw_data)
@@ -1688,8 +1720,13 @@ class OnlineMusicView(QWidget):
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""
-        # Return to search results page
-        self._stack.setCurrentWidget(self._results_page)
+        # Return to previous page based on context
+        # If tabs are visible, we came from search results
+        # Otherwise, return to top list page
+        if self._tabs.isVisible():
+            self._stack.setCurrentWidget(self._results_page)
+        else:
+            self._stack.setCurrentWidget(self._top_list_page)
 
     def _get_cover_url(self, track: OnlineTrack) -> str:
         """Get cover URL for online track."""
