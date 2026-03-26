@@ -94,3 +94,12 @@ class QueueService:
         self._queue_repo.clear()
         self._config.delete("queue_current_index")
         self._config.delete("queue_play_mode")
+
+    def get_queue(self):
+        """
+        Get current queue items from engine.
+
+        Returns:
+            List of PlaylistItem currently in the playback queue
+        """
+        return self._engine.playlist_items or []

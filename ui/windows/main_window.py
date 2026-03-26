@@ -631,7 +631,6 @@ class MainWindow(QMainWindow):
                 color: #1db954;
                 font-size: 24px;
                 font-weight: bold;
-                text-shadow: 0 0 10px rgba(29, 185, 84, 0.3);
             }
             QPushButton#addMusicBtn {
                 background-color: #1db954;
@@ -644,7 +643,6 @@ class MainWindow(QMainWindow):
             }
             QPushButton#addMusicBtn:hover {
                 background-color: #1ed760;
-                transform: scale(1.02);
             }
             QPushButton#downloadLyricsBtn {
                 background: transparent;

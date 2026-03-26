@@ -359,7 +359,6 @@ class CloudDriveView(QWidget):
                 border-radius: 0px;
                 font-weight: bold;
                 font-size: 13px;
-                text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
             QTableWidget#cloudFilesTable QScrollBar:vertical {

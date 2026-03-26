@@ -342,7 +342,6 @@ class AlbumView(QWidget):
                 border-bottom: 2px solid #1db954;
                 font-weight: bold;
                 font-size: 13px;
-                text-transform: uppercase;
                 letter-spacing: 0.5px;
             }
             QTableWidget#tracksTable QTableCornerButton::section {

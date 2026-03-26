@@ -696,7 +696,6 @@ class OnlineDetailView(QWidget):
                 border: none;
                 border-bottom: 2px solid #1db954;
                 font-weight: bold;
-                text-transform: uppercase;
                 font-size: 12px;
                 letter-spacing: 0.5px;
             }
