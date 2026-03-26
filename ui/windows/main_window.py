@@ -1,13 +1,17 @@
 """
 Main application window for the music player.
+
+Refactored to use modular components:
+- Sidebar: Navigation panel
+- LyricsPanel + LyricsController: Lyrics display and management
+- OnlineMusicHandler: Online track playback
+- ScanDialog: Music folder scanning
 """
 import logging
 
 from app import Bootstrap
 from domain.playback import PlaybackState
 from services import PlaybackService
-from services.lyrics import LyricsLoader
-from services.lyrics.lyrics_loader import LyricsDownloadWorker
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -44,6 +48,7 @@ from domain.track import TrackSource
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
+from .components import Sidebar, LyricsPanel, LyricsController, OnlineMusicHandler, ScanDialog
 from ui.views.library_view import LibraryView
 from ui.views.playlist_view import PlaylistView
 from ui.views.queue_view import QueueView
@@ -54,7 +59,6 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.views.online_music_view import OnlineMusicView
 from ui.widgets.player_controls import PlayerControls
-from ui.widgets.lyrics_widget_pro import LyricsWidget
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
 
 
@@ -195,20 +199,12 @@ class MainWindow(QMainWindow):
 
         # Mini player (hidden by default)
         self._mini_player: Optional[MiniPlayer] = None
-        # Use QML mini player (set to True to enable)
 
-        # Lyrics sync
-        self._current_lyric_line: Optional[int] = None
+        # Lyrics controller (will be initialized in _setup_ui)
+        self._lyrics_controller: Optional[LyricsController] = None
 
-        # Lyrics loading thread (for async loading)
-        self._lyrics_thread: Optional[QThread] = None
-        # Lyrics load version - used to ignore stale thread results
-        self._lyrics_load_version: int = 0
-        # Lyrics download thread (for downloading from online)
-        self._lyrics_download_thread: Optional[QThread] = None
-        self._lyrics_download_path: str = ""
-        self._lyrics_download_title: str = ""
-        self._lyrics_download_artist: str = ""
+        # Online music handler (will be initialized in _setup_ui)
+        self._online_music_handler: Optional[OnlineMusicHandler] = None
 
         # Scan thread for music library scanning
         self._scan_thread: Optional[QThread] = None
@@ -345,196 +341,46 @@ class MainWindow(QMainWindow):
         self._apply_styles()
 
     def _create_sidebar(self) -> QWidget:
-        """Create the sidebar navigation."""
-        sidebar = QWidget()
-        sidebar.setObjectName("sidebar")
+        """Create the sidebar navigation using Sidebar component."""
+        sidebar = Sidebar(config_manager=self._config)
 
-        # Set sidebar width
-        sidebar.setMinimumWidth(180)
-        sidebar.setMaximumWidth(220)
-
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 20, 10, 10)
-        layout.setSpacing(5)
-
-        # Logo
-        logo_label = QLabel("Harmony")
-        logo_label.setObjectName("logo")
-        logo_label.setAlignment(Qt.AlignCenter)
-
-        layout.addWidget(logo_label)
-
-        layout.addSpacing(20)
-
-        # Navigation buttons with improved styling
-        nav_style = """
-            QPushButton {
-                text-align: left;
-                padding: 12px 18px;
-                border-radius: 10px;
-                background: transparent;
-                color: #c0c0c0;
-                border: 2px solid transparent;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background: #2a2a2a;
-                color: #1db954;
-                border: 2px solid #3a3a3a;
-            }
-            QPushButton:checked {
-                background: #1db954;
-                color: #000000;
-                border: 2px solid #1db954;
-                font-weight: bold;
-            }
-        """
-
-        # Create navigation buttons with SVG icons (using IconButton for color changes)
-        nav_buttons = [
-            ("_nav_library", IconName.MUSIC, t("library")),
-            ("_nav_albums", IconName.COMPACT_DISC, t("albums")),
-            ("_nav_artists", IconName.MICROPHONE, t("artists")),
-            ("_nav_cloud", IconName.CLOUD, t("cloud_drive")),
-            ("_nav_online_music", IconName.GLOBE, t("online_music")),
-            ("_nav_playlists", IconName.LIST, t("playlists")),
-            ("_nav_queue", IconName.QUEUE, t("queue")),
-            ("_nav_favorites", IconName.STAR, t("favorites")),
-            ("_nav_history", IconName.CLOCK, t("history")),
-        ]
-
-        for attr_name, icon_name, text in nav_buttons:
-            btn = IconButton(icon_name, text, size=18)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.PointingHandCursor)
-
-            btn.setStyleSheet(nav_style)
-            setattr(self, attr_name, btn)
-            layout.addWidget(btn)
-
-        # Navigation buttons will be set correctly during restore
-        # Default to library view initially
-        self._nav_library.setChecked(True)
-
-        layout.addStretch()
-
-        # Language selector
-        from system.i18n import get_language
-
-        lang_text = "EN" if get_language() == "en" else "中文"
-        self._language_btn = IconButton(IconName.GLOBE, lang_text, size=16)
-        self._language_btn.setObjectName("languageBtn")
-        self._language_btn.setCursor(Qt.PointingHandCursor)
-        self._language_btn.setFixedHeight(32)
-        self._language_btn.setStyleSheet("""
-            QPushButton#languageBtn {
-                background-color: #2a2a2a;
-                color: #c0c0c0;
-                border: 2px solid #3a3a3a;
-                border-radius: 16px;
-                padding: 6px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton#languageBtn:hover {
-                background-color: #3a3a3a;
-                border: 2px solid #1db954;
-                color: #1db954;
-            }
-        """)
-        self._language_btn.clicked.connect(self._toggle_language)
-        layout.addWidget(self._language_btn)
-
-        # General Settings button
-        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
-        self._settings_btn = QPushButton(f"⚙️ {t('settings')} {settings_status}")
-        self._settings_btn.setObjectName("settingsBtn")
-        self._settings_btn.setCursor(Qt.PointingHandCursor)
-        self._settings_btn.setFixedHeight(32)
-        self._settings_btn.setStyleSheet("""
-            QPushButton#settingsBtn {
-                background-color: #2a2a2a;
-                color: #c0c0c0;
-                border: 2px solid #3a3a3a;
-                border-radius: 16px;
-                padding: 6px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton#settingsBtn:hover {
-                background-color: #3a3a3a;
-                border: 2px solid #1db954;
-                color: #1db954;
-            }
-        """)
-        self._settings_btn.clicked.connect(self._show_settings)
-        layout.addWidget(self._settings_btn)
-
-        # Add music button
-        self._add_music_btn = QPushButton(t("add_music"))
-        self._add_music_btn.setObjectName("addMusicBtn")
-        self._add_music_btn.setCursor(Qt.PointingHandCursor)
-        layout.addWidget(self._add_music_btn)
+        # Connect sidebar signals
+        sidebar.page_requested.connect(self._on_sidebar_page_requested)
+        sidebar.language_toggled.connect(self._toggle_language)
+        sidebar.settings_requested.connect(self._show_settings)
+        sidebar.add_music_requested.connect(self._add_music)
 
         return sidebar
 
+    def _on_sidebar_page_requested(self, page_index: int):
+        """Handle sidebar page request."""
+        if page_index == Sidebar.PAGE_FAVORITES:
+            self._show_favorites()
+        elif page_index == Sidebar.PAGE_HISTORY:
+            self._show_history()
+        else:
+            self._show_page(page_index)
+
     def _create_lyrics_panel(self) -> QWidget:
-        """Create the lyrics display panel."""
-        panel = QWidget()
-        panel.setObjectName("lyricsPanel")
+        """Create the lyrics display panel using LyricsPanel component."""
+        panel = LyricsPanel()
 
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(15, 20, 15, 20)
-
-        # Title with download button
-        title_layout = QHBoxLayout()
-
-        self._lyrics_title = QLabel(t("lyrics"))
-        self._lyrics_title.setObjectName("lyricsTitle")
-        self._lyrics_title.setAlignment(Qt.AlignLeft)
-        title_layout.addWidget(self._lyrics_title)
-
-        title_layout.addStretch()
-
-        # Download lyrics button
-        self._download_lyrics_btn = QPushButton(t("download"))
-        self._download_lyrics_btn.setObjectName("downloadLyricsBtn")
-        self._download_lyrics_btn.setFixedHeight(28)
-        self._download_lyrics_btn.clicked.connect(self._download_lyrics)
-        title_layout.addWidget(self._download_lyrics_btn)
-
-        layout.addLayout(title_layout)
-
-        # Lyrics text browser (has built-in scrolling)
-        self._lyrics_view = LyricsWidget()
-        self._lyrics_view.setObjectName("lyricsContent")
-        self._lyrics_view.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._lyrics_view.customContextMenuRequested.connect(
-            self._show_lyrics_context_menu
+        # Create lyrics controller
+        bootstrap = Bootstrap.instance()
+        self._lyrics_controller = LyricsController(
+            lyrics_panel=panel,
+            playback_service=self._playback,
+            db_manager=self._db,
+            library_service=self._library_service
         )
-        self._lyrics_view.setFocusPolicy(Qt.NoFocus)  # Prevent stealing focus
-
-        layout.addWidget(self._lyrics_view, 1)  # Give it stretch to fill space
 
         return panel
 
     def _setup_connections(self):
         """Setup signal connections."""
-        # Navigation
-        self._nav_library.clicked.connect(lambda: self._show_page(0))
-        self._nav_online_music.clicked.connect(lambda: self._show_page(8))
-        self._nav_cloud.clicked.connect(lambda: self._show_page(1))
-        self._nav_playlists.clicked.connect(lambda: self._show_page(2))
-        self._nav_queue.clicked.connect(lambda: self._show_page(3))
-        self._nav_albums.clicked.connect(lambda: self._show_page(4))
-        self._nav_artists.clicked.connect(lambda: self._show_page(5))
-        self._nav_favorites.clicked.connect(self._show_favorites)
-        self._nav_history.clicked.connect(self._show_history)
-        self._lyrics_view.seekRequested.connect(self._playback.seek)
-
-        # Add music
-        self._add_music_btn.clicked.connect(self._add_music)
+        # Navigation - sidebar signals are connected in _create_sidebar
+        # These connections are kept for backward compatibility with _show_page calls
+        # from various parts of the code that call these methods directly
 
         # Player connections - use EventBus for centralized signal handling
         self._event_bus.track_changed.connect(self._on_track_changed)
@@ -562,6 +408,15 @@ class MainWindow(QMainWindow):
         self._online_music_view.add_multiple_to_queue.connect(self._add_multiple_online_tracks_to_queue)
         self._online_music_view.insert_multiple_to_queue.connect(self._insert_multiple_online_tracks_to_queue)
         self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
+
+        # Initialize online music handler with download service
+        self._online_music_handler = OnlineMusicHandler(
+            playback_service=self._playback,
+            status_callback=self._show_status_message
+        )
+        # Set download service from online music view
+        if hasattr(self._online_music_view, '_download_service'):
+            self._online_music_handler.set_download_service(self._online_music_view._download_service)
 
         # Albums view connections
         self._albums_view.album_clicked.connect(self._on_album_clicked)
@@ -708,16 +563,8 @@ class MainWindow(QMainWindow):
 
     def _show_page(self, index: int):
         """Show a page in the stacked widget."""
-        # Update nav button states
-        self._nav_library.setChecked(index == 0)
-        self._nav_cloud.setChecked(index == 1)
-        self._nav_playlists.setChecked(index == 2)
-        self._nav_queue.setChecked(index == 3)
-        self._nav_albums.setChecked(index == 4)
-        self._nav_artists.setChecked(index == 5)
-        self._nav_online_music.setChecked(index == 8)
-        self._nav_favorites.setChecked(False)
-        self._nav_history.setChecked(False)
+        # Update sidebar nav button states
+        self._sidebar.set_current_page(index)
 
         # Switch view
         self._stacked_widget.setCurrentIndex(index)
@@ -743,16 +590,8 @@ class MainWindow(QMainWindow):
         # Switch to library view first
         self._stacked_widget.setCurrentIndex(0)
 
-        # Update nav button states
-        self._nav_library.setChecked(False)
-        self._nav_cloud.setChecked(False)
-        self._nav_playlists.setChecked(False)
-        self._nav_queue.setChecked(False)
-        self._nav_albums.setChecked(False)
-        self._nav_artists.setChecked(False)
-        self._nav_favorites.setChecked(True)
-        self._nav_history.setChecked(False)
-        self._nav_online_music.setChecked(False)
+        # Update sidebar nav button states
+        self._sidebar.set_current_page(Sidebar.PAGE_FAVORITES)
 
         # Load favorites with delay to avoid blocking
         from PySide6.QtCore import QTimer
@@ -764,16 +603,8 @@ class MainWindow(QMainWindow):
         # Switch to library view first
         self._stacked_widget.setCurrentIndex(0)
 
-        # Update nav button states
-        self._nav_library.setChecked(False)
-        self._nav_cloud.setChecked(False)
-        self._nav_playlists.setChecked(False)
-        self._nav_queue.setChecked(False)
-        self._nav_albums.setChecked(False)
-        self._nav_artists.setChecked(False)
-        self._nav_favorites.setChecked(False)
-        self._nav_online_music.setChecked(False)
-        self._nav_history.setChecked(True)
+        # Update sidebar nav button states
+        self._sidebar.set_current_page(Sidebar.PAGE_HISTORY)
 
         # Load history with delay to avoid blocking
         from PySide6.QtCore import QTimer
@@ -786,15 +617,8 @@ class MainWindow(QMainWindow):
         self._album_view.set_album(album)
         self._stacked_widget.setCurrentIndex(7)
 
-        # Update nav button states
-        self._nav_library.setChecked(False)
-        self._nav_cloud.setChecked(False)
-        self._nav_playlists.setChecked(False)
-        self._nav_queue.setChecked(False)
-        self._nav_albums.setChecked(False)
-        self._nav_artists.setChecked(False)
-        self._nav_favorites.setChecked(False)
-        self._nav_history.setChecked(False)
+        # Update nav button states - no active nav for detail views
+        self._sidebar.set_current_page(-1)
 
     def _on_download_album_cover(self, album):
         """Handle download album cover request."""
@@ -827,15 +651,8 @@ class MainWindow(QMainWindow):
         self._artist_view.set_artist(artist)
         self._stacked_widget.setCurrentIndex(6)
 
-        # Update nav button states
-        self._nav_library.setChecked(False)
-        self._nav_cloud.setChecked(False)
-        self._nav_playlists.setChecked(False)
-        self._nav_queue.setChecked(False)
-        self._nav_albums.setChecked(False)
-        self._nav_artists.setChecked(False)
-        self._nav_favorites.setChecked(False)
-        self._nav_history.setChecked(False)
+        # Update nav button states - no active nav for detail views
+        self._sidebar.set_current_page(-1)
 
     def _on_player_artist_clicked(self, artist_name: str):
         """Handle artist label click from player controls."""
@@ -955,136 +772,28 @@ class MainWindow(QMainWindow):
             self._scan_music_folder(folder)
 
     def _scan_music_folder(self, folder: str):
-        """Scan a music folder and add tracks."""
-        from pathlib import Path
-        from PySide6.QtCore import QThread, Signal, QObject
-        from services import MetadataService
-        from datetime import datetime
-
+        """Scan a music folder and add tracks using ScanDialog component."""
         logger.info(f"[MainWindow] Scanning music folder: {folder}")
 
-        # Create worker class for scanning
-        # Get cover service for saving covers
+        # Get cover service
         cover_service = Bootstrap.instance().cover_service
 
-        class ScanWorker(QObject):
-            progress = Signal(int, str)  # value, filename
-            finished = Signal(int, int)  # added, skipped
-
-            def __init__(self, folder_path, db, cover_svc):
-                super().__init__()
-                self.folder_path = folder_path
-                self.db = db
-                self.cover_service = cover_svc
-                self._cancelled = False
-
-            def cancel(self):
-                self._cancelled = True
-
-            def run(self):
-                folder_path = Path(self.folder_path)
-                supported_formats = MetadataService.SUPPORTED_FORMATS
-
-                # Find all audio files
-                audio_files = []
-                for ext in supported_formats:
-                    audio_files.extend(folder_path.rglob(f"*{ext}"))
-
-                total_files = len(audio_files)
-
-                if total_files == 0:
-                    self.finished.emit(0, 0)
-                    return
-
-                added_count = 0
-                skipped_count = 0
-
-                for i, audio_file in enumerate(audio_files):
-                    if self._cancelled:
-                        break
-
-                    # Emit progress
-                    self.progress.emit(int((i / total_files) * 100), audio_file.name)
-
-                    try:
-                        # Check if track already exists
-                        existing = self.db.get_track_by_path(str(audio_file))
-                        if existing:
-                            skipped_count += 1
-                            continue
-
-                        # Extract metadata
-                        metadata = MetadataService.extract_metadata(str(audio_file))
-
-                        # Save cover art from metadata
-                        cover_path = self.cover_service.save_cover_from_metadata(
-                            str(audio_file), metadata.get("cover")
-                        )
-
-                        # Create track object
-                        track = Track(
-                            path=str(audio_file),
-                            title=metadata.get("title", audio_file.stem),
-                            artist=metadata.get("artist", ""),
-                            album=metadata.get("album", ""),
-                            duration=metadata.get("duration", 0.0),
-                            cover_path=cover_path,
-                            created_at=datetime.now(),
-                        )
-
-                        # Add to database
-                        self.db.add_track(track)
-                        added_count += 1
-
-                    except Exception as e:
-                        logger.error(f"Error adding track {audio_file}: {e}")
-                        skipped_count += 1
-
-                self.finished.emit(added_count, skipped_count)
-
-        # Create progress dialog
-        from PySide6.QtWidgets import QProgressDialog
-        progress = QProgressDialog(t("scanning"), t("cancel"), 0, 100, self)
-        progress.setWindowTitle(t("scanning"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        progress.show()
-
-        # Create worker and thread
-        self._scan_worker = ScanWorker(folder, self._db, cover_service)
-        self._scan_thread = QThread()
-        self._scan_worker.moveToThread(self._scan_thread)
-
-        # Connect signals
-        def on_progress(value, filename):
-            if not progress.wasCanceled():
-                progress.setValue(value)
-                progress.setLabelText(f"{t('scanning')}: {filename}")
-
-        def on_finished(added, skipped):
-            progress.close()
+        def on_scan_complete(added, skipped):
+            """Callback when scan completes."""
             logger.info(f"[MainWindow] Scan complete: {added} added, {skipped} skipped")
-            # Refresh albums and artists tables after scanning
-            if added > 0:
-                self._db.refresh_albums()
-                self._db.refresh_artists()
+            # Refresh views
             self._library_view.refresh()
             self._albums_view.refresh()
             self._artists_view.refresh()
-            self._scan_thread.quit()
-            self._scan_thread.wait()
 
-        def on_cancel():
-            self._scan_worker.cancel()
-
-        self._scan_worker.progress.connect(on_progress)
-        self._scan_worker.finished.connect(on_finished)
-        progress.canceled.connect(on_cancel)
-        self._scan_thread.started.connect(self._scan_worker.run)
-
-        # Start thread
-        self._scan_thread.start()
+        # Use ScanDialog component
+        self._scan_worker, self._scan_thread = ScanDialog.scan_folder(
+            folder=folder,
+            db_manager=self._db,
+            cover_service=cover_service,
+            parent=self,
+            on_complete=on_scan_complete
+        )
 
     def _toggle_language(self):
         """Toggle between English and Chinese."""
@@ -1097,8 +806,8 @@ class MainWindow(QMainWindow):
         # Save language preference
         self._config.set_language(new_lang)
 
-        # Update button text
-        self._language_btn.setText("EN" if new_lang == "en" else "中文")
+        # Update language button in sidebar
+        self._sidebar.update_language_button()
 
         # Refresh the UI to apply translations
         self._refresh_ui_texts()
@@ -1109,20 +818,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(t("app_title"))
 
         # Update sidebar navigation buttons (text only, icons stay the same)
-        self._nav_library.setText(t("library"))
-        self._nav_albums.setText(t("albums"))
-        self._nav_artists.setText(t("artists"))
-        self._nav_cloud.setText(t("cloud_drive"))
-        self._nav_playlists.setText(t("playlists"))
-        self._nav_queue.setText(t("queue"))
-        self._nav_favorites.setText(t("favorites"))
-        self._nav_history.setText(t("history"))
-        self._add_music_btn.setText(t("add_music"))
-        self._nav_online_music.setText(t("online_music"))
+        self._sidebar.refresh_texts()
 
         # Update lyrics panel
-        self._lyrics_title.setText(t("lyrics"))
-        self._download_lyrics_btn.setText(t("download"))
+        self._lyrics_panel.refresh_texts()
 
         # Refresh player controls
         self._player_controls.refresh_ui()
@@ -1138,18 +837,15 @@ class MainWindow(QMainWindow):
         self._album_view.refresh_ui()
         self._online_music_view.refresh_ui()  # Refresh online music view
 
-        # Update settings button status
-        settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
-        self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
+        # Update settings button status in sidebar
+        self._sidebar.update_settings_status(self._config.get_ai_enabled())
 
     def _show_settings(self):
         """Show general settings dialog."""
-
         dialog = GeneralSettingsDialog(self._config, self)
         if dialog.exec_():
             # Update settings button status after settings change
-            settings_status = "✅" if self._config.get_ai_enabled() else "⚙️"
-            self._settings_btn.setText(f"⚙️ {t('settings')} {settings_status}")
+            self._sidebar.update_settings_status(self._config.get_ai_enabled())
 
     def show_help(self):
         """Show help dialog."""
@@ -1215,276 +911,75 @@ class MainWindow(QMainWindow):
     def _play_online_track(self, song_mid: str, local_path: str, metadata: dict = None):
         """Play downloaded online track.
 
+        Delegates to OnlineMusicHandler.
+
         Args:
             song_mid: Song MID
             local_path: Local file path
             metadata: Optional metadata dict with title, artist, album, duration
         """
         logger.info(f"Playing online track: mid={song_mid}, path={local_path}")
-
-        if not local_path:
-            logger.error("No local path for online track")
-            return
-
-        # Get metadata from argument or use defaults
-        title = "Online Track"
-        artist = ""
-        album = ""
-        duration = 0.0
-
-        if metadata:
-            title = metadata.get("title") or title
-            artist = metadata.get("artist") or ""
-            album = metadata.get("album") or ""
-            duration = metadata.get("duration") or 0.0
-
-        # Create a playlist item for the downloaded track
-        # Use ONLINE provider for online music
-        item = PlaylistItem(
-            source=TrackSource.QQ,
-            local_path=local_path,
-            title=title,
-            artist=artist,
-            album=album,
-            duration=duration,
-            cloud_file_id=song_mid,
-            needs_download=False
-        )
-        self._playback.engine.load_playlist_items([item])
-        self._playback.engine.play()
+        if self._online_music_handler:
+            self._online_music_handler.play_online_track(song_mid, local_path, metadata)
 
     def _add_online_track_to_queue(self, song_mid: str, metadata: dict):
         """Add online track to the play queue (deferred download).
 
+        Delegates to OnlineMusicHandler.
+
         Args:
             song_mid: Song MID
             metadata: Metadata dict with title, artist, album, duration
         """
-        title = metadata.get("title", "Online Track")
-        artist = metadata.get("artist", "")
-        album = metadata.get("album", "")
-        duration = metadata.get("duration", 0.0)
-
-        # Check if already cached
-        download_service = self._online_music_view._download_service
-        local_path = ""
-        needs_download = True
-
-        if download_service.is_cached(song_mid):
-            local_path = download_service.get_cached_path(song_mid)
-            needs_download = False
-
-        item = PlaylistItem(
-            source=TrackSource.QQ,
-            local_path=local_path,
-            title=title,
-            artist=artist,
-            album=album,
-            duration=duration,
-            cloud_file_id=song_mid,
-            needs_download=needs_download
-        )
-
-        self._playback.engine.add_track(item)
-
-        # Schedule debounced save (batches multiple adds into one save)
-        self._playback._schedule_save_queue()
-
-        # Show notification
-        self._status_bar = self.statusBar()
-        if needs_download:
-            self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
-        else:
-            self._status_bar.showMessage(f"✓ {t('added_to_queue')}: {title}", 3000)
+        if self._online_music_handler:
+            self._online_music_handler.add_to_queue(song_mid, metadata)
 
     def _insert_online_track_to_queue(self, song_mid: str, metadata: dict):
         """Insert online track after current playing track.
 
+        Delegates to OnlineMusicHandler.
+
         Args:
             song_mid: Song MID
             metadata: Metadata dict with title, artist, album, duration
         """
-        title = metadata.get("title", "Online Track")
-        artist = metadata.get("artist", "")
-        album = metadata.get("album", "")
-        duration = metadata.get("duration", 0.0)
-
-        # Check if already cached
-        download_service = self._online_music_view._download_service
-        local_path = ""
-        needs_download = True
-
-        if download_service.is_cached(song_mid):
-            local_path = download_service.get_cached_path(song_mid)
-            needs_download = False
-
-        item = PlaylistItem(
-            source=TrackSource.QQ,
-            local_path=local_path,
-            title=title,
-            artist=artist,
-            album=album,
-            duration=duration,
-            cloud_file_id=song_mid,
-            needs_download=needs_download
-        )
-
-        # Insert after current track
-        current_index = self._playback.engine.current_index
-        insert_index = current_index + 1 if current_index >= 0 else 0
-        self._playback.engine.insert_track(insert_index, item)
-
-        # Schedule debounced save (batches multiple inserts into one save)
-        self._playback._schedule_save_queue()
-
-        # Show notification
-        self._status_bar = self.statusBar()
-        self._status_bar.showMessage(f"✓ {t('insert_to_queue')}: {title}", 3000)
+        if self._online_music_handler:
+            self._online_music_handler.insert_to_queue(song_mid, metadata)
 
     def _add_multiple_online_tracks_to_queue(self, tracks_data: list):
         """Add multiple online tracks to the play queue (batch operation).
 
+        Delegates to OnlineMusicHandler.
+
         Args:
             tracks_data: List of (song_mid, metadata_dict) tuples
         """
-        download_service = self._online_music_view._download_service
-
-        for song_mid, metadata in tracks_data:
-            title = metadata.get("title", "Online Track")
-            artist = metadata.get("artist", "")
-            album = metadata.get("album", "")
-            duration = metadata.get("duration", 0.0)
-
-            # Check if already cached
-            local_path = ""
-            needs_download = True
-
-            if download_service.is_cached(song_mid):
-                local_path = download_service.get_cached_path(song_mid)
-                needs_download = False
-
-            item = PlaylistItem(
-                source=TrackSource.QQ,
-                local_path=local_path,
-                title=title,
-                artist=artist,
-                album=album,
-                duration=duration,
-                cloud_file_id=song_mid,
-                needs_download=needs_download
-            )
-
-            self._playback.engine.add_track(item)
-
-        # Save queue once after all tracks are added
-        self._playback.save_queue()
-
-        # Show notification
-        count = len(tracks_data)
-        self._status_bar = self.statusBar()
-        s = "s" if count > 1 else ""
-        msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
-        self._status_bar.showMessage(f"✓ {msg}", 3000)
+        if self._online_music_handler:
+            self._online_music_handler.add_multiple_to_queue(tracks_data)
 
     def _insert_multiple_online_tracks_to_queue(self, tracks_data: list):
         """Insert multiple online tracks after current playing track (batch operation).
 
+        Delegates to OnlineMusicHandler.
+
         Args:
             tracks_data: List of (song_mid, metadata_dict) tuples
         """
-        download_service = self._online_music_view._download_service
-
-        # Get current index
-        current_index = self._playback.engine.current_index
-        insert_index = current_index + 1 if current_index >= 0 else 0
-
-        for song_mid, metadata in tracks_data:
-            title = metadata.get("title", "Online Track")
-            artist = metadata.get("artist", "")
-            album = metadata.get("album", "")
-            duration = metadata.get("duration", 0.0)
-
-            # Check if already cached
-            local_path = ""
-            needs_download = True
-
-            if download_service.is_cached(song_mid):
-                local_path = download_service.get_cached_path(song_mid)
-                needs_download = False
-
-            item = PlaylistItem(
-                source=TrackSource.QQ,
-                local_path=local_path,
-                title=title,
-                artist=artist,
-                album=album,
-                duration=duration,
-                cloud_file_id=song_mid,
-                needs_download=needs_download
-            )
-
-            self._playback.engine.insert_track(insert_index, item)
-            insert_index += 1  # Increment insert position for next track
-
-        # Save queue once after all tracks are inserted
-        self._playback.save_queue()
-
-        # Show notification
-        count = len(tracks_data)
-        self._status_bar = self.statusBar()
-        s = "s" if count > 1 else ""
-        msg = t("inserted_to_queue").replace("{count}", str(count)).replace("{s}", s)
-        self._status_bar.showMessage(f"✓ {msg}", 3000)
+        if self._online_music_handler:
+            self._online_music_handler.insert_multiple_to_queue(tracks_data)
 
     def _play_online_tracks(self, start_index: int, tracks_data: list):
         """Play multiple online tracks, clearing queue first.
+
+        Delegates to OnlineMusicHandler.
 
         Args:
             start_index: Index of track to start playing
             tracks_data: List of (song_mid, metadata_dict) tuples
         """
         logger.info(f"Playing {len(tracks_data)} online tracks, starting at {start_index}")
-
-        download_service = self._online_music_view._download_service
-        items = []
-
-        for song_mid, metadata in tracks_data:
-            title = metadata.get("title", "Online Track")
-            artist = metadata.get("artist", "")
-            album = metadata.get("album", "")
-            duration = metadata.get("duration", 0.0)
-
-            # Check if already cached
-            local_path = ""
-            needs_download = True
-
-            if download_service.is_cached(song_mid):
-                local_path = download_service.get_cached_path(song_mid)
-                needs_download = False
-
-            item = PlaylistItem(
-                source=TrackSource.QQ,
-                local_path=local_path,
-                title=title,
-                artist=artist,
-                album=album,
-                duration=duration,
-                cloud_file_id=song_mid,
-                needs_download=needs_download
-            )
-            items.append(item)
-
-        # Clear queue and load all items
-        self._playback.engine.load_playlist_items(items)
-        self._playback.save_queue()
-
-        # Play from start index
-        if 0 <= start_index < len(items):
-            self._playback.engine.play_at(start_index)
-
-        # Show notification
-        self._status_bar = self.statusBar()
-        self._status_bar.showMessage(f"✓ {t('playing')}: {tracks_data[start_index][1].get('title', 'Online Track')}", 3000)
+        if self._online_music_handler:
+            self._online_music_handler.play_online_tracks(start_index, tracks_data)
 
     def _play_cloud_playlist(self, temp_path: str, index: int, cloud_files, start_position: float = 0.0):
         """Play multiple cloud files as a playlist."""
@@ -1519,9 +1014,6 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
-        # Reset lyric line tracking
-        self._current_lyric_line = None
-
         # Convert to dict for backward compatibility
         song_mid = None
         is_online = False
@@ -1565,35 +1057,18 @@ class MainWindow(QMainWindow):
             # Select in queue view (if it exists in queue)
             self._queue_view._select_track_by_id(track_id)
 
-        self._lyrics_view.set_lyrics(t("no_lyrics"))
+        # Delegate lyrics loading to LyricsController
+        if self._lyrics_controller:
+            self._lyrics_controller.on_track_changed(track_item)
+        else:
+            # Fallback: clear lyrics if no controller
+            self._lyrics_panel.set_no_lyrics()
+
         if not track_dict:
             return
 
         # Save current track title for window title update
         self._current_track_title = f"{title} - {artist}" if artist else title
-
-        # Skip lyrics loading if mini player is active (to avoid duplicate loading)
-        # if self._mini_player is not None and self._mini_player.isVisible():
-        #     return
-
-        # For online tracks, always try to load lyrics (even without local path)
-        if is_online and song_mid:
-            logger.debug(f"[MainWindow] Loading lyrics for online track: song_mid={song_mid}")
-            self._load_lyrics_async(path, title, artist, song_mid=song_mid, is_online=True)
-            return
-
-        # Skip loading lyrics for cloud files without local path
-        if not path or path.strip() in ('', '.', '/'):
-            return
-
-        # Skip loading lyrics only if metadata is pending AND file is being downloaded
-        # If local_path exists, try to load lyrics (will retry after metadata update if needed)
-        if needs_metadata and is_cloud and not track_id:
-            logger.debug(f"[MainWindow] Skipping lyrics load, metadata pending for: {title}")
-            return
-
-        # Load lyrics asynchronously using LyricsLoader
-        self._load_lyrics_async(path, title, artist)
 
     def _on_playback_state_changed(self, state: str):
         """Handle playback state change to update window title.
@@ -1614,633 +1089,6 @@ class MainWindow(QMainWindow):
                 self.setWindowTitle(self._original_title)
         # Note: "stopped" state is typically a transient state during track changes
         # Don't restore title on stopped to avoid title flickering
-
-    def _load_lyrics_async(self, path: str, title: str, artist: str,
-                           song_mid: str = None, is_online: bool = False):
-        """Load lyrics asynchronously.
-
-        Uses version-based mechanism to avoid blocking UI.
-        Old threads are allowed to finish but their results are ignored.
-
-        Args:
-            path: Path to the audio file
-            title: Track title
-            artist: Track artist
-            song_mid: QQ Music song MID (for online tracks)
-            is_online: Whether this is an online QQ Music track
-        """
-        # Increment version to invalidate any pending results
-        self._lyrics_load_version += 1
-        current_version = self._lyrics_load_version
-
-        # Clean up old thread before creating new one
-        if self._lyrics_thread and isValid(self._lyrics_thread):
-            if self._lyrics_thread.isRunning():
-                self._lyrics_thread.requestInterruption()
-                # Wait for thread to finish to avoid "Destroyed while running" error
-                if not self._lyrics_thread.wait(500):  # Wait up to 500ms
-                    self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait(100)
-            # Disconnect signals and delete old thread
-            try:
-                self._lyrics_thread.finished.disconnect()
-                self._lyrics_thread.lyrics_ready.disconnect()
-            except RuntimeError:
-                pass  # Already disconnected
-            self._lyrics_thread.deleteLater()
-            self._lyrics_thread = None
-
-        # Create new lyrics loader (LyricsLoader extends QThread, no need for moveToThread)
-        self._lyrics_thread = LyricsLoader(path, title, artist, song_mid=song_mid, is_online=is_online)
-        # Store version with the thread for result validation
-        self._lyrics_thread._load_version = current_version
-
-        # Connect signals
-        self._lyrics_thread.lyrics_ready.connect(
-            lambda lyrics: self._on_lyrics_ready_v2(lyrics, current_version)
-        )
-        self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
-
-        # Start loading
-        self._lyrics_thread.start()
-
-    def _on_lyrics_ready_v2(self, lyrics: str, version: int):
-        """Handle lyrics loaded asynchronously with version check."""
-        # Ignore if this is from an old thread
-        if version != self._lyrics_load_version:
-            logger.debug(f"[MainWindow] Ignoring stale lyrics result (version {version}, current {self._lyrics_load_version})")
-            return
-
-        if lyrics:
-            self._lyrics_view.set_lyrics(lyrics)
-        else:
-            self._lyrics_view.set_lyrics(t("no_lyrics"))
-
-    def _on_lyrics_thread_finished(self):
-        """Handle lyrics thread finished."""
-        sender = self.sender()
-        if sender:
-            # Always delete the finished thread, not just current one
-            sender.deleteLater()
-            # Only clear reference if this is the current thread
-            if sender == self._lyrics_thread:
-                self._lyrics_thread = None
-
-    def _download_lyrics(self):
-        """Download lyrics for current track - shows search dialog for user to select."""
-        from ui.dialogs.lyrics_download_dialog import LyricsDownloadDialog
-
-        # Get current track
-        current_item = self._playback.current_track
-        if not current_item:
-            return
-
-        track_path = current_item.local_path
-        track_title = current_item.title
-        track_artist = current_item.artist
-        track_album = current_item.album
-        track_duration = current_item.duration
-
-        if not track_path:
-            QMessageBox.warning(self, t("error"), t("cloud_lyrics_download_not_supported"))
-            return
-
-        # Store track info for later use
-        self._lyrics_download_path = track_path
-        self._lyrics_download_title = track_title
-        self._lyrics_download_artist = track_artist
-
-        # Show selection dialog (dialog handles search internally)
-        result = LyricsDownloadDialog.show_dialog(
-            track_title,
-            track_artist,
-            track_path,
-            track_album,
-            track_duration,
-            self
-        )
-
-        if result:
-            selected_song, download_cover = result
-            self._download_lyrics_for_song(selected_song, download_cover)
-
-    def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
-        """Download lyrics for a specific song.
-
-        Args:
-            song_info: Dictionary with song information (id, title, artist, source, etc.)
-            download_cover: Whether to download cover art (default: True)
-        """
-        # Clean up existing download thread if any
-        if self._lyrics_download_thread and isValid(
-                self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
-            self._lyrics_download_thread.quit()
-            self._lyrics_download_thread.wait(100)
-
-        # Don't clear current lyrics - wait for download to complete
-        # self._lyrics_view.set_lyrics(t("downloading") + "...")
-
-        # Create download worker with specific song info
-        self._lyrics_download_thread = LyricsDownloadWorker(
-            self._lyrics_download_path,
-            self._lyrics_download_title,
-            self._lyrics_download_artist,
-            song_id=song_info['id'],
-            source=song_info['source'],
-            accesskey=song_info.get('accesskey'),
-            download_cover=download_cover,
-            cover_service=self._playback.cover_service,
-            lyrics_data=song_info.get('lyrics')  # Pre-fetched lyrics for LRCLIB
-        )
-
-        self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
-        self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
-
-        # Only connect cover_downloaded if download_cover is True
-        if download_cover:
-            self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
-
-        self._lyrics_download_thread.finished.connect(self._lyrics_download_thread.deleteLater)
-        self._lyrics_download_thread.start()
-
-    def _on_lyrics_downloaded(self, path: str, lyrics: str):
-        """Handle lyrics download success."""
-        self._lyrics_view.set_lyrics(lyrics)
-
-    def _on_cover_downloaded(self, cover_path: str):
-        """Handle cover download success - update database and UI."""
-        logger.info(f"[MainWindow] _on_cover_downloaded called with cover_path: {cover_path}")
-
-        if not cover_path:
-            logger.warning("[MainWindow] cover_path is empty, returning")
-            return
-
-        # Use the stored download path to find the track in database
-        track_path = self._lyrics_download_path
-        if not track_path:
-            logger.warning("[MainWindow] No track path stored, cannot find track in database")
-            return
-
-        logger.info(f"[MainWindow] Looking for track with path: {track_path}")
-
-        # Find track by path in database
-        track = self._db.get_track_by_path(track_path)
-        if not track:
-            logger.warning(f"[MainWindow] No track found in database with path: {track_path}")
-            return
-
-        track_id = track.id
-        logger.info(f"[MainWindow] Found track in database: id={track_id}, title={track.title}")
-
-        # Update cover_path in database
-        try:
-            logger.info(f"[MainWindow] Updating cover_path for track {track_id}: {cover_path}")
-            success = self._db.update_track_cover_path(track_id, cover_path)
-            logger.info(f"[MainWindow] Database update result: {success}")
-
-            if success:
-                # Update current track item's cover_path if it exists
-                current_item = self._playback.current_track
-                if current_item:
-                    # Match by track_id OR by local path (for cloud downloads)
-                    is_match = (current_item.track_id == track_id or
-                                current_item.local_path == track_path)
-                    if is_match:
-                        old_cover = current_item.cover_path
-                        current_item.cover_path = cover_path
-                        logger.info(f"[MainWindow] Updated current item's cover_path: {old_cover} -> {cover_path}")
-
-                        # Also update track_id if it was None (for newly saved cloud tracks)
-                        if not current_item.track_id:
-                            current_item.track_id = track_id
-                            logger.info(f"[MainWindow] Updated current item's track_id: {track_id}")
-
-                # Emit event to refresh UI
-                self._event_bus.metadata_updated.emit(track_id)
-                logger.info(f"[MainWindow] Emitted metadata_updated event for track {track_id}")
-            else:
-                logger.warning(f"[MainWindow] Database update returned False for track {track_id}")
-
-        except Exception as e:
-            logger.error(f"[MainWindow] Error updating cover path: {e}", exc_info=True)
-
-    def _on_lyrics_download_failed(self, error: str):
-        """Handle lyrics download failure."""
-        self._lyrics_view.set_lyrics(t("no_lyrics"))
-
-    def _on_lyrics_download_success(self, lyrics):
-        """Handle successful lyrics download."""
-        self._lyrics_view.set_lyrics(lyrics)
-
-    def _on_lyrics_download_error(self, error_type: str):
-        """Handle lyrics download error."""
-        if error_type == "parse_failed":
-            self._lyrics_view.set_lyrics(t("lyrics_downloaded_parsing_failed"))
-        else:  # not_found
-            self._lyrics_view.set_lyrics(t("lyrics_not_found"))
-
-    def _show_lyrics_context_menu(self, pos):
-        """Show context menu for lyrics panel."""
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
-        """)
-
-        # 下载歌词
-        download_action = menu.addAction(t("download_lyrics"))
-        download_action.triggered.connect(self._download_lyrics)
-
-        # 手动输入歌词
-        edit_action = menu.addAction(t("edit_lyrics"))
-        edit_action.triggered.connect(self._edit_lyrics)
-
-        # 删除歌词文件
-        delete_action = menu.addAction(t("delete_lyrics"))
-        delete_action.triggered.connect(self._delete_lyrics)
-
-        menu.addSeparator()
-
-        # 打开文件位置
-        open_location_action = menu.addAction(t("open_file_location"))
-        open_location_action.triggered.connect(self._open_lyrics_file_location)
-
-        # 刷新歌词
-        refresh_action = menu.addAction(t("refresh"))
-        refresh_action.triggered.connect(self._refresh_lyrics)
-
-        menu.exec_(self._lyrics_view.mapToGlobal(pos))
-
-    def _refresh_lyrics(self):
-        """Refresh lyrics display."""
-        # First check if we have a current track from the engine (works for both local and cloud)
-        current_track = self._player.engine.current_track
-        if current_track:
-            self._on_track_changed(current_track)
-            return
-
-        # Fallback to database lookup for local files
-        if self._player.current_track_id:
-            track = self._db.get_track(self._player.current_track_id)
-            if track:
-                track_dict = {
-                    "path": track.path,
-                    "title": track.title,
-                    "artist": track.artist,
-                    "id": track.id,
-                }
-                self._on_track_changed(track_dict)
-
-    def _edit_lyrics(self):
-        """Edit lyrics manually."""
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QHBoxLayout,
-            QTextEdit,
-            QPushButton,
-            QLabel,
-            QMessageBox,
-        )
-        from services import LyricsService
-        from utils.lrc_parser import detect_and_parse, detect_format
-
-        # Check if we're playing a track
-        current_track = self._player.engine.current_track
-        if not current_track:
-            QMessageBox.information(self, t("info"), t("no_track_playing"))
-            return
-
-        # Check if this is a cloud file (no id or empty id)
-        is_cloud_file = not current_track.get("id")
-
-        if is_cloud_file:
-            # For cloud files, use the current track info directly
-            track_path = current_track.get("path", "")
-            track_title = current_track.get("title", "Unknown")
-            track_artist = current_track.get("artist", "Unknown")
-
-            if not track_path:
-                QMessageBox.warning(self, t("error"), t("cloud_lyrics_edit_not_supported"))
-                return
-        else:
-            # For local files, get from database
-            if not self._player.current_track_id:
-                return
-
-            track = self._db.get_track(self._player.current_track_id)
-            if not track:
-                return
-
-            track_path = track.path
-            track_title = track.title
-            track_artist = track.artist
-
-        # Create dialog
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("edit_lyrics_title"))
-        dialog.setMinimumSize(600, 500)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-                font-size: 13px;
-            }
-            QTextEdit {
-                background-color: #181818;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
-        """)
-
-        layout = QVBoxLayout(dialog)
-
-        # Info label
-        info_label = QLabel(f"{track_title} - {track_artist}")
-        info_label.setStyleSheet("color: #1db954; font-size: 14px; padding: 5px;")
-        layout.addWidget(info_label)
-
-        # Help text
-        help_label = QLabel(t("lyrics_format_help"))
-        help_label.setStyleSheet("color: #808080; font-size: 11px; padding: 5px;")
-        help_label.setWordWrap(True)
-        layout.addWidget(help_label)
-
-        # Text editor
-        text_edit = QTextEdit()
-        text_edit.setPlaceholderText(t("enter_lyrics_here"))
-
-        # Load existing lyrics if available (read directly from file to ensure fresh content)
-        from pathlib import Path
-
-        track_file = Path(track_path)
-
-        lyrics_content = None
-
-        # Try multiple encodings
-        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
-
-        # Try different lyrics file extensions in priority order: .yrc, .qrc, .lrc
-        for ext in ['.yrc', '.qrc', '.lrc']:
-            lyrics_path = track_file.with_suffix(ext)
-            if lyrics_path.exists():
-                for encoding in encodings:
-                    try:
-                        with open(lyrics_path, 'r', encoding=encoding) as f:
-                            lyrics_content = f.read()
-                        print(f"Loaded lyrics from {lyrics_path} with {encoding} encoding")
-                        break
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-                    except Exception as e:
-                        logger.error(f"Error reading {lyrics_path}: {e}", exc_info=True)
-                        break
-                if lyrics_content:
-                    break
-
-        # Load lyrics into editor if found
-        if lyrics_content and lyrics_content.strip():
-            text_edit.setPlainText(lyrics_content)
-
-        layout.addWidget(text_edit)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setProperty("role", "cancel")
-
-        save_btn = QPushButton(t("save"))
-        save_btn.setObjectName("saveBtn")
-
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(save_btn)
-
-        layout.addLayout(button_layout)
-
-        # Save function
-        def save_lyrics():
-            content = text_edit.toPlainText().strip()
-            if not content:
-                QMessageBox.warning(dialog, t("warning"), t("lyrics_cannot_be_empty"))
-                return
-
-            # Parse lyrics using detect_and_parse (supports LRC, YRC, QRC formats)
-            parsed_lyrics = detect_and_parse(content)
-            if not parsed_lyrics:
-                QMessageBox.warning(dialog, t("warning"), t("invalid_lyrics_format"))
-                return
-
-            # Detect format and save with appropriate extension
-            lyrics_format = detect_format(content)
-
-            # Save lyrics with correct extension
-            from pathlib import Path
-            track_file = Path(track_path)
-
-            if lyrics_format == 'yrc':
-                save_path = track_file.with_suffix('.yrc')
-            elif lyrics_format == 'qrc':
-                save_path = track_file.with_suffix('.qrc')
-            else:
-                save_path = track_file.with_suffix('.lrc')
-
-            try:
-                with open(save_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-
-                # Delete old lyrics files with different extensions
-                for ext in ['.lrc', '.yrc', '.qrc']:
-                    old_path = track_file.with_suffix(ext)
-                    if old_path.exists() and old_path != save_path:
-                        try:
-                            old_path.unlink()
-                        except Exception:
-                            pass
-
-                QMessageBox.information(dialog, t("success"), t("lyrics_saved"))
-                # Refresh lyrics display
-                self._refresh_lyrics()
-                dialog.accept()
-            except Exception as e:
-                logger.error(f"Error saving lyrics: {e}", exc_info=True)
-                QMessageBox.warning(dialog, "Error", t("lyrics_save_failed"))
-
-        save_btn.clicked.connect(save_lyrics)
-        cancel_btn.clicked.connect(dialog.reject)
-
-        dialog.exec()
-
-    def _delete_lyrics(self):
-        """Delete lyrics file."""
-        from PySide6.QtWidgets import QMessageBox
-        from services import LyricsService
-
-        # Check if we're playing a track
-        current_track = self._player.engine.current_track
-        if not current_track:
-            QMessageBox.information(self, t("info"), t("no_track_playing"))
-            return
-
-        # Check if this is a cloud file (no id or empty id)
-        is_cloud_file = not current_track.get("id")
-
-        if is_cloud_file:
-            # For cloud files, use the current track info directly
-            track_path = current_track.get("path", "")
-
-            if not track_path:
-                QMessageBox.warning(self, t("error"), t("cloud_lyrics_delete_not_supported"))
-                return
-        else:
-            # For local files, get from database
-            if not self._player.current_track_id:
-                return
-
-            track = self._db.get_track(self._player.current_track_id)
-            if not track:
-                return
-
-            track_path = track.path
-
-        # Check if lyrics file exists
-        if not LyricsService.lyrics_file_exists(track_path):
-            QMessageBox.information(self, t("info"), t("no_lyrics_file_to_delete"))
-            return
-
-        # Confirm deletion
-        reply = QMessageBox.question(
-            self,
-            t("confirm_delete_lyrics"),
-            t("confirm_delete_lyrics_message"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            if LyricsService.delete_lyrics(track_path):
-                # Clear lyrics immediately and reset state
-                self._current_lyric_line = None
-                self._lyrics_view.set_lyrics(t("no_lyrics"))
-                QMessageBox.information(self, t("success"), t("lyrics_deleted"))
-            else:
-                QMessageBox.warning(self, "Error", t("lyrics_delete_failed"))
-
-    def _open_lyrics_file_location(self):
-        """Open the lyrics file location for the current track."""
-        import platform
-        import subprocess
-        import shutil
-        from pathlib import Path
-        from PySide6.QtWidgets import QMessageBox
-
-        # Check if we're playing a track
-        current_track = self._player.engine.current_track
-        if not current_track:
-            QMessageBox.information(self, t("info"), t("no_track_playing"))
-            return
-
-        # Check if this is a cloud file (no id or empty id)
-        is_cloud_file = not current_track.get("id")
-
-        if is_cloud_file:
-            # For cloud files, use the current track info directly
-            track_path = current_track.get("path", "")
-
-            if not track_path:
-                QMessageBox.warning(self, t("error"), t("cloud_lyrics_location_not_supported"))
-                return
-        else:
-            # For local files, get from database
-            if not self._player.current_track_id:
-                return
-
-            track = self._db.get_track(self._player.current_track_id)
-            if not track:
-                return
-
-            track_path = track.path
-
-        track_file = Path(track_path)
-
-        # Find lyrics file (check .yrc, .qrc, .lrc in priority order)
-        lyrics_path = None
-        for ext in ['.yrc', '.qrc', '.lrc']:
-            candidate = track_file.with_suffix(ext)
-            if candidate.exists():
-                lyrics_path = candidate
-                break
-
-        if not lyrics_path:
-            QMessageBox.information(self, t("info"), t("lyrics_file_not_found"))
-            return
-
-        try:
-            system = platform.system()
-
-            if system == "Windows":
-                subprocess.Popen(["explorer", f"/select,{lyrics_path}"])
-
-            elif system == "Darwin":
-                subprocess.Popen(["open", "-R", str(lyrics_path)])
-
-            else:
-                # Linux
-                # Try to select file in supported file managers
-                file_managers = {
-                    "nautilus": ["nautilus", "--select", str(lyrics_path)],
-                    "dolphin": ["dolphin", "--select", str(lyrics_path)],
-                    "caja": ["caja", "--select", str(lyrics_path)],
-                    "nemo": ["nemo", str(lyrics_path)],
-                }
-
-                for fm, cmd in file_managers.items():
-                    if shutil.which(fm):
-                        subprocess.Popen(cmd)
-                        return
-
-                # fallback
-                subprocess.Popen(["xdg-open", str(lyrics_path.parent)])
-
-        except Exception as e:
-            logger.error(f"Failed to open file location: {e}", exc_info=True)
-            QMessageBox.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
 
     def _insert_to_queue(self, track_ids: list):
         """Insert tracks after current playing track."""
@@ -2268,6 +1116,11 @@ class MainWindow(QMainWindow):
         s = "s" if count > 1 else ""
         msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
         self._status_bar.showMessage(msg, 3000)
+
+    def _show_status_message(self, message: str, timeout: int = 3000):
+        """Show a status message in the status bar."""
+        self._status_bar = self.statusBar()
+        self._status_bar.showMessage(message, timeout)
 
     def _add_tracks_to_queue(self, tracks: list):
         """Add Track objects to the play queue."""
@@ -2298,7 +1151,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No,
             )
             if reply == QMessageBox.Yes:
-                self._nav_playlists.click()
+                self._show_page(2)  # Show playlists page
             return
 
         # If only one playlist, add directly without showing dialog
@@ -2351,7 +1204,7 @@ class MainWindow(QMainWindow):
     def _on_position_changed(self, position_ms):
         """Handle playback position change."""
         seconds = position_ms / 1000
-        self._lyrics_view.update_position(seconds)
+        self._lyrics_panel.update_position(seconds)
 
     def _toggle_play_pause(self):
         """Toggle play/pause."""
@@ -2526,14 +1379,7 @@ class MainWindow(QMainWindow):
 
     def _update_nav_buttons_for_detail_view(self):
         """Update navigation buttons for detail view (album/artist)."""
-        self._nav_library.setChecked(False)
-        self._nav_cloud.setChecked(False)
-        self._nav_playlists.setChecked(False)
-        self._nav_queue.setChecked(False)
-        self._nav_albums.setChecked(False)
-        self._nav_artists.setChecked(False)
-        self._nav_favorites.setChecked(False)
-        self._nav_history.setChecked(False)
+        self._sidebar.set_current_page(-1)  # No active nav for detail views
 
     def _restore_playback_state(self):
         """Restore previous playback state."""
@@ -2716,23 +1562,6 @@ class MainWindow(QMainWindow):
 
         # Stop playback AFTER saving state
         self._player.engine.stop()
-
-        # Clean up lyrics threads
-        if self._lyrics_thread:
-            if isValid(self._lyrics_thread) and self._lyrics_thread.isRunning():
-                self._lyrics_thread.requestInterruption()
-                self._lyrics_thread.quit()
-                if not self._lyrics_thread.wait(1000):
-                    self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait()
-
-        if self._lyrics_download_thread and isValid(
-                self._lyrics_download_thread) and self._lyrics_download_thread.isRunning():
-            self._lyrics_download_thread.requestInterruption()
-            self._lyrics_download_thread.quit()
-            if not self._lyrics_download_thread.wait(1000):
-                self._lyrics_download_thread.terminate()
-                self._lyrics_download_thread.wait()
 
         # Clean up scan thread
         if self._scan_thread and isValid(self._scan_thread) and self._scan_thread.isRunning():

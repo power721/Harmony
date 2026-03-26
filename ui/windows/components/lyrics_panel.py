@@ -1,0 +1,583 @@
+"""
+Lyrics panel and controller for MainWindow.
+"""
+
+import logging
+from typing import Optional, TYPE_CHECKING
+
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QMenu,
+    QMessageBox,
+    QDialog,
+    QTextEdit,
+)
+from PySide6.QtCore import Qt, Signal, QThread, QObject
+
+from shiboken6 import isValid
+
+from ui.widgets.lyrics_widget_pro import LyricsWidget
+from services.lyrics import LyricsLoader
+from services.lyrics.lyrics_loader import LyricsDownloadWorker
+from system.i18n import t
+from system.event_bus import EventBus
+
+if TYPE_CHECKING:
+    from services.playback import PlaybackService
+    from services.metadata import CoverService
+    from infrastructure.database import DatabaseManager
+    from services.library import LibraryService
+
+logger = logging.getLogger(__name__)
+
+
+class LyricsPanel(QWidget):
+    """
+    Lyrics display panel with download and edit capabilities.
+
+    Signals:
+        download_requested: Emitted when user wants to download lyrics
+        edit_requested: Emitted when user wants to edit lyrics
+        delete_requested: Emitted when user wants to delete lyrics
+        refresh_requested: Emitted when user wants to refresh lyrics
+        open_location_requested: Emitted when user wants to open lyrics file location
+        seek_requested: Emitted when user clicks on a timestamp (position_ms)
+    """
+
+    download_requested = Signal()
+    edit_requested = Signal()
+    delete_requested = Signal()
+    refresh_requested = Signal()
+    open_location_requested = Signal()
+    seek_requested = Signal(int)  # position in ms
+
+    def __init__(self, parent=None):
+        """Initialize the lyrics panel."""
+        super().__init__(parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Setup the UI."""
+        self.setObjectName("lyricsPanel")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 20, 15, 20)
+
+        # Title with download button
+        title_layout = QHBoxLayout()
+
+        self._title_label = QLabel(t("lyrics"))
+        self._title_label.setObjectName("lyricsTitle")
+        self._title_label.setAlignment(Qt.AlignLeft)
+        title_layout.addWidget(self._title_label)
+
+        title_layout.addStretch()
+
+        # Download button
+        self._download_btn = QPushButton(t("download"))
+        self._download_btn.setObjectName("downloadLyricsBtn")
+        self._download_btn.setFixedHeight(28)
+        self._download_btn.clicked.connect(self.download_requested)
+        title_layout.addWidget(self._download_btn)
+
+        layout.addLayout(title_layout)
+
+        # Lyrics widget
+        self._lyrics_view = LyricsWidget()
+        self._lyrics_view.setObjectName("lyricsContent")
+        self._lyrics_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._lyrics_view.customContextMenuRequested.connect(self._show_context_menu)
+        self._lyrics_view.setFocusPolicy(Qt.NoFocus)
+        self._lyrics_view.seekRequested.connect(self.seek_requested)
+
+        layout.addWidget(self._lyrics_view, 1)
+
+    def _show_context_menu(self, pos):
+        """Show context menu for lyrics."""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #282828;
+                color: #ffffff;
+                border: 1px solid #404040;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #1db954;
+            }
+        """)
+
+        download_action = menu.addAction(t("download_lyrics"))
+        download_action.triggered.connect(self.download_requested)
+
+        edit_action = menu.addAction(t("edit_lyrics"))
+        edit_action.triggered.connect(self.edit_requested)
+
+        delete_action = menu.addAction(t("delete_lyrics"))
+        delete_action.triggered.connect(self.delete_requested)
+
+        menu.addSeparator()
+
+        open_location_action = menu.addAction(t("open_file_location"))
+        open_location_action.triggered.connect(self.open_location_requested)
+
+        refresh_action = menu.addAction(t("refresh"))
+        refresh_action.triggered.connect(self.refresh_requested)
+
+        menu.exec_(self._lyrics_view.mapToGlobal(pos))
+
+    def set_lyrics(self, lyrics: str):
+        """Set the lyrics content."""
+        self._lyrics_view.set_lyrics(lyrics)
+
+    def set_no_lyrics(self):
+        """Show no lyrics message."""
+        self._lyrics_view.set_lyrics(t("no_lyrics"))
+
+    def update_position(self, seconds: float):
+        """Update the current playback position for lyrics highlighting.
+
+        Args:
+            seconds: Current playback position in seconds
+        """
+        self._lyrics_view.update_position(seconds)
+
+    def refresh_texts(self):
+        """Refresh UI texts with current language."""
+        self._title_label.setText(t("lyrics"))
+        self._download_btn.setText(t("download"))
+
+
+class LyricsController(QObject):
+    """
+    Controller for lyrics loading, downloading, and editing.
+
+    This class handles all lyrics-related operations including:
+    - Async lyrics loading with version control
+    - Lyrics download from online sources
+    - Lyrics editing and saving
+    - Cover art download
+    """
+
+    # Signals for UI updates
+    lyrics_loaded = Signal(str)
+    lyrics_load_failed = Signal()
+    cover_downloaded = Signal(str)
+
+    def __init__(
+        self,
+        lyrics_panel: LyricsPanel,
+        playback_service: "PlaybackService",
+        db_manager: "DatabaseManager",
+        library_service: "LibraryService" = None,
+        parent=None
+    ):
+        """
+        Initialize the lyrics controller.
+
+        Args:
+            lyrics_panel: LyricsPanel widget to control
+            playback_service: Playback service for current track info
+            db_manager: Database manager for track data
+            library_service: Library service for track updates
+            parent: Parent QObject
+        """
+        super().__init__(parent)
+
+        self._panel = lyrics_panel
+        self._playback = playback_service
+        self._db = db_manager
+        self._library_service = library_service
+
+        self._event_bus = EventBus.instance()
+
+        # Thread management
+        self._lyrics_thread: Optional[LyricsLoader] = None
+        self._lyrics_download_thread: Optional[LyricsDownloadWorker] = None
+        self._lyrics_load_version = 0
+
+        # Store download info for cover update
+        self._lyrics_download_path: Optional[str] = None
+        self._lyrics_download_title: Optional[str] = None
+        self._lyrics_download_artist: Optional[str] = None
+
+        # Connect panel signals
+        self._panel.download_requested.connect(self.download_lyrics)
+        self._panel.edit_requested.connect(self.edit_lyrics)
+        self._panel.delete_requested.connect(self.delete_lyrics)
+        self._panel.refresh_requested.connect(self.refresh_lyrics)
+        self._panel.open_location_requested.connect(self.open_lyrics_file_location)
+        self._panel.seek_requested.connect(self._playback.seek)
+
+    def load_lyrics_async(
+        self,
+        path: str,
+        title: str,
+        artist: str,
+        song_mid: str = None,
+        is_online: bool = False
+    ):
+        """
+        Load lyrics asynchronously with version control.
+
+        Args:
+            path: Path to the audio file
+            title: Track title
+            artist: Track artist
+            song_mid: QQ Music song MID (for online tracks)
+            is_online: Whether this is an online QQ Music track
+        """
+        # Increment version to invalidate pending results
+        self._lyrics_load_version += 1
+        current_version = self._lyrics_load_version
+
+        # Clean up old thread
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                if not self._lyrics_thread.wait(500):
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait(100)
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
+
+        # Create new loader
+        self._lyrics_thread = LyricsLoader(
+            path, title, artist, song_mid=song_mid, is_online=is_online
+        )
+        self._lyrics_thread._load_version = current_version
+
+        self._lyrics_thread.lyrics_ready.connect(
+            lambda lyrics: self._on_lyrics_ready(lyrics, current_version)
+        )
+        self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
+        self._lyrics_thread.start()
+
+    def _on_lyrics_ready(self, lyrics: str, version: int):
+        """Handle lyrics loaded from thread."""
+        if version != self._lyrics_load_version:
+            return  # Stale result
+
+        if lyrics:
+            self._panel.set_lyrics(lyrics)
+            self.lyrics_loaded.emit(lyrics)
+        else:
+            self._panel.set_no_lyrics()
+            self.lyrics_load_failed.emit()
+
+    def _on_lyrics_thread_finished(self):
+        """Handle lyrics thread finished."""
+        sender = self.sender()
+        if sender:
+            sender.deleteLater()
+            if sender == self._lyrics_thread:
+                self._lyrics_thread = None
+
+    def download_lyrics(self):
+        """Download lyrics for current track."""
+        from ui.dialogs.lyrics_download_dialog import LyricsDownloadDialog
+
+        current_item = self._playback.current_track
+        if not current_item:
+            return
+
+        track_path = current_item.local_path
+        track_title = current_item.title
+        track_artist = current_item.artist
+        track_album = current_item.album
+        track_duration = current_item.duration
+
+        if not track_path:
+            QMessageBox.warning(
+                None, t("error"), t("cloud_lyrics_download_not_supported")
+            )
+            return
+
+        # Store info for later
+        self._lyrics_download_path = track_path
+        self._lyrics_download_title = track_title
+        self._lyrics_download_artist = track_artist
+
+        result = LyricsDownloadDialog.show_dialog(
+            track_title, track_artist, track_path,
+            track_album, track_duration, None
+        )
+
+        if result:
+            selected_song, download_cover = result
+            self._download_lyrics_for_song(selected_song, download_cover)
+
+    def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
+        """Download lyrics for a specific song."""
+        if self._lyrics_download_thread and isValid(
+            self._lyrics_download_thread
+        ) and self._lyrics_download_thread.isRunning():
+            self._lyrics_download_thread.quit()
+            self._lyrics_download_thread.wait(100)
+
+        self._lyrics_download_thread = LyricsDownloadWorker(
+            self._lyrics_download_path,
+            self._lyrics_download_title,
+            self._lyrics_download_artist,
+            song_id=song_info['id'],
+            source=song_info['source'],
+            accesskey=song_info.get('accesskey'),
+            download_cover=download_cover,
+            cover_service=self._playback.cover_service,
+            lyrics_data=song_info.get('lyrics')
+        )
+
+        self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
+        self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
+
+        if download_cover:
+            self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
+
+        self._lyrics_download_thread.finished.connect(
+            self._lyrics_download_thread.deleteLater
+        )
+        self._lyrics_download_thread.start()
+
+    def _on_lyrics_downloaded(self, path: str, lyrics: str):
+        """Handle lyrics download success."""
+        self._panel.set_lyrics(lyrics)
+
+    def _on_cover_downloaded(self, cover_path: str):
+        """Handle cover download success."""
+        if not cover_path or not self._lyrics_download_path:
+            return
+
+        track = self._db.get_track_by_path(self._lyrics_download_path)
+        if not track:
+            return
+
+        success = self._db.update_track_cover_path(track.id, cover_path)
+        if success:
+            current_item = self._playback.current_track
+            if current_item:
+                is_match = (
+                    current_item.track_id == track.id or
+                    current_item.local_path == self._lyrics_download_path
+                )
+                if is_match:
+                    current_item.cover_path = cover_path
+                    if not current_item.track_id:
+                        current_item.track_id = track.id
+
+            self._event_bus.metadata_updated.emit(track.id)
+            self.cover_downloaded.emit(cover_path)
+
+    def _on_lyrics_download_failed(self, error: str):
+        """Handle lyrics download failure."""
+        self._panel.set_no_lyrics()
+
+    def edit_lyrics(self):
+        """Edit lyrics for current track."""
+        from services import LyricsService
+        from utils.lrc_parser import detect_and_parse
+
+        current_track = self._playback.engine.current_track
+        if not current_track:
+            QMessageBox.information(None, t("info"), t("no_track_playing"))
+            return
+
+        is_cloud_file = not current_track.get("id")
+
+        if is_cloud_file:
+            track_path = current_track.get("path", "")
+            track_title = current_track.get("title", "Unknown")
+            track_artist = current_track.get("artist", "Unknown")
+
+            if not track_path:
+                QMessageBox.warning(
+                    None, t("error"), t("cloud_lyrics_edit_not_supported")
+                )
+                return
+        else:
+            if not self._playback.current_track_id:
+                return
+
+            track = self._db.get_track(self._playback.current_track_id)
+            if not track:
+                return
+
+            track_path = track.path
+            track_title = track.title
+            track_artist = track.artist
+
+        # Create edit dialog
+        dialog = QDialog(None)
+        dialog.setWindowTitle(t("edit_lyrics_title"))
+        dialog.setMinimumSize(600, 500)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 13px;
+            }
+            QTextEdit {
+                background-color: #181818;
+                color: #e0e0e0;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 10px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+
+        info_label = QLabel(f"{track_title} - {track_artist}")
+        info_label.setStyleSheet("color: #1db954; font-size: 14px; padding: 5px;")
+        layout.addWidget(info_label)
+
+        help_label = QLabel(t("lyrics_format_help"))
+        help_label.setStyleSheet("color: #808080; font-size: 11px;")
+        help_label.setWordWrap(True)
+        layout.addWidget(help_label)
+
+        text_edit = QTextEdit()
+        layout.addWidget(text_edit)
+
+        # Load existing lyrics
+        existing_lyrics = LyricsService.load_lyrics(track_path)
+        if existing_lyrics:
+            text_edit.setPlainText(existing_lyrics)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton(t("save"))
+        save_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(save_btn)
+
+        layout.addLayout(btn_layout)
+
+        if dialog.exec() == QDialog.Accepted:
+            new_lyrics = text_edit.toPlainText()
+            if new_lyrics.strip():
+                LyricsService.save_lyrics(track_path, new_lyrics)
+                self._panel.set_lyrics(new_lyrics)
+            else:
+                LyricsService.delete_lyrics(track_path)
+                self._panel.set_no_lyrics()
+
+    def delete_lyrics(self):
+        """Delete lyrics for current track."""
+        from services import LyricsService
+
+        current_track = self._playback.engine.current_track
+        if not current_track:
+            return
+
+        track_path = current_track.get("path", "")
+        if not track_path:
+            return
+
+        reply = QMessageBox.question(
+            None,
+            t("delete_lyrics"),
+            t("confirm_delete_lyrics"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            LyricsService.delete_lyrics(track_path)
+            self._panel.set_no_lyrics()
+
+    def open_lyrics_file_location(self):
+        """Open lyrics file location in file manager."""
+        import subprocess
+        import sys
+
+        current_track = self._playback.engine.current_track
+        if not current_track:
+            return
+
+        track_path = current_track.get("path", "")
+        if not track_path:
+            return
+
+        from pathlib import Path
+        lyrics_path = Path(track_path).with_suffix('.lrc')
+
+        if lyrics_path.exists():
+            if sys.platform == "win32":
+                subprocess.run(["explorer", "/select,", str(lyrics_path)])
+            elif sys.platform == "darwin":
+                subprocess.run(["open", "-R", str(lyrics_path)])
+            else:
+                subprocess.run(["xdg-open", str(lyrics_path.parent)])
+        else:
+            QMessageBox.information(
+                None, t("info"), t("lyrics_file_not_found")
+            )
+
+    def refresh_lyrics(self):
+        """Refresh lyrics for current track."""
+        current_track = self._playback.engine.current_track
+        if current_track:
+            track_path = current_track.get("path", "")
+            track_title = current_track.get("title", "")
+            track_artist = current_track.get("artist", "")
+            track_id = current_track.get("id")
+
+            if track_path:
+                self.load_lyrics_async(track_path, track_title, track_artist)
+
+    def on_track_changed(self, track_item):
+        """Handle track change event."""
+        from domain.playlist_item import PlaylistItem
+        from domain.track import TrackSource
+
+        if isinstance(track_item, PlaylistItem):
+            path = track_item.local_path
+            title = track_item.title
+            artist = track_item.artist
+            song_mid = track_item.cloud_file_id
+            is_online = track_item.source == TrackSource.QQ
+
+            if path:
+                self.load_lyrics_async(path, title, artist, song_mid, is_online)
+            else:
+                self._panel.set_no_lyrics()
+        elif isinstance(track_item, dict):
+            path = track_item.get("path", "")
+            title = track_item.get("title", "")
+            artist = track_item.get("artist", "")
+
+            if path:
+                self.load_lyrics_async(path, title, artist)
+            else:
+                self._panel.set_no_lyrics()
