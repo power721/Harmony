@@ -186,21 +186,30 @@ class LibraryView(QWidget):
 
         # Set resize modes - Title stretches to fill remaining space
         # Source: fixed width
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 80)
-        # Title: stretch to fill all remaining space
+        # header.setSectionResizeMode(0, QHeaderView.Fixed)
+        # self._tracks_table.setColumnWidth(0, 80)
+        # # Title: stretch to fill all remaining space
+        # header.setSectionResizeMode(1, QHeaderView.Stretch)
+        # # Artist: fixed width
+        # header.setSectionResizeMode(2, QHeaderView.Fixed)
+        # self._tracks_table.setColumnWidth(2, 120)
+        # # Album: fixed width
+        # header.setSectionResizeMode(3, QHeaderView.Fixed)
+        # self._tracks_table.setColumnWidth(3, 150)
+        # # Duration: fit content
+        # header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        # # Favorites: fixed small width
+        # header.setSectionResizeMode(5, QHeaderView.Fixed)
+        # self._tracks_table.setColumnWidth(5, 40)
+
+        # Set column widths
+        header = self._tracks_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
-        # Artist: fixed width
-        header.setSectionResizeMode(2, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(2, 120)
-        # Album: fixed width
-        header.setSectionResizeMode(3, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(3, 150)
-        # Duration: fit content
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        # Favorites: fixed small width
-        header.setSectionResizeMode(5, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(5, 40)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
         # Styling - Modern, eye-friendly design
         self._tracks_table.setStyleSheet("""

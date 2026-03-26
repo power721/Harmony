@@ -260,9 +260,9 @@ class PlaylistView(QWidget):
 
         # Tracks table
         self._tracks_table = QTableWidget()
-        self._tracks_table.setColumnCount(4)
+        self._tracks_table.setColumnCount(5)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), t("title"), t("artist"), t("album"), t("duration")]
         )
 
         # Configure table
@@ -278,10 +278,11 @@ class PlaylistView(QWidget):
 
         # Set column widths
         header = self._tracks_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
@@ -462,7 +463,7 @@ class PlaylistView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), t("title"), t("artist"), t("album"), t("duration")]
         )
 
     def _create_playlist(self):
@@ -594,36 +595,56 @@ class PlaylistView(QWidget):
 
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
+        from domain.track import TrackSource
+
         self._tracks_table.setRowCount(len(tracks))
 
         for row, track in enumerate(tracks):
+            # Source
+            source_text = self._get_source_display_name(track.source)
+            source_item = QTableWidgetItem(source_text)
+            source_item.setData(Qt.UserRole, track.id)
+            source_item.setForeground(QBrush(QColor("#909090")))
+            self._tracks_table.setItem(row, 0, source_item)
+
             # Title
             title_item = QTableWidgetItem(track.title or track.path.split("/")[-1])
-            title_item.setData(Qt.UserRole, track.id)
             title_item.setForeground(QBrush(QColor("#e0e0e0")))
-            self._tracks_table.setItem(row, 0, title_item)
+            self._tracks_table.setItem(row, 1, title_item)
 
             # Artist
             artist_item = QTableWidgetItem(track.artist or t("unknown"))
             artist_item.setForeground(QBrush(QColor("#b0b0b0")))
-            self._tracks_table.setItem(row, 1, artist_item)
+            self._tracks_table.setItem(row, 2, artist_item)
 
             # Album
             album_item = QTableWidgetItem(track.album or t("unknown"))
             album_item.setForeground(QBrush(QColor("#b0b0b0")))
-            self._tracks_table.setItem(row, 2, album_item)
+            self._tracks_table.setItem(row, 3, album_item)
 
             # Duration
             duration_item = QTableWidgetItem(format_duration(track.duration))
             duration_item.setForeground(QBrush(QColor("#909090")))
-            self._tracks_table.setItem(row, 3, duration_item)
+            self._tracks_table.setItem(row, 4, duration_item)
+
+    def _get_source_display_name(self, source) -> str:
+        """Get display name for track source."""
+        from domain.track import TrackSource
+
+        source_map = {
+            TrackSource.LOCAL: t("source_local"),
+            TrackSource.QUARK: t("source_quark"),
+            TrackSource.BAIDU: t("source_baidu"),
+            TrackSource.QQ: t("source_qq"),
+        }
+        return source_map.get(source, t("source_local"))
 
     def _on_track_double_clicked(self, item: QTableWidgetItem):
         """Handle track double click."""
         row = item.row()
-        title_item = self._tracks_table.item(row, 0)
-        if title_item:
-            track_id = title_item.data(Qt.UserRole)
+        source_item = self._tracks_table.item(row, 0)
+        if source_item:
+            track_id = source_item.data(Qt.UserRole)
             if track_id and self._current_playlist_id:
                 # Emit playlist-specific signal
                 self.playlist_track_double_clicked.emit(self._current_playlist_id, track_id)
@@ -633,18 +654,6 @@ class PlaylistView(QWidget):
         item = self._tracks_table.itemAt(pos)
         if not item:
             return
-
-        # Check if QQ Music source
-        row = item.row()
-        title_item = self._tracks_table.item(row, 0)
-        is_qq_source = False
-        track_id = None
-        if title_item:
-            track_id = title_item.data(Qt.UserRole)
-            if track_id:
-                track = self._library_service.get_track(track_id)
-                if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
-                    is_qq_source = True
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -672,11 +681,7 @@ class PlaylistView(QWidget):
         menu.addSeparator()
 
         edit_action = QAction(t("edit_media_info"), self)
-        if is_qq_source:
-            edit_action.setEnabled(False)
-            edit_action.setToolTip(t("qq_music_edit_disabled"))
-        else:
-            edit_action.triggered.connect(lambda: self._edit_media_info())
+        edit_action.triggered.connect(lambda: self._edit_media_info())
         menu.addAction(edit_action)
 
         menu.exec_(self._tracks_table.mapToGlobal(pos))
@@ -687,9 +692,9 @@ class PlaylistView(QWidget):
             return
 
         row = item.row()
-        title_item = self._tracks_table.item(row, 0)
-        if title_item:
-            track_id = title_item.data(Qt.UserRole)
+        source_item = self._tracks_table.item(row, 0)
+        if source_item:
+            track_id = source_item.data(Qt.UserRole)
             self._playlist_service.remove_track_from_playlist(self._current_playlist_id, track_id)
             self._load_playlist(self._current_playlist_id)
 
