@@ -393,8 +393,9 @@ class OnlineItemDelegate(QStyledItemDelegate):
             painter.drawText(subtitle_rect, align, subtitle)
 
     def clear_cache(self):
-        """Clear cover cache."""
+        """Clear cover cache and pending downloads."""
         self._cover_cache.clear()
+        self._pending_downloads.clear()
 
 
 class OnlineGridView(QWidget):
