@@ -127,6 +127,7 @@ build_app() {
       --collect-all certifi \
       --collect-all qqmusic_api \
       --hidden-import=PySide6.QtMultimedia \
+      --exclude-binaries libicu* \
       --add-data "ui:ui" \
       --add-data "translations:translations" \
       --add-data "icons:icons" \
