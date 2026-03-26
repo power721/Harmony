@@ -306,11 +306,24 @@ class Bootstrap:
         return self._qqmusic_client
 
     def refresh_qqmusic_client(self):
-        """Refresh QQ Music client (call after login)."""
+        """Refresh QQ Music client and online music services (call after login)."""
         from services.lyrics.qqmusic_lyrics import QQMusicClient
+
+        # Refresh lyrics client
         self._qqmusic_client = QQMusicClient()
-        logger.info("QQ Music client refreshed")
+
+        # Reset online music service to pick up new credentials
+        self._online_music_service = None
+        self._online_download_service = None
+
+        logger.info("QQ Music client and online music services refreshed")
         return self._qqmusic_client
+
+    def refresh_online_music_service(self) -> "OnlineMusicService":
+        """Force refresh of online music service with current credentials."""
+        self._online_music_service = None
+        self._online_download_service = None
+        return self.online_music_service
 
     # ===== Online Music =====
 

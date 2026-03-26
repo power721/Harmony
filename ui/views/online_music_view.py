@@ -701,7 +701,11 @@ class OnlineMusicView(QWidget):
                 self._service._qqmusic = self._qqmusic_service
                 # Update download service reference too
                 self._download_service._qqmusic = self._qqmusic_service
-                logger.debug(f"QQ Music service initialized with credential, musicid={cred_dict.get('musicid')}, "
+                # Update detail view service references
+                if hasattr(self, '_detail_view') and self._detail_view:
+                    self._detail_view._service._qqmusic = self._qqmusic_service
+                    self._detail_view._download_service._qqmusic = self._qqmusic_service
+                logger.info(f"QQ Music service refreshed, musicid={cred_dict.get('musicid')}, "
                             f"has_refresh_key={bool(cred_dict.get('refresh_key'))}")
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
@@ -744,9 +748,15 @@ class OnlineMusicView(QWidget):
         from ui.dialogs.qqmusic_qr_login_dialog import QQMusicQRLoginDialog
 
         dialog = QQMusicQRLoginDialog(self)
-        if dialog.exec():
-            # Dialog already saved credentials and refreshed the client
-            self._update_login_status()
+        # Connect to credentials signal to refresh immediately on success
+        dialog.credentials_obtained.connect(self._on_credentials_obtained)
+        dialog.exec()
+
+    def _on_credentials_obtained(self, credential: dict):
+        """Handle credentials obtained from login dialog."""
+        logger.info("QQ Music credentials obtained, refreshing service...")
+        self._refresh_qqmusic_service()
+        self._update_login_status()
 
     def _on_search(self):
         """Handle search."""
