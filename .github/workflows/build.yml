@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,6 +49,7 @@ jobs:
           libxkbcommon-x11-0 \
           libfuse2 \
           xvfb \
+          ffmpeg \
           binutils \
           build-essential \
           cmake \
@@ -58,13 +59,7 @@ jobs:
           libgl1-mesa-dev \
           libxkbcommon-dev \
           libwayland-dev \
-          libstdc++6 \
           wayland-protocols
-
-      - name: Download static ffmpeg
-        run: |
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          tar -xf ffmpeg-release-amd64-static.tar.xz
 
       - name: Get Qt version for cache key
         id: qt-version
@@ -73,12 +68,6 @@ jobs:
           QT_VERSION=$(uv run python -c "from PySide6.QtCore import QLibraryInfo; print(QLibraryInfo.version().toString())")
           echo "version=$QT_VERSION" >> $GITHUB_OUTPUT
           echo "Qt version: $QT_VERSION"
-
-      - name: Cache Qt plugin analysis
-        uses: actions/cache@v4
-        with:
-          path: build_analysis/qt_plugins_whitelist.txt
-          key: qt-plugins-${{ steps.qt-version.outputs.version }}
 
       - name: Cache fcitx5 Qt6 plugin
         id: cache-fcitx5
@@ -118,100 +107,63 @@ jobs:
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |
+          uv sync --frozen
           mkdir -p build_analysis
-
-          echo "==> Running Qt plugin analysis..."
-
+          
+          echo "==> Running app in virtual framebuffer to sniff plugins..."
+          # 开启 QT_DEBUG_PLUGINS 并通过 xvfb 模拟显示
           export QT_DEBUG_PLUGINS=1
           export QT_QPA_PLATFORM=xcb
-
-          xvfb-run -a uv run python << 'EOF' 2> qt_plugins.log || true
+          
+          xvfb-run uv run python << 'EOF' 2> qt_plugins.log
           import sys
           from PySide6.QtWidgets import QApplication
           from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
           from PySide6.QtCore import QUrl, QTimer
-
+          
           app = QApplication(sys.argv)
           player = QMediaPlayer()
           audio = QAudioOutput()
           player.setAudioOutput(audio)
-          player.setSource(QUrl("https://www.w3schools.com/html/horse.mp3"))
-
+          # 触发插件加载
+          player.setSource(QUrl("https://www.w3schools.com/html/horse.mp3")) 
+          
+          # 运行 3 秒后自动退出
           QTimer.singleShot(3000, app.quit)
           app.exec()
           EOF
-
-          echo "==> Parsing plugins..."
-
+          
+          echo "==> Extracting whitelist..."
           python << 'EOF'
-          import os
           import re
-
-          whitelist = set()
-
+          plugins = set()
           try:
               with open("qt_plugins.log", "r", errors="ignore") as f:
                   for line in f:
                       if "loaded library" in line and "plugins" in line:
                           path = line.split('"')[1]
                           rel = path.split("plugins/")[-1]
-                          whitelist.add(rel)
+                          plugins.add(rel)
           except Exception as e:
-              print("Parse error:", e)
-
-          # fallback 插件（关键）
-          fallback = {
+              print(f"Warning during log parsing: {e}")
+          
+          # 强制补充核心多媒体插件
+          plugins.update([
               "platforms/libqxcb.so",
-              "imageformats/libqjpeg.so",
-              "imageformats/libqpng.so",
-              "iconengines/libqsvgicon.so",
-              "platforminputcontexts/libfcitx5platforminputcontextplugin.so",
+              "multimedia/libqtmedia_ffmpeg.so",
               "audio/libqtaudio_alsa.so",
-              "audio/libqtaudio_pulse.so",
-              "multimedia/libqtmedia_ffmpeg.so"
-          }
-
-          # 如果分析失败 → fallback
-          if not whitelist:
-              print("⚠ Using fallback plugin list")
-              whitelist = fallback
-          else:
-              print(f"Detected plugins: {len(whitelist)}")
-              whitelist |= fallback  # 合并（更稳）
-
-          os.makedirs("build_analysis", exist_ok=True)
-
+              "audio/libqtaudio_pulse.so"
+          ])
+          
           with open("build_analysis/qt_plugins_whitelist.txt", "w") as f:
-              for p in sorted(whitelist):
+              for p in sorted(plugins):
                   f.write(p + "\n")
-
-          print("Final plugin count:", len(whitelist))
+          print(f"Total plugins whitelisted: {len(plugins)}")
           EOF
-
-          echo "==> Final whitelist:"
-          cat build_analysis/qt_plugins_whitelist.txt
-
-      - name: Validate plugin whitelist
-        run: |
-          echo "==> Validating whitelist"
-
-          if [ ! -f build_analysis/qt_plugins_whitelist.txt ]; then
-            echo "❌ whitelist not generated"
-            exit 1
-          fi
-
-          if [ ! -s build_analysis/qt_plugins_whitelist.txt ]; then
-            echo "❌ whitelist is empty"
-            exit 1
-          fi
-
-          echo "Whitelist OK:"
-          cat build_analysis/qt_plugins_whitelist.txt
 
       - name: Build AppImage
         env:
           APP_VERSION: ${{ github.ref_name || 'nightly' }}
-          FFMPEG_STATIC_DIR: ${{ github.workspace }}/ffmpeg-*-amd64-static
         run: |
           chmod +x release.sh
           ./release.sh
@@ -223,33 +175,6 @@ jobs:
           mkdir -p Harmony-portable
           cp -r Harmony/* Harmony-portable/
           tar -czvf Harmony-$VERSION-linux-portable.tar.gz Harmony-portable
-
-      - name: Analyze bundle size
-        run: |
-          echo "==> Bundle size overview"
-
-          du -sh dist/* || true
-
-          echo ""
-          echo "==> Top 20 largest files"
-          find dist/$APP_NAME -type f -exec du -h {} + 2>/dev/null \
-            | sort -hr | head -n 20
-
-          echo ""
-          echo "==> _internal breakdown"
-          du -sh dist/$APP_NAME/_internal/* 2>/dev/null || true
-
-          echo ""
-          echo "==> Qt plugins breakdown"
-          du -sh dist/$APP_NAME/_internal/PySide6/Qt/plugins/* 2>/dev/null || true
-
-          echo ""
-          echo "==> lib directory breakdown"
-          du -sh dist/$APP_NAME/_internal/lib/* 2>/dev/null || true
-
-          echo ""
-          echo "==> ffmpeg size"
-          du -sh AppDir/usr/bin/ffmpeg 2>/dev/null || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
