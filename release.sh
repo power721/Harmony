@@ -142,6 +142,10 @@ build_app() {
     rm -f dist/Harmony/_internal/lib/libicuuc.so.*
 
     rm -f dist/Harmony/_internal/lib/libgtk-3.so.*
+    rm -f dist/Harmony/_internal/libgtk-3.so.*
+    rm -f dist/Harmony/_internal/lib/libQt6*.so*
+    rm -f dist/Harmony/_internal/lib/libQt6Gui.so.*
+    rm -f dist/Harmony/_internal/lib/libQt6Core.so.*
 
     echo "==> Stripping binaries"
     find dist/"$APP_NAME" -type f \( -name "*.so*" -o -perm /111 \) \
