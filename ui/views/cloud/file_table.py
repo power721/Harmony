@@ -57,7 +57,7 @@ class CloudFileTable(QWidget):
         self._table.setObjectName("cloudFileTable")
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels([
-            t("name"), t("type"), t("size"), t("duration"), t("status")
+            t("title"), t("type"), t("size"), t("duration"), "⬇"
         ])
 
         # Configure table
@@ -71,6 +71,108 @@ class CloudFileTable(QWidget):
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.setFocusPolicy(Qt.NoFocus)
         self._table.cellDoubleClicked.connect(self._on_double_click)
+
+        # Apply style matching library table
+        self._table.setStyleSheet("""
+            QTableWidget#cloudFileTable {
+                background-color: #1e1e1e;
+                border: none;
+                border-radius: 8px;
+                gridline-color: #2a2a2a;
+            }
+            QTableWidget#cloudFileTable::item {
+                padding: 12px 8px;
+                color: #e0e0e0;
+                border: none;
+                border-bottom: 1px solid #2a2a2a;
+            }
+            /* Alternating row colors for better readability */
+            QTableWidget#cloudFileTable::item:alternate {
+                background-color: #252525;
+            }
+            QTableWidget#cloudFileTable::item:!alternate {
+                background-color: #1e1e1e;
+            }
+            /* Selected state with vibrant accent */
+            QTableWidget#cloudFileTable::item:selected {
+                background-color: #1db954;
+                color: #ffffff;
+                font-weight: 500;
+            }
+            QTableWidget#cloudFileTable::item:selected:!alternate {
+                background-color: #1db954;
+            }
+            QTableWidget#cloudFileTable::item:selected:alternate {
+                background-color: #1ed760;
+            }
+            /* Hover effect for interactivity */
+            QTableWidget#cloudFileTable::item:hover {
+                background-color: #2d2d2d;
+            }
+            QTableWidget#cloudFileTable::item:selected:hover {
+                background-color: #1ed760;
+            }
+            /* Remove focus outline */
+            QTableWidget#cloudFileTable::item:focus {
+                outline: none;
+                border: none;
+            }
+            QTableWidget#cloudFileTable:focus {
+                outline: none;
+                border: none;
+            }
+            /* Header styling */
+            QTableWidget#cloudFileTable QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #1db954;
+                padding: 14px 12px;
+                border: none;
+                border-bottom: 2px solid #1db954;
+                border-radius: 0px;
+                font-weight: bold;
+                font-size: 13px;
+                letter-spacing: 0.5px;
+            }
+            /* First header (top-left corner) */
+            QTableWidget#cloudFileTable QTableCornerButton::section {
+                background-color: #2a2a2a;
+                border: none;
+                border-right: 1px solid #3a3a3a;
+                border-bottom: 2px solid #1db954;
+            }
+            /* Scrollbar styling */
+            QTableWidget#cloudFileTable QScrollBar:vertical {
+                background-color: #1e1e1e;
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px;
+            }
+            QTableWidget#cloudFileTable QScrollBar::handle:vertical {
+                background-color: #404040;
+                border-radius: 6px;
+                min-height: 40px;
+            }
+            QTableWidget#cloudFileTable QScrollBar::handle:vertical:hover {
+                background-color: #505050;
+            }
+            QTableWidget#cloudFileTable QScrollBar:horizontal {
+                background-color: #1e1e1e;
+                height: 12px;
+                border-radius: 6px;
+            }
+            QTableWidget#cloudFileTable QScrollBar::handle:horizontal {
+                background-color: #404040;
+                border-radius: 6px;
+                min-width: 40px;
+            }
+            QTableWidget#cloudFileTable QScrollBar::handle:horizontal:hover {
+                background-color: #505050;
+            }
+            QTableWidget#cloudFileTable QScrollBar::add-line, QScrollBar::sub-line {
+                height: 0px;
+                width: 0px;
+            }
+        """)
 
         # Set column widths
         header = self._table.horizontalHeader()
@@ -295,3 +397,10 @@ class CloudFileTable(QWidget):
         """Clear the table."""
         self._table.setRowCount(0)
         self._current_playing_file_id = None
+
+    def refresh_ui(self):
+        """Refresh UI texts for language change."""
+        # Update header labels
+        self._table.setHorizontalHeaderLabels([
+            t("title"), t("type"), t("size"), t("duration"), "⬇"
+        ])

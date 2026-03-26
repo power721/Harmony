@@ -170,6 +170,21 @@ class CloudDriveView(QWidget):
         self._add_account_btn.setObjectName("addAccountBtn")
         self._add_account_btn.setCursor(Qt.PointingHandCursor)
         self._add_account_btn.clicked.connect(self._add_account)
+        # Apply style matching new playlist button
+        self._add_account_btn.setStyleSheet("""
+            QPushButton#addAccountBtn {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 20px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton#addAccountBtn:hover {
+                background-color: #1ed760;
+            }
+        """)
         layout.addWidget(self._add_account_btn)
 
         # Account list
@@ -183,6 +198,31 @@ class CloudDriveView(QWidget):
         self._account_list.customContextMenuRequested.connect(
             self._show_account_context_menu
         )
+        # Apply style matching playlist list
+        self._account_list.setStyleSheet("""
+            QListWidget#accountList {
+                background: transparent;
+                border: none;
+            }
+            QListWidget#accountList::item {
+                padding: 12px;
+                color: #c0c0c0;
+                border-radius: 8px;
+                margin: 2px 0px;
+            }
+            QListWidget#accountList::item:selected {
+                background-color: #1db954;
+                color: #000000;
+                font-weight: bold;
+            }
+            QListWidget#accountList::item:hover {
+                background-color: #2a2a2a;
+                color: #1db954;
+            }
+            QListWidget#accountList::item:selected:hover {
+                background-color: #1ed760;
+            }
+        """)
         layout.addWidget(self._account_list)
 
         return widget
@@ -1162,6 +1202,10 @@ class CloudDriveView(QWidget):
         self._account_title.setText(
             self._current_account.account_name if self._current_account else t("select_account")
         )
+
+        # Refresh file table headers
+        if hasattr(self, '_file_table'):
+            self._file_table.refresh_ui()
 
     def showEvent(self, event):
         """Handle show event."""
