@@ -428,6 +428,10 @@ class PlaylistView(QWidget):
         self._playlist_list.itemDoubleClicked.connect(self._on_playlist_double_clicked)
         self._tracks_table.itemDoubleClicked.connect(self._on_track_double_clicked)
 
+        # Listen for playlist events from other views
+        EventBus.instance().playlist_created.connect(self._on_playlist_created)
+        EventBus.instance().playlist_modified.connect(self._on_playlist_modified)
+
     def _refresh_playlists(self):
         """Refresh the playlist list."""
         self._playlist_list.clear()
@@ -524,6 +528,23 @@ class PlaylistView(QWidget):
         """Handle playlist selection."""
         playlist_id = item.data(Qt.UserRole)
         self._load_playlist(playlist_id)
+
+    def _on_playlist_created(self, playlist_id: int):
+        """Handle playlist created event from other views."""
+        self._refresh_playlists()
+        # Select and load the new playlist
+        for i in range(self._playlist_list.count()):
+            item = self._playlist_list.item(i)
+            if item and item.data(Qt.UserRole) == playlist_id:
+                self._playlist_list.setCurrentItem(item)
+                self._load_playlist(playlist_id)
+                break
+
+    def _on_playlist_modified(self, playlist_id: int):
+        """Handle playlist modified event from other views."""
+        # Refresh current playlist if it's the one being modified
+        if self._current_playlist_id == playlist_id:
+            self._load_playlist(playlist_id)
 
     def _on_playlist_double_clicked(self, item: QListWidgetItem):
         """Handle playlist double click - load and play."""

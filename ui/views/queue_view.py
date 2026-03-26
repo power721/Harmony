@@ -17,12 +17,17 @@ from PySide6.QtWidgets import (
     QMenu,
     QAbstractItemView,
     QMessageBox,
+    QDialog,
+    QLineEdit,
+    QDialogButtonBox,
 )
 
 from domain.playback import PlaybackState
 from services.playback import PlaybackService
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
+from services.library.playlist_service import PlaylistService
+from domain.playlist import Playlist
 from system.i18n import t
 from system.event_bus import EventBus
 from utils.helpers import format_duration
@@ -40,6 +45,7 @@ class QueueView(QWidget):
         player: PlaybackService,
         library_service: LibraryService,
         favorite_service: FavoritesService,
+        playlist_service: PlaylistService,
         parent=None
     ):
         """
@@ -49,12 +55,14 @@ class QueueView(QWidget):
             player: Playback service
             library_service: Library service for track operations
             favorite_service: Favorites service for favorite operations
+            playlist_service: Playlist service for creating playlists
             parent: Parent widget
         """
         super().__init__(parent)
         self._player = player
         self._library_service = library_service
         self._favorite_service = favorite_service
+        self._playlist_service = playlist_service
         self._setup_ui()
         self._setup_connections()
 
@@ -89,6 +97,13 @@ class QueueView(QWidget):
         header_layout.addWidget(self._title_label)
 
         header_layout.addStretch()
+
+        # Create playlist button
+        self._create_playlist_btn = QPushButton(t("create_playlist"))
+        self._create_playlist_btn.setObjectName("queueActionBtn")
+        self._create_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._create_playlist_btn.clicked.connect(self._create_playlist_from_queue)
+        header_layout.addWidget(self._create_playlist_btn)
 
         # Smart deduplicate button
         self._dedup_btn = QPushButton(t("smart_deduplicate"))
@@ -349,6 +364,9 @@ class QueueView(QWidget):
         """Update UI texts after language change."""
         # Update title
         self._title_label.setText(t("play_queue"))
+
+        # Update create playlist button
+        self._create_playlist_btn.setText(t("create_playlist"))
 
         # Update deduplicate button
         self._dedup_btn.setText(t("smart_deduplicate"))
@@ -635,6 +653,10 @@ class QueueView(QWidget):
 
         menu.addSeparator()
 
+        # Add to playlist action
+        add_to_playlist_action = menu.addAction(t("add_to_playlist"))
+        add_to_playlist_action.triggered.connect(self._add_selected_to_playlist)
+
         remove_action = menu.addAction(t("remove_from_queue"))
         remove_action.triggered.connect(self._remove_selected)
 
@@ -908,3 +930,402 @@ class QueueView(QWidget):
 
         # Notify that queue was reordered (for saving)
         self.queue_reordered.emit()
+
+    def _create_playlist_from_queue(self):
+        """Create a new playlist from the current queue."""
+        # Get current playlist items
+        playlist_items = self._player.engine.playlist_items
+        if not playlist_items:
+            QMessageBox.information(self, t("info"), t("queue_is_empty"))
+            return
+
+        # Collect track IDs (only local tracks with track_id)
+        track_ids = []
+        for item in playlist_items:
+            # Get track_id from PlaylistItem or dict
+            if hasattr(item, 'track_id'):
+                track_id = item.track_id
+            else:
+                track_id = item.get("id") if isinstance(item, dict) else None
+
+            if track_id:
+                track_ids.append(track_id)
+
+        if not track_ids:
+            QMessageBox.information(self, t("info"), t("no_valid_tracks"))
+            return
+
+        # Show input dialog for playlist name
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("create_playlist"))
+        dialog.setMinimumWidth(350)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QLineEdit {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #ffffff;
+            }
+            QPushButton[role="cancel"]:hover {
+                background-color: #505050;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        label = QLabel(t("enter_playlist_name"))
+        layout.addWidget(label)
+
+        input_field = QLineEdit()
+        layout.addWidget(input_field)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton(t("ok"))
+        cancel_button = QPushButton(t("cancel"))
+        cancel_button.setProperty("role", "cancel")
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
+
+        def on_accept():
+            name = input_field.text().strip()
+            if not name:
+                QMessageBox.warning(dialog, t("warning"), t("enter_playlist_name"))
+                return
+
+            # Create playlist
+            playlist = Playlist(name=name)
+            playlist_id = self._playlist_service.create_playlist(playlist)
+
+            # Add tracks to playlist
+            added_count = 0
+            for track_id in track_ids:
+                if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
+                    added_count += 1
+
+            dialog.accept()
+
+            # Show success message
+            message = t("playlist_created_with_tracks").format(
+                name=name,
+                count=added_count
+            )
+            QMessageBox.information(self, t("success"), message)
+
+            # Emit event to notify playlist view to refresh
+            EventBus.instance().playlist_created.emit(playlist_id)
+
+        ok_button.clicked.connect(on_accept)
+        cancel_button.clicked.connect(dialog.reject)
+
+        dialog.exec_()
+
+    def _add_selected_to_playlist(self):
+        """Add selected tracks to an existing playlist."""
+        selected_items = self._queue_list.selectedItems()
+        if not selected_items:
+            return
+
+        # Collect track IDs from selected items
+        track_ids = []
+        for item in selected_items:
+            track = item.data(Qt.UserRole)
+            if track:
+                # Get track_id from dict or PlaylistItem
+                if isinstance(track, dict):
+                    track_id = track.get("id")
+                elif hasattr(track, 'track_id'):
+                    track_id = track.track_id
+                else:
+                    track_id = None
+
+                if track_id:
+                    track_ids.append(track_id)
+
+        if not track_ids:
+            QMessageBox.information(self, t("info"), t("no_valid_tracks"))
+            return
+
+        # Get all playlists
+        playlists = self._playlist_service.get_all_playlists()
+        if not playlists:
+            reply = QMessageBox.question(
+                self,
+                t("no_playlists"),
+                t("no_playlists_message"),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self._create_playlist_from_queue_with_tracks(track_ids)
+            return
+
+        # Show playlist selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("add_to_playlist"))
+        dialog.setMinimumWidth(350)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QListWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 10px;
+            }
+            QListWidget::item:selected {
+                background-color: #1db954;
+                color: #000000;
+            }
+            QListWidget::item:hover {
+                background-color: #2d2d2d;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #ffffff;
+            }
+            QPushButton[role="cancel"]:hover {
+                background-color: #505050;
+            }
+            QPushButton[role="secondary"] {
+                background-color: #3a3a3a;
+                color: #ffffff;
+            }
+            QPushButton[role="secondary"]:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Label
+        label = QLabel(t("add_to_playlist_message").format(count=len(track_ids)))
+        layout.addWidget(label)
+
+        # Playlist list
+        playlist_list = QListWidget()
+        for playlist in playlists:
+            item = QListWidgetItem(playlist.name)
+            item.setData(Qt.UserRole, playlist.id)
+            playlist_list.addItem(item)
+        layout.addWidget(playlist_list)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        new_playlist_btn = QPushButton(t("new_playlist"))
+        new_playlist_btn.setProperty("role", "secondary")
+        new_playlist_btn.clicked.connect(
+            lambda: self._create_playlist_from_queue_with_tracks(track_ids, dialog)
+        )
+        button_layout.addWidget(new_playlist_btn)
+
+        button_layout.addStretch()
+
+        cancel_button = QPushButton(t("cancel"))
+        cancel_button.setProperty("role", "cancel")
+        button_layout.addWidget(cancel_button)
+
+        add_button = QPushButton(t("ok"))
+        button_layout.addWidget(add_button)
+
+        layout.addLayout(button_layout)
+
+        def on_add():
+            current_item = playlist_list.currentItem()
+            if not current_item:
+                QMessageBox.warning(dialog, t("warning"), t("select_playlist_placeholder"))
+                return
+
+            playlist_id = current_item.data(Qt.UserRole)
+            playlist_name = current_item.text()
+
+            # Add tracks to playlist
+            added_count = 0
+            duplicate_count = 0
+            for track_id in track_ids:
+                if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
+                    added_count += 1
+                else:
+                    duplicate_count += 1
+
+            dialog.accept()
+
+            # Show result message
+            if duplicate_count > 0:
+                message = t("added_skipped_duplicates").format(
+                    added=added_count,
+                    duplicates=duplicate_count
+                )
+            else:
+                message = t("added_tracks_to_playlist").format(
+                    count=added_count,
+                    name=playlist_name
+                )
+            QMessageBox.information(self, t("success"), message)
+
+            # Emit event to notify playlist modified
+            EventBus.instance().playlist_modified.emit(playlist_id)
+
+        add_button.clicked.connect(on_add)
+        cancel_button.clicked.connect(dialog.reject)
+
+        # Double-click to add
+        playlist_list.itemDoubleClicked.connect(
+            lambda: on_add() if playlist_list.currentItem() else None
+        )
+
+        dialog.exec_()
+
+    def _create_playlist_from_queue_with_tracks(self, track_ids: list, parent_dialog=None):
+        """Create a new playlist with specified track IDs."""
+        # Show input dialog for playlist name
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("create_playlist"))
+        dialog.setMinimumWidth(350)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #282828;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+            QLineEdit {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 1px solid #4a4a4a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1db954;
+            }
+            QPushButton {
+                background-color: #1db954;
+                color: #000000;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+            QPushButton[role="cancel"] {
+                background-color: #404040;
+                color: #ffffff;
+            }
+            QPushButton[role="cancel"]:hover {
+                background-color: #505050;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        label = QLabel(t("enter_playlist_name"))
+        layout.addWidget(label)
+
+        input_field = QLineEdit()
+        layout.addWidget(input_field)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton(t("ok"))
+        cancel_button = QPushButton(t("cancel"))
+        cancel_button.setProperty("role", "cancel")
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(ok_button)
+        layout.addLayout(button_layout)
+
+        def on_accept():
+            name = input_field.text().strip()
+            if not name:
+                QMessageBox.warning(dialog, t("warning"), t("enter_playlist_name"))
+                return
+
+            # Create playlist
+            playlist = Playlist(name=name)
+            playlist_id = self._playlist_service.create_playlist(playlist)
+
+            # Add tracks to playlist
+            added_count = 0
+            for track_id in track_ids:
+                if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
+                    added_count += 1
+
+            dialog.accept()
+            if parent_dialog:
+                parent_dialog.accept()
+
+            # Show success message
+            message = t("playlist_created_with_tracks").format(
+                name=name,
+                count=added_count
+            )
+            QMessageBox.information(self, t("success"), message)
+
+            # Emit event to notify playlist view to refresh
+            EventBus.instance().playlist_created.emit(playlist_id)
+
+        ok_button.clicked.connect(on_accept)
+        cancel_button.clicked.connect(dialog.reject)
+
+        dialog.exec_()
+

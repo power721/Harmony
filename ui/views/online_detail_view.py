@@ -893,8 +893,9 @@ class OnlineDetailView(QWidget):
         self._update_pagination()
         self._display_songs(self._tracks)
 
-        # Load artist albums
-        self._load_artist_albums()
+        # Load artist albums only on first page (not when paginating songs)
+        if self._current_page == 1:
+            self._load_artist_albums()
 
     def _update_pagination(self):
         """Update pagination controls visibility and state."""

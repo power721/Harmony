@@ -475,5 +475,8 @@
     "cache_cleanup_result": "清理完成。已删除 {files} 个文件，释放 {space} 空间。",
     "cache_no_cleanup_needed": "无需清理。",
     "cache_interval_hours": "{hours} 小时",
-    "cache_settings_hint": "配置自动缓存清理以释放磁盘空间。当超过阈值时，将优先删除最旧的文件。播放队列中的文件将被保护，不会被删除。"
+    "cache_settings_hint": "配置自动缓存清理以释放磁盘空间。当超过阈值时，将优先删除最旧的文件。播放队列中的文件将被保护，不会被删除。",
+    "queue_is_empty": "播放队列为空",
+    "no_valid_tracks": "队列中没有有效的本地歌曲",
+    "playlist_created_with_tracks": "已创建播放列表「{name}」，包含 {count} 首歌曲"
 }

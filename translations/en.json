@@ -475,5 +475,8 @@
     "cache_cleanup_result": "Cleanup completed. Deleted {files} files, freed {space}.",
     "cache_no_cleanup_needed": "No cleanup needed.",
     "cache_interval_hours": "{hours} hour(s)",
-    "cache_settings_hint": "Configure automatic cache cleanup to free up disk space. When threshold is exceeded, oldest files will be deleted first. Files in the playback queue are protected from deletion."
+    "cache_settings_hint": "Configure automatic cache cleanup to free up disk space. When threshold is exceeded, oldest files will be deleted first. Files in the playback queue are protected from deletion.",
+    "queue_is_empty": "The play queue is empty",
+    "no_valid_tracks": "No valid local tracks in the queue",
+    "playlist_created_with_tracks": "Created playlist '{name}' with {count} tracks"
 }

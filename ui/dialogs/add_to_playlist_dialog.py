@@ -78,7 +78,7 @@ class AddToPlaylistDialog(QDialog):
 
         # Playlist list
         self._playlist_list = QListWidget()
-        self._playlist_list.setSpacing(12)
+        self._playlist_list.setSpacing(4)
         self._playlist_list.setCurrentRow(0)
         layout.addWidget(self._playlist_list)
 

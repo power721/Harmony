@@ -75,8 +75,21 @@ class OnlineMusicHandler(QObject):
         artist = metadata.get("artist", "") if metadata else ""
         album = metadata.get("album", "") if metadata else ""
         duration = metadata.get("duration", 0.0) if metadata else 0.0
+        cover_url = metadata.get("cover_url", "") if metadata else ""
+
+        # Create track record in database first
+        from app.bootstrap import Bootstrap
+        track_id = Bootstrap.instance().library_service.add_online_track(
+            song_mid=song_mid,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cover_url=cover_url
+        )
 
         item = PlaylistItem(
+            track_id=track_id,
             source=TrackSource.QQ,
             local_path=local_path,
             title=title,
@@ -102,6 +115,18 @@ class OnlineMusicHandler(QObject):
         artist = metadata.get("artist", "")
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0.0)
+        cover_url = metadata.get("cover_url", "")
+
+        # Create track record in database first
+        from app.bootstrap import Bootstrap
+        track_id = Bootstrap.instance().library_service.add_online_track(
+            song_mid=song_mid,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cover_url=cover_url
+        )
 
         local_path = ""
         needs_download = True
@@ -111,6 +136,7 @@ class OnlineMusicHandler(QObject):
             needs_download = False
 
         item = PlaylistItem(
+            track_id=track_id,
             source=TrackSource.QQ,
             local_path=local_path,
             title=title,
@@ -138,6 +164,18 @@ class OnlineMusicHandler(QObject):
         artist = metadata.get("artist", "")
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0.0)
+        cover_url = metadata.get("cover_url", "")
+
+        # Create track record in database first
+        from app.bootstrap import Bootstrap
+        track_id = Bootstrap.instance().library_service.add_online_track(
+            song_mid=song_mid,
+            title=title,
+            artist=artist,
+            album=album,
+            duration=duration,
+            cover_url=cover_url
+        )
 
         local_path = ""
         needs_download = True
@@ -147,6 +185,7 @@ class OnlineMusicHandler(QObject):
             needs_download = False
 
         item = PlaylistItem(
+            track_id=track_id,
             source=TrackSource.QQ,
             local_path=local_path,
             title=title,
@@ -176,6 +215,18 @@ class OnlineMusicHandler(QObject):
             artist = metadata.get("artist", "")
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
+            cover_url = metadata.get("cover_url", "")
+
+            # Create track record in database first
+            from app.bootstrap import Bootstrap
+            track_id = Bootstrap.instance().library_service.add_online_track(
+                song_mid=song_mid,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cover_url=cover_url
+            )
 
             local_path = ""
             needs_download = True
@@ -185,6 +236,7 @@ class OnlineMusicHandler(QObject):
                 needs_download = False
 
             item = PlaylistItem(
+                track_id=track_id,
                 source=TrackSource.QQ,
                 local_path=local_path,
                 title=title,
@@ -200,7 +252,9 @@ class OnlineMusicHandler(QObject):
         self._playback.save_queue()
 
         count = len(tracks_data)
-        self._show_status(f"✓ {t('added_to_queue')}: {count} tracks")
+        s = "s" if count > 1 else ""
+        msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
+        self._show_status(msg)
 
     def insert_multiple_to_queue(self, tracks_data: List[Tuple[str, dict]]):
         """
@@ -217,6 +271,18 @@ class OnlineMusicHandler(QObject):
             artist = metadata.get("artist", "")
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
+            cover_url = metadata.get("cover_url", "")
+
+            # Create track record in database first
+            from app.bootstrap import Bootstrap
+            track_id = Bootstrap.instance().library_service.add_online_track(
+                song_mid=song_mid,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cover_url=cover_url
+            )
 
             local_path = ""
             needs_download = True
@@ -226,6 +292,7 @@ class OnlineMusicHandler(QObject):
                 needs_download = False
 
             item = PlaylistItem(
+                track_id=track_id,
                 source=TrackSource.QQ,
                 local_path=local_path,
                 title=title,
@@ -258,6 +325,18 @@ class OnlineMusicHandler(QObject):
             artist = metadata.get("artist", "")
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
+            cover_url = metadata.get("cover_url", "")
+
+            # Create track record in database first
+            from app.bootstrap import Bootstrap
+            track_id = Bootstrap.instance().library_service.add_online_track(
+                song_mid=song_mid,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cover_url=cover_url
+            )
 
             local_path = ""
             needs_download = True
@@ -267,6 +346,7 @@ class OnlineMusicHandler(QObject):
                 needs_download = False
 
             item = PlaylistItem(
+                track_id=track_id,
                 source=TrackSource.QQ,
                 local_path=local_path,
                 title=title,

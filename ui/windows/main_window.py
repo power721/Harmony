@@ -288,7 +288,8 @@ class MainWindow(QMainWindow):
         self._queue_view = QueueView(
             self._player,
             bootstrap.library_service,
-            bootstrap.favorites_service
+            bootstrap.favorites_service,
+            bootstrap.playlist_service
         )
         self._albums_view = AlbumsView(bootstrap.library_service, bootstrap.cover_service)
         self._artists_view = ArtistsView(bootstrap.library_service, bootstrap.cover_service)
