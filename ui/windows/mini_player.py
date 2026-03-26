@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QThread, QTimer, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import (
-    QKeySequence, QShortcut, QIcon, QPixmap, QPainter, QColor,
+    QKeySequence, QShortcut, QPixmap, QPainter, QColor,
     QPainterPath, QRegion, QFontMetrics
 )
 from PySide6.QtWidgets import (
@@ -35,6 +35,7 @@ from shiboken6 import isValid
 from domain.playback import PlaybackState, PlayMode
 from services.playback import PlaybackService
 from system.i18n import t
+from ui.icons import IconName, IconColor, get_icon
 from ui.widgets.mini_lyrics_widget import MiniLyricsWidget
 from ui.widgets.player_controls import ClickableSlider
 from utils import format_time
@@ -175,11 +176,7 @@ class MiniPlayer(QWidget):
         self._close_btn = QPushButton()
         self._close_btn.setFixedSize(26, 26)
         self._close_btn.setCursor(Qt.PointingHandCursor)
-        icons_dir = Path(__file__).parent.parent.parent / "icons"
-        close_icon_path = icons_dir / "times.svg"
-        if close_icon_path.exists():
-            self._close_btn.setIcon(QIcon(str(close_icon_path)))
-            self._close_btn.setIconSize(QSize(14, 14))
+        self._close_btn.setIcon(get_icon(IconName.TIMES, None))
         self._close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -234,10 +231,10 @@ class MiniPlayer(QWidget):
         bottom_layout.addStretch()
 
         # Controls
-        self._prev_btn = self._create_control_button("previous.svg", 28)
+        self._prev_btn = self._create_control_button(IconName.PREVIOUS, 28)
         bottom_layout.addWidget(self._prev_btn)
 
-        self._play_pause_btn = self._create_control_button("play.svg", 32)
+        self._play_pause_btn = self._create_control_button(IconName.PLAY, 32, None)
         self._play_pause_btn.setStyleSheet("""
             QPushButton {
                 background: #1db954;
@@ -250,7 +247,7 @@ class MiniPlayer(QWidget):
         """)
         bottom_layout.addWidget(self._play_pause_btn)
 
-        self._next_btn = self._create_control_button("next.svg", 28)
+        self._next_btn = self._create_control_button(IconName.NEXT, 28)
         bottom_layout.addWidget(self._next_btn)
 
         bottom_layout.addStretch()
@@ -261,19 +258,13 @@ class MiniPlayer(QWidget):
 
         layout.addLayout(bottom_layout)
 
-    def _create_control_button(self, icon_name: str, size: int) -> QPushButton:
+    def _create_control_button(self, icon_name: str, size: int, color: str = None) -> QPushButton:
         """Create a control button with SVG icon."""
         btn = QPushButton()
         btn.setFixedSize(size, size)
         btn.setCursor(Qt.PointingHandCursor)
-
-        # Load SVG icon
-        icons_dir = Path(__file__).parent.parent.parent / "icons"
-        icon_path = icons_dir / icon_name
-        if icon_path.exists():
-            icon = QIcon(str(icon_path))
-            btn.setIcon(icon)
-            btn.setIconSize(QSize(16, 16))
+        btn.setIcon(get_icon(icon_name, color, 16))
+        btn.setIconSize(QSize(16, 16))
 
         btn.setStyleSheet("""
             QPushButton {
@@ -399,14 +390,11 @@ class MiniPlayer(QWidget):
 
     def _initialize_current_track(self):
         """Initialize with current track info if playing."""
-        icons_dir = Path(__file__).parent.parent.parent / "icons"
         # Update play/pause button state
         if self._player.engine.state == PlaybackState.PLAYING:
-            icon_path = icons_dir / "pause.svg"
+            self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 16))
         else:
-            icon_path = icons_dir / "play.svg"
-        if icon_path.exists():
-            self._play_pause_btn.setIcon(QIcon(str(icon_path)))
+            self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 16))
 
         # Get current track info
         current_track = self._player.engine.current_track
@@ -426,18 +414,13 @@ class MiniPlayer(QWidget):
 
     def _on_state_changed(self, state: PlaybackState):
         """Handle player state change."""
-        icons_dir = Path(__file__).parent.parent.parent / "icons"
         if state == PlaybackState.PLAYING:
-            icon_path = icons_dir / "pause.svg"
-            if icon_path.exists():
-                self._play_pause_btn.setIcon(QIcon(str(icon_path)))
+            self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 16))
             # Update window title to show current track
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
         else:
-            icon_path = icons_dir / "play.svg"
-            if icon_path.exists():
-                self._play_pause_btn.setIcon(QIcon(str(icon_path)))
+            self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 16))
             # Paused or stopped - show original app title
             self.setWindowTitle(t("app_title"))
 

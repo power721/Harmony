@@ -77,6 +77,7 @@ class IconName:
 def _colorize_svg(svg_content: bytes, color: str) -> bytes:
     """
     Replace fill and stroke color in SVG content.
+    For icons with background (multiple paths), only keep the foreground paths.
 
     Args:
         svg_content: Original SVG bytes
@@ -85,8 +86,22 @@ def _colorize_svg(svg_content: bytes, color: str) -> bytes:
     Returns:
         Modified SVG bytes
     """
-    svg_str = svg_content.decode('utf-8')
     import re
+    svg_str = svg_content.decode('utf-8')
+
+    # Check if this is a multi-path icon with background (common pattern: background + icon)
+    # If there are exactly 2 paths and one fills the entire viewBox (background), remove it
+    paths = re.findall(r'<path[^>]*>', svg_str)
+    if len(paths) == 2:
+        # Check if first path is a background (fills entire area: M36 32... or M0 0...)
+        first_path_d = re.search(r'<path[^>]*d="([^"]*)"', paths[0])
+        if first_path_d:
+            d = first_path_d.group(1)
+            # Background typically starts with M36 or M0 and fills the entire viewBox
+            if d.startswith('M36') or d.startswith('M0 0'):
+                # Remove the background path
+                svg_str = svg_str.replace(paths[0], '')
+
     # Replace fill="#xxx" or fill='xxx', but keep fill="none"
     svg_str = re.sub(r'fill="(?!none")[^"]*"', f'fill="{color}"', svg_str)
     svg_str = re.sub(r"fill='(?!none')[^']*'", f"fill='{color}'", svg_str)
@@ -123,8 +138,11 @@ def get_icon(icon_name: str, color: str = IconColor.DEFAULT, size: int = 24) -> 
         with open(icon_path, 'rb') as f:
             svg_content = f.read()
 
-        # Colorize SVG
-        colored_svg = _colorize_svg(svg_content, color)
+        # Colorize SVG only if color is specified
+        if color:
+            colored_svg = _colorize_svg(svg_content, color)
+        else:
+            colored_svg = svg_content
 
         # Render to pixmap
         renderer = QSvgRenderer(colored_svg)
