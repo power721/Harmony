@@ -541,3 +541,19 @@ class SqliteTrackRepository(BaseRepository):
             song_count=row["song_count"] or 0,
             duration=row["total_duration"] or 0.0,
         )
+
+    def update_path(self, track_id: TrackId, path: str) -> bool:
+        """Update a track's file path."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE tracks SET path = ? WHERE id = ?", (path, track_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def update_cover_path(self, track_id: TrackId, cover_path: str) -> bool:
+        """Update a track's cover path."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE tracks SET cover_path = ? WHERE id = ?", (cover_path, track_id))
+        conn.commit()
+        return cursor.rowcount > 0

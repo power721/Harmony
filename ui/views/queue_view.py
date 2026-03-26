@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 
 from domain.playback import PlaybackState
 from services.playback import PlaybackService
+from services.library import LibraryService
+from services.library.favorites_service import FavoritesService
 from system.i18n import t
 from system.event_bus import EventBus
 from utils.helpers import format_duration
@@ -33,18 +35,26 @@ class QueueView(QWidget):
     play_track = Signal(int)
     queue_reordered = Signal()  # Emitted when queue order changes via drag-drop
 
-    def __init__(self, player: PlaybackService, db_manager=None, parent=None):
+    def __init__(
+        self,
+        player: PlaybackService,
+        library_service: LibraryService,
+        favorite_service: FavoritesService,
+        parent=None
+    ):
         """
         Initialize queue view.
 
         Args:
             player: Playback service
-            db_manager: Database manager
+            library_service: Library service for track operations
+            favorite_service: Favorites service for favorite operations
             parent: Parent widget
         """
         super().__init__(parent)
         self._player = player
-        self._db = db_manager if db_manager else player._db
+        self._library_service = library_service
+        self._favorite_service = favorite_service
         self._setup_ui()
         self._setup_connections()
 
@@ -567,11 +577,11 @@ class QueueView(QWidget):
         added_count = 0
         removed_count = 0
         for track_id in track_ids:
-            if self._db.is_favorite(track_id):
-                self._db.remove_favorite(track_id)
+            if self._favorite_service.is_favorite(track_id=track_id):
+                self._favorite_service.remove_favorite(track_id=track_id)
                 removed_count += 1
             else:
-                self._db.add_favorite(track_id)
+                self._favorite_service.add_favorite(track_id=track_id)
                 added_count += 1
 
         if added_count > 0 and removed_count == 0:
@@ -637,12 +647,8 @@ class QueueView(QWidget):
         Args:
             track_ids: List of track IDs to add
         """
-        from infrastructure.database import DatabaseManager
-
-        db = DatabaseManager()
-
         for track_id in track_ids:
-            track = db.get_track(track_id)
+            track = self._library_service.get_track(track_id)
             if track:
                 from pathlib import Path
                 from domain.track import TrackSource
@@ -660,8 +666,6 @@ class QueueView(QWidget):
                     }
                     self._player.engine.add_track(track_dict)
 
-        db.close()
-
     def insert_tracks_after_current(self, track_ids: List[int]):
         """
         Insert tracks after the current playing track.
@@ -669,10 +673,6 @@ class QueueView(QWidget):
         Args:
             track_ids: List of track IDs to insert
         """
-        from infrastructure.database import DatabaseManager
-
-        db = DatabaseManager()
-
         # Get current index
         current_index = self._player.engine.current_index
 
@@ -680,7 +680,7 @@ class QueueView(QWidget):
         insert_index = current_index + 1 if current_index >= 0 else 0
 
         for track_id in track_ids:
-            track = db.get_track(track_id)
+            track = self._library_service.get_track(track_id)
             if track:
                 from pathlib import Path
                 from domain.track import TrackSource
@@ -698,8 +698,6 @@ class QueueView(QWidget):
                     }
                     self._player.engine.insert_track(insert_index, track_dict)
                     insert_index += 1
-
-        db.close()
 
     def closeEvent(self, event):
         """Handle close event."""
@@ -739,7 +737,7 @@ class QueueView(QWidget):
         if not track_id:
             return
 
-        track = self._db.get_track(track_id)
+        track = self._library_service.get_track(track_id)
         if not track:
             return
 
@@ -815,9 +813,10 @@ class QueueView(QWidget):
             )
 
             if success:
-                self._db.update_track(
-                    track_id, title=new_title, artist=new_artist, album=new_album
-                )
+                track.title = new_title
+                track.artist = new_artist
+                track.album = new_album
+                self._library_service.update_track(track)
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)
                 QMessageBox.information(self, t("success"), t("media_saved"))

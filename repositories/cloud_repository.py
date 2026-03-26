@@ -134,6 +134,15 @@ class SqliteCloudRepository(BaseRepository):
         conn.commit()
         return cursor.lastrowid
 
+    def update_local_path(self, file_id: str, local_path: str) -> bool:
+        """Update a cloud file's local path."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE cloud_files SET local_path = ? WHERE file_id = ?", (local_path, file_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
     def _row_to_account(self, row: sqlite3.Row) -> CloudAccount:
         """Convert a database row to a CloudAccount object."""
         return CloudAccount(

@@ -6,6 +6,7 @@ import logging
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.track import Track
+from repositories.favorite_repository import SqliteFavoriteRepository
 from system.event_bus import EventBus
 
 if TYPE_CHECKING:
@@ -22,15 +23,19 @@ class FavoritesService:
     without directly accessing the database layer.
     """
 
-    def __init__(self, db_manager: "DatabaseManager", event_bus: EventBus = None):
+    def __init__(
+        self,
+        favorite_repo: SqliteFavoriteRepository,
+        event_bus: EventBus = None
+    ):
         """
         Initialize favorites service.
 
         Args:
-            db_manager: Database manager for data persistence
+            favorite_repo: Favorite repository for data persistence
             event_bus: Event bus for broadcasting changes
         """
-        self._db = db_manager
+        self._favorite_repo = favorite_repo
         self._event_bus = event_bus or EventBus.instance()
 
     def is_favorite(self, track_id: int = None, cloud_file_id: str = None) -> bool:
@@ -44,7 +49,7 @@ class FavoritesService:
         Returns:
             True if favorited, False otherwise
         """
-        return self._db.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        return self._favorite_repo.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
 
     def get_all_favorite_track_ids(self) -> set:
         """
@@ -53,7 +58,7 @@ class FavoritesService:
         Returns:
             Set of track IDs that are favorited
         """
-        return self._db.get_all_favorite_track_ids()
+        return self._favorite_repo.get_all_favorite_track_ids()
 
     def add_favorite(
         self,
@@ -72,7 +77,7 @@ class FavoritesService:
         Returns:
             True if added successfully, False if already exists
         """
-        result = self._db.add_favorite(
+        result = self._favorite_repo.add_favorite(
             track_id=track_id,
             cloud_file_id=cloud_file_id,
             cloud_account_id=cloud_account_id
@@ -94,7 +99,7 @@ class FavoritesService:
         Returns:
             True if removed, False if not found
         """
-        result = self._db.remove_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        result = self._favorite_repo.remove_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
         if result:
             is_cloud = cloud_file_id is not None
             item_id = cloud_file_id if is_cloud else track_id
@@ -138,7 +143,7 @@ class FavoritesService:
         Returns:
             List of Track objects
         """
-        return self._db.get_favorites()
+        return self._favorite_repo.get_favorites()
 
     def get_favorites_with_cloud(self) -> List[dict]:
         """
@@ -147,4 +152,4 @@ class FavoritesService:
         Returns:
             List of dicts with track/cloud file info
         """
-        return self._db.get_favorites_with_cloud()
+        return self._favorite_repo.get_favorites_with_cloud()

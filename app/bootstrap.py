@@ -8,12 +8,15 @@ from typing import Optional
 from infrastructure import HttpClient
 from infrastructure.database import DatabaseManager
 from repositories.cloud_repository import SqliteCloudRepository
+from repositories.favorite_repository import SqliteFavoriteRepository
+from repositories.history_repository import SqliteHistoryRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
 from repositories.track_repository import SqliteTrackRepository
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
 from services.library.play_history_service import PlayHistoryService
+from services.library.playlist_service import PlaylistService
 from services.library.file_organization_service import FileOrganizationService
 from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
@@ -49,6 +52,8 @@ class Bootstrap:
         self._playlist_repo: Optional[SqlitePlaylistRepository] = None
         self._cloud_repo: Optional[SqliteCloudRepository] = None
         self._queue_repo: Optional[SqliteQueueRepository] = None
+        self._favorite_repo: Optional[SqliteFavoriteRepository] = None
+        self._history_repo: Optional[SqliteHistoryRepository] = None
 
         # Services
         self._playback_service: Optional[PlaybackService] = None
@@ -56,6 +61,7 @@ class Bootstrap:
         self._library_service: Optional[LibraryService] = None
         self._favorites_service: Optional[FavoritesService] = None
         self._play_history_service: Optional[PlayHistoryService] = None
+        self._playlist_service: Optional[PlaylistService] = None
         self._cloud_account_service: Optional[CloudAccountService] = None
         self._cloud_file_service: Optional[CloudFileService] = None
         self._cover_service: Optional[CoverService] = None
@@ -136,6 +142,20 @@ class Bootstrap:
             self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self.db)
         return self._queue_repo
 
+    @property
+    def favorite_repo(self) -> SqliteFavoriteRepository:
+        """Get favorite repository."""
+        if self._favorite_repo is None:
+            self._favorite_repo = SqliteFavoriteRepository(self._db_path, db_manager=self.db)
+        return self._favorite_repo
+
+    @property
+    def history_repo(self) -> SqliteHistoryRepository:
+        """Get history repository."""
+        if self._history_repo is None:
+            self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self.db)
+        return self._history_repo
+
     # ===== Services =====
 
     @property
@@ -170,10 +190,7 @@ class Bootstrap:
                 playlist_repo=self.playlist_repo,
                 event_bus=self.event_bus,
                 cover_service=self.cover_service,
-                db_manager=self.db,
             )
-            # Initialize albums/artists tables if needed
-            self._library_service.init_albums_artists()
         return self._library_service
 
     @property
@@ -181,7 +198,7 @@ class Bootstrap:
         """Get favorites service."""
         if self._favorites_service is None:
             self._favorites_service = FavoritesService(
-                db_manager=self.db,
+                favorite_repo=self.favorite_repo,
                 event_bus=self.event_bus,
             )
         return self._favorites_service
@@ -191,10 +208,20 @@ class Bootstrap:
         """Get play history service."""
         if self._play_history_service is None:
             self._play_history_service = PlayHistoryService(
-                db_manager=self.db,
+                history_repo=self.history_repo,
                 event_bus=self.event_bus,
             )
         return self._play_history_service
+
+    @property
+    def playlist_service(self) -> PlaylistService:
+        """Get playlist service."""
+        if self._playlist_service is None:
+            self._playlist_service = PlaylistService(
+                playlist_repo=self.playlist_repo,
+                event_bus=self.event_bus,
+            )
+        return self._playlist_service
 
     @property
     def cloud_account_service(self) -> CloudAccountService:

@@ -87,6 +87,59 @@ Never mix UI logic, database logic, and playback logic.
 
 ---
 
+# Strict Access Control Rules
+
+**CRITICAL**: These rules are enforced to maintain architectural integrity.
+
+## Database Access
+
+✗ **FORBIDDEN**: Direct database access from anywhere except DatabaseManager
+✓ **ALLOWED**: Only `infrastructure/database/DatabaseManager` may access SQLite directly
+
+## DatabaseManager Access
+
+✗ **FORBIDDEN**: Direct DatabaseManager access from UI or services
+✓ **ALLOWED**: Only repositories may access DatabaseManager
+
+## Repository Access
+
+✗ **FORBIDDEN**: Direct repository access from UI
+✓ **ALLOWED**: Only services may access repositories
+
+## UI Layer Restrictions
+
+✗ **FORBIDDEN**: UI code may NOT access:
+- Database (sqlite3, direct queries)
+- DatabaseManager
+- Repositories
+- Infrastructure components
+
+✓ **ALLOWED**: UI code may ONLY access:
+- Services (through Bootstrap/injection)
+- Domain models
+- EventBus
+- System components (ConfigManager, etc.)
+
+## Violation Detection
+
+When checking for violations, grep for:
+
+```bash
+# UI importing database
+grep -r "sqlite3\|DatabaseManager" ui/
+
+# UI importing repositories
+grep -r "from repositories" ui/
+
+# Services importing database
+grep -r "sqlite3\|DatabaseManager" services/
+
+# Non-repository importing DatabaseManager
+grep -r "from infrastructure.database" --exclude="repositories/"
+```
+
+---
+
 # Module Responsibilities
 
 ## app

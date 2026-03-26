@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from domain.track import Track
-from infrastructure.database import DatabaseManager
+from domain.playlist import Playlist
 from services.playback import PlaybackService
 from system.i18n import t
 from system.event_bus import EventBus
@@ -128,18 +128,27 @@ class PlaylistView(QWidget):
                                            int)  # Signal when playlist track is double-clicked (playlist_id, track_id)
 
     def __init__(
-            self, db_manager: DatabaseManager, player: PlaybackService, parent=None
+            self,
+            playlist_service: 'PlaylistService',
+            favorite_service: 'FavoritesService',
+            library_service: 'LibraryService',
+            player: PlaybackService,
+            parent=None
     ):
         """
         Initialize playlist view.
 
         Args:
-            db_manager: Database manager
+            playlist_service: Playlist service for playlist operations
+            favorite_service: Favorites service for favorite operations
+            library_service: Library service for track operations
             player: Player controller
             parent: Parent widget
         """
         super().__init__(parent)
-        self._db = db_manager
+        self._playlist_service = playlist_service
+        self._favorite_service = favorite_service
+        self._library_service = library_service
         self._player = player
         self._current_playlist_id: Optional[int] = None
 
@@ -423,7 +432,7 @@ class PlaylistView(QWidget):
         """Refresh the playlist list."""
         self._playlist_list.clear()
 
-        playlists = self._db.get_all_playlists()
+        playlists = self._playlist_service.get_all_playlists()
         for playlist in playlists:
             item = QListWidgetItem(playlist.name)
             item.setData(Qt.UserRole, playlist.id)
@@ -459,7 +468,8 @@ class PlaylistView(QWidget):
         )
 
         if ok and name:
-            playlist_id = self._db.create_playlist(name)
+            playlist = Playlist(name=name)
+            playlist_id = self._playlist_service.create_playlist(playlist)
             self._refresh_playlists()
 
             # Select the new playlist
@@ -483,7 +493,7 @@ class PlaylistView(QWidget):
         )
 
         if reply == QMessageBox.Yes:
-            self._db.delete_playlist(self._current_playlist_id)
+            self._playlist_service.delete_playlist(self._current_playlist_id)
             self._current_playlist_id = None
             self._refresh_playlists()
             self._clear_playlist_content()
@@ -493,7 +503,7 @@ class PlaylistView(QWidget):
         if self._current_playlist_id is None:
             return
 
-        playlist = self._db.get_playlist(self._current_playlist_id)
+        playlist = self._playlist_service.get_playlist(self._current_playlist_id)
         if not playlist:
             return
 
@@ -505,7 +515,8 @@ class PlaylistView(QWidget):
         )
 
         if ok and new_name:
-            self._db.rename_playlist(self._current_playlist_id, new_name)
+            playlist.name = new_name
+            self._playlist_service.update_playlist(playlist)
             self._playlist_title.setText(new_name)
             self._refresh_playlists()
 
@@ -529,14 +540,14 @@ class PlaylistView(QWidget):
         self._current_playlist_id = playlist_id
 
         # Get playlist info
-        playlist = self._db.get_playlist(playlist_id)
+        playlist = self._playlist_service.get_playlist(playlist_id)
         if playlist:
             self._playlist_title.setText(playlist.name)
 
         # Enable buttons
         self._delete_playlist_btn.setEnabled(True)
         self._rename_playlist_btn.setEnabled(True)
-        tracks = self._db.get_playlist_tracks(playlist_id)
+        tracks = self._playlist_service.get_playlist_tracks(playlist_id)
         self._play_playlist_btn.setEnabled(len(tracks) > 0)
 
         # Load tracks
@@ -610,7 +621,7 @@ class PlaylistView(QWidget):
         if title_item:
             track_id = title_item.data(Qt.UserRole)
             if track_id:
-                track = self._db.get_track(track_id)
+                track = self._library_service.get_track(track_id)
                 if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
                     is_qq_source = True
 
@@ -658,7 +669,7 @@ class PlaylistView(QWidget):
         title_item = self._tracks_table.item(row, 0)
         if title_item:
             track_id = title_item.data(Qt.UserRole)
-            self._db.remove_track_from_playlist(self._current_playlist_id, track_id)
+            self._playlist_service.remove_track_from_playlist(self._current_playlist_id, track_id)
             self._load_playlist(self._current_playlist_id)
 
     def _toggle_favorite_selected(self):
@@ -680,11 +691,11 @@ class PlaylistView(QWidget):
         added_count = 0
         removed_count = 0
         for track_id in track_ids:
-            if self._db.is_favorite(track_id):
-                self._db.remove_favorite(track_id)
+            if self._favorite_service.is_favorite(track_id=track_id):
+                self._favorite_service.remove_favorite(track_id=track_id)
                 removed_count += 1
             else:
-                self._db.add_favorite(track_id)
+                self._favorite_service.add_favorite(track_id=track_id)
                 added_count += 1
 
         if added_count > 0 and removed_count == 0:
@@ -722,11 +733,11 @@ class PlaylistView(QWidget):
             )
             return
 
-        success = self._db.add_track_to_playlist(self._current_playlist_id, track_id)
+        success = self._playlist_service.add_track_to_playlist(self._current_playlist_id, track_id)
         if success:
             self._load_playlist(self._current_playlist_id)
             # Get playlist name for message
-            playlist = self._db.get_playlist(self._current_playlist_id)
+            playlist = self._playlist_service.get_playlist(self._current_playlist_id)
             playlist_name = playlist.name if playlist else ""
             QMessageBox.information(
                 self, t("success"), t("added_tracks_to_playlist").format(count=1, name=playlist_name)
@@ -759,7 +770,7 @@ class PlaylistView(QWidget):
         if not track_id:
             return
 
-        track = self._db.get_track(track_id)
+        track = self._library_service.get_track(track_id)
         if not track:
             return
 
@@ -835,9 +846,10 @@ class PlaylistView(QWidget):
             )
 
             if success:
-                self._db.update_track(
-                    track_id, title=new_title, artist=new_artist, album=new_album
-                )
+                track.title = new_title
+                track.artist = new_artist
+                track.album = new_album
+                self._library_service.update_track(track)
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)
                 QMessageBox.information(self, t("success"), t("media_saved"))

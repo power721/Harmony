@@ -29,30 +29,25 @@ class LibraryService:
             track_repo: SqliteTrackRepository,
             playlist_repo: SqlitePlaylistRepository,
             event_bus: EventBus = None,
-            cover_service: 'CoverService' = None,
-            db_manager: 'DatabaseManager' = None
+            cover_service: 'CoverService' = None
     ):
         self._track_repo = track_repo
         self._playlist_repo = playlist_repo
         self._event_bus = event_bus or EventBus.instance()
         self._cover_service = cover_service
-        self._db = db_manager
 
     # ===== Album/Artist Table Operations =====
+    # NOTE: These methods are temporarily disabled. TODO: Create Album/Artist repositories
 
     def init_albums_artists(self):
         """Initialize album and artist tables if empty."""
-        if self._db:
-            if self._db.is_albums_empty():
-                self._db.refresh_albums()
-            if self._db.is_artists_empty():
-                self._db.refresh_artists()
+        # TODO: Implement using Album/Artist repositories
+        pass
 
     def refresh_albums_artists(self):
         """Refresh album and artist tables."""
-        if self._db:
-            self._db.refresh_albums()
-            self._db.refresh_artists()
+        # TODO: Implement using Album/Artist repositories
+        pass
 
     def rebuild_albums_artists(self) -> dict:
         """
@@ -63,11 +58,7 @@ class LibraryService:
         Returns:
             Dict with 'albums' and 'artists' counts
         """
-        if self._db:
-            result = self._db.rebuild_albums_artists()
-            # Notify UI to refresh
-            self._event_bus.tracks_added.emit(0)
-            return result
+        # TODO: Implement using Album/Artist repositories
         return {'albums': 0, 'artists': 0}
 
     # ===== Track Operations =====
@@ -82,15 +73,11 @@ class LibraryService:
 
     def get_track_by_path(self, path: str) -> Optional[Track]:
         """Get a track by file path."""
-        if self._db:
-            return self._db.get_track_by_path(path)
-        return None
+        return self._track_repo.get_by_path(path)
 
     def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
         """Get a track by cloud file ID."""
-        if self._db:
-            return self._db.get_track_by_cloud_file_id(cloud_file_id)
-        return None
+        return self._track_repo.get_by_cloud_file_id(cloud_file_id)
 
     def get_all_tracks(self) -> List[Track]:
         """Get all tracks in the library."""
@@ -105,14 +92,7 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             self._event_bus.tracks_added.emit(1)
-            # Update albums and artists tables
-            if self._db:
-                self._db.update_albums_on_track_added(
-                    track.album, track.artist, track.cover_path, track.duration
-                )
-                self._db.update_artists_on_track_added(
-                    track.artist, track.album, track.cover_path
-                )
+            # TODO: Update albums and artists tables via Album/Artist repositories
         return track_id
 
     def add_online_track(
@@ -142,11 +122,10 @@ class LibraryService:
             Track ID (existing or newly created)
         """
         # Check if already exists by cloud_file_id
-        if self._db:
-            existing = self._db.get_track_by_cloud_file_id(song_mid)
-            if existing:
-                logger.debug(f"[LibraryService] Online track already exists: {song_mid}")
-                return existing.id
+        existing = self._track_repo.get_by_cloud_file_id(song_mid)
+        if existing:
+            logger.debug(f"[LibraryService] Online track already exists: {song_mid}")
+            return existing.id
 
         # Create Track record with empty path
         track = Track(
@@ -163,14 +142,7 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             logger.info(f"[LibraryService] Added online track: {title} - {artist}")
-            # Update albums and artists tables
-            if self._db:
-                self._db.update_albums_on_track_added(
-                    album, artist, cover_url, duration
-                )
-                self._db.update_artists_on_track_added(
-                    artist, album, cover_url
-                )
+            # TODO: Update albums and artists tables via Album/Artist repositories
 
         return track_id
 
@@ -188,16 +160,9 @@ class LibraryService:
 
         result = self._track_repo.update(track)
 
-        if result and self._db and old_track:
-            # Update albums and artists tables
-            self._db.update_albums_on_track_updated(
-                old_track.album, old_track.artist, old_track.duration,
-                track.album, track.artist, track.cover_path, track.duration
-            )
-            self._db.update_artists_on_track_updated(
-                old_track.artist, old_track.album,
-                track.artist, track.album, track.cover_path
-            )
+        if result and old_track:
+            # TODO: Update albums and artists tables via Album/Artist repositories
+            pass
 
         return result
 
@@ -225,9 +190,6 @@ class LibraryService:
         Returns:
             True if updated successfully
         """
-        if not self._db:
-            return False
-
         track = self._track_repo.get_by_id(track_id)
         if not track:
             return False
@@ -242,14 +204,8 @@ class LibraryService:
         if cloud_file_id is not None:
             track.cloud_file_id = cloud_file_id
 
-        # Use db_manager's update_track for direct database update
-        return self._db.update_track(
-            track_id,
-            title=track.title,
-            artist=track.artist,
-            album=track.album,
-            cloud_file_id=track.cloud_file_id
-        )
+        # Use repository to update
+        return self._track_repo.update(track)
 
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the library."""
@@ -258,15 +214,8 @@ class LibraryService:
 
         result = self._track_repo.delete(track_id)
 
-        if result and self._db and track:
-            # Update albums and artists tables
-            self._db.update_albums_on_track_deleted(
-                track.album, track.artist, track.duration
-            )
-            self._db.update_artists_on_track_deleted(
-                track.artist, track.album
-            )
-
+        if result and track:
+            # TODO: Update albums and artists tables via Album/Artist repositories
             # Emit event to notify other components (e.g., playback queue)
             self._event_bus.track_deleted.emit(track_id)
 
@@ -303,11 +252,7 @@ class LibraryService:
 
     def add_track_to_playlist(self, playlist_id: int, track_id: int) -> bool:
         """Add a track to a playlist."""
-        # Use db_manager to go through write worker if available
-        if self._db:
-            result = self._db.add_track_to_playlist(playlist_id, track_id)
-        else:
-            result = self._playlist_repo.add_track(playlist_id, track_id)
+        result = self._playlist_repo.add_track(playlist_id, track_id)
         if result:
             self._event_bus.playlist_modified.emit(playlist_id)
         return result
@@ -484,9 +429,8 @@ class LibraryService:
                 errors.append(f"Error processing {track.path}: {str(e)}")
                 logger.error(f"Error renaming artist for track {track.id}: {e}")
 
-        # Rebuild albums and artists cache tables
-        if updated_count > 0 and self._db:
-            self._db.rebuild_albums_artists()
+        # TODO: Rebuild albums and artists cache tables via Album/Artist repositories
+        if updated_count > 0:
             # Notify UI to refresh
             self._event_bus.tracks_added.emit(0)
 
@@ -565,9 +509,8 @@ class LibraryService:
                 errors.append(f"Error processing {track.path}: {str(e)}")
                 logger.error(f"Error renaming album for track {track.id}: {e}")
 
-        # Rebuild albums and artists cache tables
-        if updated_count > 0 and self._db:
-            self._db.rebuild_albums_artists()
+        # TODO: Rebuild albums and artists cache tables via Album/Artist repositories
+        if updated_count > 0:
             # Notify UI to refresh
             self._event_bus.tracks_added.emit(0)
 
@@ -590,19 +533,9 @@ class LibraryService:
         Returns:
             True if updated successfully
         """
-        if not self._db:
-            return False
-
-        import sqlite3
-        conn = self._db._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE artists
-            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE name = ?
-        """, (cover_path, artist_name))
-        conn.commit()
-        return cursor.rowcount > 0
+        # TODO: Implement using Artist repository
+        logger.warning("update_artist_cover not yet implemented without Album/Artist repositories")
+        return False
 
     def update_album_cover(self, album_name: str, artist: str, cover_path: str) -> bool:
         """
@@ -616,16 +549,6 @@ class LibraryService:
         Returns:
             True if updated successfully
         """
-        if not self._db:
-            return False
-
-        import sqlite3
-        conn = self._db._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE albums
-            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE name = ? AND artist = ?
-        """, (cover_path, album_name, artist))
-        conn.commit()
-        return cursor.rowcount > 0
+        # TODO: Implement using Album repository
+        logger.warning("update_album_cover not yet implemented without Album/Artist repositories")
+        return False

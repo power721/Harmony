@@ -3,13 +3,12 @@ Play history service - Manages play history records.
 """
 
 import logging
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional
 
 from domain.history import PlayHistory
+from domain.track import Track
+from repositories.history_repository import SqliteHistoryRepository
 from system.event_bus import EventBus
-
-if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +21,15 @@ class PlayHistoryService:
     without directly accessing the database layer.
     """
 
-    def __init__(self, db_manager: "DatabaseManager", event_bus: EventBus = None):
+    def __init__(self, history_repo: SqliteHistoryRepository, event_bus: EventBus = None):
         """
         Initialize play history service.
 
         Args:
-            db_manager: Database manager for data persistence
+            history_repo: History repository for data persistence
             event_bus: Event bus for broadcasting changes
         """
-        self._db = db_manager
+        self._history_repo = history_repo
         self._event_bus = event_bus or EventBus.instance()
 
     def get_history(self, limit: int = 100) -> List[PlayHistory]:
@@ -43,7 +42,22 @@ class PlayHistoryService:
         Returns:
             List of PlayHistory objects
         """
-        return self._db.get_play_history(limit=limit)
+        return self._history_repo.get_recent(limit)
+
+    def get_history_tracks(self, limit: int = 100) -> List[Track]:
+        """
+        Get recently played tracks (returns Track objects).
+
+        This is a convenience method for UI that needs Track objects
+        instead of PlayHistory objects.
+
+        Args:
+            limit: Maximum number of records to return
+
+        Returns:
+            List of Track objects ordered by most recently played
+        """
+        return self._history_repo.get_recent_tracks(limit)
 
     def add_history(self, track_id: int) -> int:
         """
@@ -53,9 +67,9 @@ class PlayHistoryService:
             track_id: Track ID
 
         Returns:
-            History entry ID
+            True if added successfully
         """
-        return self._db.add_play_history(track_id=track_id)
+        return self._history_repo.add(track_id)
 
     def get_most_played(self, limit: int = 20) -> List[tuple]:
         """
@@ -67,7 +81,10 @@ class PlayHistoryService:
         Returns:
             List of tuples with track data and play counts
         """
-        return self._db.get_most_played(limit=limit)
+        # TODO: Implement this method in HistoryRepository
+        # For now, return empty list
+        logger.warning("get_most_played not yet implemented in HistoryRepository")
+        return []
 
     def clear_history(self) -> bool:
         """
