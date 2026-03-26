@@ -6,10 +6,13 @@ import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 
 from infrastructure.network import HttpClient
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
+
+if TYPE_CHECKING:
+    from services.sources.base import CoverSource
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -21,14 +24,38 @@ class CoverService:
     # Cache directory
     CACHE_DIR = Path.home() / '.cache' / 'harmony_player' / 'covers'
 
-    def __init__(self, http_client: HttpClient):
+    def __init__(
+        self,
+        http_client: HttpClient,
+        sources: Optional[List["CoverSource"]] = None,
+    ):
         """
         Initialize cover service.
 
         Args:
             http_client: HTTP client for fetching cover art
+            sources: Optional list of CoverSource instances for search.
+                     If None, default sources will be created.
         """
         self.http_client = http_client
+        self._sources = sources
+
+    def _get_sources(self) -> List["CoverSource"]:
+        """Get cover sources, creating default ones if needed."""
+        if self._sources is None:
+            from services.sources import (
+                NetEaseCoverSource,
+                QQMusicCoverSource,
+                ITunesCoverSource,
+                LastFmCoverSource,
+            )
+            self._sources = [
+                NetEaseCoverSource(self.http_client),
+                QQMusicCoverSource(),
+                ITunesCoverSource(self.http_client),
+                LastFmCoverSource(self.http_client),
+            ]
+        return [s for s in self._sources if s.is_available()]
 
     def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None,
                   skip_online: bool = False) -> Optional[str]:
@@ -504,27 +531,31 @@ class CoverService:
         results = []
         all_search_results: List[SearchResult] = []
 
-        # Define search tasks
-        search_tasks = [
-            ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
-            ("QQMusic", lambda: self._search_covers_from_qqmusic(title, artist, album, duration)),
-            ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
-            # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
-            ("Last.fm", lambda: self._search_covers_from_lastfm(artist, album or title)),
-        ]
+        sources = self._get_sources()
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(task[1]): task[0]
-                for task in search_tasks
+                executor.submit(source.search, title, artist, album, duration): source.name
+                for source in sources
             }
 
             for future in as_completed(futures, timeout=15):
                 source_name = futures[future]
                 try:
                     search_results = future.result()
-                    all_search_results.extend(search_results)
+                    # Convert CoverSearchResult to SearchResult for compatibility
+                    for r in search_results:
+                        all_search_results.append(SearchResult(
+                            title=r.title,
+                            artist=r.artist,
+                            album=r.album,
+                            duration=r.duration,
+                            source=r.source,
+                            id=r.id,
+                            cover_url=r.cover_url,
+                            album_mid=getattr(r, 'album_mid', None),
+                        ))
                 except Exception as e:
                     logger.error(f"Error searching {source_name} covers: {e}", exc_info=True)
 

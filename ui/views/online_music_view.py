@@ -1270,8 +1270,6 @@ class OnlineMusicView(QWidget):
             logger.warning("No valid tracks found for selected rows")
             return
 
-        logger.debug(f"Showing context menu for {len(tracks)} tracks in {'top list' if is_top_list else 'search'}")
-
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {

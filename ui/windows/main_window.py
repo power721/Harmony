@@ -695,9 +695,7 @@ class MainWindow(QMainWindow):
             }
             /* Status bar styling */
             QStatusBar {
-                background-color: #1a1a1a;
                 color: #ffffff;
-                border-top: 1px solid #2a2a2a;
             }
             QStatusBar::item {
                 border: none;

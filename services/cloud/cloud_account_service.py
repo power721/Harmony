@@ -10,6 +10,7 @@ from system.event_bus import EventBus
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
+    from repositories.cloud_repository import SqliteCloudRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +23,23 @@ class CloudAccountService:
     without directly accessing the database layer.
     """
 
-    def __init__(self, db_manager: "DatabaseManager", event_bus: EventBus = None):
+    def __init__(
+        self,
+        db_manager: "DatabaseManager",
+        event_bus: EventBus = None,
+        cloud_repo: "SqliteCloudRepository" = None,
+    ):
         """
         Initialize cloud account service.
 
         Args:
             db_manager: Database manager for data persistence
             event_bus: Event bus for broadcasting changes
+            cloud_repo: Cloud repository for account operations
         """
         self._db = db_manager
         self._event_bus = event_bus or EventBus.instance()
+        self._cloud_repo = cloud_repo
 
     def get_accounts(self, provider: str = None) -> List[CloudAccount]:
         """
@@ -179,7 +187,8 @@ class CloudAccountService:
         Returns:
             True if deleted successfully
         """
-        # Use cloud_repo for deletion
-        from app import Bootstrap
-        bootstrap = Bootstrap.instance()
-        return bootstrap.cloud_repo.delete_account(account_id)
+        # Use injected cloud_repo for deletion
+        if self._cloud_repo:
+            return self._cloud_repo.delete_account(account_id)
+        # Fallback to db_manager
+        return self._db.delete_cloud_account(account_id)

@@ -286,7 +286,7 @@ class TestPlaylistItem:
             local_path="/music/song.mp3",
             title="Test Song",
         )
-        playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
+        playlist_item = PlaylistItem.from_play_queue_item(queue_item)
 
         assert playlist_item.source == TrackSource.LOCAL
         assert playlist_item.track_id == 1
@@ -305,7 +305,7 @@ class TestPlaylistItem:
             local_path="/cache/song.mp3",
             title="Cloud Song",
         )
-        playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
+        playlist_item = PlaylistItem.from_play_queue_item(queue_item)
 
         assert playlist_item.source == TrackSource.QUARK
         assert playlist_item.cloud_file_id == "quark_123"
@@ -325,9 +325,38 @@ class TestPlaylistItem:
             album="Online Album",
             duration=200.0,
         )
-        playlist_item = PlaylistItem.from_play_queue_item(queue_item, db=None)
+        playlist_item = PlaylistItem.from_play_queue_item(queue_item)
 
         assert playlist_item.source == TrackSource.QQ
         assert playlist_item.cloud_file_id == "song_mid_123"
         assert playlist_item.title == "Online Song"
         assert playlist_item.artist == "Online Artist"
+
+    def test_with_metadata(self):
+        """Test with_metadata method for immutable update."""
+        item = PlaylistItem(
+            source=TrackSource.LOCAL,
+            track_id=1,
+            local_path="/music/song.mp3",
+            title="Original Title",
+            artist="Original Artist",
+        )
+
+        # Update metadata
+        updated = item.with_metadata(
+            cover_path="/covers/album.jpg",
+            title="Updated Title",
+            duration=180.0,
+        )
+
+        # Original should be unchanged
+        assert item.title == "Original Title"
+        assert item.cover_path is None
+
+        # Updated should have new values
+        assert updated.title == "Updated Title"
+        assert updated.cover_path == "/covers/album.jpg"
+        assert updated.duration == 180.0
+        # Unchanged fields should remain
+        assert updated.track_id == 1
+        assert updated.source == TrackSource.LOCAL

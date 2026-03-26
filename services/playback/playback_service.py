@@ -23,6 +23,8 @@ from system.event_bus import EventBus
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
     from services.cloud.download_service import CloudDownloadService
+    from services.online import OnlineDownloadService
+    from repositories.track_repository import SqliteTrackRepository
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,9 @@ class PlaybackService(QObject):
             db_manager: DatabaseManager,
             config_manager: ConfigManager,
             cover_service: 'CoverService' = None,
+            online_download_service: 'OnlineDownloadService' = None,
+            event_bus: EventBus = None,
+            track_repo: 'SqliteTrackRepository' = None,
             parent=None
     ):
         """
@@ -63,6 +68,9 @@ class PlaybackService(QObject):
             db_manager: Database manager for track data
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
+            online_download_service: Service for downloading online tracks (QQ Music)
+            event_bus: Event bus for event publishing (defaults to singleton)
+            track_repo: Track repository for metadata enrichment
             parent: Optional parent QObject
         """
         super().__init__(parent)
@@ -70,8 +78,10 @@ class PlaybackService(QObject):
         self._db = db_manager
         self._config = config_manager
         self._cover_service = cover_service
+        self._online_download_service = online_download_service
+        self._track_repo = track_repo
         self._engine = PlayerEngine()
-        self._event_bus = EventBus.instance()
+        self._event_bus = event_bus or EventBus.instance()
 
         # Playback state
         self._current_source = "local"  # "local" or "cloud"
@@ -789,8 +799,12 @@ class PlaybackService(QObject):
         if not queue_items:
             return False
 
-        # Convert to PlaylistItem list
-        items = [PlaylistItem.from_play_queue_item(item, self._db) for item in queue_items]
+        # Convert to PlaylistItem list (pure conversion, no DB access)
+        items = [PlaylistItem.from_play_queue_item(item) for item in queue_items]
+
+        # Enrich metadata from track repository
+        if self._track_repo:
+            items = [self._enrich_queue_item_metadata(item) for item in items]
 
         # Get saved index and play mode
         saved_index = self._config.get("queue_current_index", 0)
@@ -831,6 +845,60 @@ class PlaybackService(QObject):
             self._engine.load_track_at(saved_index)
 
         return True
+
+    def _enrich_queue_item_metadata(self, item: PlaylistItem) -> PlaylistItem:
+        """
+        Enrich PlaylistItem with metadata from track repository.
+
+        Args:
+            item: PlaylistItem to enrich
+
+        Returns:
+            Enriched PlaylistItem
+        """
+        if not self._track_repo:
+            return item
+
+        track = None
+
+        # For local tracks with track_id, get by track_id
+        if item.track_id and item.is_local:
+            track = self._track_repo.get_by_id(item.track_id)
+        # For online/cloud tracks, try to get by cloud_file_id
+        elif item.is_cloud and item.cloud_file_id:
+            track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+        # For local files without track_id, try to find by path
+        elif item.local_path and not item.cloud_file_id:
+            track = self._track_repo.get_by_path(item.local_path)
+
+        if track:
+            # Determine needs_download based on source and file existence
+            from pathlib import Path
+            local_path = track.path or item.local_path
+            file_exists = local_path and Path(local_path).exists()
+            needs_download = False
+
+            if item.source == TrackSource.QQ:
+                needs_download = not file_exists
+                if not file_exists:
+                    local_path = ""
+            elif item.source in (TrackSource.QUARK, TrackSource.BAIDU):
+                if item.cloud_file_id and not file_exists:
+                    needs_download = True
+                    local_path = ""
+
+            return item.with_metadata(
+                cover_path=track.cover_path,
+                title=track.title or item.title,
+                artist=track.artist or item.artist,
+                album=track.album or item.album,
+                duration=track.duration or item.duration,
+                local_path=local_path,
+                track_id=track.id or item.track_id,
+                needs_download=needs_download,
+            )
+
+        return item
 
     def clear_saved_queue(self):
         """Clear the saved play queue from database."""
@@ -1001,64 +1069,58 @@ class PlaybackService(QObject):
                     del self._online_download_workers[song_mid]
                     existing.deleteLater()
 
-            # Get download service from Bootstrap
-            from app.bootstrap import Bootstrap
-            bootstrap = Bootstrap.instance()
-            if not bootstrap.online_download_service:
+            # Use injected download service
+            if not self._online_download_service:
                 logger.error("[PlaybackService] Online download service not available")
                 # Skip to next track - need to release lock first
-                pass
-            else:
-                # Create worker while holding lock to prevent race condition
-                logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
+                self._engine.play_next()
+                return
 
-                # Download in background thread
-                from PySide6.QtCore import QThread
+            # Create worker while holding lock to prevent race condition
+            logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
 
-                class OnlineDownloadWorker(QThread):
-                    download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
+            # Download in background thread
+            from PySide6.QtCore import QThread
 
-                    def __init__(self, service, song_mid, title):
-                        super().__init__()
-                        self._service = service
-                        self._song_mid = song_mid
-                        self._title = title
+            class OnlineDownloadWorker(QThread):
+                download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
 
-                    def run(self):
-                        path = self._service.download(self._song_mid, self._title)
-                        # Always emit, even if path is None (failed)
-                        self.download_finished.emit(self._song_mid, path or "")
+                def __init__(self, service, song_mid, title):
+                    super().__init__()
+                    self._service = service
+                    self._song_mid = song_mid
+                    self._title = title
 
-                worker = OnlineDownloadWorker(
-                    bootstrap.online_download_service,
-                    song_mid,
-                    item.title
-                )
+                def run(self):
+                    path = self._service.download(self._song_mid, self._title)
+                    # Always emit, even if path is None (failed)
+                    self.download_finished.emit(self._song_mid, path or "")
 
-                # Clean up worker when finished
-                def on_finished(mid, path):
-                    self.on_online_track_downloaded(mid, path)
-                    # Remove from dict after completion
-                    with self._online_download_lock:
-                        if mid in self._online_download_workers:
-                            worker_obj = self._online_download_workers.pop(mid)
-                            # Don't call wait() here - we're in the worker thread!
-                            # Just schedule deletion, Qt will handle it safely
-                            worker_obj.deleteLater()
+            worker = OnlineDownloadWorker(
+                self._online_download_service,
+                song_mid,
+                item.title
+            )
 
-                # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
-                worker.download_finished.connect(on_finished, Qt.DirectConnection)
+            # Clean up worker when finished
+            def on_finished(mid, path):
+                self.on_online_track_downloaded(mid, path)
+                # Remove from dict after completion
+                with self._online_download_lock:
+                    if mid in self._online_download_workers:
+                        worker_obj = self._online_download_workers.pop(mid)
+                        # Don't call wait() here - we're in the worker thread!
+                        # Just schedule deletion, Qt will handle it safely
+                        worker_obj.deleteLater()
 
-                # Store in dict before starting
-                self._online_download_workers[song_mid] = worker
+            # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
+            worker.download_finished.connect(on_finished, Qt.DirectConnection)
 
-        # Check if we should skip to next track (service not available)
-        if not bootstrap.online_download_service:
-            self._engine.play_next()
-            return
+            # Store in dict before starting
+            self._online_download_workers[song_mid] = worker
 
-        # Start worker outside lock to avoid blocking
-        worker.start()
+            # Start worker outside lock to avoid blocking
+            worker.start()
 
     def _download_cloud_track(self, item: PlaylistItem):
         """Download a cloud track."""

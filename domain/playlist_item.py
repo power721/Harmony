@@ -264,13 +264,15 @@ class PlaylistItem:
         )
 
     @classmethod
-    def from_play_queue_item(cls, item: "PlayQueueItem", db=None) -> "PlaylistItem":
+    def from_play_queue_item(cls, item: "PlayQueueItem") -> "PlaylistItem":
         """
-        Create a PlaylistItem from a PlayQueueItem.
+        Create a PlaylistItem from a PlayQueueItem (pure conversion, no DB access).
+
+        This method does NOT access the database. It only converts the data
+        from PlayQueueItem. Metadata enrichment should be done by the service layer.
 
         Args:
             item: PlayQueueItem from database
-            db: Optional DatabaseManager instance to fetch cover_path for local tracks
 
         Returns:
             PlaylistItem instance
@@ -283,65 +285,10 @@ class PlaylistItem:
         except ValueError:
             source = TrackSource.LOCAL
 
-        # Try to get metadata from database
-        cover_path = None
-        title = item.title
-        artist = item.artist
-        album = item.album
-        duration = item.duration
-        track_id = item.track_id
-        needs_metadata = False
-
-        if db:
-            try:
-                # For local tracks, get by track_id
-                if item.track_id and source == TrackSource.LOCAL:
-                    track = db.get_track(item.track_id)
-                    if track:
-                        cover_path = track.cover_path
-                        title = track.title or title
-                        artist = track.artist or artist
-                        album = track.album or album
-                        duration = track.duration or duration
-                        needs_metadata = False
-                # For online/cloud tracks, metadata is already stored in queue
-                elif source in (TrackSource.QQ, TrackSource.QUARK, TrackSource.BAIDU):
-                    needs_metadata = False
-                    # Try to get cover_path from tracks table
-                    if item.cloud_file_id:
-                        track = db.get_track_by_cloud_file_id(item.cloud_file_id)
-                        if track:
-                            cover_path = track.cover_path
-                            track_id = track.id
-                # For local files without track_id, try to find by path
-                elif item.local_path and not item.cloud_file_id:
-                    track = db.get_track_by_path(item.local_path)
-                    if track:
-                        cover_path = track.cover_path
-                        title = track.title or title
-                        artist = track.artist or artist
-                        album = track.album or album
-                        duration = track.duration or duration
-                        track_id = track.id
-                        needs_metadata = False
-            except Exception as e:
-                logger.warning(f"Error fetching track metadata from DB: {e}")
-                pass  # Ignore errors, use item values
-
-        # Determine the correct local_path to use
-        local_path = item.local_path
-        if db and track_id and source == TrackSource.LOCAL:
-            try:
-                track = db.get_track(track_id)
-                if track and track.path:
-                    local_path = track.path
-            except Exception as e:
-                logger.warning(f"Error fetching track path from DB: {e}")
-
-        # Check if local file actually exists
+        # Determine needs_download based on source and path
+        local_path = item.local_path or ""
         file_exists = local_path and Path(local_path).exists()
 
-        # Determine needs_download
         needs_download = False
         if source == TrackSource.QQ:
             # QQ Music tracks need download if file doesn't exist
@@ -356,15 +303,63 @@ class PlaylistItem:
 
         return cls(
             source=source,
-            track_id=track_id,
+            track_id=item.track_id,
             cloud_file_id=item.cloud_file_id,
             cloud_account_id=item.cloud_account_id,
             local_path=local_path,
-            title=title,
-            artist=artist,
-            album=album,
-            duration=duration,
-            cover_path=cover_path,
+            title=item.title or "",
+            artist=item.artist or "",
+            album=item.album or "",
+            duration=item.duration or 0.0,
+            cover_path=None,  # Service layer should enrich this
             needs_download=needs_download,
-            needs_metadata=needs_metadata,
+            needs_metadata=False,
+        )
+
+    def with_metadata(
+        self,
+        cover_path: Optional[str] = None,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        duration: Optional[float] = None,
+        local_path: Optional[str] = None,
+        track_id: Optional[int] = None,
+        needs_download: Optional[bool] = None,
+        needs_metadata: Optional[bool] = None,
+    ) -> "PlaylistItem":
+        """
+        Return a new PlaylistItem with updated metadata (immutable update).
+
+        This method creates a new instance with specified fields updated,
+        keeping the original instance unchanged.
+
+        Args:
+            cover_path: New cover path
+            title: New title
+            artist: New artist
+            album: New album
+            duration: New duration
+            local_path: New local path
+            track_id: New track ID
+            needs_download: New needs_download flag
+            needs_metadata: New needs_metadata flag
+
+        Returns:
+            New PlaylistItem instance with updated fields
+        """
+        return PlaylistItem(
+            source=self.source,
+            track_id=track_id if track_id is not None else self.track_id,
+            cloud_file_id=self.cloud_file_id,
+            cloud_account_id=self.cloud_account_id,
+            local_path=local_path if local_path is not None else self.local_path,
+            title=title if title is not None else self.title,
+            artist=artist if artist is not None else self.artist,
+            album=album if album is not None else self.album,
+            duration=duration if duration is not None else self.duration,
+            cover_path=cover_path if cover_path is not None else self.cover_path,
+            needs_download=needs_download if needs_download is not None else self.needs_download,
+            needs_metadata=needs_metadata if needs_metadata is not None else self.needs_metadata,
+            cloud_file_size=self.cloud_file_size,
         )

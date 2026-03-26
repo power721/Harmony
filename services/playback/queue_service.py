@@ -3,11 +3,17 @@ Queue service - Manages playback queue persistence.
 """
 
 import logging
+from pathlib import Path
+from typing import Optional, TYPE_CHECKING
 
 from domain import PlaylistItem
 from domain.playback import PlayMode
+from domain.track import TrackSource
 from infrastructure.audio import PlayerEngine
 from repositories.queue_repository import SqliteQueueRepository
+
+if TYPE_CHECKING:
+    from repositories.track_repository import SqliteTrackRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +28,12 @@ class QueueService:
             queue_repo: SqliteQueueRepository,
             config_manager,
             engine: PlayerEngine,
-            db_manager=None
+            track_repo: Optional["SqliteTrackRepository"] = None,
     ):
         self._queue_repo = queue_repo
         self._config = config_manager
         self._engine = engine
-        self._db = db_manager
+        self._track_repo = track_repo
 
     def save(self):
         """Save the current play queue to database."""
@@ -62,8 +68,12 @@ class QueueService:
         if not queue_items:
             return False
 
-        # Convert to PlaylistItem list, passing db to get latest track paths
-        items = [PlaylistItem.from_play_queue_item(item, db=self._db) for item in queue_items]
+        # Convert to PlaylistItem list (pure conversion, no DB access)
+        items = [PlaylistItem.from_play_queue_item(item) for item in queue_items]
+
+        # Enrich metadata from track repository
+        if self._track_repo:
+            items = [self._enrich_metadata(item) for item in items]
 
         # Get saved index and play mode
         saved_index = self._config.get("queue_current_index", 0)
@@ -88,6 +98,59 @@ class QueueService:
             self._engine.load_track_at(saved_index)
 
         return True
+
+    def _enrich_metadata(self, item: PlaylistItem) -> PlaylistItem:
+        """
+        Enrich PlaylistItem with metadata from track repository.
+
+        Args:
+            item: PlaylistItem to enrich
+
+        Returns:
+            Enriched PlaylistItem
+        """
+        if not self._track_repo:
+            return item
+
+        track = None
+
+        # For local tracks with track_id, get by track_id
+        if item.track_id and item.is_local:
+            track = self._track_repo.get_by_id(item.track_id)
+        # For online/cloud tracks, try to get by cloud_file_id
+        elif item.is_cloud and item.cloud_file_id:
+            track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+        # For local files without track_id, try to find by path
+        elif item.local_path and not item.cloud_file_id:
+            track = self._track_repo.get_by_path(item.local_path)
+
+        if track:
+            # Determine needs_download based on source and file existence
+            local_path = track.path or item.local_path
+            file_exists = local_path and Path(local_path).exists()
+            needs_download = False
+
+            if item.source == TrackSource.QQ:
+                needs_download = not file_exists
+                if not file_exists:
+                    local_path = ""
+            elif item.source in (TrackSource.QUARK, TrackSource.BAIDU):
+                if item.cloud_file_id and not file_exists:
+                    needs_download = True
+                    local_path = ""
+
+            return item.with_metadata(
+                cover_path=track.cover_path,
+                title=track.title or item.title,
+                artist=track.artist or item.artist,
+                album=track.album or item.album,
+                duration=track.duration or item.duration,
+                local_path=local_path,
+                track_id=track.id or item.track_id,
+                needs_download=needs_download,
+            )
+
+        return item
 
     def clear(self):
         """Clear the saved play queue from database."""

@@ -184,6 +184,9 @@ class Bootstrap:
                 db_manager=self.db,
                 config_manager=self.config,
                 cover_service=self.cover_service,
+                online_download_service=self.online_download_service,
+                event_bus=self.event_bus,
+                track_repo=self.track_repo,
             )
         return self._playback_service
 
@@ -195,7 +198,7 @@ class Bootstrap:
                 queue_repo=self.queue_repo,
                 config_manager=self.config,
                 engine=self.playback_service.engine,
-                db_manager=self.db,
+                track_repo=self.track_repo,
             )
         return self._queue_service
 
@@ -252,6 +255,7 @@ class Bootstrap:
             self._cloud_account_service = CloudAccountService(
                 db_manager=self.db,
                 event_bus=self.event_bus,
+                cloud_repo=self.cloud_repo,
             )
         return self._cloud_account_service
 
