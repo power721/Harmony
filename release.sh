@@ -134,11 +134,11 @@ build_app() {
       "$ENTRY"
 
     # 保留 Qt 的，删 Python 的
-    rm dist/Harmony/_internal/lib/libicudata.so.*
-    rm dist/Harmony/_internal/lib/libicui18n.so.*
-    rm dist/Harmony/_internal/lib/libicuuc.so.*
+    rm -f dist/Harmony/_internal/lib/libicudata.so.*
+    rm -f dist/Harmony/_internal/lib/libicui18n.so.*
+    rm -f dist/Harmony/_internal/lib/libicuuc.so.*
 
-    rm dist/Harmony/_internal/lib/libgtk-3.so.*
+    rm -f dist/Harmony/_internal/lib/libgtk-3.so.*
 
     prune_qt_plugins "$MODE"
     collect_runtime_deps
