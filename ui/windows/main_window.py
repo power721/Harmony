@@ -1455,6 +1455,10 @@ class MainWindow(QMainWindow):
         # Save current track title for window title update
         self._current_track_title = f"{title} - {artist}" if artist else title
 
+        # Skip lyrics loading if mini player is active (to avoid duplicate loading)
+        if self._mini_player is not None and self._mini_player.isVisible():
+            return
+
         # For online tracks, always try to load lyrics (even without local path)
         if is_online and song_mid:
             logger.debug(f"[MainWindow] Loading lyrics for online track: song_mid={song_mid}")

@@ -3,10 +3,11 @@ Mini player mode - a small floating window.
 """
 import logging
 import threading
+from typing import Optional
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QThread
 from PySide6.QtGui import QKeySequence, QShortcut, QIcon, QPixmap, QPainter, QColor
 from PySide6.QtWidgets import (
     QWidget,
@@ -15,6 +16,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
 )
+
+from services.lyrics.lyrics_loader import LyricsLoader
+from shiboken6 import isValid
 
 from domain.playback import PlaybackState, PlayMode
 from services.playback import PlaybackService
@@ -38,7 +42,6 @@ class MiniPlayer(QWidget):
 
     closed = Signal()  # Signal when mini player is closed
     _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
-    _lyrics_loaded = Signal(str)  # Signal for lyrics loaded in background thread
 
     def __init__(self, player: PlaybackService, parent=None):
         """
@@ -54,6 +57,7 @@ class MiniPlayer(QWidget):
         self._drag_position = None
         self._is_seeking = False  # Track if user is seeking
         self._current_track_title = ""  # Current track title for window title
+        self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
 
         self._setup_ui()
         self._setup_connections()
@@ -273,9 +277,6 @@ class MiniPlayer(QWidget):
 
         # Connect cover loaded signal
         self._cover_loaded.connect(self._show_cover)
-
-        # Connect lyrics loaded signal
-        self._lyrics_loaded.connect(self._show_lyrics)
 
         # Initialize with current track info
         self._initialize_current_track()
@@ -535,52 +536,53 @@ class MiniPlayer(QWidget):
         self._cover_label.setPixmap(pixmap)
 
     def _load_lyrics_async(self, track_dict: dict):
-        """Load lyrics in background thread."""
+        """Load lyrics asynchronously using LyricsLoader."""
+        # Stop previous lyrics thread if running
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                if not self._lyrics_thread.wait(500):
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait(100)
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
 
-        def load_lyrics():
-            from services.lyrics.lyrics_service import LyricsService
+        path = track_dict.get("path", "")
+        title = track_dict.get("title", "")
+        artist = track_dict.get("artist", "")
 
-            path = track_dict.get("path", "")
-            title = track_dict.get("title", "")
-            artist = track_dict.get("artist", "")
-            album = track_dict.get("album", "")
+        # Check if this is an online QQ Music track with song_mid
+        source = track_dict.get("source", "")
+        cloud_file_id = track_dict.get("cloud_file_id", "")
+        is_online = source == "QQ"
 
-            # Check if this is an online QQ Music track with song_mid
-            source = track_dict.get("source", "")
-            cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_qq_music = source == "QQ"
+        # Create lyrics loader
+        self._lyrics_thread = LyricsLoader(
+            path, title, artist,
+            song_mid=cloud_file_id,
+            is_online=is_online
+        )
+        self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
+        self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
+        self._lyrics_thread.start()
 
-            if is_qq_music and cloud_file_id:
-                # For online QQ Music tracks, get lyrics by song_mid
-                logger.debug(f"[MiniPlayer] Getting lyrics for QQ Music track: song_mid={cloud_file_id}")
-                try:
-                    lyrics = LyricsService.get_lyrics_by_qqmusic_mid(cloud_file_id)
-                    if lyrics:
-                        logger.debug(f"[MiniPlayer] Got online lyrics: {len(lyrics)} chars")
-                        return lyrics
-                except Exception as e:
-                    logger.error(f"[MiniPlayer] Error getting online lyrics: {e}")
+    def _on_lyrics_ready(self, lyrics: str):
+        """Handle lyrics loaded."""
+        if lyrics:
+            self.lyrics.set_lyrics(lyrics)
+        else:
+            self.lyrics.set_lyrics("")
 
-            # For local files or cloud files, use standard lyrics loading
-            needs_download = track_dict.get("needs_download", False)
-            is_cloud = track_dict.get("is_cloud", False)
-            skip_online = needs_download or (is_cloud and not path)
-
-            return LyricsService.get_lyrics(path, title, artist, album)
-
-        def worker():
-            lyrics = load_lyrics()
-            # Use signal for thread-safe UI update
-            self._lyrics_loaded.emit(lyrics or "")
-
-        # Run in thread
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
-        thread.start()
-
-    def _show_lyrics(self, lyrics: str):
-        """Show lyrics (called via signal from background thread)."""
-        self.lyrics.set_lyrics(lyrics)
+    def _on_lyrics_thread_finished(self):
+        """Handle lyrics thread finished."""
+        sender = self.sender()
+        if sender and sender == self._lyrics_thread:
+            self._lyrics_thread = None
 
     def mousePressEvent(self, event):
         """Handle mouse press for dragging."""
@@ -602,5 +604,14 @@ class MiniPlayer(QWidget):
 
     def closeEvent(self, event):
         """Handle close event."""
+        # Clean up lyrics thread
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                self._lyrics_thread.quit()
+                if not self._lyrics_thread.wait(1000):
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait()
+
         self.closed.emit()
         event.accept()
