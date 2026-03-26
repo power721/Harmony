@@ -3,7 +3,7 @@ Tests for TrackCoverDownloadDialog (CoverDownloadDialog alias).
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog
 from PySide6.QtCore import Qt
 
 from ui.dialogs import TrackCoverDownloadDialog, CoverDownloadDialog
@@ -17,7 +17,9 @@ def qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
-    return app
+    yield app
+    # Process events to allow cleanup
+    app.processEvents()
 
 
 @pytest.fixture
@@ -69,6 +71,7 @@ class TestCoverDownloadDialog:
         assert dialog.tracks == sample_tracks
         assert dialog.cover_service == mock_cover_service
         assert dialog.current_track_index == 0
+        dialog.reject()
 
     def test_dialog_shows_track_info(self, app, sample_tracks, mock_cover_service):
         """Test that dialog displays track information correctly."""
@@ -81,6 +84,7 @@ class TestCoverDownloadDialog:
         # Check first track info is displayed
         assert "Test Song 1" in dialog.details_label.text()
         assert "Test Artist" in dialog.details_label.text()
+        dialog.reject()
 
     def test_search_button_exists(self, app, sample_tracks, mock_cover_service):
         """Test that search button exists."""
@@ -89,6 +93,7 @@ class TestCoverDownloadDialog:
         # Check search button exists
         assert hasattr(dialog, 'search_btn')
         assert dialog.search_btn is not None
+        dialog.reject()
 
     def test_results_list_exists(self, app, sample_tracks, mock_cover_service):
         """Test that results list exists."""
@@ -97,6 +102,7 @@ class TestCoverDownloadDialog:
         # Check results list exists
         assert hasattr(dialog, 'results_list')
         assert dialog.results_list is not None
+        dialog.reject()
 
     @patch('ui.dialogs.track_cover_download_dialog.CoverSearchThread')
     def test_search_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
@@ -114,6 +120,7 @@ class TestCoverDownloadDialog:
         # Verify thread was created and started
         mock_thread_class.assert_called_once()
         mock_thread.start.assert_called_once()
+        dialog.reject()
 
     def test_track_navigation(self, app, sample_tracks, mock_cover_service):
         """Test navigating between tracks."""
@@ -131,6 +138,7 @@ class TestCoverDownloadDialog:
         assert dialog.current_track_index == 1
         assert "2 / 2" in dialog.track_info_label.text()
         assert "Test Song 2" in dialog.details_label.text()
+        dialog.reject()
 
     @patch('app.Application.instance')
     def test_save_cover_updates_database(self, mock_app_instance, app, sample_tracks, mock_cover_service):
@@ -162,6 +170,7 @@ class TestCoverDownloadDialog:
         mock_track_repo.update.assert_called_once()
         updated_track = mock_track_repo.update.call_args[0][0]
         assert updated_track.cover_path == "/path/to/cover.jpg"
+        dialog.reject()
 
     def test_dialog_with_single_track(self, app, sample_tracks, mock_cover_service):
         """Test dialog with single track."""
@@ -171,6 +180,7 @@ class TestCoverDownloadDialog:
         # Should have one item in combo
         assert dialog.track_combo.count() == 1
         assert "1 / 1" in dialog.track_info_label.text()
+        dialog.reject()
 
     def test_dialog_handles_empty_track_list(self, app, mock_cover_service):
         """Test dialog behavior with empty track list."""
@@ -178,3 +188,4 @@ class TestCoverDownloadDialog:
 
         # Should have no items
         assert dialog.track_combo.count() == 0
+        dialog.reject()

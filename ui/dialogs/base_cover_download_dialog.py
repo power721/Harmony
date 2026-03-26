@@ -611,12 +611,27 @@ class BaseCoverDownloadDialog(QDialog):
     # Cleanup
     # ========================================================================
 
+    def _cleanup_threads(self):
+        """Clean up any running threads."""
+        if self._search_thread and self._search_thread.isRunning():
+            self._search_thread.requestInterruption()
+            self._search_thread.quit()
+            if not self._search_thread.wait(1000):
+                self._search_thread.terminate()
+                self._search_thread.wait()
+        if self._download_thread and self._download_thread.isRunning():
+            self._download_thread.requestInterruption()
+            self._download_thread.quit()
+            if not self._download_thread.wait(1000):
+                self._download_thread.terminate()
+                self._download_thread.wait()
+
+    def reject(self):
+        """Handle dialog rejection - clean up threads."""
+        self._cleanup_threads()
+        super().reject()
+
     def closeEvent(self, event):
         """Clean up on close."""
-        if self._search_thread and self._search_thread.isRunning():
-            self._search_thread.terminate()
-            self._search_thread.wait()
-        if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
+        self._cleanup_threads()
         super().closeEvent(event)

@@ -208,6 +208,11 @@ class MainWindow(QMainWindow):
         self._lyrics_download_path: str = ""
         self._lyrics_download_title: str = ""
         self._lyrics_download_artist: str = ""
+
+        # Scan thread for music library scanning
+        self._scan_thread: Optional[QThread] = None
+        self._scan_worker = None
+
         self._current_index = -1
 
         # Cloud account for current playback
@@ -2610,6 +2615,35 @@ class MainWindow(QMainWindow):
             if not self._lyrics_download_thread.wait(1000):
                 self._lyrics_download_thread.terminate()
                 self._lyrics_download_thread.wait()
+
+        # Clean up scan thread
+        if self._scan_thread and isValid(self._scan_thread) and self._scan_thread.isRunning():
+            if self._scan_worker:
+                self._scan_worker.cancel()
+            self._scan_thread.quit()
+            if not self._scan_thread.wait(2000):
+                self._scan_thread.terminate()
+                self._scan_thread.wait()
+
+        # Clean up CloudDownloadService
+        from services.cloud.download_service import CloudDownloadService
+        try:
+            CloudDownloadService.instance().cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up CloudDownloadService: {e}")
+
+        # Clean up DownloadManager
+        from services.download.download_manager import DownloadManager
+        try:
+            DownloadManager.instance().cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up DownloadManager: {e}")
+
+        # Clean up PlaybackService online download workers
+        try:
+            self._playback.cleanup_download_workers()
+        except Exception as e:
+            logger.error(f"Error cleaning up PlaybackService workers: {e}")
 
         # Disconnect EventBus signals to prevent memory leaks and callbacks to destroyed objects
         try:

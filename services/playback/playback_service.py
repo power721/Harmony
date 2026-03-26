@@ -271,6 +271,19 @@ class PlaybackService(QObject):
         """Stop playback."""
         self._engine.stop()
 
+    def cleanup_download_workers(self):
+        """Clean up all online download workers."""
+        logger.info("[PlaybackService] Cleaning up online download workers")
+        with self._online_download_lock:
+            for song_mid, worker in list(self._online_download_workers.items()):
+                if worker.isRunning():
+                    worker.requestInterruption()
+                    worker.quit()
+                    if not worker.wait(1000):
+                        worker.terminate()
+                        worker.wait()
+            self._online_download_workers.clear()
+
     def play_next(self):
         """Play next track."""
         self._engine.play_next()

@@ -246,3 +246,15 @@ class DownloadManager(QObject):
             # Always emit, even if path is None (failed)
             self.download_finished.emit(self._song_mid, path or "")
 
+    def cleanup(self):
+        """Cancel all active downloads and cleanup workers."""
+        logger.info("[DownloadManager] Cleaning up download workers")
+        for song_mid, worker in list(self._download_workers.items()):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.quit()
+                if not worker.wait(1000):
+                    worker.terminate()
+                    worker.wait()
+        self._download_workers.clear()
+
