@@ -127,12 +127,14 @@ build_app() {
       --collect-all certifi \
       --collect-all qqmusic_api \
       --hidden-import=PySide6.QtMultimedia \
-      --exclude-binaries libicu* \
       --add-data "ui:ui" \
       --add-data "translations:translations" \
       --add-data "icons:icons" \
       --add-data "icon.png:." \
       "$ENTRY"
+
+    prune_qt_plugins "$MODE"
+    collect_runtime_deps
 
     # 保留 Qt 的，删 Python 的
     rm -f dist/Harmony/_internal/lib/libicudata.so.*
@@ -140,9 +142,6 @@ build_app() {
     rm -f dist/Harmony/_internal/lib/libicuuc.so.*
 
     rm -f dist/Harmony/_internal/lib/libgtk-3.so.*
-
-    prune_qt_plugins "$MODE"
-    collect_runtime_deps
 
     echo "==> Stripping binaries"
     find dist/"$APP_NAME" -type f \( -name "*.so*" -o -perm /111 \) \
