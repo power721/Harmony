@@ -107,7 +107,8 @@ class QRLoginThread(QThread):
                     self._loop.close()
                 self._loop = None
 
-        except ImportError:
+        except ImportError as e:
+            logger.error(f"QR login error: {e}")
             if self._running:
                 self.login_failed.emit(t("qqmusic_api_not_installed"))
         except Exception as e:
