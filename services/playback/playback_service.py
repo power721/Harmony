@@ -3,6 +3,12 @@ Playback service - Unified business logic for audio playback.
 
 This service handles both local and cloud playback, queue persistence,
 favorites management, and EventBus integration.
+
+Architecture:
+- PlaybackService acts as a coordinator/facade
+- LocalTrackHandler handles local file playback
+- CloudTrackHandler handles cloud file playback
+- OnlineTrackHandler handles online (QQ Music) playback
 """
 
 import logging
