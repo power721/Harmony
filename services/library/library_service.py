@@ -146,7 +146,7 @@ class LibraryService:
         Add an online track to the library.
 
         Creates a track record for online music (QQ Music, etc.)
-        with empty path, indicating it needs to be downloaded before playback.
+        with a virtual path, indicating it needs to be downloaded before playback.
 
         Args:
             song_mid: Song MID (unique identifier from QQ Music)
@@ -165,9 +165,12 @@ class LibraryService:
             logger.debug(f"[LibraryService] Online track already exists: {song_mid}")
             return existing.id
 
-        # Create Track record with empty path
+        # Use virtual path for online tracks (required for UNIQUE constraint on path)
+        virtual_path = f"qqmusic://song/{song_mid}"
+
+        # Create Track record with virtual path
         track = Track(
-            path="",  # Empty path indicates online track needs download
+            path=virtual_path,  # Virtual path for online track
             title=title,
             artist=artist,
             album=album,
