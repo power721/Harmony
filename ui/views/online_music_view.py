@@ -1078,6 +1078,12 @@ class OnlineMusicView(QWidget):
         # Return to search results page
         self._stack.setCurrentWidget(self._results_page)
 
+    def _get_cover_url(self, track: OnlineTrack) -> str:
+        """Get cover URL for online track."""
+        if track.album and track.album.mid:
+            return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
+        return ""
+
     def _on_play_all_from_detail(self, tracks: List[OnlineTrack]):
         """Handle play all from detail view."""
         if not tracks:
@@ -1092,6 +1098,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }
             tracks_data.append((track.mid, metadata))
 
@@ -1108,6 +1115,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }
             tracks_data.append((track.mid, metadata))
         self.add_multiple_to_queue.emit(tracks_data)
@@ -1122,6 +1130,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }
             tracks_data.append((track.mid, metadata))
         self.insert_multiple_to_queue.emit(tracks_data)
@@ -1160,6 +1169,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }
             tracks_data.append((track.mid, metadata))
 
@@ -1174,6 +1184,7 @@ class OnlineMusicView(QWidget):
             "album": track.album_name,
             "duration": track.duration,
             "album_mid": track.album.mid if track.album else "",
+            "cover_url": self._get_cover_url(track),
         }
 
         # Check cache
@@ -1228,6 +1239,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }
             self.play_online_track.emit(song_mid, local_path, metadata)
         else:
@@ -1427,6 +1439,7 @@ class OnlineMusicView(QWidget):
                     "album": track.album_name,
                     "duration": track.duration,
                     "album_mid": track.album.mid if track.album else "",
+                    "cover_url": self._get_cover_url(track),
                 }))
             self.add_multiple_to_queue.emit(tracks_data)
 
@@ -1440,6 +1453,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }))
         self.add_multiple_to_queue.emit(tracks_data)
 
@@ -1453,6 +1467,7 @@ class OnlineMusicView(QWidget):
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
+                "cover_url": self._get_cover_url(track),
             }))
         self.insert_multiple_to_queue.emit(tracks_data)
 

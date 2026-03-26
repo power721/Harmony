@@ -308,7 +308,7 @@ class OnlineMusicHandler(QObject):
         self._playback.save_queue()
 
         count = len(tracks_data)
-        self._show_status(f"✓ {t('insert_to_queue')}: {count} tracks")
+        self._show_status(f"✓ {t('insert_to_queue')}: {count}")
 
     def play_online_tracks(self, start_index: int, tracks_data: List[Tuple[str, dict]]):
         """

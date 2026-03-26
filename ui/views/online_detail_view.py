@@ -872,9 +872,11 @@ class OnlineDetailView(QWidget):
         page_size = data.get("page_size", 50)
 
         # Update pagination state
-        self._total_songs = total
-        self._page_size = page_size  # Update page_size from response
-        self._total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+        # Only update total_songs on first page (API returns accurate total then)
+        if self._current_page == 1:
+            self._total_songs = total
+            self._page_size = page_size if page_size > 0 else 30
+            self._total_pages = (self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
 
         self._tracks = self._parse_songs(songs)
 
@@ -1220,10 +1222,11 @@ class OnlineDetailView(QWidget):
         """Display songs in table."""
         try:
             self._songs_table.setRowCount(len(songs))
+            start = (self._current_page - 1) * self._page_size
 
             for i, song in enumerate(songs):
                 # Index
-                self._songs_table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
+                self._songs_table.setItem(i, 0, QTableWidgetItem(str(start + i + 1)))
 
                 # Title
                 self._songs_table.setItem(i, 1, QTableWidgetItem(song.title))

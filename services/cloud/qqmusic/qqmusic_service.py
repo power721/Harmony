@@ -514,7 +514,8 @@ class QQMusicService:
 
                 logger.info(f"Page {page}: Got {len(songs)} songs for {singer_name}")
 
-            # Use actual returned count as page_size (API may limit to 30)
+            # Use actual returned count as page_size for accurate pagination
+            # QQ Music API may return fewer songs than requested (max 30)
             actual_page_size = len(songs) if songs else page_size
 
             return {

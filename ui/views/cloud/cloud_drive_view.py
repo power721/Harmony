@@ -1191,6 +1191,7 @@ class CloudDriveView(QWidget):
 
     def _on_event_bus_download_completed(self, file_id: str, local_path: str):
         """Handle download completion from EventBus."""
+        file_name = ""
         for f in self._current_audio_files:
             if f.file_id == file_id:
                 f.local_path = local_path
