@@ -5,7 +5,7 @@ This module provides strategy pattern implementations for multiple
 online sources (NetEase, QQ Music, iTunes, etc.).
 """
 
-from .base import CoverSource, LyricsSource
+from .base import CoverSource, LyricsSource, ArtistCoverSource
 from .cover_sources import (
     NetEaseCoverSource,
     QQMusicCoverSource,
@@ -20,11 +20,18 @@ from .lyrics_sources import (
     KugouLyricsSource,
     LRCLIBLyricsSource,
 )
+from .artist_cover_sources import (
+    NetEaseArtistCoverSource,
+    QQMusicArtistCoverSource,
+    ITunesArtistCoverSource,
+    SpotifyArtistCoverSource,
+)
 
 __all__ = [
     # Base classes
     "CoverSource",
     "LyricsSource",
+    "ArtistCoverSource",
     # Cover sources
     "NetEaseCoverSource",
     "QQMusicCoverSource",
@@ -37,4 +44,9 @@ __all__ = [
     "QQMusicLyricsSource",
     "KugouLyricsSource",
     "LRCLIBLyricsSource",
+    # Artist cover sources
+    "NetEaseArtistCoverSource",
+    "QQMusicArtistCoverSource",
+    "ITunesArtistCoverSource",
+    "SpotifyArtistCoverSource",
 ]

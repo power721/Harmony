@@ -3,7 +3,6 @@ Cover art service for extracting and fetching album covers.
 """
 import hashlib
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
@@ -12,7 +11,7 @@ from infrastructure.network import HttpClient
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 if TYPE_CHECKING:
-    from services.sources.base import CoverSource
+    from services.sources.base import CoverSource, ArtistCoverSource
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -57,6 +56,19 @@ class CoverService:
             ]
         return [s for s in self._sources if s.is_available()]
 
+    def _get_artist_sources(self) -> List["ArtistCoverSource"]:
+        """Get artist cover sources."""
+        from services.sources import (
+            NetEaseArtistCoverSource,
+            QQMusicArtistCoverSource,
+            ITunesArtistCoverSource,
+        )
+        return [
+            NetEaseArtistCoverSource(self.http_client),
+            QQMusicArtistCoverSource(),
+            ITunesArtistCoverSource(self.http_client),
+        ]
+
     def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None,
                   skip_online: bool = False) -> Optional[str]:
         """
@@ -91,7 +103,6 @@ class CoverService:
         cache_key = self._get_cache_key(search_artist, search_album or search_title)
         logger.info(f"[CoverService] get_cover: cache_key={cache_key}, artist={search_artist}, album={search_album}, title={search_title}")
         cached_cover = self._get_cached_cover(cache_key)
-        logger.info(f"[CoverService] cached_cover={cached_cover}")
         if cached_cover and cached_cover.exists():
             logger.info(f"[CoverService] Returning cached cover: {cached_cover}")
             return str(cached_cover)
@@ -287,27 +298,32 @@ class CoverService:
         """
         all_results: List[SearchResult] = []
 
-        # Define search tasks
-        search_tasks = [
-            ("NetEase", lambda: self._search_covers_from_netease(title, artist, album, duration)),
-            # ("QQMusic", lambda: self._search_covers_from_qqmusic(title, artist, album, duration)),
-            ("iTunes", lambda: self._search_covers_from_itunes(title, artist, album)),
-            # ("Spotify", lambda: self._search_covers_from_spotify(title, artist, album)),
-        ]
+        sources = self._get_sources()
 
         # Parallel search from multiple sources
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(task[1]): task[0]
-                for task in search_tasks
+                executor.submit(source.search, title, artist, album, duration): source.name
+                for source in sources
             }
 
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=15):
                 source_name = futures[future]
                 try:
-                    results = future.result()
-                    all_results.extend(results)
-                    logger.debug(f"{source_name} found {len(results)} results")
+                    search_results = future.result()
+                    # Convert CoverSearchResult to SearchResult for compatibility
+                    for r in search_results:
+                        all_results.append(SearchResult(
+                            title=r.title,
+                            artist=r.artist,
+                            album=r.album,
+                            duration=r.duration,
+                            source=r.source,
+                            id=r.id,
+                            cover_url=r.cover_url,
+                            album_mid=getattr(r, 'album_mid', None),
+                        ))
+                    logger.debug(f"{source_name} found {len(search_results)} results")
                 except Exception as e:
                     logger.warning(f"Error searching cover from {source_name}: {e}")
 
@@ -331,189 +347,7 @@ class CoverService:
                     if cover_data:
                         return self._save_cover_to_cache(cover_data, cache_key)
 
-        # Fallback to other sources (without smart matching) - parallel
-        fallback_sources = [
-            ("MusicBrainz", lambda: self._fetch_from_musicbrainz(artist, album or title)),
-            ("Last.fm", lambda: self._fetch_from_lastfm(artist, album or title)),
-        ]
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {
-                executor.submit(src[1]): src[0]
-                for src in fallback_sources
-            }
-
-            for future in as_completed(futures):
-                source_name = futures[future]
-                try:
-                    cover_data = future.result()
-                    if cover_data:
-                        return self._save_cover_to_cache(cover_data, cache_key)
-                except Exception as e:
-                    logger.warning(f"Error fetching cover from {source_name}: {e}")
-
         return None
-
-    def _search_covers_from_netease(self, title: str, artist: str, album: str, duration: float = None) -> List[
-        SearchResult]:
-        """
-        Search for covers from NetEase Cloud Music.
-
-        Args:
-            title: Track title
-            artist: Track artist
-            album: Album name
-            duration: Track duration in seconds
-
-        Returns:
-            List of SearchResult objects with cover URLs
-        """
-        results = []
-
-        try:
-            search_url = "https://music.163.com/api/search/get/web"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://music.163.com/'
-            }
-
-            # First try album search
-            params = {
-                's': f'{artist} {album or title}',
-                'type': 10,  # album search
-                'limit': 5
-            }
-
-            response = self.http_client.get(
-                search_url,
-                params=params,
-                headers=headers,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-
-                if data.get('code') == 200 and data.get('result', {}).get('albums'):
-                    for album_info in data['result']['albums']:
-                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
-                        if pic_url:
-                            # Get high quality version
-                            if '?' not in pic_url:
-                                pic_url += '?param=500y500'
-
-                            results.append(SearchResult(
-                                title=album_info.get('name', ''),
-                                artist=album_info.get('artist', {}).get('name', ''),
-                                album=album_info.get('name', ''),
-                                duration=None,
-                                source='netease',
-                                id=str(album_info.get('id', '')),
-                                cover_url=pic_url
-                            ))
-
-            # Also try song search for more accurate matching
-            params = {
-                's': f'{artist} {title}',
-                'type': 1,  # song search
-                'limit': 5
-            }
-
-            response = self.http_client.get(
-                search_url,
-                params=params,
-                headers=headers,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-
-                if data.get('code') == 200 and data.get('result', {}).get('songs'):
-                    for song in data['result']['songs']:
-                        album_info = song.get('album', {})
-                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
-
-                        if pic_url:
-                            if '?' not in pic_url:
-                                pic_url += '?param=500y500'
-
-                            song_duration = None
-                            if song.get('duration'):
-                                song_duration = song['duration'] / 1000
-
-                            results.append(SearchResult(
-                                title=song.get('name', ''),
-                                artist=song['artists'][0]['name'] if song.get('artists') else '',
-                                album=album_info.get('name', ''),
-                                duration=song_duration,
-                                source='netease',
-                                id=str(song.get('id', '')),
-                                cover_url=pic_url
-                            ))
-
-        except Exception as e:
-            logger.debug(f"NetEase cover search error: {e}")
-
-        return results
-
-    def _search_covers_from_qqmusic(self, title: str, artist: str, album: str, duration: float = None) -> List[
-        SearchResult]:
-        """
-        Search for covers from QQ Music.
-
-        Args:
-            title: Track title
-            artist: Track artist
-            album: Album name
-            duration: Track duration in seconds
-
-        Returns:
-            List of SearchResult objects (cover_url fetched lazily on click)
-        """
-        results = []
-
-        try:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-            client = QQMusicClient()
-
-            # Search for songs
-            keyword = f"{artist} {title}" if artist else title
-            songs = client.search(keyword, limit=5)
-
-            for song in songs:
-                # Parse artist from singer list
-                artist_name = ""
-                if isinstance(song.get('singer'), list) and song['singer']:
-                    artist_name = song['singer'][0].get('name', '')
-
-                # Parse album from album dict
-                album_name = ""
-                album_mid = ""
-                album_data = song.get('album')
-                logger.debug(f"QQ Music song album data: {album_data}")
-                if isinstance(album_data, dict):
-                    album_name = album_data.get('name', '')
-                    album_mid = album_data.get('mid', '')
-                    logger.debug(f"QQ Music album_mid: {album_mid}")
-
-                # Store album_mid for lazy cover fetch, don't get cover_url now
-                results.append(SearchResult(
-                    title=song.get('name', ''),
-                    artist=artist_name,
-                    album=album_name,
-                    duration=song.get('interval'),  # Already in seconds
-                    source='qqmusic',
-                    id=song.get('mid', ''),
-                    cover_url=None,  # Lazy fetch on click
-                    album_mid=album_mid
-                ))
-
-        except Exception as e:
-            logger.debug(f"QQ Music cover search error: {e}")
-
-        return results
 
     def search_covers(self, title: str, artist: str, album: str = "", duration: float = None) -> List[dict]:
         """
@@ -610,510 +444,6 @@ class CoverService:
 
         return None
 
-    def _fetch_from_netease(self, artist: str, album: str) -> Optional[bytes]:
-        """
-        Fetch cover from NetEase Cloud Music API.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            Cover image data, or None
-        """
-        try:
-            # Search for album/song
-            search_url = "https://music.163.com/api/search/get/web"
-            params = {
-                's': f'{artist} {album}',
-                'type': 10,  # 10 = album search
-                'limit': 1
-            }
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://music.163.com/'
-            }
-
-            response = self.http_client.get(
-                search_url,
-                params=params,
-                headers=headers,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-
-                # Check for album results
-                if data.get('code') == 200 and data.get('result', {}).get('albums'):
-                    album_info = data['result']['albums'][0]
-                    pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
-
-                    if pic_url:
-                        # Get high quality version
-                        if '?' not in pic_url:
-                            pic_url += '?param=500y500'
-                        cover_data = self.http_client.get_content(pic_url, timeout=5)
-                        if cover_data:
-                            return cover_data
-
-                # Fallback: try song search if album search failed
-                params['type'] = 1  # 1 = song search
-                response = self.http_client.get(
-                    search_url,
-                    params=params,
-                    headers=headers,
-                    timeout=5
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('code') == 200 and data.get('result', {}).get('songs'):
-                        song_info = data['result']['songs'][0]
-                        # Try to get album cover from song
-                        album_info = song_info.get('album', {})
-                        pic_url = album_info.get('picUrl') or album_info.get('blurPicUrl')
-
-                        if pic_url:
-                            if '?' not in pic_url:
-                                pic_url += '?param=500y500'
-                            cover_data = self.http_client.get_content(pic_url, timeout=5)
-                            if cover_data:
-                                return cover_data
-
-        except Exception as e:
-            logger.debug(f"NetEase fetch error: {e}")
-
-        return None
-
-    def _fetch_from_lastfm(self, artist: str, album: str) -> Optional[bytes]:
-        """
-        Fetch cover from Last.fm API.
-
-        Note: Requires a valid Last.fm API key. This source is disabled
-        by default. To enable, set LASTFM_API_KEY in environment or config.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            Cover image data, or None
-        """
-        import os
-
-        api_key = os.getenv("LASTFM_API_KEY")
-        if not api_key or api_key == "YOUR_LASTFM_API_KEY":
-            api_key = "9b0cdcf446cc96dea3e747787ad23575"
-
-        try:
-            url = "http://ws.audioscrobbler.com/2.0/"
-
-            params = {
-                'method': 'album.getinfo',
-                'api_key': api_key,
-                'artist': artist,
-                'album': album,
-                'format': 'json'
-            }
-
-            response = self.http_client.get(url, params=params, timeout=3)
-
-            if response.status_code == 200:
-                data = response.json()
-                image_url = None
-
-                # Check for error
-                if 'error' in data:
-                    logger.debug(f"Last.fm API error: {data.get('message')}")
-                    return None
-
-                # Try to get the largest image
-                if 'album' in data and 'image' in data['album']:
-                    for img in reversed(data['album']['image']):
-                        if img.get('#text'):
-                            image_url = img['#text']
-                            break
-
-                if image_url:
-                    cover_data = self.http_client.get_content(image_url, timeout=3)
-                    if cover_data:
-                        return cover_data
-
-        except Exception as e:
-            logger.debug(f"Last.fm fetch error: {e}")
-
-        return None
-
-    def _fetch_from_musicbrainz(self, artist: str, album: str) -> Optional[bytes]:
-        """
-        Fetch cover from MusicBrainz Cover Art Archive.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            Cover image data, or None
-        """
-        try:
-            # First, search for the release
-            search_url = "https://musicbrainz.org/ws/2/release/"
-            params = {
-                'query': f'artist:"{artist}" AND release:"{album}"',
-                'limit': 1,
-                'fmt': 'json'
-            }
-
-            response = self.http_client.get(
-                search_url,
-                params=params,
-                headers={'User-Agent': 'HarmonyPlayer/1.0'},
-                timeout=3
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('releases'):
-                    release_id = data['releases'][0]['id']
-
-                    # Get cover art from Cover Art Archive
-                    cover_url = f"https://coverartarchive.org/release/{release_id}/front-500"
-                    cover_data = self.http_client.get_content(cover_url, timeout=3)
-
-                    if cover_data:
-                        return cover_data
-
-        except Exception as e:
-            logger.debug(f"MusicBrainz fetch error: {e}")
-
-        return None
-
-    def _search_covers_from_musicbrainz(self, artist: str, album: str) -> List[SearchResult]:
-        """
-        Search for covers from MusicBrainz Cover Art Archive.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            List of SearchResult objects with cover URLs
-        """
-        results = []
-
-        try:
-            search_url = "https://musicbrainz.org/ws/2/release/"
-            params = {
-                'query': f'artist:"{artist}" AND release:"{album}"',
-                'limit': 5,
-                'fmt': 'json'
-            }
-
-            response = self.http_client.get(
-                search_url,
-                params=params,
-                headers={'User-Agent': 'HarmonyPlayer/1.0'},
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('releases'):
-                    for release in data['releases']:
-                        release_id = release.get('id')
-                        if release_id:
-                            # Construct cover art URL
-                            cover_url = f"https://coverartarchive.org/release/{release_id}/front-500"
-
-                            results.append(SearchResult(
-                                title=release.get('title', ''),
-                                artist=', '.join([a.get('name', '') for a in release.get('artist-credit', []) if isinstance(a, dict) and 'name' in a]) or artist,
-                                album=release.get('title', ''),
-                                duration=None,
-                                source='musicbrainz',
-                                id=release_id,
-                                cover_url=cover_url
-                            ))
-
-        except Exception as e:
-            logger.debug(f"MusicBrainz search error: {e}")
-
-        return results
-
-    def _search_covers_from_lastfm(self, artist: str, album: str) -> List[SearchResult]:
-        """
-        Search for covers from Last.fm API.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            List of SearchResult objects with cover URLs
-        """
-        results = []
-
-        import os
-        api_key = os.getenv("LASTFM_API_KEY")
-        if not api_key or api_key == "YOUR_LASTFM_API_KEY":
-            api_key = "9b0cdcf446cc96dea3e747787ad23575"
-
-        try:
-            url = "http://ws.audioscrobbler.com/2.0/"
-            params = {
-                'method': 'album.getinfo',
-                'api_key': api_key,
-                'artist': artist,
-                'album': album,
-                'format': 'json'
-            }
-
-            response = self.http_client.get(url, params=params, timeout=5)
-
-            if response.status_code == 200:
-                data = response.json()
-
-                if 'error' in data:
-                    logger.debug(f"Last.fm API error: {data.get('message')}")
-                    return results
-
-                if 'album' in data:
-                    album_info = data['album']
-                    image_url = None
-
-                    # Get the largest image
-                    if 'image' in album_info:
-                        for img in reversed(album_info['image']):
-                            if img.get('#text'):
-                                image_url = img['#text']
-                                break
-
-                    if image_url:
-                        results.append(SearchResult(
-                            title=album_info.get('name', ''),
-                            artist=album_info.get('artist', ''),
-                            album=album_info.get('name', ''),
-                            duration=None,
-                            source='lastfm',
-                            id=album_info.get('mbid', ''),
-                            cover_url=image_url
-                        ))
-
-        except Exception as e:
-            logger.debug(f"Last.fm search error: {e}")
-
-        return results
-
-    def _search_covers_from_itunes(self, title: str, artist: str, album: str) -> List[SearchResult]:
-        """
-        Search for covers from iTunes Search API.
-
-        Args:
-            title: Track title
-            artist: Track artist
-            album: Album name
-
-        Returns:
-            List of SearchResult objects with cover URLs
-        """
-        results = []
-
-        try:
-            search_url = "https://itunes.apple.com/search"
-
-            # Search for albums
-            params = {
-                'term': f'{artist} {album or title}',
-                'media': 'music',
-                'entity': 'album',
-                'limit': 5
-            }
-
-            response = self.http_client.get(search_url, params=params, timeout=3)
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('results'):
-                    for item in data['results']:
-                        artwork_url = item.get('artworkUrl100')
-                        if artwork_url:
-                            # Get larger version
-                            artwork_url = artwork_url.replace('100x100', '600x600')
-
-                            results.append(SearchResult(
-                                title=item.get('collectionName', ''),
-                                artist=item.get('artistName', ''),
-                                album=item.get('collectionName', ''),
-                                duration=None,
-                                source='itunes',
-                                id=str(item.get('collectionId', '')),
-                                cover_url=artwork_url
-                            ))
-
-            # If album has value, also search with album only (without artist)
-            if album:
-                params_album_only = {
-                    'term': album,
-                    'media': 'music',
-                    'entity': 'album',
-                    'limit': 5
-                }
-
-                response = self.http_client.get(search_url, params=params_album_only, timeout=3)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('results'):
-                        for item in data['results']:
-                            artwork_url = item.get('artworkUrl100')
-                            if artwork_url:
-                                artwork_url = artwork_url.replace('100x100', '600x600')
-
-                                results.append(SearchResult(
-                                    title=item.get('collectionName', ''),
-                                    artist=item.get('artistName', ''),
-                                    album=item.get('collectionName', ''),
-                                    duration=None,
-                                    source='itunes',
-                                    id=str(item.get('collectionId', '')),
-                                    cover_url=artwork_url
-                                ))
-
-        except Exception as e:
-            logger.debug(f"iTunes search error: {e}")
-
-        return results
-
-    def _search_covers_from_spotify(self, title: str, artist: str, album: str) -> List[SearchResult]:
-        """
-        Search for album covers from Spotify Web API.
-
-        Args:
-            title: Track title
-            artist: Track artist
-            album: Album name
-
-        Returns:
-            List of SearchResult objects with cover URLs
-        """
-        results = []
-
-        token = self._get_spotify_token()
-        if not token:
-            logger.debug("Failed to get Spotify token for album search")
-            return results
-
-        try:
-            url = "https://api.spotify.com/v1/search"
-            headers = {
-                "Authorization": f"Bearer {token}"
-            }
-
-            # Build search query
-            search_album = album or title
-            params = {
-                "q": f"album:{search_album} artist:{artist}",
-                "type": "album",
-                "limit": 5
-            }
-
-            response = self.http_client.get(url, headers=headers, params=params, timeout=5)
-
-            if response.status_code == 200:
-                data = response.json()
-                albums = data.get("albums", {}).get("items", [])
-
-                for album_info in albums:
-                    images = album_info.get("images", [])
-                    if images:
-                        # Get the largest image (first in list)
-                        cover_url = images[0].get("url")
-
-                        if cover_url:
-                            results.append(SearchResult(
-                                title=album_info.get("name", ""),
-                                artist=album_info.get("artists", [{}])[0].get("name", ""),
-                                album=album_info.get("name", ""),
-                                duration=None,
-                                source='spotify',
-                                id=album_info.get("id", ""),
-                                cover_url=cover_url
-                            ))
-
-            # If album has value, also search with album only (without artist)
-            if album:
-                params_album_only = {
-                    "q": f"album:{album}",
-                    "type": "album",
-                    "limit": 5
-                }
-
-                response = self.http_client.get(url, headers=headers, params=params_album_only, timeout=5)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    albums = data.get("albums", {}).get("items", [])
-
-                    for album_info in albums:
-                        images = album_info.get("images", [])
-                        if images:
-                            cover_url = images[0].get("url")
-
-                            if cover_url:
-                                results.append(SearchResult(
-                                    title=album_info.get("name", ""),
-                                    artist=album_info.get("artists", [{}])[0].get("name", ""),
-                                    album=album_info.get("name", ""),
-                                    duration=None,
-                                    source='spotify',
-                                    id=album_info.get("id", ""),
-                                    cover_url=cover_url
-                                ))
-
-        except Exception as e:
-            logger.debug(f"Spotify album search error: {e}")
-
-        return results
-
-    def _fetch_from_itunes(self, artist: str, album: str) -> Optional[bytes]:
-        """
-        Fetch cover from iTunes Search API.
-
-        Args:
-            artist: Artist name
-            album: Album name
-
-        Returns:
-            Cover image data, or None
-        """
-        try:
-            search_url = "https://itunes.apple.com/search"
-            params = {
-                'term': f'{artist} {album}',
-                'media': 'music',
-                'entity': 'album',
-                'limit': 1
-            }
-
-            response = self.http_client.get(search_url, params=params, timeout=3)
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('results') and len(data['results']) > 0:
-                    artwork_url = data['results'][0].get('artworkUrl100')
-                    if artwork_url:
-                        # Get larger version
-                        artwork_url = artwork_url.replace('100x100', '600x600')
-                        cover_data = self.http_client.get_content(artwork_url, timeout=3)
-                        if cover_data:
-                            return cover_data
-
-        except Exception as e:
-            logger.debug(f"iTunes fetch error: {e}")
-
-        return None
-
     def _save_cover_to_cache(self, cover_data: bytes, cache_key: str) -> Optional[str]:
         """
         Save cover data to cache.
@@ -1183,7 +513,7 @@ class CoverService:
 
     def search_artist_covers(self, artist_name: str, limit: int = 10) -> List[dict]:
         """
-        Search for artist covers from NetEase Cloud Music, iTunes, and QQ Music in parallel.
+        Search for artist covers from online sources in parallel.
 
         Args:
             artist_name: Artist name to search
@@ -1193,181 +523,35 @@ class CoverService:
             List of dicts with artist cover info
         """
         results = []
+        sources = self._get_artist_sources()
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(self._search_artist_covers_from_netease, artist_name, limit): 'netease',
-                executor.submit(self._search_artist_covers_from_itunes, artist_name, limit): 'itunes',
-                executor.submit(self._search_artist_covers_from_qqmusic, artist_name, limit): 'qqmusic'
+                executor.submit(source.search, artist_name, limit): source.name
+                for source in sources
             }
 
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=15):
+                source_name = futures[future]
                 try:
-                    source_results = future.result()
-                    results.extend(source_results)
+                    search_results = future.result()
+                    # Convert ArtistCoverSearchResult to dict for compatibility
+                    for r in search_results:
+                        score = self._calculate_artist_name_score(artist_name, r.name)
+                        results.append({
+                            'name': r.name,
+                            'id': r.id,
+                            'cover_url': r.cover_url,
+                            'album_count': r.album_count,
+                            'source': r.source,
+                            'singer_mid': r.singer_mid,
+                            'score': score,
+                        })
                 except Exception as e:
-                    source = futures[future]
-                    logger.error(f"Error searching artist covers from {source}: {e}", exc_info=True)
+                    logger.error(f"Error searching artist covers from {source_name}: {e}", exc_info=True)
 
         # Sort by score descending
         results.sort(key=lambda x: x['score'], reverse=True)
-
-        return results
-
-    def _search_artist_covers_from_netease(self, artist_name: str, limit: int) -> List[dict]:
-        """Search artist covers from NetEase Cloud Music."""
-        results = []
-
-        search_url = "https://music.163.com/api/search/get/web"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://music.163.com/'
-        }
-
-        params = {
-            's': artist_name,
-            'type': 100,  # Artist search
-            'limit': limit,
-            'offset': 0
-        }
-
-        response = self.http_client.get(
-            search_url,
-            params=params,
-            headers=headers,
-            timeout=5
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-
-            if data.get('code') == 200 and data.get('result', {}).get('artists'):
-                for artist_info in data['result']['artists']:
-                    pic_url = artist_info.get('picUrl') or artist_info.get('img1v1Url')
-                    if pic_url:
-                        # Get high quality version
-                        if '?' not in pic_url:
-                            pic_url += '?param=512y512'
-
-                        # Calculate match score based on name similarity
-                        name = artist_info.get('name', '')
-                        score = self._calculate_artist_name_score(artist_name, name)
-
-                        results.append({
-                            'name': name,
-                            'id': artist_info.get('id'),
-                            'cover_url': pic_url,
-                            'album_count': artist_info.get('albumSize', 0),
-                            'score': score,
-                            'source': 'netease'
-                        })
-
-        return results
-
-    def _search_artist_covers_from_itunes(self, artist_name: str, limit: int) -> List[dict]:
-        """Search artist covers from iTunes."""
-        results = []
-
-        search_url = "https://itunes.apple.com/search"
-        params = {
-            'term': artist_name,
-            'media': 'music',
-            'entity': 'album',
-            'limit': limit
-        }
-
-        response = self.http_client.get(search_url, params=params, timeout=5)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('results'):
-                seen_artists = set()
-                for item in data['results']:
-                    name = item.get('artistName', '')
-                    # Skip duplicate artists
-                    if name.lower() in seen_artists:
-                        continue
-                    seen_artists.add(name.lower())
-
-                    artwork_url = item.get('artworkUrl100')
-                    if artwork_url:
-                        artwork_url = artwork_url.replace('100x100', '600x600')
-
-                        # Calculate match score
-                        score = self._calculate_artist_name_score(artist_name, name)
-
-                        results.append({
-                            'name': name,
-                            'id': item.get('artistId'),
-                            'cover_url': artwork_url,
-                            'album_count': None,
-                            'score': score,
-                            'source': 'itunes'
-                        })
-
-        return results
-
-    def parse(self, url: str):
-        """
-        解析QQ音乐封面URL
-        """
-        pattern = r"(T\d{3})R\d+x\d+M000([A-Za-z0-9]+)"
-        m = re.search(pattern, url)
-
-        if not m:
-            return "", ""
-
-        img_type = m.group(1)
-        mid = m.group(2)
-
-        return img_type, mid
-
-    def convert(self, url: str, size: int = 500) -> str:
-        """
-        转换为指定尺寸
-        """
-        img_type, mid = self.parse(url)
-
-        return f"https://y.gtimg.cn/music/photo_new/{img_type}R{size}x{size}M000{mid}.jpg"
-
-    def _search_artist_covers_from_qqmusic(self, artist_name: str, limit: int) -> List[dict]:
-        """Search artist covers from QQ Music (lazy loading)."""
-        results = []
-
-        try:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-            client = QQMusicClient()
-            artists = client.search_artist(artist_name, limit)
-
-            for artist in artists:
-                name = artist.get('singerName', '')
-                singer_mid = artist.get('singerMID', '')
-                cover_url = artist.get('singerPic', '')
-                album_count = artist.get('albumNum', 0)
-
-                if name and singer_mid:
-                    # Calculate match score
-                    score = self._calculate_artist_name_score(artist_name, name)
-
-                    # Only convert if cover_url is valid, otherwise leave empty for lazy loading
-                    if cover_url:
-                        cover_url = self.convert(cover_url)
-                    else:
-                        cover_url = None  # Will be lazy loaded via singer_mid
-
-                    results.append({
-                        'name': name,
-                        'id': singer_mid,
-                        'singer_mid': singer_mid,
-                        'cover_url': cover_url,
-                        'album_count': album_count,
-                        'score': score,
-                        'source': 'qqmusic'
-                    })
-
-        except Exception as e:
-            logger.debug(f"QQ Music artist cover search error: {e}")
 
         return results
 
@@ -1392,116 +576,3 @@ class CoverService:
             return 70.0 + (common / total) * 15
 
         return 50.0
-
-    # Spotify API credentials
-    SPOTIFY_CLIENT_ID = "83e307eab4cc4e9bab3382b5bc13cc67"
-    SPOTIFY_CLIENT_SECRET = "cbb426252fa44f5bb26334b3aa651fa8"
-    _spotify_token = None
-    _spotify_token_expires = 0
-
-    def _get_spotify_token(self) -> Optional[str]:
-        """
-        Get Spotify API access token using client credentials flow.
-
-        Returns:
-            Access token, or None if failed
-        """
-        import base64
-        import time
-
-        # Check if we have a valid cached token
-        if self._spotify_token and time.time() < self._spotify_token_expires:
-            return self._spotify_token
-
-        try:
-            auth = base64.b64encode(
-                f"{self.SPOTIFY_CLIENT_ID}:{self.SPOTIFY_CLIENT_SECRET}".encode()
-            ).decode()
-
-            headers = {
-                "Authorization": f"Basic {auth}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            }
-
-            data = {
-                "grant_type": "client_credentials"
-            }
-
-            response = self.http_client.post(
-                "https://accounts.spotify.com/api/token",
-                headers=headers,
-                data=data,
-                timeout=5
-            )
-
-            if response.status_code == 200:
-                token_data = response.json()
-                self._spotify_token = token_data["access_token"]
-                # Set expiry with 60 seconds buffer
-                self._spotify_token_expires = time.time() + token_data.get("expires_in", 3600) - 60
-                return self._spotify_token
-
-        except Exception as e:
-            logger.debug(f"Error getting Spotify token: {e}")
-
-        return None
-
-    def _search_artist_covers_from_spotify(self, artist_name: str, limit: int = 5) -> List[dict]:
-        """
-        Search for artist covers from Spotify Web API.
-
-        Args:
-            artist_name: Artist name to search
-            limit: Maximum number of results
-
-        Returns:
-            List of dicts with artist cover info
-        """
-        results = []
-
-        token = self._get_spotify_token()
-        if not token:
-            logger.debug("Failed to get Spotify token")
-            return results
-
-        try:
-            url = "https://api.spotify.com/v1/search"
-            headers = {
-                "Authorization": f"Bearer {token}"
-            }
-            params = {
-                "q": artist_name,
-                "type": "artist",
-                "limit": limit
-            }
-
-            response = self.http_client.get(url, headers=headers, params=params, timeout=5)
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("artists", {}).get("items"):
-                    for artist_info in data["artists"]["items"]:
-                        name = artist_info.get("name", "")
-                        images = artist_info.get("images", [])
-
-                        if images:
-                            # Get the largest image (first in list is usually largest)
-                            cover_url = images[0].get("url")
-
-                            if cover_url:
-                                # Calculate match score
-                                score = self._calculate_artist_name_score(artist_name, name)
-
-                                results.append({
-                                    'name': name,
-                                    'id': artist_info.get("id"),
-                                    'cover_url': cover_url,
-                                    'album_count': artist_info.get("popularity", 0),
-                                    'score': score,
-                                    'source': 'spotify'
-                                })
-
-        except Exception as e:
-            logger.debug(f"Spotify artist search error: {e}")
-
-        return results

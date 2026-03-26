@@ -3,18 +3,20 @@ Lyrics service for fetching and parsing lyrics.
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 # Configure logging
 logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional, List
 import requests
-import base64
-import zlib
 
-from utils.lrc_parser import LyricLine, parse_yrc, detect_and_parse
+from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
-from .qqmusic_lyrics import search_from_qqmusic, download_qqmusic_lyrics
+from .qqmusic_lyrics import download_qqmusic_lyrics
+
+if TYPE_CHECKING:
+    from services.sources.base import LyricsSource
 
 # Initialize OpenCC converter for Traditional to Simplified Chinese conversion
 try:
@@ -27,6 +29,18 @@ except ImportError:
     _t2s_converter = None
     logger.warning("OpenCC not installed. Traditional Chinese lyrics will not be converted to Simplified.")
 
+# Shared HTTP client instance
+_shared_http_client = None
+
+
+def _get_http_client():
+    """Get or create shared HTTP client instance."""
+    global _shared_http_client
+    if _shared_http_client is None:
+        from infrastructure.network import HttpClient
+        _shared_http_client = HttpClient()
+    return _shared_http_client
+
 
 class LyricsService:
     """Service for fetching lyrics from local files and online sources."""
@@ -36,8 +50,25 @@ class LyricsService:
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
-    # Enable online lyrics (default: False to prevent UI blocking)
+    # Enable online lyrics
     ENABLE_ONLINE = True  # Changed to True for better UX
+
+    @classmethod
+    def _get_sources(cls) -> List["LyricsSource"]:
+        """Get lyrics sources."""
+        from services.sources import (
+            NetEaseLyricsSource,
+            QQMusicLyricsSource,
+            KugouLyricsSource,
+            LRCLIBLyricsSource,
+        )
+        http_client = _get_http_client()
+        return [
+            LRCLIBLyricsSource(http_client),
+            NetEaseLyricsSource(http_client),
+            KugouLyricsSource(http_client),
+            QQMusicLyricsSource(),
+        ]
 
     @classmethod
     def _convert_to_simplified_chinese(cls, text: str) -> str:
@@ -61,7 +92,7 @@ class LyricsService:
 
     @classmethod
     def search_songs(cls, title: str, artist: str, limit: int = 10,
-                    progress_callback=None) -> List[dict]:
+                     progress_callback=None) -> List[dict]:
         """
         Search for songs online and return a list of candidates.
         Uses parallel searching for better performance.
@@ -77,34 +108,39 @@ class LyricsService:
             List of dicts with keys: 'id', 'title', 'artist', 'album', 'source'
         """
         results = []
-
-        # Define search tasks for parallel execution
-        search_tasks = [
-            ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit)),
-            ("NetEase", lambda: cls._search_from_netease(title, artist, limit)),
-            ("Kugou", lambda: cls._search_from_kugou(title, artist, limit)),
-            ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit)),
-        ]
+        sources = cls._get_sources()
 
         # Parallel search from multiple sources with progressive updates
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(task[1]): task[0]
-                for task in search_tasks
+                executor.submit(source.search, title, artist, limit): source.name
+                for source in sources
             }
 
             # Wait for each source independently (no overall timeout)
-            # Each source has its own timeout, so slow sources don't block fast ones
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=15):
                 source_name = futures[future]
                 try:
-                    source_results = future.result(timeout=6)  # Per-source 6s timeout
-                    results.extend(source_results)
-                    logger.debug(f"[LyricsService] {source_name}: found {len(source_results)} results")
+                    search_results = future.result(timeout=6)
+                    # Convert LyricsSearchResult to dict for compatibility
+                    for r in search_results:
+                        results.append({
+                            'id': r.id,
+                            'title': r.title,
+                            'artist': r.artist,
+                            'album': r.album,
+                            'duration': r.duration,
+                            'cover_url': r.cover_url,
+                            'source': r.source,
+                            'lyrics': r.lyrics,
+                            'accesskey': r.accesskey,
+                            'supports_yrc': r.supports_yrc,
+                        })
+                    logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
 
                     # Call progress callback if provided
-                    if progress_callback and source_results:
-                        progress_callback(source_results, source_name)
+                    if progress_callback and search_results:
+                        progress_callback(results, source_name)
 
                 except Exception as e:
                     # Log but don't fail - other sources may have results
@@ -112,147 +148,6 @@ class LyricsService:
 
         # Return all results (user can see all sources)
         return results
-
-    @classmethod
-    def _search_from_netease(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
-        """Search songs from NetEase Cloud Music."""
-        results = []
-
-        search_url = "https://music.163.com/api/search/get/web"
-        params = {
-            's': f'{artist} {title}',
-            'type': '1',
-            'limit': str(limit)
-        }
-
-        response = requests.get(
-            search_url,
-            params=params,
-            headers=cls.HEADERS,
-            timeout=3
-        )
-
-        if response.status_code != 200:
-            return results
-
-        data = response.json()
-
-        if data.get('code') != 200 or not data.get('result', {}).get('songs'):
-            return results
-
-        for song in data['result']['songs']:
-            # Get album cover URL (300x300 size)
-            cover_url = None
-            if song.get('album') and song['album'].get('picUrl'):
-                cover_url = song['album']['picUrl']
-            elif song.get('album') and song['album'].get('pic'):
-                pic_str = str(song['album']['pic'])
-                cover_url = f"https://p1.music.126.net/{pic_str}/{pic_str}.jpg"
-
-            # Get duration (convert from milliseconds to seconds)
-            duration = None
-            if song.get('duration'):
-                duration = song['duration'] / 1000  # Convert ms to seconds
-
-            results.append({
-                'id': str(song['id']),
-                'title': song.get('name', ''),
-                'artist': song['artists'][0]['name'] if song.get('artists') else '',
-                'album': song['album']['name'] if song.get('album') else '',
-                'duration': duration,  # Duration in seconds
-                'cover_url': cover_url,
-                'source': 'netease',
-                'supports_yrc': True  # NetEase supports YRC word-by-word lyrics
-            })
-
-        return results
-
-    @classmethod
-    def _search_from_lrclib(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
-        """Search songs from LRCLIB (free, open source lyrics API)."""
-        results = []
-
-        search_url = "https://lrclib.net/api/search"
-        params = {
-            'track_name': title,
-            'artist_name': artist
-        }
-
-        response = requests.get(
-            search_url,
-            params=params,
-            headers=cls.HEADERS,
-            timeout=3
-        )
-
-        if response.status_code != 200:
-            return results
-
-        data = response.json()
-
-        if not isinstance(data, list):
-            return results
-
-        for song in data[:limit]:
-            # Include songs with synced lyrics or plain lyrics
-            synced = song.get('syncedLyrics')
-            plain = song.get('plainLyrics')
-            if synced or plain:
-                # Store lyrics directly in the result for later use
-                lyrics = synced if synced else plain
-                # Convert to Simplified Chinese
-                lyrics = cls._convert_to_simplified_chinese(lyrics)
-                results.append({
-                    'id': str(song.get('id', '')),
-                    'title': song.get('trackName', ''),
-                    'artist': song.get('artistName', ''),
-                    'album': song.get('albumName', ''),
-                    'duration': song.get('duration'),  # Song duration in seconds
-                    'source': 'lrclib',
-                    'lyrics': lyrics  # Pre-fetch lyrics from search result
-                })
-
-        return results
-
-    @classmethod
-    def _search_from_kugou(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
-        """Search songs from Kugou."""
-        results = []
-
-        keyword = f"{title} {artist}"
-        search_url = "https://lyrics.kugou.com/search"
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        params = {
-            "keyword": keyword,
-            "page": 1,
-            "pagesize": limit
-        }
-
-        r = requests.get(search_url, params=params, headers=headers, timeout=3)
-        data = r.json()
-
-        candidates = data.get("candidates", [])
-        for item in candidates:
-            results.append({
-                'id': str(item['id']),
-                'title': item.get('name', item.get('song', '')),
-                'artist': item.get('singer', ''),
-                'album': '',
-                'source': 'kugou',
-                'accesskey': item.get('accesskey', '')
-            })
-
-        return results
-
-    @classmethod
-    def _search_from_qqmusic(cls, title: str, artist: str, limit: int = 10) -> List[dict]:
-        """Search songs from QQ Music."""
-        try:
-            return search_from_qqmusic(title, artist, limit)
-        except Exception as e:
-            logger.error(f"Error searching from QQ Music: {e}", exc_info=True)
-            return []
 
     @classmethod
     def download_lyrics_by_id(cls, song_id: str, source: str, accesskey: str = None) -> str:
@@ -267,121 +162,28 @@ class LyricsService:
         Returns:
             Lyrics content or empty string
         """
-        if source == 'lrclib':
-            return cls._download_lrclib_lyrics(song_id)
-        elif source == 'netease':
-            return cls._download_netease_lyrics(song_id)
-        elif source == 'kugou':
-            return cls._download_kugou_lyrics(song_id, accesskey)
-        elif source == 'qqmusic':
-            return cls._download_qqmusic_lyrics(song_id)
+        # Find the appropriate source and download lyrics
+        sources = cls._get_sources()
+        source_map = {s.name.lower(): s for s in sources}
+
+        lyrics_source = source_map.get(source.lower())
+        if not lyrics_source:
+            return ""
+
+        # Create a result object for get_lyrics
+        from services.sources.base import LyricsSearchResult
+        result = LyricsSearchResult(
+            id=song_id,
+            title="",
+            artist="",
+            source=source,
+            accesskey=accesskey,
+        )
+
+        lyrics = lyrics_source.get_lyrics(result)
+        if lyrics:
+            return cls._convert_to_simplified_chinese(lyrics)
         return ""
-
-    @classmethod
-    def _download_netease_lyrics(cls, song_id: str) -> str:
-        """
-        Download lyrics from NetEase by song ID.
-        Prioritizes YRC (word-by-word) format over LRC.
-
-        Args:
-            song_id: NetEase song ID
-
-        Returns:
-            Lyrics content (YRC or LRC format) or empty string
-        """
-        try:
-            # Request both YRC and LRC at the same time
-            # API params: lv=1 gets LRC, yv=0 gets YRC
-            api_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=0&tv=0&yv=0"
-            response = requests.get(
-                api_url,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('code') == 200:
-                    # Check for YRC (word-by-word lyrics) first
-                    yrc_data = data.get('yrc')
-                    if yrc_data and yrc_data.get('lyric'):
-                        yrc_content = yrc_data['lyric']
-                        logger.info(f"[LyricsService] Got YRC lyrics for song {song_id}, length: {len(yrc_content)}")
-                        logger.debug(f"[LyricsService] YRC sample: {yrc_content[:200] if len(yrc_content) > 200 else yrc_content}")
-                        return yrc_content
-                    else:
-                        logger.info(f"[LyricsService] No YRC for song {song_id}, falling back to LRC")
-
-                    # Fall back to LRC if no YRC
-                    lrc_data = data.get('lrc')
-                    if lrc_data and lrc_data.get('lyric'):
-                        lrc_content = lrc_data['lyric']
-                        logger.info(f"[LyricsService] Got LRC lyrics for song {song_id} (no YRC), length: {len(lrc_content)}")
-                        return lrc_content
-                    else:
-                        logger.info(f"[LyricsService] No LRC either for song {song_id}")
-
-            # Fallback to original API if YRC API fails
-            lyrics_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
-            response = requests.get(
-                lyrics_url,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code != 200:
-                return ""
-
-            data = response.json()
-            if data.get('code') != 200:
-                return ""
-
-            lrc_content = ""
-            if 'lrc' in data:
-                lrc_content = data['lrc'].get('lyric', '')
-            elif 'lyric' in data:
-                lrc_content = data['lyric']
-
-            return lrc_content
-
-        except Exception as e:
-            logger.error(f"Error downloading NetEase lyrics: {e}", exc_info=True)
-            return ""
-
-    @classmethod
-    def _download_netease_yrc(cls, song_id: str) -> str:
-        """
-        Download YRC (word-by-word) lyrics from NetEase by song ID.
-
-        Args:
-            song_id: NetEase song ID
-
-        Returns:
-            YRC lyrics content or empty string
-        """
-        try:
-            yrc_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=0&kv=0&tv=0&yv=0"
-            response = requests.get(
-                yrc_url,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code != 200:
-                return ""
-
-            data = response.json()
-            if data.get('code') != 200:
-                return ""
-
-            if 'yrc' in data and data['yrc'] and data['yrc'].get('lyric'):
-                return data['yrc']['lyric']
-
-            return ""
-
-        except Exception as e:
-            logger.error(f"Error downloading NetEase YRC: {e}", exc_info=True)
-            return ""
 
     @classmethod
     def get_song_cover_url(cls, song_id: str, source: str) -> Optional[str]:
@@ -395,76 +197,33 @@ class LyricsService:
         Returns:
             Cover URL or None
         """
+        # Only NetEase provides cover URLs in lyrics service
         if source == 'netease':
-            return cls._get_netease_song_cover(song_id)
-        # LRCLIB and Kugou don't provide cover art
+            try:
+                # Use song detail API to get cover URL
+                detail_url = f"https://music.163.com/api/song/detail?ids=[{song_id}]"
+                response = requests.get(
+                    detail_url,
+                    headers=cls.HEADERS,
+                    timeout=3
+                )
+
+                if response.status_code != 200:
+                    return None
+
+                data = response.json()
+                if data.get('code') != 200 or not data.get('songs'):
+                    return None
+
+                # Get cover URL from songs[0].al.picUrl
+                song = data['songs'][0]
+                if song.get('album') and song['album'].get('picUrl'):
+                    return song['album']['picUrl']
+
+            except Exception as e:
+                logger.error(f"Error getting NetEase song cover: {e}", exc_info=True)
+
         return None
-
-    @classmethod
-    def _get_netease_song_cover(cls, song_id: str) -> Optional[str]:
-        """Get cover URL from NetEase by song ID."""
-        try:
-            # Use song detail API to get cover URL
-            detail_url = f"https://music.163.com/api/song/detail?ids=[{song_id}]"
-            response = requests.get(
-                detail_url,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code != 200:
-                return None
-
-            data = response.json()
-            if data.get('code') != 200 or not data.get('songs'):
-                return None
-
-            # Get cover URL from songs[0].al.picUrl
-            song = data['songs'][0]
-            if song.get('album') and song['album'].get('picUrl'):
-                return song['album']['picUrl']
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error getting NetEase song cover: {e}", exc_info=True)
-            return None
-
-    @classmethod
-    def _download_kugou_lyrics(cls, song_id: str, accesskey: str) -> str:
-        """Download lyrics from Kugou by song ID."""
-        try:
-            download_url = "https://lyrics.kugou.com/download"
-            headers = {"User-Agent": "Mozilla/5.0"}
-
-            params = {
-                "id": song_id,
-                "accesskey": accesskey,
-                "fmt": "krc",
-                "charset": "utf8"
-            }
-
-            r = requests.get(download_url, params=params, headers=headers, timeout=5)
-            data = r.json()
-
-            content = data.get("content")
-            if not content:
-                return ""
-
-            # base64 decode
-            krc = base64.b64decode(content)
-
-            # Remove KRC header
-            if krc[:4] == b'krc1':
-                krc = krc[4:]
-
-            # zlib decompress
-            lyric = zlib.decompress(krc)
-            return lyric.decode("utf-8", errors="ignore")
-
-        except Exception as e:
-            logger.error(f"Error downloading Kugou lyrics: {e}", exc_info=True)
-            return ""
 
     @classmethod
     def get_lyrics_by_qqmusic_mid(cls, song_mid: str) -> str:
@@ -479,74 +238,10 @@ class LyricsService:
         Returns:
             Lyrics content (QRC or LRC format) or empty string
         """
-        return cls._download_qqmusic_lyrics(song_mid)
-
-    @classmethod
-    def _download_qqmusic_lyrics(cls, mid: str) -> str:
-        """
-        Download lyrics from QQ Music by song mid.
-
-        Args:
-            mid: QQ Music song mid
-
-        Returns:
-            Lyrics content (QRC or LRC format) or empty string
-        """
         try:
-            return download_qqmusic_lyrics(mid)
+            return download_qqmusic_lyrics(song_mid)
         except Exception as e:
             logger.error(f"Error downloading QQ Music lyrics: {e}", exc_info=True)
-            return ""
-
-    @classmethod
-    def _download_lrclib_lyrics(cls, song_id: str) -> str:
-        """Download lyrics from LRCLIB by song ID.
-
-        Note: LRCLIB doesn't have a dedicated /api/lyrics/{id} endpoint.
-        We need to search and extract from results.
-        """
-        try:
-            # LRCLIB API doesn't have a get-by-id endpoint, so we search by ID
-            # Using the query parameter format
-            search_url = "https://lrclib.net/api/search"
-            params = {
-                'q': song_id  # Search by ID as query
-            }
-
-            response = requests.get(
-                search_url,
-                params=params,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code != 200:
-                return ""
-
-            data = response.json()
-
-            if not isinstance(data, list) or not data:
-                return ""
-
-            # Find the matching song by ID
-            for song in data:
-                if str(song.get('id')) == str(song_id):
-                    # Prioritize synced lyrics
-                    synced_lyrics = song.get('syncedLyrics')
-                    if synced_lyrics:
-                        return cls._convert_to_simplified_chinese(synced_lyrics)
-
-                    # Fall back to plain lyrics
-                    plain_lyrics = song.get('plainLyrics')
-                    if plain_lyrics:
-                        return cls._convert_to_simplified_chinese(plain_lyrics)
-
-                    return ""
-
-            return ""
-
-        except Exception as e:
-            logger.error(f"Error downloading LRCLIB lyrics: {e}", exc_info=True)
             return ""
 
     @classmethod
@@ -601,7 +296,8 @@ class LyricsService:
                     search_title = parsed_title
                     if parsed_artist:
                         search_artist = parsed_artist
-                    logger.info(f"[LyricsService] Parsed filename: '{title}' -> artist='{search_artist}', title='{search_title}'")
+                    logger.info(
+                        f"[LyricsService] Parsed filename: '{title}' -> artist='{search_artist}', title='{search_title}'")
 
             lyrics = cls._get_online_lyrics(search_title, search_artist, album, duration)
             if lyrics:
@@ -662,28 +358,32 @@ class LyricsService:
         """
         # Search all sources and collect results
         all_results = []
+        sources = cls._get_sources()
 
-        # Define search tasks for parallel execution
-        search_tasks = [
-            ("LRCLIB", lambda: cls._search_from_lrclib(title, artist, limit=5)),
-            ("NetEase", lambda: cls._search_from_netease(title, artist, limit=5)),
-            ("Kugou", lambda: cls._search_from_kugou(title, artist, limit=5)),
-            ("QQMusic", lambda: cls._search_from_qqmusic(title, artist, limit=5)),
-        ]
-
-        # Parallel search from multiple sources without overall timeout
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        # Parallel search from multiple sources
+        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(task[1]): task[0]
-                for task in search_tasks
+                executor.submit(source.search, title, artist, 5): source.name
+                for source in sources
             }
 
             # Each source has its own timeout, slow sources don't block fast ones
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=15):
                 source_name = futures[future]
                 try:
-                    source_results = future.result(timeout=6)  # Per-source 6s timeout
-                    all_results.extend(source_results)
+                    search_results = future.result(timeout=6)
+                    # Convert LyricsSearchResult to SearchResult for MatchScorer
+                    from utils.match_scorer import SearchResult
+                    for r in search_results:
+                        all_results.append(SearchResult(
+                            title=r.title,
+                            artist=r.artist,
+                            album=r.album,
+                            duration=r.duration,
+                            source=r.source,
+                            id=r.id,
+                            cover_url=r.cover_url,
+                        ))
                 except Exception as e:
                     logger.debug(f"[LyricsService] {source_name} search failed: {e}")
 
@@ -709,223 +409,14 @@ class LyricsService:
                 logger.info(f"Score too low ({score:.1f}), skipping")
                 return ""
 
-            # Get lyrics from result
-            if result.lyrics:
-                # Already have lyrics (LRCLIB)
-                return result.lyrics
-
             # Download lyrics by ID
             return cls.download_lyrics_by_id(
                 result.id,
                 result.source,
-                result.accesskey
+                getattr(result, 'accesskey', None)
             )
 
         return ""
-
-    @classmethod
-    def _fetch_from_netease(cls, title: str, artist: str) -> str:
-        """
-        Fetch lyrics from NetEase Cloud Music.
-
-        This searches for the song and tries to get lyrics.
-        """
-        try:
-            # Search for the song
-            search_url = "https://music.163.com/api/search/get/web"
-            params = {
-                's': f'{artist} {title}',
-                'type': '1',
-                'limit': '5'
-            }
-            logger.debug('Search lyric from 163: %s %s', artist, title)
-
-            response = requests.get(
-                search_url,
-                params=params,
-                headers=cls.HEADERS,
-                timeout=3  # Reduced to 3 seconds
-            )
-
-            if response.status_code != 200:
-                return ""
-
-            data = response.json()
-
-            if data.get('code') != 200 or not data.get('result', {}).get('songs'):
-                return ""
-
-            song_id = data['result']['songs'][0]['id']
-            for item in data['result']['songs']:
-                if item.get('artists') and item['artists'][0]['name'] == artist:
-                    song_id = item['id']
-                    break
-
-            lyrics_url = f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1"
-            lyrics_response = requests.get(
-                lyrics_url,
-                headers=cls.HEADERS,
-                timeout=3  # Reduced to 3 seconds
-            )
-
-            if lyrics_response.status_code != 200:
-                return ""
-
-            lyrics_data = lyrics_response.json()
-
-            if lyrics_data.get('code') != 200:
-                return ""
-
-            # Extract LRC content
-            lrc_content = ""
-            if 'lrc' in lyrics_data:
-                lrc_content = lyrics_data['lrc'].get('lyric')
-            elif 'lyric' in lyrics_data:
-                lrc_content = lyrics_data['lyric']
-
-            if lrc_content:
-                logger.debug('Get lyrics from 163')
-                return lrc_content
-
-        except Exception as e:
-            logger.debug("NetEase lyrics fetch error: %s", e)
-
-        return ""
-
-    @classmethod
-    def _fetch_from_kugou_music(cls, title: str, artist: str) -> str:
-        try:
-            keyword = f"{title} {artist}"
-            logger.debug('Search lyric from kugou: %s', keyword)
-
-            search_url = "https://lyrics.kugou.com/search"
-            download_url = "https://lyrics.kugou.com/download"
-
-            headers = {
-                "User-Agent": "Mozilla/5.0"
-            }
-
-            # 1 搜索歌词
-            params = {
-                "keyword": keyword,
-                "page": 1,
-                "pagesize": 10
-            }
-
-            r = requests.get(search_url, params=params, headers=headers, timeout=5)
-            data = r.json()
-
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return ""
-
-            # 2 选第一条
-            item = candidates[0]
-
-            lyric_id = item["id"]
-            accesskey = item["accesskey"]
-
-            # 3 下载歌词
-            params = {
-                "id": lyric_id,
-                "accesskey": accesskey,
-                "fmt": "krc",
-                "charset": "utf8"
-            }
-
-            r = requests.get(download_url, params=params, headers=headers, timeout=5)
-            data = r.json()
-
-            content = data.get("content")
-            if not content:
-                return ""
-
-            # 4 base64解码
-            krc = base64.b64decode(content)
-
-            # 5 去掉 KRC 头
-            if krc[:4] == b'krc1':
-                krc = krc[4:]
-
-            # 6 zlib 解压
-            lyric = zlib.decompress(krc)
-
-            logger.debug('Get lyrics from kugou')
-            return lyric.decode("utf-8", errors="ignore")
-
-        except Exception:
-            return ""
-
-    @classmethod
-    def _fetch_from_lrclib(cls, title: str, artist: str) -> str:
-        """
-        Fetch lyrics from LRCLIB (free, open source lyrics API).
-
-        Args:
-            title: Track title
-            artist: Track artist
-
-        Returns:
-            Synced lyrics content or empty string
-        """
-        try:
-            logger.debug('Search lyric from lrclib: %s %s', artist, title)
-            search_url = "https://lrclib.net/api/search"
-            params = {
-                'track_name': title,
-                'artist_name': artist
-            }
-
-            response = requests.get(
-                search_url,
-                params=params,
-                headers=cls.HEADERS,
-                timeout=3
-            )
-
-            if response.status_code != 200:
-                return ""
-
-            data = response.json()
-
-            if not isinstance(data, list) or not data:
-                return ""
-
-            # Get first result with synced lyrics
-            for song in data:
-                synced_lyrics = song.get('syncedLyrics')
-                if synced_lyrics:
-                    logger.debug('Get lyrics from lrclib')
-                    # Convert to Simplified Chinese
-                    return cls._convert_to_simplified_chinese(synced_lyrics)
-
-            # If no synced lyrics, try plain lyrics
-            for song in data:
-                plain_lyrics = song.get('plainLyrics')
-                if plain_lyrics:
-                    logger.debug('Get plain lyrics from lrclib')
-                    # Convert to Simplified Chinese
-                    return cls._convert_to_simplified_chinese(plain_lyrics)
-
-        except Exception as e:
-            logger.debug("LRCLIB lyrics fetch error: %s", e)
-
-        return ""
-
-    @classmethod
-    def search_lyrics(cls, query: str) -> List[str]:
-        """
-        Search for lyrics online (returns plain text, not synchronized).
-
-        Args:
-            query: Search query
-
-        Returns:
-            List of potential matches
-        """
-        # This would return search results for the user to choose from
-        # Implementation depends on the lyrics provider API
-        return []
 
     @classmethod
     def save_lyrics(cls, track_path: str, lyrics: str) -> bool:

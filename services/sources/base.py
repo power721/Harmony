@@ -26,6 +26,17 @@ class CoverSearchResult(SourceResult):
 
 
 @dataclass
+class ArtistCoverSearchResult:
+    """Search result for artist cover (avatar)."""
+    id: str
+    name: str
+    cover_url: Optional[str] = None
+    album_count: Optional[int] = None
+    source: str = ""
+    singer_mid: Optional[str] = None  # For QQ Music lazy cover fetch
+
+
+@dataclass
 class LyricsSearchResult(SourceResult):
     """Search result for lyrics."""
     cover_url: Optional[str] = None
@@ -75,6 +86,52 @@ class CoverSource(ABC):
         Check if this source is available.
 
         Override this method to check for API keys or other requirements.
+
+        Returns:
+            True if the source can be used
+        """
+        return True
+
+    def get_timeout(self) -> int:
+        """Return the timeout in seconds for this source."""
+        return 5
+
+
+class ArtistCoverSource(ABC):
+    """
+    Abstract base class for artist cover (avatar) sources.
+
+    Each source should implement this interface to provide
+    artist avatar search functionality.
+    """
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the source name for display and logging."""
+        pass
+
+    @abstractmethod
+    def search(
+        self,
+        artist_name: str,
+        limit: int = 10
+    ) -> List[ArtistCoverSearchResult]:
+        """
+        Search for artist cover (avatar).
+
+        Args:
+            artist_name: Artist name to search
+            limit: Maximum number of results
+
+        Returns:
+            List of ArtistCoverSearchResult objects
+        """
+        pass
+
+    def is_available(self) -> bool:
+        """
+        Check if this source is available.
 
         Returns:
             True if the source can be used
