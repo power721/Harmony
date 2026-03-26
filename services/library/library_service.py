@@ -12,6 +12,8 @@ from domain.playlist import Playlist
 from domain.track import Track, TrackSource
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
+from repositories.album_repository import SqliteAlbumRepository
+from repositories.artist_repository import SqliteArtistRepository
 from services.metadata.metadata_service import MetadataService
 from system.event_bus import EventBus
 
@@ -28,26 +30,31 @@ class LibraryService:
             self,
             track_repo: SqliteTrackRepository,
             playlist_repo: SqlitePlaylistRepository,
+            album_repo: SqliteAlbumRepository,
+            artist_repo: SqliteArtistRepository,
             event_bus: EventBus = None,
             cover_service: 'CoverService' = None
     ):
         self._track_repo = track_repo
         self._playlist_repo = playlist_repo
+        self._album_repo = album_repo
+        self._artist_repo = artist_repo
         self._event_bus = event_bus or EventBus.instance()
         self._cover_service = cover_service
 
     # ===== Album/Artist Table Operations =====
-    # NOTE: These methods are temporarily disabled. TODO: Create Album/Artist repositories
 
     def init_albums_artists(self):
         """Initialize album and artist tables if empty."""
-        # TODO: Implement using Album/Artist repositories
-        pass
+        if self._album_repo.is_empty():
+            self._album_repo.refresh()
+        if self._artist_repo.is_empty():
+            self._artist_repo.refresh()
 
     def refresh_albums_artists(self):
         """Refresh album and artist tables."""
-        # TODO: Implement using Album/Artist repositories
-        pass
+        self._album_repo.refresh()
+        self._artist_repo.refresh()
 
     def rebuild_albums_artists(self) -> dict:
         """
@@ -58,8 +65,25 @@ class LibraryService:
         Returns:
             Dict with 'albums' and 'artists' counts
         """
-        # TODO: Implement using Album/Artist repositories
-        return {'albums': 0, 'artists': 0}
+        # Rebuild both tables
+        albums_count = 0
+        artists_count = 0
+
+        # Get counts before rebuild
+        conn = self._album_repo._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM albums")
+        albums_count = cursor.fetchone()["count"] if cursor.rowcount > 0 else 0
+        cursor.execute("SELECT COUNT(*) as count FROM artists")
+        artists_count = cursor.fetchone()["count"] if cursor.rowcount > 0 else 0
+
+        # Rebuild
+        self._artist_repo.rebuild_with_albums()
+
+        # Notify UI to refresh
+        self._event_bus.tracks_added.emit(0)
+
+        return {'albums': albums_count, 'artists': artists_count}
 
     # ===== Track Operations =====
 
@@ -92,8 +116,22 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             self._event_bus.tracks_added.emit(1)
-            # TODO: Update albums and artists tables via Album/Artist repositories
+            # Refresh albums and artists cache tables
+            self._refresh_albums_artist_async()
         return track_id
+
+    def _refresh_albums_artist_async(self):
+        """Refresh albums and artists tables asynchronously (debounced)."""
+        # This is a lightweight refresh that can be called frequently
+        # In a production app, this might use a background thread with debouncing
+        # For now, we'll just mark that a refresh is needed
+        if not hasattr(self, '_needs_album_artist_refresh'):
+            self._needs_album_artist_refresh = False
+
+        self._needs_album_artist_refresh = True
+        # Actually refresh immediately for now (TODO: add debouncing)
+        self._album_repo.refresh()
+        self._artist_repo.refresh()
 
     def add_online_track(
             self,
@@ -142,7 +180,8 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             logger.info(f"[LibraryService] Added online track: {title} - {artist}")
-            # TODO: Update albums and artists tables via Album/Artist repositories
+            # Refresh albums and artists cache tables
+            self._refresh_albums_artist_async()
 
         return track_id
 
@@ -161,8 +200,12 @@ class LibraryService:
         result = self._track_repo.update(track)
 
         if result and old_track:
-            # TODO: Update albums and artists tables via Album/Artist repositories
-            pass
+            # Check if album or artist changed
+            album_changed = old_track.album != track.album
+            artist_changed = old_track.artist != track.artist
+            if album_changed or artist_changed:
+                # Refresh albums and artists cache tables
+                self._refresh_albums_artist_async()
 
         return result
 
@@ -215,7 +258,8 @@ class LibraryService:
         result = self._track_repo.delete(track_id)
 
         if result and track:
-            # TODO: Update albums and artists tables via Album/Artist repositories
+            # Refresh albums and artists cache tables
+            self._refresh_albums_artist_async()
             # Emit event to notify other components (e.g., playback queue)
             self._event_bus.track_deleted.emit(track_id)
 
@@ -429,8 +473,10 @@ class LibraryService:
                 errors.append(f"Error processing {track.path}: {str(e)}")
                 logger.error(f"Error renaming artist for track {track.id}: {e}")
 
-        # TODO: Rebuild albums and artists cache tables via Album/Artist repositories
+        # Rebuild albums and artists cache tables via Album/Artist repositories
         if updated_count > 0:
+            self._album_repo.refresh()
+            self._artist_repo.refresh()
             # Notify UI to refresh
             self._event_bus.tracks_added.emit(0)
 
@@ -509,8 +555,10 @@ class LibraryService:
                 errors.append(f"Error processing {track.path}: {str(e)}")
                 logger.error(f"Error renaming album for track {track.id}: {e}")
 
-        # TODO: Rebuild albums and artists cache tables via Album/Artist repositories
+        # Rebuild albums and artists cache tables via Album/Artist repositories
         if updated_count > 0:
+            self._album_repo.refresh()
+            self._artist_repo.refresh()
             # Notify UI to refresh
             self._event_bus.tracks_added.emit(0)
 
@@ -533,9 +581,7 @@ class LibraryService:
         Returns:
             True if updated successfully
         """
-        # TODO: Implement using Artist repository
-        logger.warning("update_artist_cover not yet implemented without Album/Artist repositories")
-        return False
+        return self._artist_repo.update_cover_path(artist_name, cover_path)
 
     def update_album_cover(self, album_name: str, artist: str, cover_path: str) -> bool:
         """
@@ -549,6 +595,4 @@ class LibraryService:
         Returns:
             True if updated successfully
         """
-        # TODO: Implement using Album repository
-        logger.warning("update_album_cover not yet implemented without Album/Artist repositories")
-        return False
+        return self._album_repo.update_cover_path(album_name, artist, cover_path)

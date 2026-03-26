@@ -10,6 +10,8 @@ from infrastructure.database import DatabaseManager
 from repositories.cloud_repository import SqliteCloudRepository
 from repositories.favorite_repository import SqliteFavoriteRepository
 from repositories.history_repository import SqliteHistoryRepository
+from repositories.album_repository import SqliteAlbumRepository
+from repositories.artist_repository import SqliteArtistRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
 from repositories.track_repository import SqliteTrackRepository
@@ -54,6 +56,8 @@ class Bootstrap:
         self._queue_repo: Optional[SqliteQueueRepository] = None
         self._favorite_repo: Optional[SqliteFavoriteRepository] = None
         self._history_repo: Optional[SqliteHistoryRepository] = None
+        self._album_repo: Optional[SqliteAlbumRepository] = None
+        self._artist_repo: Optional[SqliteArtistRepository] = None
 
         # Services
         self._playback_service: Optional[PlaybackService] = None
@@ -156,6 +160,20 @@ class Bootstrap:
             self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self.db)
         return self._history_repo
 
+    @property
+    def album_repo(self) -> SqliteAlbumRepository:
+        """Get album repository."""
+        if self._album_repo is None:
+            self._album_repo = SqliteAlbumRepository(self._db_path, db_manager=self.db)
+        return self._album_repo
+
+    @property
+    def artist_repo(self) -> SqliteArtistRepository:
+        """Get artist repository."""
+        if self._artist_repo is None:
+            self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self.db)
+        return self._artist_repo
+
     # ===== Services =====
 
     @property
@@ -188,9 +206,13 @@ class Bootstrap:
             self._library_service = LibraryService(
                 track_repo=self.track_repo,
                 playlist_repo=self.playlist_repo,
+                album_repo=self.album_repo,
+                artist_repo=self.artist_repo,
                 event_bus=self.event_bus,
                 cover_service=self.cover_service,
             )
+            # Initialize albums/artists tables if needed
+            self._library_service.init_albums_artists()
         return self._library_service
 
     @property

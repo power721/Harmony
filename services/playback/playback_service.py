@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal, Qt
+from PySide6.QtCore import QObject, Signal, Qt, QTimer
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
@@ -47,6 +47,7 @@ class PlaybackService(QObject):
 
     source_changed = Signal(str)  # "local" or "cloud"
     _metadata_processed = Signal(str, str, int, str, str, str, float, str)  # Internal signal for metadata
+    _metadata_batch_complete = Signal()  # Emitted when batch metadata processing completes
 
     def __init__(
             self,
@@ -85,8 +86,13 @@ class PlaybackService(QObject):
         self._online_download_workers: dict = {}
         self._online_download_lock = threading.Lock()
 
+        # Queue save debouncing
+        self._save_queue_timer = None
+        self._pending_save = False
+
         # Connect internal signal for thread-safe metadata updates
         self._metadata_processed.connect(self._on_metadata_processed)
+        self._metadata_batch_complete.connect(self._on_metadata_batch_complete)
 
         # NOTE: _db_lock removed - DBWriteWorker now handles serialization
 
@@ -146,9 +152,9 @@ class PlaybackService(QObject):
             cover_path=track.cover_path
         )
 
-        # Save queue if any item was updated
+        # Schedule a debounced save if any item was updated
         if updated_indices:
-            self.save_queue()
+            self._schedule_save_queue()
 
         # Check if current track was updated
         current_idx = self._engine.current_index
@@ -174,9 +180,10 @@ class PlaybackService(QObject):
             needs_metadata=False
         )
 
-        # Save queue if any item was updated
+        # Schedule a debounced save if any item was updated
+        # This batches multiple metadata updates into a single save
         if updated_indices:
-            self.save_queue()
+            self._schedule_save_queue()
 
         # Note: We don't emit track_change here because:
         # 1. For downloads: on_cloud_file_downloaded already handles this via play_after_download
@@ -719,6 +726,34 @@ class PlaybackService(QObject):
         return self._db.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
 
     # ===== Queue Persistence =====
+
+    def _schedule_save_queue(self, delay_ms: int = 100):
+        """
+        Schedule a queue save with debouncing.
+
+        If another save is scheduled before this one executes, it will be reset.
+        This is useful when multiple items are being added/updated in quick succession.
+
+        Args:
+            delay_ms: Delay in milliseconds before saving (default: 100ms)
+        """
+        if self._save_queue_timer is None:
+            self._save_queue_timer = QTimer()
+            self._save_queue_timer.setSingleShot(True)
+            self._save_queue_timer.timeout.connect(self._on_save_queue_timeout)
+
+        # Stop any pending timer
+        self._save_queue_timer.stop()
+        self._pending_save = True
+
+        # Schedule new save
+        self._save_queue_timer.start(delay_ms)
+
+    def _on_save_queue_timeout(self):
+        """Handle save queue timer timeout."""
+        if self._pending_save:
+            self.save_queue()
+            self._pending_save = False
 
     def save_queue(self):
         """Save the current play queue to database."""
@@ -1538,7 +1573,7 @@ class PlaybackService(QObject):
                     # Get track from database
                     track = self._db.get_track_by_cloud_file_id(file_id)
 
-                    # Emit signal to update UI in main thread
+                    # Emit signal to update UI in main thread (skip_save=True)
                     if track:
                         self._metadata_processed.emit(
                             file_id,
@@ -1552,6 +1587,9 @@ class PlaybackService(QObject):
                         )
                 except Exception as e:
                     logger.error(f"[PlaybackService] Error processing metadata for {file_id}: {e}")
+
+            # Save queue once after all metadata processing is complete
+            self._metadata_batch_complete.emit()
 
         # Start background thread
         thread = threading.Thread(target=process, daemon=True)
@@ -1587,9 +1625,12 @@ class PlaybackService(QObject):
         if updated_index is not None and updated_index == self._engine.current_index:
             self._engine.play_after_download(updated_index, local_path)
 
-        # Save queue to persist the updated metadata
-        self.save_queue()
-
+        # Note: Queue is saved once after batch completes (see _on_metadata_batch_complete)
         # Preload next cloud track
         self._preload_next_cloud_track()
+
+    def _on_metadata_batch_complete(self):
+        """Handle batch metadata processing completion - save queue once."""
+        self.save_queue()
+        logger.debug(f"[PlaybackService] Batch metadata processing complete, saved queue: {len(self._engine.playlist_items)} items")
 

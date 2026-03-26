@@ -559,6 +559,8 @@ class MainWindow(QMainWindow):
         self._online_music_view.play_online_track.connect(self._play_online_track)
         self._online_music_view.insert_to_queue.connect(self._insert_online_track_to_queue)
         self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
+        self._online_music_view.add_multiple_to_queue.connect(self._add_multiple_online_tracks_to_queue)
+        self._online_music_view.insert_multiple_to_queue.connect(self._insert_multiple_online_tracks_to_queue)
         self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
 
         # Albums view connections
@@ -690,6 +692,18 @@ class MainWindow(QMainWindow):
             QStackedWidget {
                 background-color: #141414;
                 border-radius: 8px;
+            }
+            /* Status bar styling */
+            QStatusBar {
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border-top: 1px solid #2a2a2a;
+            }
+            QStatusBar::item {
+                border: none;
+            }
+            QStatusBar QLabel {
+                color: #ffffff;
             }
         """
         self.setStyleSheet(style)
@@ -1275,8 +1289,8 @@ class MainWindow(QMainWindow):
 
         self._playback.engine.add_track(item)
 
-        # Save queue
-        self._playback.save_queue()
+        # Schedule debounced save (batches multiple adds into one save)
+        self._playback._schedule_save_queue()
 
         # Show notification
         self._status_bar = self.statusBar()
@@ -1322,12 +1336,107 @@ class MainWindow(QMainWindow):
         insert_index = current_index + 1 if current_index >= 0 else 0
         self._playback.engine.insert_track(insert_index, item)
 
-        # Save queue
-        self._playback.save_queue()
+        # Schedule debounced save (batches multiple inserts into one save)
+        self._playback._schedule_save_queue()
 
         # Show notification
         self._status_bar = self.statusBar()
         self._status_bar.showMessage(f"✓ {t('insert_to_queue')}: {title}", 3000)
+
+    def _add_multiple_online_tracks_to_queue(self, tracks_data: list):
+        """Add multiple online tracks to the play queue (batch operation).
+
+        Args:
+            tracks_data: List of (song_mid, metadata_dict) tuples
+        """
+        download_service = self._online_music_view._download_service
+
+        for song_mid, metadata in tracks_data:
+            title = metadata.get("title", "Online Track")
+            artist = metadata.get("artist", "")
+            album = metadata.get("album", "")
+            duration = metadata.get("duration", 0.0)
+
+            # Check if already cached
+            local_path = ""
+            needs_download = True
+
+            if download_service.is_cached(song_mid):
+                local_path = download_service.get_cached_path(song_mid)
+                needs_download = False
+
+            item = PlaylistItem(
+                source=TrackSource.QQ,
+                local_path=local_path,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cloud_file_id=song_mid,
+                needs_download=needs_download
+            )
+
+            self._playback.engine.add_track(item)
+
+        # Save queue once after all tracks are added
+        self._playback.save_queue()
+
+        # Show notification
+        count = len(tracks_data)
+        self._status_bar = self.statusBar()
+        s = "s" if count > 1 else ""
+        msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
+        self._status_bar.showMessage(f"✓ {msg}", 3000)
+
+    def _insert_multiple_online_tracks_to_queue(self, tracks_data: list):
+        """Insert multiple online tracks after current playing track (batch operation).
+
+        Args:
+            tracks_data: List of (song_mid, metadata_dict) tuples
+        """
+        download_service = self._online_music_view._download_service
+
+        # Get current index
+        current_index = self._playback.engine.current_index
+        insert_index = current_index + 1 if current_index >= 0 else 0
+
+        for song_mid, metadata in tracks_data:
+            title = metadata.get("title", "Online Track")
+            artist = metadata.get("artist", "")
+            album = metadata.get("album", "")
+            duration = metadata.get("duration", 0.0)
+
+            # Check if already cached
+            local_path = ""
+            needs_download = True
+
+            if download_service.is_cached(song_mid):
+                local_path = download_service.get_cached_path(song_mid)
+                needs_download = False
+
+            item = PlaylistItem(
+                source=TrackSource.QQ,
+                local_path=local_path,
+                title=title,
+                artist=artist,
+                album=album,
+                duration=duration,
+                cloud_file_id=song_mid,
+                needs_download=needs_download
+            )
+
+            self._playback.engine.insert_track(insert_index, item)
+            insert_index += 1  # Increment insert position for next track
+
+        # Save queue once after all tracks are inserted
+        self._playback.save_queue()
+
+        # Show notification
+        count = len(tracks_data)
+        self._status_bar = self.statusBar()
+        s = "s" if count > 1 else ""
+        msg = t("inserted_to_queue").replace("{count}", str(count)).replace("{s}", s)
+        self._status_bar.showMessage(f"✓ {msg}", 3000)
 
     def _play_online_tracks(self, start_index: int, tracks_data: list):
         """Play multiple online tracks, clearing queue first.

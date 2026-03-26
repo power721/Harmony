@@ -162,6 +162,8 @@ class OnlineMusicView(QWidget):
     play_online_track = Signal(str, str, object)  # (song_mid, local_path, metadata_dict)
     insert_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
     add_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
+    add_multiple_to_queue = Signal(list)  # list of (song_mid, metadata_dict)
+    insert_multiple_to_queue = Signal(list)  # list of (song_mid, metadata_dict)
     play_online_tracks = Signal(int, list)  # (start_index, list of (song_mid, metadata_dict))
 
     def __init__(
@@ -1098,6 +1100,7 @@ class OnlineMusicView(QWidget):
 
     def _on_add_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle add all to queue from detail view."""
+        tracks_data = []
         for track in tracks:
             metadata = {
                 "title": track.title,
@@ -1106,10 +1109,12 @@ class OnlineMusicView(QWidget):
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
             }
-            self.add_to_queue.emit(track.mid, metadata)
+            tracks_data.append((track.mid, metadata))
+        self.add_multiple_to_queue.emit(tracks_data)
 
     def _on_insert_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle insert all to queue from detail view."""
+        tracks_data = []
         for track in tracks:
             metadata = {
                 "title": track.title,
@@ -1118,7 +1123,8 @@ class OnlineMusicView(QWidget):
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
             }
-            self.insert_to_queue.emit(track.mid, metadata)
+            tracks_data.append((track.mid, metadata))
+        self.insert_multiple_to_queue.emit(tracks_data)
 
     def _on_prev_page(self):
         """Go to previous page."""
@@ -1414,36 +1420,43 @@ class OnlineMusicView(QWidget):
             return
         # Play first track and add rest to queue
         self._play_track(tracks[0])
-        for track in tracks[1:]:
-            self.add_to_queue.emit(track.mid, {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-            })
+        if len(tracks) > 1:
+            tracks_data = []
+            for track in tracks[1:]:
+                tracks_data.append((track.mid, {
+                    "title": track.title,
+                    "artist": track.singer_name,
+                    "album": track.album_name,
+                    "duration": track.duration,
+                    "album_mid": track.album.mid if track.album else "",
+                }))
+            self.add_multiple_to_queue.emit(tracks_data)
 
     def _add_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Add selected tracks to queue."""
+        tracks_data = []
         for track in tracks:
-            self.add_to_queue.emit(track.mid, {
+            tracks_data.append((track.mid, {
                 "title": track.title,
                 "artist": track.singer_name,
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
-            })
+            }))
+        self.add_multiple_to_queue.emit(tracks_data)
 
     def _insert_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Insert selected tracks after current playing track."""
+        tracks_data = []
         for track in tracks:
-            self.insert_to_queue.emit(track.mid, {
+            tracks_data.append((track.mid, {
                 "title": track.title,
                 "artist": track.singer_name,
                 "album": track.album_name,
                 "duration": track.duration,
                 "album_mid": track.album.mid if track.album else "",
-            })
+            }))
+        self.insert_multiple_to_queue.emit(tracks_data)
 
     def _load_top_lists(self):
         """Load top lists."""

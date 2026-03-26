@@ -2,6 +2,8 @@
 Repository module - Data access abstraction layer.
 """
 
+from .album_repository import SqliteAlbumRepository
+from .artist_repository import SqliteArtistRepository
 from .cloud_repository import SqliteCloudRepository
 from .favorite_repository import SqliteFavoriteRepository
 from .history_repository import SqliteHistoryRepository
@@ -19,4 +21,5 @@ __all__ = [
     'TrackRepository', 'PlaylistRepository', 'CloudRepository', 'QueueRepository',
     'SqliteTrackRepository', 'SqlitePlaylistRepository', 'SqliteCloudRepository', 'SqliteQueueRepository',
     'SqliteFavoriteRepository', 'SqliteHistoryRepository',
+    'SqliteAlbumRepository', 'SqliteArtistRepository',
 ]
