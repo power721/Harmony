@@ -342,6 +342,28 @@ class CloudDriveView(QWidget):
 
         if accounts:
             self._stack.setCurrentIndex(1)
+
+            # Restore last selected account
+            if not self._current_account:
+                saved_account_id = self._config_manager.get_cloud_account_id() if self._config_manager else None
+                target_item = None
+
+                if saved_account_id:
+                    # Find the saved account in the list
+                    for i in range(self._account_list.count()):
+                        item = self._account_list.item(i)
+                        account = item.data(Qt.UserRole)
+                        if account and account.id == saved_account_id:
+                            target_item = item
+                            break
+
+                # Fall back to first account if saved not found
+                if not target_item:
+                    target_item = self._account_list.item(0)
+
+                if target_item:
+                    self._account_list.setCurrentItem(target_item)
+                    self._on_account_selected(target_item)
         else:
             self._stack.setCurrentIndex(0)
 
@@ -370,6 +392,10 @@ class CloudDriveView(QWidget):
         account = item.data(Qt.UserRole)
         if account:
             self._current_account = account
+
+            # Save selected account ID
+            if self._config_manager:
+                self._config_manager.set_cloud_account_id(account.id)
 
             # Restore last saved folder path
             saved_path = account.last_folder_path if account.last_folder_path else "/"
