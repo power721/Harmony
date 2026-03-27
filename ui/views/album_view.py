@@ -174,6 +174,7 @@ class AlbumView(QWidget):
 
         # Album name
         self._name_label = QLabel("Album Name")
+        self._name_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._name_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
@@ -185,6 +186,7 @@ class AlbumView(QWidget):
 
         # Artist name
         self._artist_label = QLabel("Artist")
+        self._artist_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._artist_label.setStyleSheet("""
             QLabel {
                 color: #b3b3b3;
@@ -244,10 +246,29 @@ class AlbumView(QWidget):
         """)
         self._shuffle_btn.clicked.connect(self._on_shuffle)
         btn_layout.addWidget(self._shuffle_btn)
+
+        self._back_btn = QPushButton(t("back"))
+        self._back_btn.setFixedSize(80, 36)
+        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #b3b3b3;
+                border: 1px solid #535353;
+                border-radius: 18px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+                border-color: #ffffff;
+            }
+        """)
+        self._back_btn.clicked.connect(self.back_clicked.emit)
+        btn_layout.addWidget(self._back_btn)
+
         btn_layout.addStretch()
 
         info_layout.addLayout(btn_layout)
-        info_layout.addStretch()
 
         layout.addWidget(info_widget, 1)
 
@@ -607,6 +628,7 @@ class AlbumView(QWidget):
         # Update buttons
         self._play_btn.setText(t("play_all"))
         self._shuffle_btn.setText(t("shuffle"))
+        self._back_btn.setText(t("back"))
 
         # Update tracks section title
         self._tracks_title_label.setText(t("all_tracks"))

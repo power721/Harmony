@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
 
         # Library/playlist view
         self._stacked_widget = QStackedWidget()
+        self._nav_stack: list[int] = []
 
         bootstrap = Bootstrap.instance()
 
@@ -355,6 +356,7 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_page_requested(self, page_index: int):
         """Handle sidebar page request."""
+        self._nav_stack.clear()
         if page_index == Sidebar.PAGE_FAVORITES:
             self._show_favorites()
         elif page_index == Sidebar.PAGE_HISTORY:
@@ -437,6 +439,8 @@ class MainWindow(QMainWindow):
         self._artist_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._artist_view.add_to_playlist.connect(self._add_tracks_to_playlist)
         self._artist_view.download_cover_requested.connect(self._on_download_album_cover)
+        self._artist_view.album_clicked.connect(self._on_album_clicked)
+        self._artist_view.back_clicked.connect(self._on_back)
 
         # Album view connections
         self._album_view.play_tracks.connect(self._play_tracks)
@@ -444,6 +448,7 @@ class MainWindow(QMainWindow):
         self._album_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
+        self._album_view.back_clicked.connect(self._on_back)
 
         # Player controls connections
         self._player_controls.artist_clicked.connect(self._on_player_artist_clicked)
@@ -614,6 +619,8 @@ class MainWindow(QMainWindow):
 
     def _on_album_clicked(self, album):
         """Handle album card click."""
+        # Push current page to nav stack
+        self._nav_stack.append(self._stacked_widget.currentIndex())
         # Show album detail view
         self._album_view.set_album(album)
         self._stacked_widget.setCurrentIndex(7)
@@ -648,12 +655,24 @@ class MainWindow(QMainWindow):
 
     def _on_artist_clicked(self, artist):
         """Handle artist card click."""
+        # Push current page to nav stack
+        self._nav_stack.append(self._stacked_widget.currentIndex())
         # Show artist detail view
         self._artist_view.set_artist(artist)
         self._stacked_widget.setCurrentIndex(6)
 
         # Update nav button states - no active nav for detail views
         self._sidebar.set_current_page(-1)
+
+    def _on_back(self):
+        """Handle back button - pop navigation stack."""
+        if self._nav_stack:
+            prev_page = self._nav_stack.pop()
+            self._stacked_widget.setCurrentIndex(prev_page)
+            self._sidebar.set_current_page(prev_page)
+        else:
+            # No history, go to default page
+            self._show_page(0)
 
     def _on_player_artist_clicked(self, artist_name: str):
         """Handle artist label click from player controls."""
@@ -1345,6 +1364,7 @@ class MainWindow(QMainWindow):
                     albums = bootstrap.library_service.get_albums()
                     for album in albums:
                         if album.name == name and album.artist == artist:
+                            self._nav_stack.append(self._stacked_widget.currentIndex())
                             self._album_view.set_album(album)
                             self._stacked_widget.setCurrentIndex(7)
                             self._update_nav_buttons_for_detail_view()
@@ -1358,6 +1378,7 @@ class MainWindow(QMainWindow):
                     artists = bootstrap.library_service.get_artists()
                     for artist in artists:
                         if artist.name == name:
+                            self._nav_stack.append(self._stacked_widget.currentIndex())
                             self._artist_view.set_artist(artist)
                             self._stacked_widget.setCurrentIndex(6)
                             self._update_nav_buttons_for_detail_view()

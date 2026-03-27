@@ -166,20 +166,51 @@ class TestSqliteArtistRepository:
         assert "Artist A" in artist_names
         assert "Artist B" in artist_names
 
-    def test_get_all_with_cache(self, temp_db, populated_db):
+    def test_get_all_with_cache(self, temp_db):
         """Test get_all using artists cache table."""
-        conn = sqlite3.connect(populated_db)
+        # Create a separate database with cached artists
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # Populate artists cache
+        # Create tables
+        cursor.execute("""
+            CREATE TABLE tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT UNIQUE NOT NULL,
+                title TEXT,
+                artist TEXT,
+                album TEXT,
+                duration REAL,
+                cover_path TEXT,
+                cloud_file_id TEXT,
+                source TEXT DEFAULT 'Local'
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE artists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                cover_path TEXT,
+                song_count INTEGER,
+                album_count INTEGER,
+                normalized_name TEXT
+            )
+        """)
+
+        # Populate artists cache only (no tracks)
         cursor.execute("""
             INSERT INTO artists (name, cover_path, song_count, album_count)
             VALUES ('Cached Artist', '/covers/artist.jpg', 10, 3)
         """)
+
         conn.commit()
         conn.close()
 
-        repo = SqliteArtistRepository(populated_db)
+        repo = SqliteArtistRepository(db_path)
         artists = repo.get_all(use_cache=True)
 
         # Should get cached artist
@@ -187,6 +218,9 @@ class TestSqliteArtistRepository:
         assert artists[0].name == "Cached Artist"
         assert artists[0].song_count == 10
         assert artists[0].album_count == 3
+
+        # Cleanup
+        os.unlink(db_path)
 
     def test_get_all_order_by_song_count(self, artist_repo, populated_db):
         """Test that artists are ordered by song count descending."""

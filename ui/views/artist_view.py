@@ -52,6 +52,7 @@ class ArtistView(QWidget):
     """
 
     back_clicked = Signal()
+    album_clicked = Signal(object)  # Emits Album object
     play_tracks = Signal(list)  # Emits list of Track objects
     track_double_clicked = Signal(int)  # Emits track_id
     insert_to_queue = Signal(list)  # Emits list of Track objects
@@ -171,6 +172,7 @@ class ArtistView(QWidget):
         """)
         self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
+        layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
 
         # Artist info
         info_widget = QWidget()
@@ -190,6 +192,7 @@ class ArtistView(QWidget):
 
         # Artist name
         self._name_label = QLabel("Artist Name")
+        self._name_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._name_label.setStyleSheet("""
             QLabel {
                 color: #ffffff;
@@ -250,10 +253,29 @@ class ArtistView(QWidget):
         """)
         self._shuffle_btn.clicked.connect(self._on_shuffle)
         btn_layout.addWidget(self._shuffle_btn)
+
+        self._back_btn = QPushButton(t("back"))
+        self._back_btn.setFixedSize(80, 36)
+        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #b3b3b3;
+                border: 1px solid #535353;
+                border-radius: 18px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+                border-color: #ffffff;
+            }
+        """)
+        self._back_btn.clicked.connect(self.back_clicked.emit)
+        btn_layout.addWidget(self._back_btn)
+
         btn_layout.addStretch()
 
         info_layout.addLayout(btn_layout)
-        info_layout.addStretch()
 
         layout.addWidget(info_widget, 1)
 
@@ -744,12 +766,8 @@ class ArtistView(QWidget):
         menu.exec_(self._tracks_table.mapToGlobal(pos))
 
     def _on_album_clicked(self, album: Album):
-        """Handle album card click."""
-        # Emit signal to navigate to album view
-        # For now, just play the album tracks
-        tracks = self._library.get_album_tracks(album.name, album.artist)
-        if tracks:
-            self.play_tracks.emit(tracks)
+        """Handle album card click - navigate to album detail."""
+        self.album_clicked.emit(album)
 
     def _on_download_cover_requested(self, album: Album):
         """Handle download cover request from album card."""
@@ -787,6 +805,7 @@ class ArtistView(QWidget):
         # Update buttons
         self._play_btn.setText(t("play_all"))
         self._shuffle_btn.setText(t("shuffle"))
+        self._back_btn.setText(t("back"))
 
         # Update albums section title
         self._albums_title_label.setText(t("albums"))
