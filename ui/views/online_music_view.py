@@ -692,10 +692,39 @@ class OnlineMusicView(QWidget):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 10, 0, 0)
 
+        # Header with back button and results info
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
+
+        # Back button (hidden by default, shown for favorites views)
+        self._fav_back_btn = QPushButton(f"← {t('back')}")
+        self._fav_back_btn.setCursor(Qt.PointingHandCursor)
+        self._fav_back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #1db954;
+                border: none;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                color: #1ed760;
+            }
+        """)
+        self._fav_back_btn.clicked.connect(self._on_fav_back_clicked)
+        self._fav_back_btn.hide()
+        header_layout.addWidget(self._fav_back_btn)
+
         # Results info
         self._results_info = QLabel()
         self._results_info.setStyleSheet("color: #808080; font-size: 12px;")
-        layout.addWidget(self._results_info)
+        header_layout.addWidget(self._results_info)
+        header_layout.addStretch()
+
+        layout.addWidget(header_widget)
 
         # Stacked widget for different result types
         self._results_stack = QStackedWidget()
@@ -1349,25 +1378,24 @@ class OnlineMusicView(QWidget):
         """Handle favorites section card click."""
         card_type = data.get("card_type", "")
 
+        # Hide favorites and recommendations when viewing any favorites content
+        self._favorites_section.hide()
+        self._recommend_section.hide()
+        # Show back button
+        self._fav_back_btn.show()
+
         if card_type == "fav_songs":
-            # Show favorite songs in table - don't hide sections
             tracks = self._fav_data.get("fav_songs", [])
             self._show_fav_songs_in_table(tracks)
-
-        elif card_type in ("created_playlists", "fav_playlists", "fav_albums"):
-            # Hide favorites and recommendations when viewing playlist/album lists
-            self._favorites_section.hide()
-            self._recommend_section.hide()
-
-            if card_type == "created_playlists":
-                playlists = self._fav_data.get("created_playlists", [])
-                self._show_playlist_list_in_detail(t("created_playlists"), playlists)
-            elif card_type == "fav_playlists":
-                playlists = self._fav_data.get("fav_playlists", [])
-                self._show_playlist_list_in_detail(t("fav_playlists"), playlists)
-            elif card_type == "fav_albums":
-                albums = self._fav_data.get("fav_albums", [])
-                self._show_album_list_in_detail(t("fav_albums"), albums)
+        elif card_type == "created_playlists":
+            playlists = self._fav_data.get("created_playlists", [])
+            self._show_playlist_list_in_detail(t("created_playlists"), playlists)
+        elif card_type == "fav_playlists":
+            playlists = self._fav_data.get("fav_playlists", [])
+            self._show_playlist_list_in_detail(t("fav_playlists"), playlists)
+        elif card_type == "fav_albums":
+            albums = self._fav_data.get("fav_albums", [])
+            self._show_album_list_in_detail(t("fav_albums"), albums)
 
     def _show_fav_songs_in_table(self, tracks: list):
         """Show favorite songs in the results table."""
@@ -1660,12 +1688,19 @@ class OnlineMusicView(QWidget):
             self._grid_total = 0
             # Don't clear _current_tracks - keep the top list songs that were already loaded
             self._tabs.hide()
+            # Hide back button
+            self._fav_back_btn.hide()
             # Clear grid views
             self._singers_page.clear()
             self._albums_page.clear()
             self._playlists_page.clear()
             # Switch to top list page
             self._stack.setCurrentWidget(self._top_list_page)
+            # Show favorites and recommendations when returning to main view
+            if self._fav_loaded and self._fav_data:
+                self._favorites_section.show()
+            if self._recommendations_loaded:
+                self._recommend_section.show()
         elif text and len(text) >= 1 and self._qqmusic_service:
             # Trigger completion after delay (debounce)
             self._completion_timer.start(300)  # 300ms delay
@@ -1953,6 +1988,18 @@ class OnlineMusicView(QWidget):
                 self._favorites_section.show()
             if self._recommendations_loaded:
                 self._recommend_section.show()
+
+    def _on_fav_back_clicked(self):
+        """Handle back button click from favorites view."""
+        # Hide back button
+        self._fav_back_btn.hide()
+        # Show favorites and recommendations
+        if self._fav_loaded and self._fav_data:
+            self._favorites_section.show()
+        if self._recommendations_loaded:
+            self._recommend_section.show()
+        # Return to top list page
+        self._stack.setCurrentWidget(self._top_list_page)
 
     def _get_cover_url(self, track: OnlineTrack) -> str:
         """Get cover URL for online track."""
