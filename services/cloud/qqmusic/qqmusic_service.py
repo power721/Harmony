@@ -698,6 +698,142 @@ class QQMusicService:
             logger.error(f"Get top list songs failed: {e}", exc_info=True)
             return []
 
+    def _get_euin(self) -> str:
+        """Get encrypted UIN from credential."""
+        if not self._credential:
+            return ""
+        return (
+            self._credential.get("encrypt_uin")
+            or self._credential.get("encryptUin")
+            or ""
+        )
+
+    def _get_uin(self) -> str:
+        """Get UIN from credential."""
+        if not self._credential:
+            return ""
+        return str(self._credential.get("musicid", ""))
+
+    def get_my_fav_songs(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorite songs."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_song(euin, page=page, num=num)
+            if not result:
+                return []
+            songs = result.get("songlist", []) or []
+            tracks = []
+            for song in songs:
+                song_info = song.get("data", song) if isinstance(song, dict) else song
+                if not isinstance(song_info, dict):
+                    continue
+                singer_info = song_info.get("singer", [])
+                if isinstance(singer_info, list) and singer_info:
+                    singer_name = " / ".join(s.get("name", "") for s in singer_info)
+                elif isinstance(singer_info, dict):
+                    singer_name = singer_info.get("name", "")
+                else:
+                    singer_name = ""
+                album_info = song_info.get("album", {})
+                album_name = album_info.get("name", "") if isinstance(album_info, dict) else ""
+                tracks.append({
+                    "mid": song_info.get("songmid", "") or song_info.get("mid", ""),
+                    "title": song_info.get("songname", "") or song_info.get("name", "") or song_info.get("title", ""),
+                    "singer": singer_name,
+                    "album": album_name,
+                    "album_mid": album_info.get("mid", "") if isinstance(album_info, dict) else "",
+                    "duration": song_info.get("interval", 0) or 0,
+                    "cover_url": (f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_info.get('mid', '')}.jpg"
+                                  if isinstance(album_info, dict) and album_info.get("mid") else ""),
+                })
+            return tracks
+        except Exception as e:
+            logger.error(f"Get favorite songs failed: {e}", exc_info=True)
+            return []
+
+    def get_my_created_songlists(self) -> List[Dict[str, Any]]:
+        """Get current user's created playlists."""
+        try:
+            uin = self._get_uin()
+            if not uin:
+                return []
+            result = self.client.get_created_songlist(uin)
+            if not result:
+                return []
+            playlists = result.get("playlist", []) or result.get("list", []) or []
+            items = []
+            for pl in playlists:
+                if not isinstance(pl, dict):
+                    continue
+                items.append({
+                    "id": pl.get("tid", "") or pl.get("dissid", ""),
+                    "title": pl.get("dissname", "") or pl.get("title", "") or pl.get("name", ""),
+                    "cover_url": pl.get("logo", "") or pl.get("picurl", "") or pl.get("imgurl", ""),
+                    "song_count": pl.get("song_cnt", 0) or pl.get("songnum", 0),
+                    "creator": pl.get("nickname", "") or pl.get("creator", ""),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get created songlists failed: {e}", exc_info=True)
+            return []
+
+    def get_my_fav_songlists(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorited external playlists."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_songlist(euin, page=page, num=num)
+            if not result:
+                return []
+            playlists = result.get("playlist", []) or result.get("list", []) or []
+            items = []
+            for pl in playlists:
+                if not isinstance(pl, dict):
+                    continue
+                pl_info = pl.get("diss_info", pl) if "diss_info" in pl else pl
+                items.append({
+                    "id": pl_info.get("tid", "") or pl_info.get("dissid", ""),
+                    "title": pl_info.get("dissname", "") or pl_info.get("title", "") or pl_info.get("name", ""),
+                    "cover_url": pl_info.get("logo", "") or pl_info.get("picurl", "") or pl_info.get("imgurl", ""),
+                    "song_count": pl_info.get("song_cnt", 0) or pl_info.get("songnum", 0),
+                    "creator": pl_info.get("nickname", "") or pl_info.get("creator", ""),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get favorite songlists failed: {e}", exc_info=True)
+            return []
+
+    def get_my_fav_albums(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorited albums."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_album(euin, page=page, num=num)
+            if not result:
+                return []
+            albums = result.get("albumList", []) or result.get("list", []) or []
+            items = []
+            for album in albums:
+                if not isinstance(album, dict):
+                    continue
+                album_mid = album.get("albumMid", "") or album.get("mid", "")
+                items.append({
+                    "mid": album_mid,
+                    "title": album.get("albumName", "") or album.get("name", ""),
+                    "cover_url": (f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                                  if album_mid else ""),
+                    "singer_name": album.get("singerName", "") or album.get("singer_name", ""),
+                    "song_count": album.get("totalNum", 0) or 0,
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get favorite albums failed: {e}", exc_info=True)
+            return []
+
     def set_credential(self, credential: Dict[str, Any]):
         """
         Update credential for authenticated requests.
