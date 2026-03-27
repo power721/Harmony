@@ -1429,14 +1429,18 @@ class OnlineMusicView(QWidget):
         """Show a list of playlists in the grid view."""
         from domain.online_music import OnlinePlaylist
 
+        # Clear previous data
+        self._playlists_page.clear()
+
         # Convert dicts to OnlinePlaylist objects
         online_playlists = []
         for pl in playlists:
             online_playlists.append(OnlinePlaylist(
-                id=pl.get("id", ""),
+                id=str(pl.get("id", "")),
                 title=pl.get("title", ""),
                 cover_url=pl.get("cover_url", ""),
                 creator=pl.get("creator", ""),
+                song_count=pl.get("song_count", 0),
             ))
 
         self._playlists_page.load_data(online_playlists)
@@ -1450,6 +1454,9 @@ class OnlineMusicView(QWidget):
         """Show a list of albums in the grid view."""
         from domain.online_music import OnlineAlbum
 
+        # Clear previous data
+        self._albums_page.clear()
+
         # Convert dicts to OnlineAlbum objects
         online_albums = []
         for album in albums:
@@ -1460,6 +1467,7 @@ class OnlineMusicView(QWidget):
                 singer_mid="",
                 singer_name=singer_name,
                 cover_url=album.get("cover_url", ""),
+                song_count=album.get("song_count", 0),
             ))
 
         self._albums_page.load_data(online_albums)
