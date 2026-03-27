@@ -699,13 +699,13 @@ class QQMusicService:
             return []
 
     def _get_euin(self) -> str:
-        """Get encrypted UIN from credential."""
+        """Get encrypted UIN from credential, fallback to uin."""
         if not self._credential:
             return ""
         return (
             self._credential.get("encrypt_uin")
             or self._credential.get("encryptUin")
-            or ""
+            or str(self._credential.get("musicid", ""))
         )
 
     def _get_uin(self) -> str:

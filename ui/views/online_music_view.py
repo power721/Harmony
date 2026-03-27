@@ -1099,14 +1099,7 @@ class OnlineMusicView(QWidget):
         if self._fav_loaded:
             return
 
-        euin = ""
-        if self._qqmusic_service and self._qqmusic_service._credential:
-            euin = (
-                self._qqmusic_service._credential.get("encrypt_uin")
-                or self._qqmusic_service._credential.get("encryptUin")
-                or ""
-            )
-        if not euin:
+        if not self._qqmusic_service or not self._qqmusic_service._credential:
             return
 
         self._fav_loaded = True
