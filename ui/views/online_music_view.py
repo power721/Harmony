@@ -420,6 +420,10 @@ class OnlineMusicView(QWidget):
         self._fav_loaded = False
         self._fav_data: Dict[str, list] = {}  # Store loaded favorites data
 
+        # Navigation history stack - tracks where user came from
+        # Each entry is a dict: {'page': 'top_list'|'results'|'playlists'|'albums', 'data': ...}
+        self._navigation_stack: List[Dict[str, Any]] = []
+
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
         self._grid_total = 0  # Total results for current grid search
@@ -1492,6 +1496,13 @@ class OnlineMusicView(QWidget):
         self._results_stack.setCurrentWidget(self._playlists_page)
         self._stack.setCurrentWidget(self._results_page)
 
+        # Push navigation state
+        self._navigation_stack.append({
+            'page': 'playlists',
+            'title': title,
+            'data': playlists
+        })
+
     def _show_album_list_in_detail(self, title: str, albums: list):
         """Show a list of albums in the grid view."""
         from domain.online_music import OnlineAlbum
@@ -1518,6 +1529,13 @@ class OnlineMusicView(QWidget):
         self._is_top_list_view = False
         self._results_stack.setCurrentWidget(self._albums_page)
         self._stack.setCurrentWidget(self._results_page)
+
+        # Push navigation state
+        self._navigation_stack.append({
+            'page': 'albums',
+            'title': title,
+            'data': albums
+        })
 
     def _on_recommendation_clicked(self, data: Dict[str, Any]):
         """Handle recommendation card click."""
@@ -2090,7 +2108,25 @@ class OnlineMusicView(QWidget):
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""
-        # Return to previous page based on context
+        # Pop from navigation stack if available
+        if self._navigation_stack:
+            prev_state = self._navigation_stack.pop()
+            page = prev_state.get('page')
+
+            if page == 'playlists':
+                # Return to playlist list
+                title = prev_state.get('title', '')
+                playlists = prev_state.get('data', [])
+                self._show_playlist_list_in_detail(title, playlists)
+                return
+            elif page == 'albums':
+                # Return to album list
+                title = prev_state.get('title', '')
+                albums = prev_state.get('data', [])
+                self._show_album_list_in_detail(title, albums)
+                return
+
+        # Default behavior: return to previous page based on context
         # If tabs are visible, we came from search results
         # Otherwise, return to top list page
         if self._tabs.isVisible():
@@ -2107,6 +2143,8 @@ class OnlineMusicView(QWidget):
         """Handle back button click from favorites view."""
         # Hide back button
         self._fav_back_btn.hide()
+        # Clear navigation stack when returning to main view
+        self._navigation_stack.clear()
         # Show favorites and recommendations
         if self._fav_loaded and self._fav_data:
             self._favorites_section.show()
