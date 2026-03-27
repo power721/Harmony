@@ -769,17 +769,18 @@ class QQMusicService:
             result = self.client.get_created_songlist(uin)
             if not result:
                 return []
-            playlists = result.get("playlist", []) or result.get("list", []) or []
+            # API returns 'v_playlist' key
+            playlists = result.get("v_playlist", []) or result.get("playlist", []) or []
             items = []
             for pl in playlists:
                 if not isinstance(pl, dict):
                     continue
                 items.append({
                     "id": pl.get("tid", "") or pl.get("dissid", ""),
-                    "title": pl.get("dissname", "") or pl.get("title", "") or pl.get("name", ""),
-                    "cover_url": pl.get("logo", "") or pl.get("picurl", "") or pl.get("imgurl", ""),
-                    "song_count": pl.get("song_cnt", 0) or pl.get("songnum", 0),
-                    "creator": pl.get("nickname", "") or pl.get("creator", ""),
+                    "title": pl.get("dirName", "") or pl.get("dissname", "") or pl.get("name", ""),
+                    "cover_url": pl.get("picUrl", "") or pl.get("bigpicUrl", "") or pl.get("logo", ""),
+                    "song_count": pl.get("songNum", 0) or pl.get("song_cnt", 0),
+                    "creator": pl.get("nick", "") or pl.get("nickname", ""),
                 })
             return items
         except Exception as e:
@@ -795,18 +796,18 @@ class QQMusicService:
             result = self.client.get_fav_songlist(euin, page=page, num=num)
             if not result:
                 return []
-            playlists = result.get("playlist", []) or result.get("list", []) or []
+            # API returns 'v_list' key
+            playlists = result.get("v_list", []) or result.get("playlist", []) or []
             items = []
             for pl in playlists:
                 if not isinstance(pl, dict):
                     continue
-                pl_info = pl.get("diss_info", pl) if "diss_info" in pl else pl
                 items.append({
-                    "id": pl_info.get("tid", "") or pl_info.get("dissid", ""),
-                    "title": pl_info.get("dissname", "") or pl_info.get("title", "") or pl_info.get("name", ""),
-                    "cover_url": pl_info.get("logo", "") or pl_info.get("picurl", "") or pl_info.get("imgurl", ""),
-                    "song_count": pl_info.get("song_cnt", 0) or pl_info.get("songnum", 0),
-                    "creator": pl_info.get("nickname", "") or pl_info.get("creator", ""),
+                    "id": pl.get("tid", "") or pl.get("dissid", ""),
+                    "title": pl.get("name", "") or pl.get("dissname", ""),
+                    "cover_url": pl.get("logo", "") or pl.get("albumPicUrl", ""),
+                    "song_count": pl.get("songnum", 0) or pl.get("song_cnt", 0),
+                    "creator": pl.get("nickname", ""),
                 })
             return items
         except Exception as e:
@@ -822,19 +823,25 @@ class QQMusicService:
             result = self.client.get_fav_album(euin, page=page, num=num)
             if not result:
                 return []
-            albums = result.get("albumList", []) or result.get("list", []) or []
+            # API returns 'v_list' key
+            albums = result.get("v_list", []) or result.get("albumList", []) or []
             items = []
             for album in albums:
                 if not isinstance(album, dict):
                     continue
-                album_mid = album.get("albumMid", "") or album.get("mid", "")
+                album_mid = album.get("mid", "") or album.get("albumMid", "")
+                # Build singer list from v_singer
+                v_singer = album.get("v_singer", [])
+                singer_name = ""
+                if isinstance(v_singer, list) and v_singer:
+                    singer_name = " / ".join(s.get("name", "") for s in v_singer if isinstance(s, dict))
                 items.append({
                     "mid": album_mid,
-                    "title": album.get("albumName", "") or album.get("name", ""),
+                    "title": album.get("name", "") or album.get("albumName", ""),
                     "cover_url": (f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
-                                  if album_mid else ""),
-                    "singer_name": album.get("singerName", "") or album.get("singer_name", ""),
-                    "song_count": album.get("totalNum", 0) or 0,
+                                  if album_mid else album.get("logo", "")),
+                    "singer_name": singer_name or album.get("singerName", ""),
+                    "song_count": album.get("songnum", 0) or album.get("totalNum", 0),
                 })
             return items
         except Exception as e:
