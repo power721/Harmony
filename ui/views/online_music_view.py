@@ -1401,6 +1401,7 @@ class OnlineMusicView(QWidget):
         """Show favorite songs in the detail view with play all / add to queue buttons."""
         # Convert to the format expected by load_songs_directly
         songs = []
+        cover_url = ""
         for t_data in tracks:
             song = {
                 "mid": t_data.get("mid", ""),
@@ -1416,9 +1417,12 @@ class OnlineMusicView(QWidget):
                 "interval": t_data.get("duration", 0),
             }
             songs.append(song)
+            # Use first song's cover
+            if not cover_url and t_data.get("cover_url"):
+                cover_url = t_data.get("cover_url")
 
         # Use detail view to show songs with play all / add to queue buttons
-        self._detail_view.load_songs_directly(songs, t("fav_songs"), "")
+        self._detail_view.load_songs_directly(songs, t("fav_songs"), cover_url)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _show_playlist_list_in_detail(self, title: str, playlists: list):
