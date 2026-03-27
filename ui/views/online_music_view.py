@@ -1347,31 +1347,27 @@ class OnlineMusicView(QWidget):
 
     def _on_favorites_card_clicked(self, data: Dict[str, Any]):
         """Handle favorites section card click."""
-        # Hide favorites and recommendations when viewing details
-        self._favorites_section.hide()
-        self._recommend_section.hide()
-
         card_type = data.get("card_type", "")
 
         if card_type == "fav_songs":
-            # Show favorite songs in table
+            # Show favorite songs in table - don't hide sections
             tracks = self._fav_data.get("fav_songs", [])
             self._show_fav_songs_in_table(tracks)
 
-        elif card_type == "created_playlists":
-            # Show created playlists in detail view
-            playlists = self._fav_data.get("created_playlists", [])
-            self._show_playlist_list_in_detail(t("created_playlists"), playlists)
+        elif card_type in ("created_playlists", "fav_playlists", "fav_albums"):
+            # Hide favorites and recommendations when viewing playlist/album lists
+            self._favorites_section.hide()
+            self._recommend_section.hide()
 
-        elif card_type == "fav_playlists":
-            # Show favorite playlists in detail view
-            playlists = self._fav_data.get("fav_playlists", [])
-            self._show_playlist_list_in_detail(t("fav_playlists"), playlists)
-
-        elif card_type == "fav_albums":
-            # Show favorite albums in detail view
-            albums = self._fav_data.get("fav_albums", [])
-            self._show_album_list_in_detail(t("fav_albums"), albums)
+            if card_type == "created_playlists":
+                playlists = self._fav_data.get("created_playlists", [])
+                self._show_playlist_list_in_detail(t("created_playlists"), playlists)
+            elif card_type == "fav_playlists":
+                playlists = self._fav_data.get("fav_playlists", [])
+                self._show_playlist_list_in_detail(t("fav_playlists"), playlists)
+            elif card_type == "fav_albums":
+                albums = self._fav_data.get("fav_albums", [])
+                self._show_album_list_in_detail(t("fav_albums"), albums)
 
     def _show_fav_songs_in_table(self, tracks: list):
         """Show favorite songs in the results table."""
