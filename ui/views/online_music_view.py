@@ -248,16 +248,15 @@ class FavWorker(QThread):
 
 
 class HotkeyPopup(QWidget):
-    """Popup widget for displaying hot search keywords."""
+    """Popup widget for displaying hot search keywords - autocomplete style."""
 
     hotkey_clicked = Signal(str)  # Emitted when a hotkey is clicked
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 使用 Window 标志，允许交互但不显示在任务栏
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)  # 显示时不激活窗口
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
 
         self._setup_ui()
 
@@ -266,7 +265,6 @@ class HotkeyPopup(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Container with border
         container = QWidget()
         container.setObjectName("hotkeyContainer")
         container.setStyleSheet("""
@@ -277,66 +275,90 @@ class HotkeyPopup(QWidget):
             }
         """)
         container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(12, 8, 12, 8)
-        container_layout.setSpacing(4)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
         # Title
         title = QLabel("🔥 " + t("hot_search"))
-        title.setStyleSheet("color: #1db954; font-size: 14px; font-weight: bold;")
+        title.setStyleSheet("""
+            QLabel {
+                color: #1db954;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 10px 12px 6px 12px;
+            }
+        """)
         container_layout.addWidget(title)
 
-        # Hotkey list container (using flow layout with tags)
-        self._hotkey_container = QWidget()
-        self._hotkey_layout = QHBoxLayout(self._hotkey_container)
-        self._hotkey_layout.setContentsMargins(0, 0, 0, 0)
-        self._hotkey_layout.setSpacing(8)
-        self._hotkey_layout.addStretch()
-        container_layout.addWidget(self._hotkey_container)
+        # List widget for hotkey items
+        self._list = QListWidget()
+        self._list.setObjectName("hotkeyList")
+        self._list.setStyleSheet("""
+            #hotkeyList {
+                background-color: transparent;
+                border: none;
+                outline: none;
+                padding: 0px 4px 4px 4px;
+            }
+            #hotkeyList::item {
+                padding: 8px 12px;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 13px;
+            }
+            #hotkeyList::item:hover {
+                background-color: #333;
+            }
+        """)
+        self._list.setSpacing(0)
+        self._list.setCursor(Qt.PointingHandCursor)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._list.currentRowChanged.connect(self._on_item_selected)
+        container_layout.addWidget(self._list)
 
         layout.addWidget(container)
 
     def set_hotkeys(self, hotkeys: List[Dict[str, Any]]):
         """Set hotkey list."""
-        # Clear existing buttons
-        while self._hotkey_layout.count() > 1:
-            item = self._hotkey_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Add hotkey buttons (limit to 10)
-        for i, item in enumerate(hotkeys[:10]):
+        self._list.clear()
+        for item in hotkeys[:10]:
             title = item.get('title', '')
-            query = item.get('query', title)  # query是实际搜索词
+            query = item.get('query', title)
             if not title:
                 continue
+            list_item = QListWidgetItem(f"  {title}")
+            list_item.setData(Qt.UserRole, query)
+            self._list.addItem(list_item)
+        self._adjust_size()
 
-            btn = QPushButton(f"{i + 1}. {title}")
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3a3a3a;
-                    color: #e0e0e0;
-                    border: none;
-                    border-radius: 12px;
-                    padding: 6px 12px;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background-color: #1db954;
-                    color: #ffffff;
-                }
-            """)
-            # 使用query字段进行搜索
-            btn.clicked.connect(lambda checked, q=query: self._on_hotkey_clicked(q))
-            self._hotkey_layout.insertWidget(self._hotkey_layout.count() - 1, btn)
+    def _adjust_size(self):
+        """Adjust popup size to fit content."""
+        count = self._list.count()
+        if count == 0:
+            self.hide()
+            return
+        item_height = self._list.sizeHintForRow(0) if count > 0 else 30
+        title_height = 36  # approximate title label height
+        total_height = title_height + count * item_height + 8  # padding
+        self.setFixedHeight(min(total_height, 400))
+        # Will be repositioned by show_at
 
-    def _on_hotkey_clicked(self, query: str):
-        """Handle hotkey button click."""
-        self.hide()
-        self.hotkey_clicked.emit(query)
+    def _on_item_selected(self, row: int):
+        """Handle item click/double-click in list."""
+        if row < 0:
+            return
+        item = self._list.item(row)
+        if item:
+            query = item.data(Qt.UserRole)
+            if query:
+                self.hide()
+                self.hotkey_clicked.emit(query)
 
-    def show_at(self, global_pos: QPoint):
+    def show_at(self, global_pos: QPoint, input_width: int = 0):
         """Show popup at global position."""
+        if input_width > 0:
+            self.setFixedWidth(input_width)
         self.move(global_pos)
         self.show()
 
@@ -1761,7 +1783,7 @@ class OnlineMusicView(QWidget):
             # Position popup below search input
             input_rect = self._search_input.rect()
             global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
-            self._hotkey_popup.show_at(global_pos)
+            self._hotkey_popup.show_at(global_pos, self._search_input.width())
         else:
             # Fetch hotkeys
             self._load_hotkeys()
@@ -1799,7 +1821,7 @@ class OnlineMusicView(QWidget):
                 # Position popup below search input
                 input_rect = self._search_input.rect()
                 global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
-                self._hotkey_popup.show_at(global_pos)
+                self._hotkey_popup.show_at(global_pos, self._search_input.width())
 
     def _on_hotkey_clicked(self, title: str):
         """Handle hotkey button click."""
