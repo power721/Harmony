@@ -485,5 +485,9 @@
     "guess_you_like": "Guess You Like",
     "radar_recommend": "Radar Recommendations",
     "recommend_playlists": "Recommended Playlists",
-    "new_songs": "New Songs"
+    "new_songs": "New Songs",
+    "fav_songs": "Favorite Songs",
+    "created_playlists": "My Playlists",
+    "fav_playlists": "Favorite Playlists",
+    "fav_albums": "Favorite Albums"
 }

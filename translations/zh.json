@@ -485,5 +485,9 @@
     "guess_you_like": "猜你喜欢",
     "radar_recommend": "雷达推荐",
     "recommend_playlists": "推荐歌单",
-    "new_songs": "新歌推荐"
+    "new_songs": "新歌推荐",
+    "fav_songs": "收藏歌曲",
+    "created_playlists": "创建的歌单",
+    "fav_playlists": "收藏的歌单",
+    "fav_albums": "收藏专辑"
 }
