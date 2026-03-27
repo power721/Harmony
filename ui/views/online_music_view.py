@@ -1347,6 +1347,10 @@ class OnlineMusicView(QWidget):
 
     def _on_favorites_card_clicked(self, data: Dict[str, Any]):
         """Handle favorites section card click."""
+        # Hide favorites and recommendations when viewing details
+        self._favorites_section.hide()
+        self._recommend_section.hide()
+
         card_type = data.get("card_type", "")
 
         if card_type == "fav_songs":
@@ -1415,22 +1419,18 @@ class OnlineMusicView(QWidget):
 
     def _show_album_list_in_detail(self, title: str, albums: list):
         """Show a list of albums in the grid view."""
-        from domain.online_music import OnlineAlbum, OnlineSinger
+        from domain.online_music import OnlineAlbum
 
         # Convert dicts to OnlineAlbum objects
         online_albums = []
         for album in albums:
-            # Parse singer_name into list of OnlineSinger
             singer_name = album.get("singer_name", "")
-            singers = [OnlineSinger(mid="", name=name.strip()) for name in singer_name.split(" / ")] if singer_name else []
-
             online_albums.append(OnlineAlbum(
                 mid=album.get("mid", ""),
                 name=album.get("title", ""),
                 singer_mid="",
                 singer_name=singer_name,
                 cover_url=album.get("cover_url", ""),
-                singers=singers,
             ))
 
         self._albums_page.load_data(online_albums)
@@ -1442,6 +1442,10 @@ class OnlineMusicView(QWidget):
 
     def _on_recommendation_clicked(self, data: Dict[str, Any]):
         """Handle recommendation card click."""
+        # Hide favorites and recommendations when viewing details
+        self._favorites_section.hide()
+        self._recommend_section.hide()
+
         recommend_type = data.get('recommend_type', '')
         raw_data = data.get('raw_data')
         card_id = data.get('id')
@@ -1554,6 +1558,10 @@ class OnlineMusicView(QWidget):
         keyword = self._search_input.text().strip()
         if not keyword:
             return
+
+        # Hide favorites and recommendations sections when searching
+        self._favorites_section.hide()
+        self._recommend_section.hide()
 
         self._current_keyword = keyword
         self._current_page = 1
@@ -1944,6 +1952,11 @@ class OnlineMusicView(QWidget):
             self._stack.setCurrentWidget(self._results_page)
         else:
             self._stack.setCurrentWidget(self._top_list_page)
+            # Show favorites and recommendations when returning to main view
+            if self._fav_loaded and self._fav_data:
+                self._favorites_section.show()
+            if self._recommendations_loaded:
+                self._recommend_section.show()
 
     def _get_cover_url(self, track: OnlineTrack) -> str:
         """Get cover URL for online track."""
