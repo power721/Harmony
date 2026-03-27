@@ -215,6 +215,38 @@ class RecommendWorker(QThread):
             self.recommend_ready.emit(self._recommend_type, [])
 
 
+class FavWorker(QThread):
+    """Background worker for loading favorites."""
+
+    fav_ready = Signal(str, list)  # (fav_type, list of items)
+
+    def __init__(self, qqmusic_service, fav_type: str, page: int = 1, num: int = 30):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+        self._fav_type = fav_type
+        self._page = page
+        self._num = num
+
+    def run(self):
+        try:
+            if not self._qqmusic_service:
+                self.fav_ready.emit(self._fav_type, [])
+                return
+            result = []
+            if self._fav_type == "fav_songs":
+                result = self._qqmusic_service.get_my_fav_songs(page=self._page, num=self._num)
+            elif self._fav_type == "created_playlists":
+                result = self._qqmusic_service.get_my_created_songlists()
+            elif self._fav_type == "fav_playlists":
+                result = self._qqmusic_service.get_my_fav_songlists(page=self._page, num=self._num)
+            elif self._fav_type == "fav_albums":
+                result = self._qqmusic_service.get_my_fav_albums(page=self._page, num=self._num)
+            self.fav_ready.emit(self._fav_type, result)
+        except Exception as e:
+            logger.error(f"Get favorites {self._fav_type} failed: {e}")
+            self.fav_ready.emit(self._fav_type, [])
+
+
 class HotkeyPopup(QWidget):
     """Popup widget for displaying hot search keywords."""
 
@@ -383,6 +415,10 @@ class OnlineMusicView(QWidget):
         self._recommendations: Dict[str, List[Dict[str, Any]]] = {}
         self._recommendations_loaded = False
 
+        # Favorites state
+        self._fav_workers: List[FavWorker] = []
+        self._fav_loaded = False
+
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
         self._grid_total = 0  # Total results for current grid search
@@ -411,6 +447,27 @@ class OnlineMusicView(QWidget):
         # Search bar
         search_bar = self._create_search_bar()
         layout.addWidget(search_bar)
+
+        # Favorites sections (shown when logged in, above recommendations)
+        self._fav_songs_section = RecommendSection(title=t("fav_songs"), parent=self)
+        self._fav_songs_section.recommendation_clicked.connect(self._on_fav_songs_clicked)
+        self._fav_songs_section.hide()
+        layout.addWidget(self._fav_songs_section)
+
+        self._created_playlists_section = RecommendSection(title=t("created_playlists"), parent=self)
+        self._created_playlists_section.recommendation_clicked.connect(self._on_fav_playlist_card_clicked)
+        self._created_playlists_section.hide()
+        layout.addWidget(self._created_playlists_section)
+
+        self._fav_playlists_section = RecommendSection(title=t("fav_playlists"), parent=self)
+        self._fav_playlists_section.recommendation_clicked.connect(self._on_fav_playlist_card_clicked)
+        self._fav_playlists_section.hide()
+        layout.addWidget(self._fav_playlists_section)
+
+        self._fav_albums_section = RecommendSection(title=t("fav_albums"), parent=self)
+        self._fav_albums_section.recommendation_clicked.connect(self._on_fav_album_clicked)
+        self._fav_albums_section.hide()
+        layout.addWidget(self._fav_albums_section)
 
         # Recommendations section (shown when logged in)
         self._recommend_section = RecommendSection(self)
@@ -457,6 +514,7 @@ class OnlineMusicView(QWidget):
         # Load recommendations if logged in (after UI is fully set up)
         if self._service._has_qqmusic_credential():
             self._load_recommendations()
+            self._load_favorites()
 
     def showEvent(self, event):
         """Handle show event - load top lists on first display."""
@@ -957,6 +1015,9 @@ class OnlineMusicView(QWidget):
         logger.info("QQ Music credentials obtained, refreshing service...")
         self._refresh_qqmusic_service()
         self._update_login_status()
+        # Reload favorites with new credentials
+        self._fav_loaded = False
+        self._load_favorites()
 
     def _load_recommendations(self):
         """Load all 5 types of recommendations."""
@@ -1032,6 +1093,83 @@ class OnlineMusicView(QWidget):
         logger.info(f"Total cards to display: {len(cards)}")
         if cards:
             self._recommend_section.load_recommendations(cards)
+
+    def _load_favorites(self):
+        """Load user's favorites (songs, created playlists, fav playlists, fav albums)."""
+        if self._fav_loaded:
+            return
+
+        euin = ""
+        if self._qqmusic_service and self._qqmusic_service._credential:
+            euin = (
+                self._qqmusic_service._credential.get("encrypt_uin")
+                or self._qqmusic_service._credential.get("encryptUin")
+                or ""
+            )
+        if not euin:
+            return
+
+        self._fav_loaded = True
+        self._fav_songs_section.show_loading()
+        self._created_playlists_section.show_loading()
+        self._fav_playlists_section.show_loading()
+        self._fav_albums_section.show_loading()
+
+        for fav_type in ["fav_songs", "created_playlists", "fav_playlists", "fav_albums"]:
+            worker = FavWorker(self._qqmusic_service, fav_type)
+            worker.fav_ready.connect(self._on_fav_ready)
+            self._fav_workers.append(worker)
+            worker.start()
+
+    def _on_fav_ready(self, fav_type: str, data: list):
+        """Handle favorites data ready."""
+        if fav_type == "fav_songs":
+            cards = []
+            for track in data[:30]:
+                cards.append({
+                    "id": track.get("mid", ""),
+                    "title": track.get("title", ""),
+                    "cover_url": track.get("cover_url", ""),
+                    "fav_type": "fav_song",
+                    "raw_data": track,
+                })
+            self._fav_songs_section.load_recommendations(cards)
+
+        elif fav_type == "created_playlists":
+            cards = []
+            for pl in data[:30]:
+                cards.append({
+                    "id": pl.get("id", ""),
+                    "title": pl.get("title", ""),
+                    "cover_url": pl.get("cover_url", ""),
+                    "fav_type": "created_playlist",
+                    "raw_data": pl,
+                })
+            self._created_playlists_section.load_recommendations(cards)
+
+        elif fav_type == "fav_playlists":
+            cards = []
+            for pl in data[:30]:
+                cards.append({
+                    "id": pl.get("id", ""),
+                    "title": pl.get("title", ""),
+                    "cover_url": pl.get("cover_url", ""),
+                    "fav_type": "fav_playlist",
+                    "raw_data": pl,
+                })
+            self._fav_playlists_section.load_recommendations(cards)
+
+        elif fav_type == "fav_albums":
+            cards = []
+            for album in data[:30]:
+                cards.append({
+                    "id": album.get("mid", ""),
+                    "title": album.get("title", ""),
+                    "cover_url": album.get("cover_url", ""),
+                    "fav_type": "fav_album",
+                    "raw_data": album,
+                })
+            self._fav_albums_section.load_recommendations(cards)
 
     def _parse_recommendation(self, recommend_type: str, data: Any) -> Optional[Dict[str, Any]]:
         """Parse recommendation data to extract card info."""
@@ -1222,6 +1360,57 @@ class OnlineMusicView(QWidget):
         except Exception as e:
             logger.error(f"Failed to parse recommendation {recommend_type}: {e}")
             return None
+
+    def _on_fav_songs_clicked(self, data: Dict[str, Any]):
+        """Handle favorite songs section click - show all fav songs in table."""
+        worker = FavWorker(self._qqmusic_service, "fav_songs", page=1, num=100)
+        worker.fav_ready.connect(lambda ft, tracks: self._show_fav_songs_in_table(tracks))
+        worker.start()
+
+    def _show_fav_songs_in_table(self, tracks: list):
+        """Show favorite songs in the results table."""
+        from domain.online_music import OnlineTrack, OnlineSinger, AlbumInfo
+
+        self._current_tracks = []
+        for t_data in tracks:
+            singer = OnlineSinger(mid="", name=t_data.get("singer", ""))
+            album = AlbumInfo(mid=t_data.get("album_mid", ""), name=t_data.get("album", ""))
+            track = OnlineTrack(
+                mid=t_data.get("mid", ""),
+                title=t_data.get("title", ""),
+                singer=[singer],
+                album=album,
+                duration=t_data.get("duration", 0),
+            )
+            self._current_tracks.append(track)
+
+        self._display_tracks(self._current_tracks)
+        self._results_info.setText(f"{t('fav_songs')} - {len(self._current_tracks)} {t('songs')}")
+        self._tabs.show()
+        self._is_top_list_view = False
+        self._stack.setCurrentWidget(self._results_page)
+
+    def _on_fav_album_clicked(self, data: Dict[str, Any]):
+        """Handle favorite album card click - open album detail."""
+        album_mid = data.get("id", "")
+        title = data.get("title", "")
+        singer_name = ""
+        raw = data.get("raw_data")
+        if isinstance(raw, dict):
+            singer_name = raw.get("singer_name", "")
+        if album_mid:
+            self._detail_view.load_album(album_mid, title, singer_name)
+            self._stack.setCurrentWidget(self._detail_view)
+
+    def _on_fav_playlist_card_clicked(self, data: Dict[str, Any]):
+        """Handle favorite playlist card click - convert dict to OnlinePlaylist and open detail."""
+        playlist = OnlinePlaylist(
+            id=data.get("id", ""),
+            title=data.get("title", ""),
+            cover_url=data.get("cover_url", ""),
+            creator=data.get("creator", ""),
+        )
+        self._on_playlist_clicked(playlist)
 
     def _on_recommendation_clicked(self, data: Dict[str, Any]):
         """Handle recommendation card click."""
