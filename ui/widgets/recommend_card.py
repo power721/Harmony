@@ -208,7 +208,7 @@ class RecommendSection(QWidget):
         """Set up the section UI."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 5, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(2)
 
         # Set background style
         self.setStyleSheet("background-color: transparent;")
@@ -259,7 +259,7 @@ class RecommendSection(QWidget):
         self._cards_container.setFixedHeight(190)  # Slightly less than scroll area height
         self._cards_layout = QHBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(16)
+        self._cards_layout.setSpacing(8)
         self._cards_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self._scroll_area.setWidget(self._cards_container)
