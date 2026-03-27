@@ -1398,10 +1398,11 @@ class OnlineMusicView(QWidget):
             self._show_album_list_in_detail(t("fav_albums"), albums)
 
     def _show_fav_songs_in_table(self, tracks: list):
-        """Show favorite songs in the results table."""
+        """Show favorite songs in the grid view with cards."""
         from domain.online_music import OnlineTrack, OnlineSinger, AlbumInfo
 
-        self._current_tracks = []
+        # Convert to OnlineTrack objects for display
+        online_tracks = []
         for t_data in tracks:
             singer = OnlineSinger(mid="", name=t_data.get("singer", ""))
             album = AlbumInfo(mid=t_data.get("album_mid", ""), name=t_data.get("album", ""))
@@ -1412,12 +1413,14 @@ class OnlineMusicView(QWidget):
                 album=album,
                 duration=t_data.get("duration", 0),
             )
-            self._current_tracks.append(track)
+            online_tracks.append(track)
 
+        self._current_tracks = online_tracks
         self._display_tracks(self._current_tracks)
         self._results_info.setText(f"{t('fav_songs')} - {len(self._current_tracks)} {t('songs')}")
-        self._tabs.show()
+        self._tabs.hide()
         self._is_top_list_view = False
+        self._results_stack.setCurrentWidget(self._songs_page)
         self._stack.setCurrentWidget(self._results_page)
 
     def _show_playlist_list_in_detail(self, title: str, playlists: list):
