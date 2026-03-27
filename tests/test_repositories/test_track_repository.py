@@ -60,12 +60,35 @@ def temp_db():
     # Create artists cache table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS artists (
-            name TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
             cover_path TEXT,
             song_count INTEGER,
             album_count INTEGER,
             normalized_name TEXT
         )
+    """)
+
+    # Create track_artists junction table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS track_artists (
+            track_id INTEGER NOT NULL,
+            artist_id INTEGER NOT NULL,
+            position INTEGER DEFAULT 0,
+            PRIMARY KEY (track_id, artist_id),
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+            FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes for track_artists
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_track_artists_artist
+        ON track_artists(artist_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_track_artists_track
+        ON track_artists(track_id)
     """)
 
     conn.commit()

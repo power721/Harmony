@@ -40,13 +40,36 @@ def temp_db():
     # Create artists cache table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS artists (
-            name TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
             cover_path TEXT,
             song_count INTEGER,
             album_count INTEGER,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             normalized_name TEXT
         )
+    """)
+
+    # Create track_artists junction table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS track_artists (
+            track_id INTEGER NOT NULL,
+            artist_id INTEGER NOT NULL,
+            position INTEGER DEFAULT 0,
+            PRIMARY KEY (track_id, artist_id),
+            FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+            FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes for track_artists
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_track_artists_artist
+        ON track_artists(artist_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_track_artists_track
+        ON track_artists(track_id)
     """)
 
     # Create albums cache table (for rebuild_with_albums)
@@ -97,6 +120,26 @@ def populated_db(temp_db):
         "INSERT INTO tracks (path, title, artist, album, duration) VALUES (?, ?, ?, ?, ?)",
         tracks
     )
+
+    # Add artists
+    cursor.execute("INSERT INTO artists (name, normalized_name) VALUES ('Artist A', 'artist a')")
+    cursor.execute("INSERT INTO artists (name, normalized_name) VALUES ('Artist B', 'artist b')")
+
+    # Create track_artists junction records
+    # Track 1 (Artist A)
+    cursor.execute("INSERT INTO track_artists (track_id, artist_id, position) VALUES (1, 1, 0)")
+    # Track 2 (Artist A)
+    cursor.execute("INSERT INTO track_artists (track_id, artist_id, position) VALUES (2, 1, 0)")
+    # Track 3 (Artist A)
+    cursor.execute("INSERT INTO track_artists (track_id, artist_id, position) VALUES (3, 1, 0)")
+    # Track 4 (Artist B)
+    cursor.execute("INSERT INTO track_artists (track_id, artist_id, position) VALUES (4, 2, 0)")
+    # Track 5 (Artist B)
+    cursor.execute("INSERT INTO track_artists (track_id, artist_id, position) VALUES (5, 2, 0)")
+
+    # Update artist stats
+    cursor.execute("UPDATE artists SET song_count = 3, album_count = 2 WHERE name = 'Artist A'")
+    cursor.execute("UPDATE artists SET song_count = 2, album_count = 1 WHERE name = 'Artist B'")
 
     conn.commit()
     conn.close()
@@ -200,16 +243,10 @@ class TestSqliteArtistRepository:
 
     def test_update_cover_path(self, temp_db, populated_db):
         """Test updating cover path for an artist."""
-        conn = sqlite3.connect(populated_db)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO artists (name, cover_path, song_count, album_count)
-            VALUES ('Artist A', NULL, 3, 2)
-        """)
-        conn.commit()
-        conn.close()
-
+        # populated_db already has Artist A and Artist B
         repo = SqliteArtistRepository(populated_db)
+
+        # Update cover path for Artist A (already exists from populated_db)
         result = repo.update_cover_path("Artist A", "/covers/new_cover.jpg")
 
         assert result is True
