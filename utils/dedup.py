@@ -59,6 +59,10 @@ class VersionInfo:
             # Special version only (singing version, remix, etc.)
             return 70
 
+        if self.has_special_version and self.has_instrumental and not self.is_live and not self.has_harmony:
+            # Special instrumental version
+            return 55
+
         if self.has_instrumental and not self.is_live and not self.has_harmony:
             # Instrumental only
             return 60

@@ -214,7 +214,7 @@ class SqliteAlbumRepository(BaseRepository):
         if existing_covers:
             cursor.executemany(
                 "UPDATE albums SET cover_path = ? WHERE name = ? AND artist = ?",
-                [(cover, name.split("|")[0], name.split("|")[1]) for name, cover in existing_covers.items()]
+                [(cover, name.split("|", 1)[0], name.split("|", 1)[1]) for name, cover in existing_covers.items()]
             )
 
         conn.commit()

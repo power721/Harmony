@@ -59,7 +59,7 @@ class PlayHistoryService:
         """
         return self._history_repo.get_recent_tracks(limit)
 
-    def add_history(self, track_id: int) -> int:
+    def add_history(self, track_id: int) -> bool:
         """
         Add a track to play history.
 

@@ -73,9 +73,11 @@ class LibraryService:
         conn = self._album_repo._get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) as count FROM albums")
-        albums_count = cursor.fetchone()["count"] if cursor.rowcount > 0 else 0
+        result = cursor.fetchone()
+        albums_count = result["count"] if result else 0
         cursor.execute("SELECT COUNT(*) as count FROM artists")
-        artists_count = cursor.fetchone()["count"] if cursor.rowcount > 0 else 0
+        result = cursor.fetchone()
+        artists_count = result["count"] if result else 0
 
         # Rebuild
         self._artist_repo.rebuild_with_albums()

@@ -52,10 +52,17 @@ class MiniLyricsWidget(QWidget):
     def update_position(self, t):
         self.current_time = t
 
+        if not self.lines:
+            return
+
         for i in range(len(self.lines) - 1):
             if self.lines[i].time <= t < self.lines[i + 1].time:
                 self.current_index = i
-                break
+                return
+
+        # Last line: if time >= last line's time
+        if t >= self.lines[-1].time:
+            self.current_index = len(self.lines) - 1
 
     # =====================================================
     # 动画核心（高级滚动）

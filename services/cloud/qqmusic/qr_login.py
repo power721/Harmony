@@ -137,7 +137,7 @@ class Credential:
             musicid=int(cookies.pop("musicid", 0) or 0),
             musickey=cookies.pop("musickey", ""),
             unionid=cookies.pop("unionid", ""),
-            str_musicid=cookies.pop("str_musicid", str(cookies.pop("musicid", ""))),
+            str_musicid=cookies.pop("str_musicid", str(musicid)),
             refresh_key=cookies.pop("refresh_key", ""),
             encrypt_uin=cookies.pop("encryptUin", ""),
             login_type=cookies.pop("loginType", 0),

@@ -5,7 +5,7 @@ Album rename dialog for renaming albums and merging duplicates.
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QFormLayout
+from PySide6.QtWidgets import QFormLayout, QLineEdit
 from PySide6.QtCore import Qt, Signal
 
 from domain.album import Album
@@ -149,7 +149,3 @@ class AlbumRenameDialog(BaseRenameDialog):
             self._album.artist,
             self._name_input.text().strip()
         )
-
-
-# Import QLineEdit for the read-only artist field
-from PySide6.QtWidgets import QLineEdit

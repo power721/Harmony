@@ -129,7 +129,7 @@ class QQMusicService:
             result = self.client.search(keyword, search_type='song',
                                         page_num=page, page_size=page_size)
 
-            if not result or 'body' not in result:
+            if not result or 'body' not in result or not isinstance(result.get('body'), dict):
                 return []
 
             # Mobile API uses item_song key

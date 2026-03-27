@@ -896,7 +896,7 @@ class DatabaseManager:
         # Check if we're in the write worker thread - execute directly
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_add_track(track_data, conn=self._write_worker._conn)
+            return self._do_add_track(track_data, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_add_track, track_data)
         return future.result(timeout=10.0)
@@ -1878,7 +1878,18 @@ class DatabaseManager:
             refresh_token: str = "",
     ) -> int:
         """Create a new cloud account."""
-        conn = self._get_connection()
+        future = self._submit_write(
+            self._do_create_cloud_account, provider, account_name, account_email, access_token, refresh_token
+        )
+        return future.result(timeout=10.0)
+
+    def _do_create_cloud_account(
+            self, provider: str, account_name: str, account_email: str, access_token: str, refresh_token: str,
+            conn: sqlite3.Connection = None,
+    ) -> int:
+        """Internal: create cloud account (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1978,7 +1989,16 @@ class DatabaseManager:
             self, account_id: int, access_token: str, refresh_token: str = None
     ) -> bool:
         """Update account tokens."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_cloud_account_token, account_id, access_token, refresh_token)
+        return future.result(timeout=10.0)
+
+    def _do_update_cloud_account_token(
+            self, account_id: int, access_token: str, refresh_token: str,
+            conn: sqlite3.Connection = None,
+    ) -> bool:
+        """Internal: update account tokens (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         if refresh_token is not None:
@@ -2010,7 +2030,16 @@ class DatabaseManager:
             self, account_id: int, folder_id: str, folder_path: str, parent_folder_id: str = "0", fid_path: str = "0"
     ) -> bool:
         """Update the last opened folder for an account."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_update_cloud_account_folder, account_id, folder_path, fid_path)
+        return future.result(timeout=10.0)
+
+    def _do_update_cloud_account_folder(
+            self, account_id: int, folder_path: str, fid_path: str,
+            conn: sqlite3.Connection = None,
+    ) -> bool:
+        """Internal: update account folder (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -2031,7 +2060,18 @@ class DatabaseManager:
             self, account_id: int, playing_fid: str = None, position: float = None, local_path: str = None
     ) -> bool:
         """Update the last playing file and position for an account."""
-        conn = self._get_connection()
+        future = self._submit_write(
+            self._do_update_cloud_account_playing_state, account_id, playing_fid, position, local_path
+        )
+        return future.result(timeout=10.0)
+
+    def _do_update_cloud_account_playing_state(
+            self, account_id: int, playing_fid: str, position: float, local_path: str,
+            conn: sqlite3.Connection = None,
+    ) -> bool:
+        """Internal: update playing state (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Build update query dynamically based on provided parameters
@@ -2204,7 +2244,13 @@ class DatabaseManager:
 
     def delete_cloud_account(self, account_id: int) -> bool:
         """Delete a cloud account (sets is_active to False)."""
-        conn = self._get_connection()
+        future = self._submit_write(self._do_delete_cloud_account, account_id)
+        return future.result(timeout=10.0)
+
+    def _do_delete_cloud_account(self, account_id: int, conn: sqlite3.Connection = None) -> bool:
+        """Internal: delete cloud account (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -2227,7 +2273,15 @@ class DatabaseManager:
         if not files:
             return True
 
-        conn = self._get_connection()
+        future = self._submit_write(self._do_cache_cloud_files, account_id, files)
+        return future.result(timeout=30.0)
+
+    def _do_cache_cloud_files(
+            self, account_id: int, files: List[CloudFile], conn: sqlite3.Connection = None
+    ) -> bool:
+        """Internal: cache cloud files (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         # Get the parent_id from the first file (all files should be in the same folder)
@@ -2483,7 +2537,13 @@ class DatabaseManager:
         Returns:
             True if deleted
         """
-        conn = self._get_connection()
+        future = self._submit_write(self._do_delete_setting, key)
+        return future.result(timeout=10.0)
+
+    def _do_delete_setting(self, key: str, conn: sqlite3.Connection = None) -> bool:
+        """Internal: delete setting (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
@@ -2620,6 +2680,36 @@ class DatabaseManager:
             )
             for row in rows
         ]
+
+    def update_play_queue_local_path(self, track_id: int, local_path: str) -> bool:
+        """
+        Update local_path for all play_queue entries with the given track_id.
+
+        Args:
+            track_id: Track ID to update
+            local_path: New local path
+
+        Returns:
+            True if successful
+        """
+        future = self._submit_write(self._do_update_play_queue_local_path, track_id, local_path)
+        return future.result(timeout=10.0)
+
+    def _do_update_play_queue_local_path(
+            self, track_id: int, local_path: str, conn: sqlite3.Connection = None
+    ) -> bool:
+        """Internal: update play_queue local_path (runs in write worker)."""
+        if conn is None:
+            conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "UPDATE play_queue SET local_path = ? WHERE track_id = ?",
+            (local_path, track_id)
+        )
+
+        conn.commit()
+        return True
 
     def clear_play_queue(self) -> bool:
         """

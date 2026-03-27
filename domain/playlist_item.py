@@ -67,7 +67,7 @@ class PlaylistItem:
 
         if is_online:
             return cls(
-                source=TrackSource.QQ,
+                source=track.source,
                 track_id=track.id,
                 cloud_file_id=track.cloud_file_id,
                 local_path="",  # No local path yet

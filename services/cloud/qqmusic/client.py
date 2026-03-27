@@ -266,7 +266,7 @@ class QQMusicClient:
         else:
             # Use unsigned endpoint (works for most APIs)
             url = APIConfig.ENDPOINT
-            data_to_send = json.dumps(request_data).encode('utf-8')
+            data_to_send = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
         response = self.session.post(
             url,
@@ -276,7 +276,11 @@ class QQMusicClient:
         )
         response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON response: {e}") from e
+
         result_key = f'{module}.{method}'
 
         if result_key not in data:

@@ -235,7 +235,7 @@ def _setup_linux_media_keys(player: "PlaybackService"):
         MPRISPlayer(player)
 
     except ImportError:
-        print("DBus not available for MPRIS support")
+        logger.debug("DBus not available for MPRIS support")
 
 
 def _setup_macos_media_keys(player: "PlaybackService"):
@@ -268,4 +268,4 @@ def _setup_windows_media_keys(player: "PlaybackService"):
         listener.start()
 
     except ImportError:
-        print("pynput not available for Windows media key support")
+        logger.debug("pynput not available for Windows media key support")

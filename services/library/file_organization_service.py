@@ -186,25 +186,20 @@ class FileOrganizationService:
             cloud_file_id: 云文件ID（如果是云下载文件）
         """
         try:
-            conn = self._db._get_connection()
-            cursor = conn.cursor()
-
             # 更新 play_queue 表
-            cursor.execute(
-                "UPDATE play_queue SET local_path = ? WHERE track_id = ?",
-                (new_path, track_id)
-            )
-            logger.debug(f"更新 play_queue: track_id={track_id}, 新路径={new_path}, 更新了 {cursor.rowcount} 条记录")
+            self._db.update_play_queue_local_path(track_id, new_path)
+            logger.debug(f"更新 play_queue: track_id={track_id}, 新路径={new_path}")
 
             # 更新 cloud_files 表（如果是云下载文件）
             if cloud_file_id:
-                cursor.execute(
-                    "UPDATE cloud_files SET local_path = ?, updated_at = CURRENT_TIMESTAMP WHERE file_id = ?",
-                    (new_path, cloud_file_id)
-                )
-                logger.debug(f"更新 cloud_files: file_id={cloud_file_id}, 新路径={new_path}, 更新了 {cursor.rowcount} 条记录")
-
-            conn.commit()
+                # Get account_id for cloud_file_id
+                conn = self._db._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT account_id FROM cloud_files WHERE file_id = ?", (cloud_file_id,))
+                row = cursor.fetchone()
+                if row:
+                    self._db.update_cloud_file_local_path(cloud_file_id, row["account_id"], new_path)
+                    logger.debug(f"更新 cloud_files: file_id={cloud_file_id}, 新路径={new_path}")
         except Exception as e:
             logger.error(f"更新路径失败: {e}")
 
