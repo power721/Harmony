@@ -1,6 +1,7 @@
 """
 Helper utility functions for the music player.
 """
+import re
 import sys
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -158,9 +159,6 @@ def parse_filename_as_metadata(filename: str) -> Tuple[str, str]:
     Returns:
         Tuple of (artist, title) - may be empty strings if parsing fails
     """
-    import re
-    from pathlib import Path
-
     # Remove extension if present
     name = Path(filename).stem
 

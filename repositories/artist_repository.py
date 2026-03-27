@@ -167,12 +167,13 @@ class SqliteArtistRepository(BaseRepository):
 
         # Rebuild from tracks
         cursor.execute("""
-            INSERT INTO artists (name, cover_path, song_count, album_count)
+            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
             SELECT
                 artist as name,
                 NULL as cover_path,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                LOWER(artist) as normalized_name
             FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
             GROUP BY artist
@@ -256,12 +257,13 @@ class SqliteArtistRepository(BaseRepository):
         # Rebuild artists
         cursor.execute("DELETE FROM artists")
         cursor.execute("""
-            INSERT INTO artists (name, cover_path, song_count, album_count)
+            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
             SELECT
                 artist as name,
                 NULL as cover_path,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                LOWER(artist) as normalized_name
             FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
             GROUP BY artist

@@ -69,12 +69,12 @@ class AlbumCard(QWidget):
         # Cover container
         self._cover_container = QFrame()
         self._cover_container.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-            }}
-        """)
+
+        # Pre-computed stylesheets for hover (H-08 optimization)
+        radius = self.BORDER_RADIUS
+        self._style_normal = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; border: 2px solid #1db954; }}"
+        self._cover_container.setStyleSheet(self._style_normal)
 
         # Cover label
         self._cover_label = QLabel(self._cover_container)
@@ -207,24 +207,13 @@ class AlbumCard(QWidget):
     def enterEvent(self, event):
         """Handle mouse enter for hover effect."""
         self._is_hovering = True
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-                border: 2px solid #1db954;
-            }}
-        """)
+        self._cover_container.setStyleSheet(self._style_hover)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave for hover effect."""
         self._is_hovering = False
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-            }}
-        """)
+        self._cover_container.setStyleSheet(self._style_normal)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

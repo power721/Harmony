@@ -430,8 +430,12 @@ class AlbumsView(QWidget):
 
     def _connect_signals(self):
         """Connect signals."""
-        self._search_input.textChanged.connect(self._on_search_changed)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         self._list_view.clicked.connect(self._on_album_clicked)
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._on_search_changed)
         self._list_view.entered.connect(self._on_item_entered)
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
         EventBus.instance().cover_updated.connect(self._on_cover_updated)
@@ -547,8 +551,13 @@ class AlbumsView(QWidget):
         else:
             self._count_label.setText(f"{total} {t('albums')}")
 
-    def _on_search_changed(self, text: str):
-        """Handle search text change."""
+    def _on_search_text_changed(self, text: str):
+        """Debounce search - restart timer on each keystroke."""
+        self._search_timer.start()
+
+    def _on_search_changed(self, text: str = ""):
+        """Handle search text change (debounced)."""
+        text = text or self._search_input.text()
         text = text.lower().strip()
         if text:
             self._filtered_albums = [

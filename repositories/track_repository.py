@@ -381,7 +381,7 @@ class SqliteTrackRepository(BaseRepository):
             cursor.execute("""
                 SELECT id, name, cover_path, song_count, album_count
                 FROM artists
-                WHERE normalized_name = ?
+                WHERE COALESCE(normalized_name, LOWER(name)) = ?
             """, (normalized,))
             row = cursor.fetchone()
             if row:

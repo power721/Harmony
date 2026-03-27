@@ -44,7 +44,8 @@ def temp_db():
             cover_path TEXT,
             song_count INTEGER,
             album_count INTEGER,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            normalized_name TEXT
         )
     """)
 

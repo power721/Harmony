@@ -129,15 +129,16 @@ class Credential:
     @classmethod
     def from_cookies_dict(cls, cookies: Dict[str, Any]) -> 'Credential':
         """Create Credential from cookies dictionary."""
+        _musicid = int(cookies.pop("musicid", 0) or 0)
         return cls(
             openid=cookies.pop("openid", ""),
             refresh_token=cookies.pop("refresh_token", ""),
             access_token=cookies.pop("access_token", ""),
             expired_at=cookies.pop("expired_at", 0),
-            musicid=int(cookies.pop("musicid", 0) or 0),
+            musicid=_musicid,
             musickey=cookies.pop("musickey", ""),
             unionid=cookies.pop("unionid", ""),
-            str_musicid=cookies.pop("str_musicid", str(musicid)),
+            str_musicid=cookies.pop("str_musicid", str(_musicid)),
             refresh_key=cookies.pop("refresh_key", ""),
             encrypt_uin=cookies.pop("encryptUin", ""),
             login_type=cookies.pop("loginType", 0),

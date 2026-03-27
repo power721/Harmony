@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QProgressDialog,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
@@ -333,7 +333,11 @@ class LibraryView(QWidget):
 
     def _setup_connections(self):
         """Setup signal connections."""
-        self._search_input.textChanged.connect(self._on_search)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._on_search)
         self._tracks_table.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         # Connect to player engine signals
@@ -737,12 +741,15 @@ class LibraryView(QWidget):
                 self._tracks_table.scrollToItem(selected_items[0])
 
         # Use QTimer to delay restoration until after table is fully updated
-        from PySide6.QtCore import QTimer
-
         QTimer.singleShot(50, restore_selection)
 
-    def _on_search(self, query: str):
-        """Handle search based on current view."""
+    def _on_search_text_changed(self, text: str):
+        """Debounce search - restart timer on each keystroke."""
+        self._search_timer.start()
+
+    def _on_search(self, query: str = ""):
+        """Handle search based on current view (debounced)."""
+        query = query or self._search_input.text()
         # 保存当前视图的搜索文本
         self._view_search_texts[self._current_view] = query
 

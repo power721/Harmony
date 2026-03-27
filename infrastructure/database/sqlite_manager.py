@@ -295,6 +295,55 @@ class DatabaseManager:
                            ON tracks(created_at DESC)
                        """)
 
+        # H-01: Index for cloud_files.file_id lookups
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_file_id
+                           ON cloud_files(file_id)
+                       """)
+
+        # H-02: Indexes for favorites table
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_favorites_track_id
+                           ON favorites(track_id)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_favorites_cloud_file_id
+                           ON favorites(cloud_file_id)
+                       """)
+
+        # H-03: Indexes for playlist_items table
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_id
+                           ON playlist_items(playlist_id)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_playlist_items_track_id
+                           ON playlist_items(track_id)
+                       """)
+
+        # H-04: Composite indexes for album/artist queries
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_artist_album
+                           ON tracks(artist, album)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_position
+                           ON playlist_items(playlist_id, position)
+                       """)
+
+        # H-04: Additional composite index for cloud folder browsing
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_account_parent
+                           ON cloud_files(account_id, parent_id)
+                       """)
+
+        # M-04: Partial index for cloud_files.local_path
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_local_path
+                           ON cloud_files(local_path)
+                           WHERE local_path IS NOT NULL
+                       """)
+
         # Create cloud_accounts table
         cursor.execute("""
                        CREATE TABLE IF NOT EXISTS cloud_accounts
@@ -867,6 +916,13 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_track_artists_track
             ON track_artists(track_id)
         """)
+
+        # Migration 5: Fix NULL normalized_name in artists table
+        cursor.execute("SELECT COUNT(*) FROM artists WHERE normalized_name IS NULL")
+        null_count = cursor.fetchone()[0]
+        if null_count > 0:
+            cursor.execute("UPDATE artists SET normalized_name = LOWER(name) WHERE normalized_name IS NULL")
+            logger.info(f"[Database] Fixed {null_count} artists with NULL normalized_name")
 
         # Update schema version after all migrations complete
         if schema_changed:
@@ -2297,16 +2353,14 @@ class DatabaseManager:
         # Delete old cache only for this folder (not the entire account)
         cursor.execute("DELETE FROM cloud_files WHERE account_id = ? AND parent_id = ?", (account_id, parent_id))
 
-        # Insert new files, preserving local_path if it existed
-        for file in files:
-            local_path = existing_paths.get(file.file_id)  # Get existing local_path
-
-            cursor.execute(
-                """
-                INSERT INTO cloud_files
-                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+        # Insert new files, preserving local_path if it existed (use executemany for bulk performance)
+        cursor.executemany(
+            """
+            INSERT INTO cloud_files
+            (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
                 (
                     account_id,
                     file.file_id,
@@ -2317,9 +2371,11 @@ class DatabaseManager:
                     file.mime_type,
                     file.duration,
                     file.metadata,
-                    local_path,
-                ),
-            )
+                    existing_paths.get(file.file_id),
+                )
+                for file in files
+            ],
+        )
 
         conn.commit()
         return True
@@ -2595,28 +2651,31 @@ class DatabaseManager:
         # Clear existing queue
         cursor.execute("DELETE FROM play_queue")
 
-        # Insert new items
-        for item in items_data:
-            cursor.execute(
+        # Insert new items using executemany for bulk performance
+        if items_data:
+            cursor.executemany(
                 """
                 INSERT INTO play_queue
                 (position, source, track_id, cloud_file_id, cloud_account_id,
                  local_path, title, artist, album, duration, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    item['position'],
-                    item['source'],
-                    item['track_id'],
-                    item['cloud_file_id'],
-                    item['cloud_account_id'],
-                    item['local_path'],
-                    item['title'],
-                    item['artist'],
-                    item['album'],
-                    item['duration'],
-                    item['created_at'],
-                ),
+                [
+                    (
+                        item['position'],
+                        item['source'],
+                        item['track_id'],
+                        item['cloud_file_id'],
+                        item['cloud_account_id'],
+                        item['local_path'],
+                        item['title'],
+                        item['artist'],
+                        item['album'],
+                        item['duration'],
+                        item['created_at'],
+                    )
+                    for item in items_data
+                ],
             )
 
         conn.commit()
@@ -2846,14 +2905,15 @@ class DatabaseManager:
 
         # Populate from tracks
         cursor.execute("""
-            INSERT INTO artists (name, cover_path, song_count, album_count)
+            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
             SELECT
                 artist as name,
                 (SELECT cover_path FROM tracks t2
                  WHERE t2.artist = tracks.artist AND cover_path IS NOT NULL
                  LIMIT 1) as cover_path,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                LOWER(artist) as normalized_name
             FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
             GROUP BY artist
@@ -2921,14 +2981,15 @@ class DatabaseManager:
         # Rebuild artists
         cursor.execute("DELETE FROM artists")
         cursor.execute("""
-            INSERT INTO artists (name, cover_path, song_count, album_count)
+            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
             SELECT
                 artist as name,
                 (SELECT cover_path FROM tracks t2
                  WHERE t2.artist = tracks.artist AND cover_path IS NOT NULL
                  LIMIT 1) as cover_path,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                LOWER(artist) as normalized_name
             FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
             GROUP BY artist
@@ -3146,9 +3207,9 @@ class DatabaseManager:
         else:
             # Insert new artist
             cursor.execute("""
-                INSERT INTO artists (name, cover_path, song_count, album_count)
-                VALUES (?, ?, 1, ?)
-            """, (artist, cover_path, 1 if album else 0))
+                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+                VALUES (?, ?, 1, ?, LOWER(?))
+            """, (artist, cover_path, 1 if album else 0, artist))
 
         conn.commit()
 

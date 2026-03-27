@@ -3,6 +3,7 @@ Unified playlist item model for local and cloud playback.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
@@ -215,7 +216,6 @@ class PlaylistItem:
         if self.title:
             return self.title
         if self.local_path:
-            import os
             return os.path.basename(self.local_path)
         return "Unknown Track"
 

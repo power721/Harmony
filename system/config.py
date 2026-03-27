@@ -2,6 +2,8 @@
 Configuration manager for the music player.
 Unified configuration storage using database.
 """
+import base64
+import json
 import logging
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -332,7 +334,6 @@ class ConfigManager:
         Returns:
             Geometry bytes or None
         """
-        import base64
         geometry_b64 = self.get(SettingKey.UI_GEOMETRY)
         if geometry_b64:
             try:
@@ -348,7 +349,6 @@ class ConfigManager:
         Args:
             geometry: Geometry bytes from saveGeometry()
         """
-        import base64
         self.set(SettingKey.UI_GEOMETRY, base64.b64encode(geometry).decode('utf-8'))
 
     def get_splitter_state(self) -> Optional[bytes]:
@@ -358,7 +358,6 @@ class ConfigManager:
         Returns:
             Splitter state bytes or None
         """
-        import base64
         state_b64 = self.get(SettingKey.UI_SPLITTER)
         if state_b64:
             try:
@@ -374,7 +373,6 @@ class ConfigManager:
         Args:
             state: Splitter state bytes from saveState()
         """
-        import base64
         self.set(SettingKey.UI_SPLITTER, base64.b64encode(state).decode('utf-8'))
 
     def get_view_type(self) -> str:
@@ -535,7 +533,6 @@ class ConfigManager:
             Dict with credential data or None if not configured
         """
         # Try to get full credential JSON first
-        import json
         credential_data = self.get(SettingKey.QQMUSIC_CREDENTIAL)
         if credential_data:
             # Handle both dict (already parsed) and string (JSON)
@@ -572,7 +569,6 @@ class ConfigManager:
         Args:
             credential: Dict with credential data (can be full credential or just musicid/musickey)
         """
-        import json
 
         # Handle both full credential dict and simple credential
         musicid = credential.get('musicid') or credential.get('str_musicid', '')

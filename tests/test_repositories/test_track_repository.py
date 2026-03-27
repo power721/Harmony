@@ -63,7 +63,8 @@ def temp_db():
             name TEXT PRIMARY KEY,
             cover_path TEXT,
             song_count INTEGER,
-            album_count INTEGER
+            album_count INTEGER,
+            normalized_name TEXT
         )
     """)
 
