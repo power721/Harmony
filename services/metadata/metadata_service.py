@@ -8,7 +8,7 @@ from typing import Dict, Any
 import mutagen
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3NoHeaderError
-from mutagen.mp3 import MP3
+from mutagen.mp3 import MP3, HeaderNotFoundError
 from mutagen.mp4 import MP4
 from mutagen.oggvorbis import OggVorbis
 from mutagen.wave import WAVE
@@ -75,24 +75,31 @@ class MetadataService:
 
             # Get file extension and use appropriate mutagen class
             suffix = path.suffix.lower()
+            audio = None
 
-            if suffix == ".mp3":
-                audio = MP3(file_path)
-                metadata.update(cls._parse_mp3(audio))
-            elif suffix == ".flac":
-                audio = FLAC(file_path)
-                metadata.update(cls._parse_flac(audio))
-            elif suffix in {".ogg", ".oga"}:
-                audio = OggVorbis(file_path)
-                metadata.update(cls._parse_ogg(audio))
-            elif suffix in {".m4a", ".mp4"}:
-                audio = MP4(file_path)
-                metadata.update(cls._parse_mp4(audio))
-            elif suffix == ".wav":
-                audio = WAVE(file_path)
-                metadata.update(cls._parse_wav(audio))
-            else:
-                # Fallback to mutagen.File
+            try:
+                if suffix == ".mp3":
+                    audio = MP3(file_path)
+                    metadata.update(cls._parse_mp3(audio))
+                elif suffix == ".flac":
+                    audio = FLAC(file_path)
+                    metadata.update(cls._parse_flac(audio))
+                elif suffix in {".ogg", ".oga"}:
+                    audio = OggVorbis(file_path)
+                    metadata.update(cls._parse_ogg(audio))
+                elif suffix in {".m4a", ".mp4"}:
+                    audio = MP4(file_path)
+                    metadata.update(cls._parse_mp4(audio))
+                elif suffix == ".wav":
+                    audio = WAVE(file_path)
+                    metadata.update(cls._parse_wav(audio))
+                else:
+                    audio = mutagen.File(file_path)
+                    if audio is not None:
+                        metadata["duration"] = audio.info.length
+            except HeaderNotFoundError:
+                # File extension doesn't match actual format, detect by content
+                logger.warning(f"Extension {suffix} doesn't match content for {file_path}, falling back to content detection")
                 audio = mutagen.File(file_path)
                 if audio is not None:
                     metadata["duration"] = audio.info.length

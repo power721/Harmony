@@ -8,7 +8,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget, QWidget, QComboBox, QFileDialog
+    QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget,
+    QWidget, QComboBox, QFileDialog, QProgressDialog
 )
 
 from system.i18n import t
@@ -53,6 +54,7 @@ class GeneralSettingsDialog(QDialog):
         super().__init__(parent)
         self._config = config_manager
         self._verify_thread: Optional[VerifyLoginThread] = None
+        self._batch_worker = None
         self._setup_ui()
         self._load_settings()
 
@@ -461,6 +463,61 @@ class GeneralSettingsDialog(QDialog):
         cache_layout.addStretch()
         tab_widget.addTab(cache_tab, t("cache_tab"))
 
+        # Covers Tab
+        covers_tab = QWidget()
+        covers_layout = QVBoxLayout(covers_tab)
+        covers_layout.setSpacing(10)
+
+        # Only missing checkbox (shared by both sections)
+        self._covers_missing_only = QCheckBox(t("batch_covers_missing_only"))
+        self._covers_missing_only.setChecked(True)
+        covers_layout.addWidget(self._covers_missing_only)
+
+        # Artist covers section
+        artist_covers_group = QGroupBox(t("artist_cover"))
+        artist_covers_section = QVBoxLayout()
+        artist_covers_section.setSpacing(8)
+
+        self._artist_covers_count = QLabel()
+        self._artist_covers_count.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        artist_covers_section.addWidget(self._artist_covers_count)
+
+        artist_covers_hint = QLabel(t("batch_artist_covers_hint"))
+        artist_covers_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        artist_covers_hint.setWordWrap(True)
+        artist_covers_section.addWidget(artist_covers_hint)
+
+        self._download_artist_covers_btn = QPushButton(t("batch_download_artist_covers"))
+        self._download_artist_covers_btn.clicked.connect(self._batch_download_artist_covers)
+        artist_covers_section.addWidget(self._download_artist_covers_btn)
+
+        artist_covers_group.setLayout(artist_covers_section)
+        covers_layout.addWidget(artist_covers_group)
+
+        # Album covers section
+        album_covers_group = QGroupBox(t("album_art"))
+        album_covers_section = QVBoxLayout()
+        album_covers_section.setSpacing(8)
+
+        self._album_covers_count = QLabel()
+        self._album_covers_count.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        album_covers_section.addWidget(self._album_covers_count)
+
+        album_covers_hint = QLabel(t("batch_album_covers_hint"))
+        album_covers_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        album_covers_hint.setWordWrap(True)
+        album_covers_section.addWidget(album_covers_hint)
+
+        self._download_album_covers_btn = QPushButton(t("batch_download_album_covers"))
+        self._download_album_covers_btn.clicked.connect(self._batch_download_album_covers)
+        album_covers_section.addWidget(self._download_album_covers_btn)
+
+        album_covers_group.setLayout(album_covers_section)
+        covers_layout.addWidget(album_covers_group)
+
+        covers_layout.addStretch()
+        tab_widget.addTab(covers_tab, t("covers_tab"))
+
         layout.addWidget(tab_widget)
 
         # Buttons
@@ -583,6 +640,9 @@ class GeneralSettingsDialog(QDialog):
         # Set initial enabled states
         self._on_strategy_changed(self._strategy_combo.currentIndex())
         self._on_auto_cleanup_changed(auto_enabled)
+
+        # Update cover status
+        self._update_covers_status()
 
     def _save_settings(self):
         """Save settings to config."""
@@ -931,11 +991,178 @@ class GeneralSettingsDialog(QDialog):
             logger.error(f"Manual cleanup failed: {e}")
             QMessageBox.critical(self, t("error"), f"Cleanup failed: {e}")
 
+    def _update_covers_status(self):
+        """Update cover counts."""
+        try:
+            from app.bootstrap import Bootstrap
+            from pathlib import Path
+            bootstrap = Bootstrap.instance()
+            if not bootstrap:
+                return
+            library_service = bootstrap.library_service
+            if not library_service:
+                return
+
+            artists = library_service.get_artists()
+            total_artists = len(artists)
+            missing_artists = sum(
+                1 for a in artists
+                if not a.cover_path or not Path(a.cover_path).exists()
+            )
+            self._artist_covers_count.setText(
+                t("batch_covers_count_info").format(missing=missing_artists, total=total_artists)
+            )
+
+            albums = library_service.get_albums()
+            total_albums = len(albums)
+            missing_albums = sum(
+                1 for a in albums
+                if not a.cover_path or not Path(a.cover_path).exists()
+            )
+            self._album_covers_count.setText(
+                t("batch_covers_count_info").format(missing=missing_albums, total=total_albums)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update covers status: {e}")
+
+    def _batch_download_artist_covers(self):
+        """Start batch artist cover download."""
+        from ui.workers.batch_cover_worker import BatchArtistCoverWorker
+        from app.bootstrap import Bootstrap
+        from pathlib import Path
+
+        bootstrap = Bootstrap.instance()
+        cover_service = bootstrap.cover_service
+        library_service = bootstrap.library_service
+
+        artists = library_service.get_artists()
+        missing_only = self._covers_missing_only.isChecked()
+        if missing_only:
+            artists = [
+                a for a in artists
+                if not a.cover_path or not Path(a.cover_path).exists()
+            ]
+
+        if not artists:
+            QMessageBox.information(self, t("artist_cover"), t("batch_no_missing_covers"))
+            return
+
+        self._download_artist_covers_btn.setEnabled(False)
+
+        progress = QProgressDialog(
+            t("batch_downloading_artist_cover"), t("cancel"),
+            0, len(artists), self
+        )
+        progress.setWindowTitle(t("batch_download_artist_covers"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+
+        worker = BatchArtistCoverWorker(cover_service, library_service, artists)
+        self._batch_worker = worker
+
+        def on_item(name):
+            progress.setLabelText(f"{t('batch_downloading_artist_cover')}: {name}")
+
+        def on_progress(current, total):
+            progress.setValue(current)
+
+        def on_finished(success, failed):
+            progress.close()
+            self._download_artist_covers_btn.setEnabled(True)
+            self._batch_worker = None
+            message = t("batch_cover_result").format(success=success, failed=failed)
+            QMessageBox.information(self, t("batch_download_artist_covers"), message)
+            self._update_covers_status()
+            # Notify UI to refresh covers
+            from system.event_bus import EventBus
+            EventBus.instance().cover_updated.emit(None, True)
+
+        def on_cancel():
+            worker.cancel()
+
+        worker.item_progress.connect(on_item)
+        worker.progress.connect(on_progress)
+        worker.finished_signal.connect(on_finished)
+        progress.canceled.connect(on_cancel)
+
+        progress.show()
+        worker.start()
+
+    def _batch_download_album_covers(self):
+        """Start batch album cover download."""
+        from ui.workers.batch_cover_worker import BatchAlbumCoverWorker
+        from app.bootstrap import Bootstrap
+        from pathlib import Path
+
+        bootstrap = Bootstrap.instance()
+        cover_service = bootstrap.cover_service
+        library_service = bootstrap.library_service
+
+        albums = library_service.get_albums()
+        missing_only = self._covers_missing_only.isChecked()
+        if missing_only:
+            albums = [
+                a for a in albums
+                if not a.cover_path or not Path(a.cover_path).exists()
+            ]
+
+        if not albums:
+            QMessageBox.information(self, t("album_art"), t("batch_no_missing_covers"))
+            return
+
+        self._download_album_covers_btn.setEnabled(False)
+
+        progress = QProgressDialog(
+            t("batch_downloading_album_cover"), t("cancel"),
+            0, len(albums), self
+        )
+        progress.setWindowTitle(t("batch_download_album_covers"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+
+        worker = BatchAlbumCoverWorker(cover_service, library_service, albums)
+        self._batch_worker = worker
+
+        def on_item(name):
+            progress.setLabelText(f"{t('batch_downloading_album_cover')}: {name}")
+
+        def on_progress(current, total):
+            progress.setValue(current)
+
+        def on_finished(success, failed):
+            progress.close()
+            self._download_album_covers_btn.setEnabled(True)
+            self._batch_worker = None
+            message = t("batch_cover_result").format(success=success, failed=failed)
+            QMessageBox.information(self, t("batch_download_album_covers"), message)
+            self._update_covers_status()
+            from system.event_bus import EventBus
+            EventBus.instance().cover_updated.emit(None, True)
+
+        def on_cancel():
+            worker.cancel()
+
+        worker.item_progress.connect(on_item)
+        worker.progress.connect(on_progress)
+        worker.finished_signal.connect(on_finished)
+        progress.canceled.connect(on_cancel)
+
+        progress.show()
+        worker.start()
+
     def closeEvent(self, event):
         """Handle dialog close event."""
         if self._verify_thread:
             self._verify_thread.quit()
             self._verify_thread.wait()
+        if self._batch_worker:
+            self._batch_worker.cancel()
+            self._batch_worker.quit()
+            self._batch_worker.wait()
         event.accept()
 
 # Backward compatibility alias

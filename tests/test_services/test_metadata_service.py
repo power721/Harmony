@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 from services.metadata.metadata_service import MetadataService
+from mutagen.mp3 import HeaderNotFoundError
 
 
 class TestMetadataService:
@@ -233,3 +234,22 @@ class TestMetadataService:
 
             assert result["title"] == "M4A Value"
             assert result["duration"] == 150.0
+
+    @patch("services.metadata.metadata_service.mutagen.File")
+    @patch("services.metadata.metadata_service.MP3", side_effect=HeaderNotFoundError("can't sync to MPEG frame"))
+    def test_extract_metadata_mp3_fallback_to_content_detection(self, mock_mp3, mock_mutagen_file):
+        """Test that .mp3 file with wrong format falls back to content detection."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 200.0
+        mock_mutagen_file.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".mp3"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("misnamed.mp3")
+
+            assert result["duration"] == 200.0
+            assert result["title"] == "song"
+            mock_mutagen_file.assert_called_once_with("misnamed.mp3")

@@ -295,12 +295,6 @@ class DatabaseManager:
                            ON tracks(created_at DESC)
                        """)
 
-        # H-01: Index for cloud_files.file_id lookups
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_cloud_files_file_id
-                           ON cloud_files(file_id)
-                       """)
-
         # H-02: Indexes for favorites table
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_favorites_track_id
@@ -329,19 +323,6 @@ class DatabaseManager:
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_position
                            ON playlist_items(playlist_id, position)
-                       """)
-
-        # H-04: Additional composite index for cloud folder browsing
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_cloud_files_account_parent
-                           ON cloud_files(account_id, parent_id)
-                       """)
-
-        # M-04: Partial index for cloud_files.local_path
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_cloud_files_local_path
-                           ON cloud_files(local_path)
-                           WHERE local_path IS NOT NULL
                        """)
 
         # Create cloud_accounts table
@@ -480,6 +461,22 @@ class DatabaseManager:
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_cloud_files_parent
                            ON cloud_files(parent_id)
+                       """)
+        # H-01: Index for cloud_files.file_id lookups
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_file_id
+                           ON cloud_files(file_id)
+                       """)
+        # H-04: Additional composite index for cloud folder browsing
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_account_parent
+                           ON cloud_files(account_id, parent_id)
+                       """)
+        # M-04: Partial index for cloud_files.local_path
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_files_local_path
+                           ON cloud_files(local_path)
+                           WHERE local_path IS NOT NULL
                        """)
 
         # Create settings table for unified configuration storage

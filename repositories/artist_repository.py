@@ -147,52 +147,86 @@ class SqliteArtistRepository(BaseRepository):
 
     def refresh(self) -> bool:
         """
-        Refresh the artists table from track_artists junction table.
+        Refresh the artists table.
+        Uses tracks.artist as the source of truth, split into individual artists.
         Preserves existing cover_path for artists that already have one.
 
         Returns:
             True if successful
         """
-        from services.metadata import split_artists, normalize_artist_name
+        from services.metadata.artist_parser import split_artists, split_artists_aware, normalize_artist_name
 
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Get existing cover paths
+        # Load existing cover paths
         cursor.execute("""
             SELECT name, cover_path FROM artists
         """)
         existing_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
 
-        # Get artist data from junction table before clearing
+        # Phase 1: Build known artists set using only regex splitting.
+        # This ensures composite entries like "周杰伦 费玉清" are broken down
+        # so the set contains only individual artist names.
         cursor.execute("""
-            SELECT
-                a.name,
-                a.normalized_name,
-                COUNT(DISTINCT ta.track_id) as song_count,
-                COUNT(DISTINCT t.album) as album_count
-            FROM track_artists ta
-            JOIN tracks t ON ta.track_id = t.id
-            JOIN artists a ON ta.artist_id = a.id
-            GROUP BY a.id
+            SELECT DISTINCT artist FROM tracks
+            WHERE artist IS NOT NULL AND artist != ''
         """)
-        artist_data = cursor.fetchall()
+        known_artists = set()
+        for row in cursor.fetchall():
+            for name in split_artists(row["artist"]):
+                known_artists.add(normalize_artist_name(name))
 
-        # Clear artists table
+        # Collect all artist strings from tracks
+        cursor.execute("""
+            SELECT DISTINCT artist, cover_path FROM tracks
+            WHERE artist IS NOT NULL AND artist != ''
+        """)
+        rows = cursor.fetchall()
+
+        # Phase 2: Split with known artists awareness
+        artist_data = {}  # name -> {song_count, albums, cover_path}
+        for row in rows:
+            artist_string = row["artist"]
+            track_cover = row["cover_path"]
+            for name in split_artists_aware(artist_string, known_artists):
+                if name not in artist_data:
+                    artist_data[name] = {"songs": 0, "albums": set(), "cover": None}
+                artist_data[name]["songs"] += 1
+                if track_cover and not artist_data[name]["cover"]:
+                    artist_data[name]["cover"] = track_cover
+
+        # Also count distinct albums per artist
+        cursor.execute("""
+            SELECT artist, album FROM tracks
+            WHERE artist IS NOT NULL AND artist != ''
+              AND album IS NOT NULL AND album != ''
+        """)
+        for row in cursor.fetchall():
+            for name in split_artists_aware(row["artist"], known_artists):
+                if name in artist_data:
+                    artist_data[name]["albums"].add(row["album"])
+
+        # Clear and rebuild
         cursor.execute("DELETE FROM artists")
-
-        # Rebuild from collected data
-        for row in artist_data:
+        for name, data in artist_data.items():
             cursor.execute("""
-                INSERT INTO artists (name, normalized_name, song_count, album_count, cover_path)
+                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
                 VALUES (?, ?, ?, ?, ?)
             """, (
-                row["name"],
-                row["normalized_name"],
-                row["song_count"],
-                row["album_count"],
-                existing_covers.get(row["name"])
+                name,
+                data["cover"],
+                data["songs"],
+                len(data["albums"]),
+                name.lower(),
             ))
+
+        # Restore preserved cover_path values (user-set covers)
+        for name, cover_path in existing_covers.items():
+            if cover_path:
+                cursor.execute("""
+                    UPDATE artists SET cover_path = ? WHERE name = ? AND (cover_path IS NULL OR cover_path = '')
+                """, (cover_path, name))
 
         conn.commit()
         return True

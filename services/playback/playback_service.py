@@ -1031,9 +1031,8 @@ class PlaybackService(QObject):
                         item.track_id = track_id
                         self.save_queue()
 
-            # Preload next cloud track if current track is ready
-            if item.is_local or (item.is_cloud and item.local_path):
-                self._preload_next_cloud_track()
+            # Preload next track
+            self._preload_next_cloud_track()
 
     def _on_state_changed(self, state: PlaybackState):
         """Handle state change."""
@@ -1288,8 +1287,8 @@ class PlaybackService(QObject):
         if not next_item:
             return
 
-        # Skip if has track_id (already in library)
-        if next_item.track_id:
+        # Skip if not needing download or local file already exists
+        if not next_item.needs_download or (next_item.local_path and Path(next_item.local_path).exists()):
             return
 
         # Handle online music preload

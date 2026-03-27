@@ -91,11 +91,15 @@ class SqliteTrackRepository(BaseRepository):
 
     def add(self, track: Track) -> TrackId:
         """Add a new track and return its ID."""
-        from services.metadata import split_artists, normalize_artist_name
+        from services.metadata import split_artists_aware, normalize_artist_name
 
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
+            # Load known artists for space-separated name splitting
+            cursor.execute("SELECT normalized_name FROM artists")
+            known_artists = {row[0] for row in cursor.fetchall() if row[0]}
+
             cursor.execute("""
                            INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id, source)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -108,7 +112,7 @@ class SqliteTrackRepository(BaseRepository):
 
             # Create artist entries and junction records
             if track.artist:
-                artist_names = split_artists(track.artist)
+                artist_names = split_artists_aware(track.artist, known_artists)
                 for position, artist_name in enumerate(artist_names):
                     normalized = normalize_artist_name(artist_name)
                     # Insert or get artist
@@ -698,18 +702,22 @@ class SqliteTrackRepository(BaseRepository):
         Returns:
             True if successful
         """
-        from services.metadata import split_artists, normalize_artist_name
+        from services.metadata import split_artists_aware, normalize_artist_name
 
         conn = self._get_connection()
         cursor = conn.cursor()
 
         try:
+            # Load known artists for space-separated name splitting
+            cursor.execute("SELECT normalized_name FROM artists")
+            known_artists = {row[0] for row in cursor.fetchall() if row[0]}
+
             # Clear existing junction records for this track
             cursor.execute("DELETE FROM track_artists WHERE track_id = ?", (track_id,))
 
             # Create new junction records
             if artist_string:
-                artist_names = split_artists(artist_string)
+                artist_names = split_artists_aware(artist_string, known_artists)
                 for position, artist_name in enumerate(artist_names):
                     normalized = normalize_artist_name(artist_name)
                     # Insert or get artist

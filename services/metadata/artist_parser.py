@@ -3,7 +3,7 @@ Artist parsing service for splitting and normalizing artist names.
 """
 
 import re
-from typing import List
+from typing import List, Optional, Set
 
 
 # Separators for splitting artist strings
@@ -93,3 +93,95 @@ def get_canonical_artist_name(artists: List[str]) -> str:
     if not artists:
         return ""
     return ", ".join(artists)
+
+
+def _try_split_by_known(artist_name: str, known_artists: Set[str]) -> List[str]:
+    """
+    Try to split an artist name by spaces using known artists as reference.
+
+    Uses greedy matching that prefers shorter known matches over longer ones
+    when a split is possible. For example, "周杰伦 费玉清" splits into
+    ["周杰伦", "费玉清"] if "周杰伦" is known, even if the full string is
+    also in the known set.
+
+    Accepts the split if at least one part matched a known artist and all
+    unmatched parts are single words (no spaces).
+
+    Args:
+        artist_name: The artist name that may contain multiple space-separated artists
+        known_artists: Set of normalized (lowercase) artist names
+
+    Returns:
+        List of artist names, split if conditions met, otherwise original
+    """
+    if ' ' not in artist_name:
+        return [artist_name]
+
+    parts = artist_name.split(' ')
+    result = []
+    i = 0
+    matched_count = 0
+
+    while i < len(parts):
+        matched = False
+        # Try from shortest to longest: prefer shorter matches to allow
+        # more splits (handles "周杰伦 费玉清" where full string is known)
+        for j in range(i + 1, len(parts) + 1):
+            candidate = ' '.join(parts[i:j])
+            if normalize_artist_name(candidate) in known_artists:
+                result.append(candidate)
+                i = j
+                matched = True
+                matched_count += 1
+                break
+        if not matched:
+            # No match found — collect remaining words as individual candidates
+            for k in range(i, len(parts)):
+                result.append(parts[k])
+            break
+
+    if len(result) <= 1:
+        return [artist_name]
+
+    # Accept split if all parts are single words (no spaces)
+    all_single_word = all(' ' not in part for part in result)
+    if matched_count > 0 and all_single_word:
+        return result
+
+    # Accept split if all parts matched known artists
+    if matched_count == len(result):
+        return result
+
+    return [artist_name]
+
+
+def split_artists_aware(artist_string: str, known_artists: Optional[Set[str]] = None) -> List[str]:
+    """
+    Split an artist string into individual artist names, with awareness of known artists.
+
+    First splits by standard separators (commas, slashes, feat., etc.),
+    then tries to further split space-containing parts by matching against
+    known artist names.
+
+    Args:
+        artist_string: The artist string to split
+        known_artists: Optional set of normalized (lowercase) known artist names.
+                      When provided, space-separated names are split if all parts
+                      match known artists. When None, behaves identically to split_artists().
+
+    Returns:
+        List of individual artist names
+    """
+    artists = split_artists(artist_string)
+
+    if not known_artists:
+        return artists
+
+    result = []
+    for artist in artists:
+        if ' ' in artist:
+            result.extend(_try_split_by_known(artist, known_artists))
+        else:
+            result.append(artist)
+
+    return result
