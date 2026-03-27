@@ -731,6 +731,35 @@ class QQMusicClient:
         result = self._make_request('music.trackInfo.UniformRuleCtrl', 'CgiGetTrackInfo', params)
         return result.get('tracks', [])
 
+    def get_fav_song(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorite songs (dirid=201)."""
+        params = {
+            "disstid": 0,
+            "dirid": 201,
+            "tag": True,
+            "song_begin": num * (page - 1),
+            "song_num": num,
+            "userinfo": True,
+            "orderlist": True,
+            "enc_host_uin": euin,
+        }
+        return self._make_request("music.srfDissInfo.DissInfo", "CgiGetDiss", params)
+
+    def get_created_songlist(self, uin: str) -> Dict:
+        """Get user's created playlists."""
+        params = {"uin": uin}
+        return self._make_request("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin", params)
+
+    def get_fav_songlist(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorited external playlists."""
+        params = {"uin": euin, "offset": (page - 1) * num, "size": num}
+        return self._make_request("music.musicasset.PlaylistFavRead", "CgiGetPlaylistFavInfo", params)
+
+    def get_fav_album(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorited albums."""
+        params = {"euin": euin, "offset": (page - 1) * num, "size": num}
+        return self._make_request("music.musicasset.AlbumFavRead", "CgiGetAlbumFavInfo", params)
+
     def verify_login(self) -> Dict[str, Any]:
         """
         Verify if current credential is valid by calling profile API.
