@@ -1136,6 +1136,116 @@ class OnlineMusicView(QWidget):
         if len(self._fav_data) == 4:
             self._display_favorites_cards()
 
+    def _get_random_cover(self, items: list) -> str:
+        """Get a random cover from a list of items."""
+        import random
+
+        if not items:
+            return ""
+
+        # Filter items that have cover_url
+        items_with_cover = [item for item in items if item.get("cover_url")]
+
+        if not items_with_cover:
+            return ""
+
+        # Select a random item
+        random_item = random.choice(items_with_cover)
+        return random_item.get("cover_url", "")
+
+    def _get_random_cover_from_items(self, data: list, recommend_type: str) -> str:
+        """Extract a random cover from recommendation data based on type."""
+        import random
+
+        if not data:
+            return ""
+
+        # Filter items that have valid cover data
+        valid_items = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            cover_url = None
+
+            if recommend_type == 'songlist':
+                # Playlist structure
+                playlist_info = item.get('Playlist', item)
+                if isinstance(playlist_info, dict):
+                    # Try basic/content structures
+                    if 'basic' in playlist_info:
+                        basic = playlist_info.get('basic', {})
+                        if isinstance(basic, dict):
+                            cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
+
+                    if not cover_url and 'content' in playlist_info:
+                        content = playlist_info.get('content', {})
+                        if isinstance(content, dict):
+                            cover = content.get('cover_url') or content.get('cover')
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
+
+                    if not cover_url:
+                        cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
+                                playlist_info.get('picurl') or playlist_info.get('pic'))
+                        if cover:
+                            if isinstance(cover, dict):
+                                cover_url = cover.get('default_url') or cover.get('small_url')
+                            else:
+                                cover_url = cover
+
+                    # Try to get from songlist
+                    if not cover_url:
+                        song_list = playlist_info.get('songlist', [])
+                        if song_list:
+                            album = song_list[0].get('album', {})
+                            if isinstance(album, dict):
+                                album_mid = album.get('mid')
+                                if album_mid:
+                                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            elif recommend_type == 'radar':
+                # Radar structure
+                track_info = item.get('Track', {})
+                if isinstance(track_info, dict):
+                    album = track_info.get('album', {})
+                    if isinstance(album, dict):
+                        album_mid = album.get('mid')
+                        if album_mid:
+                            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            else:
+                # Song structure (guess, home_feed, newsong)
+                cover_url = (item.get('cover') or item.get('picurl') or
+                            item.get('cover_url') or item.get('pic'))
+
+                if not cover_url:
+                    album_mid = None
+                    album = item.get('album', {})
+                    if isinstance(album, dict):
+                        album_mid = album.get('mid')
+                    if not album_mid:
+                        album_mid = item.get('albummid') or item.get('album_mid')
+
+                    if album_mid:
+                        cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            if cover_url:
+                valid_items.append(cover_url)
+
+        if valid_items:
+            return random.choice(valid_items)
+
+        return ""
+
     def _display_favorites_cards(self):
         """Display 4 summary cards in the favorites section."""
         from ui.icons import get_icon, IconName
@@ -1148,7 +1258,7 @@ class OnlineMusicView(QWidget):
             "id": "fav_songs",
             "title": t("fav_songs"),
             "subtitle": f"{len(fav_songs)} {t('songs')}",
-            "cover_url": fav_songs[0].get("cover_url", "") if fav_songs else "",
+            "cover_url": self._get_random_cover(fav_songs),
             "card_type": "fav_songs",
         })
 
@@ -1158,7 +1268,7 @@ class OnlineMusicView(QWidget):
             "id": "created_playlists",
             "title": t("created_playlists"),
             "subtitle": f"{len(created_pl)} {t('playlists')}",
-            "cover_url": created_pl[0].get("cover_url", "") if created_pl else "",
+            "cover_url": self._get_random_cover(created_pl),
             "card_type": "created_playlists",
         })
 
@@ -1168,7 +1278,7 @@ class OnlineMusicView(QWidget):
             "id": "fav_playlists",
             "title": t("fav_playlists"),
             "subtitle": f"{len(fav_pl)} {t('playlists')}",
-            "cover_url": fav_pl[0].get("cover_url", "") if fav_pl else "",
+            "cover_url": self._get_random_cover(fav_pl),
             "card_type": "fav_playlists",
         })
 
@@ -1178,7 +1288,7 @@ class OnlineMusicView(QWidget):
             "id": "fav_albums",
             "title": t("fav_albums"),
             "subtitle": f"{len(fav_albums)} {t('albums')}",
-            "cover_url": fav_albums[0].get("cover_url", "") if fav_albums else "",
+            "cover_url": self._get_random_cover(fav_albums),
             "card_type": "fav_albums",
         })
 
@@ -1192,14 +1302,15 @@ class OnlineMusicView(QWidget):
                 if not data:
                     return None
 
-                # Get first item
+                # Get first item for structure analysis
                 first_item = data[0]
                 if not isinstance(first_item, dict):
                     return None
 
                 logger.debug(f"Parsing {recommend_type} list item: keys={list(first_item.keys())[:15]}")
 
-                cover_url = None
+                # Get a random cover from all items
+                cover_url = self._get_random_cover_from_items(data, recommend_type)
                 playlist_id = None
 
                 # Handle different response structures based on type
@@ -1217,92 +1328,35 @@ class OnlineMusicView(QWidget):
                             basic = playlist_info.get('basic', {})
                             if isinstance(basic, dict):
                                 playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
-                                # Cover can be a URL string or a dict with urls
-                                basic_cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
-                                if basic_cover:
-                                    if isinstance(basic_cover, dict):
-                                        cover_url = basic_cover.get('default_url') or basic_cover.get('small_url')
-                                    else:
-                                        cover_url = basic_cover
 
                         if not playlist_id and 'content' in playlist_info:
                             content = playlist_info.get('content', {})
                             if isinstance(content, dict):
                                 playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
-                                content_cover = content.get('cover_url') or content.get('cover')
-                                if content_cover and not cover_url:
-                                    if isinstance(content_cover, dict):
-                                        cover_url = content_cover.get('default_url') or content_cover.get('small_url')
-                                    else:
-                                        cover_url = content_cover
 
                         # Fallback to direct fields
                         if not playlist_id:
                             playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
-                        if not cover_url:
-                            direct_cover = playlist_info.get('cover_url') or playlist_info.get('cover') or playlist_info.get('picurl')
-                            if direct_cover:
-                                if isinstance(direct_cover, dict):
-                                    cover_url = direct_cover.get('default_url') or direct_cover.get('small_url')
-                                else:
-                                    cover_url = direct_cover
 
-                        logger.debug(f"songlist from Playlist: id={playlist_id}, cover={cover_url}")
-                        if not cover_url:
-                            # Try to get from first song
-                            song_list = playlist_info.get('songlist', [])
-                            if song_list:
-                                album = song_list[0].get('album', {})
-                                if isinstance(album, dict):
-                                    album_mid = album.get('mid')
-                                    if album_mid:
-                                        cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                        logger.debug(f"songlist from Playlist: id={playlist_id}")
                     else:
                         # Try direct structure - check for various ID fields
                         playlist_id = (first_item.get('tid') or first_item.get('id') or
                                       first_item.get('disstid') or first_item.get('dissid'))
-                        direct_cover = (first_item.get('cover_url') or first_item.get('cover') or
-                                       first_item.get('picurl') or first_item.get('pic'))
-                        if direct_cover:
-                            if isinstance(direct_cover, dict):
-                                cover_url = direct_cover.get('default_url') or direct_cover.get('small_url')
-                            else:
-                                cover_url = direct_cover
-                        logger.debug(f"songlist direct: id={playlist_id}, cover={cover_url}")
+                        logger.debug(f"songlist direct: id={playlist_id}")
 
                 elif recommend_type == 'radar':
                     # Radar structure: {'Track': {...}, 'Abt': ..., 'Ext': ...}
-                    track_info = first_item.get('Track', {})
-                    if isinstance(track_info, dict):
-                        album = track_info.get('album', {})
-                        if isinstance(album, dict):
-                            album_mid = album.get('mid')
-                            if album_mid:
-                                cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                    # Cover is already extracted by _get_random_cover_from_items
+                    pass
 
                 else:
                     # Song structure: {'album': {...}, 'singer': [...], ...}
                     # This handles guess, home_feed, newsong types
                     logger.debug(f"{recommend_type} first_item keys: {list(first_item.keys())}")
 
-                    # Try to get cover from various fields
-                    cover_url = (first_item.get('cover') or first_item.get('picurl') or
-                                first_item.get('cover_url') or first_item.get('pic'))
-
-                    # From album mid (for songs)
-                    if not cover_url:
-                        album_mid = None
-                        album = first_item.get('album', {})
-                        if isinstance(album, dict):
-                            album_mid = album.get('mid')
-                        if not album_mid:
-                            album_mid = first_item.get('albummid') or first_item.get('album_mid')
-
-                        if album_mid:
-                            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
-
+                    # Cover is already extracted by _get_random_cover_from_items
                     # Get playlist ID if available (for playlist-based recommendations)
-                    # For song-based recommendations, we'll use album instead
                     playlist_id = (first_item.get('id') or first_item.get('disstid') or
                                   first_item.get('tid') or first_item.get('playlist_id'))
 
@@ -1333,20 +1387,8 @@ class OnlineMusicView(QWidget):
                     if isinstance(first_item, dict):
                         logger.debug(f"  First item keys: {list(first_item.keys())[:15]}")
 
-                        cover_url = None
-                        playlist_id = None
-
-                        # Try various cover sources
-                        cover_url = (first_item.get('cover') or first_item.get('picurl') or
-                                    first_item.get('cover_url') or first_item.get('pic'))
-
-                        if not cover_url:
-                            album = first_item.get('album', {})
-                            if isinstance(album, dict):
-                                album_mid = album.get('mid')
-                                if album_mid:
-                                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
-
+                        # Get a random cover from all items
+                        cover_url = self._get_random_cover_from_items(content, recommend_type)
                         playlist_id = (first_item.get('id') or first_item.get('disstid') or
                                       first_item.get('tid') or data.get('id'))
 
@@ -1482,6 +1524,8 @@ class OnlineMusicView(QWidget):
         # Hide favorites and recommendations when viewing details
         self._favorites_section.hide()
         self._recommend_section.hide()
+        # Show back button for playlist list view
+        self._fav_back_btn.show()
 
         recommend_type = data.get('recommend_type', '')
         raw_data = data.get('raw_data')
@@ -1497,52 +1541,109 @@ class OnlineMusicView(QWidget):
             logger.warning(f"Invalid raw_data type: {type(raw_data)}")
             return
 
-        # Handle songlist type - has playlist with songs, load via API
+        # Handle songlist type - show list of playlists
         if recommend_type == 'songlist':
-            playlist_info = raw_data.get('Playlist', {})
-            if not isinstance(playlist_info, dict) or not playlist_info:
-                playlist_info = raw_data
+            # full_data contains the list of playlists
+            if full_data and isinstance(full_data, list):
+                playlists = []
+                for item in full_data:
+                    if isinstance(item, dict):
+                        # Extract playlist info from nested structure
+                        playlist_info = item.get('Playlist', item)
+                        if not isinstance(playlist_info, dict):
+                            continue
 
-            # Try to get ID from various nested structures
-            playlist_id = None
+                        # Try to get playlist details from various nested structures
+                        # Structure: basic/content/diy
+                        playlist_id = None
+                        playlist_title = None
+                        cover_url = None
+                        song_count = 0
 
-            # New structure: basic/content/diy
-            if 'basic' in playlist_info:
-                basic = playlist_info.get('basic', {})
-                if isinstance(basic, dict):
-                    playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+                        # Try basic structure first
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+                                playlist_title = basic.get('title') or basic.get('name')
+                                # Cover can be URL string or dict
+                                cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                                if cover:
+                                    if isinstance(cover, dict):
+                                        cover_url = cover.get('default_url') or cover.get('small_url')
+                                    else:
+                                        cover_url = cover
 
-            if not playlist_id and 'content' in playlist_info:
-                content = playlist_info.get('content', {})
-                if isinstance(content, dict):
-                    playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+                        # Try content structure
+                        if not playlist_id and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+                                if not playlist_title:
+                                    playlist_title = content.get('title') or content.get('name')
+                                if not cover_url:
+                                    cover = content.get('cover_url') or content.get('cover')
+                                    if cover:
+                                        if isinstance(cover, dict):
+                                            cover_url = cover.get('default_url') or cover.get('small_url')
+                                        else:
+                                            cover_url = cover
 
-            # Fallback to direct fields
-            if not playlist_id:
-                playlist_id = (playlist_info.get('tid') or playlist_info.get('id') or
-                              playlist_info.get('disstid') or playlist_info.get('dissid') or card_id)
+                        # Fallback to direct fields
+                        if not playlist_id:
+                            playlist_id = (playlist_info.get('tid') or playlist_info.get('id') or
+                                          playlist_info.get('disstid') or playlist_info.get('dissid'))
+                        if not playlist_title:
+                            playlist_title = playlist_info.get('title') or playlist_info.get('name')
+                        if not cover_url:
+                            cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
+                                    playlist_info.get('picurl') or playlist_info.get('pic'))
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
 
-            # Try to get cover URL
-            cover_url = None
-            for key in ['cover_url', 'cover', 'picurl', 'pic']:
-                if playlist_info.get(key):
-                    cover_url = playlist_info.get(key)
-                    break
+                        # Try to get song count from various fields
+                        song_count = 0
 
-            if not cover_url and 'basic' in playlist_info:
-                basic = playlist_info.get('basic', {})
-                for key in ['cover_url', 'cover', 'picurl', 'pic']:
-                    if basic.get(key):
-                        cover_url = basic.get(key)
-                        break
+                        # Check basic/content for song_count - try multiple field name variations
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                song_count = (basic.get('song_count') or basic.get('song_num') or
+                                             basic.get('songNum') or basic.get('song_cnt') or 0)
+                        if not song_count and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                song_count = (content.get('song_count') or content.get('song_num') or
+                                             content.get('songNum') or content.get('song_cnt') or 0)
+                        # Check songlist if exists
+                        if not song_count:
+                            song_list = playlist_info.get('songlist', [])
+                            if song_list:
+                                song_count = len(song_list)
+                        # Fallback to direct field - try multiple field name variations
+                        if not song_count:
+                            song_count = (playlist_info.get('song_count') or playlist_info.get('song_num') or
+                                         playlist_info.get('songNum') or playlist_info.get('song_cnt') or
+                                         playlist_info.get('songnum') or 0)
 
-            logger.debug(f"songlist click: playlist_id={playlist_id}")
-            if playlist_id:
-                logger.info(f"Loading playlist: {playlist_id}")
-                self._detail_view.load_playlist(str(playlist_id), title, "")
-                self._stack.setCurrentWidget(self._detail_view)
+                        if playlist_id:
+                            playlists.append({
+                                'id': str(playlist_id),
+                                'title': playlist_title or '',
+                                'cover_url': cover_url or '',
+                                'song_count': song_count,
+                            })
+
+                logger.info(f"Showing {len(playlists)} recommended playlists")
+                if playlists:
+                    self._show_playlist_list_in_detail(title, playlists)
+                else:
+                    logger.warning("No valid playlists found in songlist data")
             else:
-                logger.warning(f"Could not find playlist ID for songlist")
+                logger.warning(f"Invalid full_data for songlist: {type(full_data)}")
             return
 
         # Handle radar type - Track info, show all radar songs

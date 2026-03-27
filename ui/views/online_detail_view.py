@@ -805,7 +805,7 @@ class OnlineDetailView(QWidget):
         self._current_page = 1  # Reset to first page
 
         # Set placeholder info
-        self._type_label.setText(t("playlist"))
+        self._type_label.setText(t("playlists"))
         self._name_label.setText(title)
         self._secondary_label.setText(creator)
         self._extra_label.setText("")
@@ -831,7 +831,7 @@ class OnlineDetailView(QWidget):
         self._current_page = 1
 
         # Set info
-        self._type_label.setText(t("playlist"))
+        self._type_label.setText(t("playlists"))
         self._name_label.setText(title)
         self._secondary_label.setText("")
         self._extra_label.setText("")
