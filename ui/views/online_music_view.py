@@ -2030,18 +2030,52 @@ class OnlineMusicView(QWidget):
     def _on_artist_clicked(self, artist: OnlineArtist):
         """Handle artist click - show artist detail view."""
         logger.info(f"Artist clicked: {artist.name}, mid: {artist.mid}")
+        # Push navigation state if we're coming from search results or grid view
+        if self._stack.currentWidget() in [self._results_page]:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'artists' if self._results_stack.currentWidget() == self._singers_page else 'other'
+            })
         self._detail_view.load_artist(artist.mid, artist.name)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _on_album_clicked(self, album: OnlineAlbum):
         """Handle album click - show album detail view."""
         logger.info(f"Album clicked: {album.name}, mid: {album.mid}")
+        # Push navigation state if we're coming from search results or detail view
+        current_widget = self._stack.currentWidget()
+        if current_widget == self._results_page:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'albums' if self._results_stack.currentWidget() == self._albums_page else 'other'
+            })
+        elif current_widget == self._detail_view:
+            # Coming from artist detail - push detail state
+            self._navigation_stack.append({
+                'page': 'detail',
+                'type': self._detail_view._detail_type,
+                'mid': self._detail_view._mid
+            })
         self._detail_view.load_album(album.mid, album.name, album.singer_name)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _on_playlist_clicked(self, playlist: OnlinePlaylist):
         """Handle playlist click - show playlist detail view."""
         logger.info(f"Playlist clicked: {playlist.title}, id: {playlist.id}")
+        # Push navigation state if we're coming from search results or detail view
+        current_widget = self._stack.currentWidget()
+        if current_widget == self._results_page:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'playlists' if self._results_stack.currentWidget() == self._playlists_page else 'other'
+            })
+        elif current_widget == self._detail_view:
+            # Coming from artist detail - push detail state
+            self._navigation_stack.append({
+                'page': 'detail',
+                'type': self._detail_view._detail_type,
+                'mid': self._detail_view._mid
+            })
         self._detail_view.load_playlist(playlist.id, playlist.title, playlist.creator)
         self._stack.setCurrentWidget(self._detail_view)
 
@@ -2125,6 +2159,34 @@ class OnlineMusicView(QWidget):
                 albums = prev_state.get('data', [])
                 self._show_album_list_in_detail(title, albums)
                 return
+            elif page == 'results':
+                # Return to search results
+                self._stack.setCurrentWidget(self._results_page)
+                # Restore correct tab if specified
+                tab = prev_state.get('tab', '')
+                if tab == 'artists':
+                    self._results_stack.setCurrentWidget(self._singers_page)
+                elif tab == 'albums':
+                    self._results_stack.setCurrentWidget(self._albums_page)
+                elif tab == 'playlists':
+                    self._results_stack.setCurrentWidget(self._playlists_page)
+                return
+            elif page == 'detail':
+                # Return to previous detail view (e.g., artist detail)
+                detail_type = prev_state.get('type', '')
+                mid = prev_state.get('mid')
+                if detail_type == 'artist' and mid:
+                    # Reload artist detail
+                    self._detail_view.load_artist(mid)
+                    return
+                elif detail_type == 'album' and mid:
+                    # Reload album detail
+                    self._detail_view.load_album(mid)
+                    return
+                elif detail_type == 'playlist' and mid:
+                    # Reload playlist detail
+                    self._detail_view.load_playlist(mid)
+                    return
 
         # Default behavior: return to previous page based on context
         # If tabs are visible, we came from search results
