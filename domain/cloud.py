@@ -55,3 +55,5 @@ class CloudFile:
     def __post_init__(self):
         if self.created_at is None:
             self.created_at = datetime.now()
+        if self.updated_at is None:
+            self.updated_at = datetime.now()

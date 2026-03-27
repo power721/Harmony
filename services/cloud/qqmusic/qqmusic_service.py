@@ -129,7 +129,7 @@ class QQMusicService:
             result = self.client.search(keyword, search_type='song',
                                         page_num=page, page_size=page_size)
 
-            if not result or 'body' not in result:
+            if not result or 'body' not in result or not isinstance(result.get('body'), dict):
                 return []
 
             # Mobile API uses item_song key
@@ -698,6 +698,156 @@ class QQMusicService:
             logger.error(f"Get top list songs failed: {e}", exc_info=True)
             return []
 
+    def _get_euin(self) -> str:
+        """Get encrypted UIN from credential, fetch from API if missing."""
+        if not self._credential:
+            return ""
+        euin = (
+            self._credential.get("encrypt_uin")
+            or self._credential.get("encryptUin")
+        )
+        if euin:
+            return euin
+        # Fetch euin from API via musicid
+        euin = self.client.get_euin()
+        if euin:
+            self._credential["encrypt_uin"] = euin
+            self._credential["encryptUin"] = euin
+        return euin
+
+    def _get_uin(self) -> str:
+        """Get UIN from credential."""
+        if not self._credential:
+            return ""
+        return str(self._credential.get("musicid", ""))
+
+    def get_my_fav_songs(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorite songs."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_song(euin, page=page, num=num)
+            if not result:
+                return []
+            songs = result.get("songlist", []) or []
+            tracks = []
+            for song in songs:
+                song_info = song.get("data", song) if isinstance(song, dict) else song
+                if not isinstance(song_info, dict):
+                    continue
+                singer_info = song_info.get("singer", [])
+                if isinstance(singer_info, list) and singer_info:
+                    singer_name = " / ".join(s.get("name", "") for s in singer_info)
+                elif isinstance(singer_info, dict):
+                    singer_name = singer_info.get("name", "")
+                else:
+                    singer_name = ""
+                album_info = song_info.get("album", {})
+                album_name = album_info.get("name", "") if isinstance(album_info, dict) else ""
+                tracks.append({
+                    "mid": song_info.get("songmid", "") or song_info.get("mid", ""),
+                    "title": song_info.get("songname", "") or song_info.get("name", "") or song_info.get("title", ""),
+                    "singer": singer_name,
+                    "album": album_name,
+                    "album_mid": album_info.get("mid", "") if isinstance(album_info, dict) else "",
+                    "duration": song_info.get("interval", 0) or 0,
+                    "cover_url": (f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_info.get('mid', '')}.jpg"
+                                  if isinstance(album_info, dict) and album_info.get("mid") else ""),
+                })
+            return tracks
+        except Exception as e:
+            logger.error(f"Get favorite songs failed: {e}", exc_info=True)
+            return []
+
+    def get_my_created_songlists(self) -> List[Dict[str, Any]]:
+        """Get current user's created playlists."""
+        try:
+            uin = self._get_uin()
+            if not uin:
+                return []
+            result = self.client.get_created_songlist(uin)
+            if not result:
+                return []
+            # API returns 'v_playlist' key
+            playlists = result.get("v_playlist", []) or result.get("playlist", []) or []
+            items = []
+            for pl in playlists:
+                if not isinstance(pl, dict):
+                    continue
+                items.append({
+                    "id": pl.get("tid", "") or pl.get("dissid", ""),
+                    "title": pl.get("dirName", "") or pl.get("dissname", "") or pl.get("name", ""),
+                    "cover_url": pl.get("picUrl", "") or pl.get("bigpicUrl", "") or pl.get("logo", ""),
+                    "song_count": pl.get("songNum", 0) or pl.get("song_cnt", 0),
+                    "creator": pl.get("nick", "") or pl.get("nickname", ""),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get created songlists failed: {e}", exc_info=True)
+            return []
+
+    def get_my_fav_songlists(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorited external playlists."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_songlist(euin, page=page, num=num)
+            if not result:
+                return []
+            # API returns 'v_list' key
+            playlists = result.get("v_list", []) or result.get("playlist", []) or []
+            items = []
+            for pl in playlists:
+                if not isinstance(pl, dict):
+                    continue
+                items.append({
+                    "id": pl.get("tid", "") or pl.get("dissid", ""),
+                    "title": pl.get("name", "") or pl.get("dissname", ""),
+                    "cover_url": pl.get("logo", "") or pl.get("albumPicUrl", ""),
+                    "song_count": pl.get("songnum", 0) or pl.get("song_cnt", 0),
+                    "creator": pl.get("nickname", ""),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get favorite songlists failed: {e}", exc_info=True)
+            return []
+
+    def get_my_fav_albums(self, page: int = 1, num: int = 30) -> List[Dict[str, Any]]:
+        """Get current user's favorited albums."""
+        try:
+            euin = self._get_euin()
+            if not euin:
+                return []
+            result = self.client.get_fav_album(euin, page=page, num=num)
+            if not result:
+                return []
+            # API returns 'v_list' key
+            albums = result.get("v_list", []) or result.get("albumList", []) or []
+            items = []
+            for album in albums:
+                if not isinstance(album, dict):
+                    continue
+                album_mid = album.get("mid", "") or album.get("albumMid", "")
+                # Build singer list from v_singer
+                v_singer = album.get("v_singer", [])
+                singer_name = ""
+                if isinstance(v_singer, list) and v_singer:
+                    singer_name = " / ".join(s.get("name", "") for s in v_singer if isinstance(s, dict))
+                items.append({
+                    "mid": album_mid,
+                    "title": album.get("name", "") or album.get("albumName", ""),
+                    "cover_url": (f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+                                  if album_mid else album.get("logo", "")),
+                    "singer_name": singer_name or album.get("singerName", ""),
+                    "song_count": album.get("songnum", 0) or album.get("totalNum", 0),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get favorite albums failed: {e}", exc_info=True)
+            return []
+
     def set_credential(self, credential: Dict[str, Any]):
         """
         Update credential for authenticated requests.
@@ -708,3 +858,128 @@ class QQMusicService:
         self._credential = credential
         self.client.credential = credential
         self.client._set_credential_headers()
+
+    def get_home_feed(self) -> List[Dict[str, Any]]:
+        """
+        获取主页推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_home_feed()
+            if not result:
+                return []
+            # Handle different response structures
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # v_shelf is a list of shelves, each containing item_list
+                if 'v_shelf' in result and isinstance(result['v_shelf'], list):
+                    shelves = result['v_shelf']
+                    if shelves and isinstance(shelves[0], dict):
+                        # Get songs from first shelf's item_list
+                        for shelf in shelves:
+                            items = shelf.get('item_list', [])
+                            if items:
+                                return items
+                # Try other common locations
+                for key in ['songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get home feed failed: {e}", exc_info=True)
+            return []
+
+    def get_guess_recommend(self) -> List[Dict[str, Any]]:
+        """
+        获取猜你喜欢推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_guess_recommend()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # trackList is the key for guess recommend
+                for key in ['trackList', 'songlist', 'songs', 'list', 'items', 'data', 'tracks']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get guess recommend failed: {e}", exc_info=True)
+            return []
+
+    def get_radar_recommend(self) -> List[Dict[str, Any]]:
+        """
+        获取雷达推荐数据.
+
+        Returns:
+            推荐列表
+        """
+        try:
+            result = self.client.get_radar_recommend()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # VecSongs is the key for radar recommend (capitalized)
+                for key in ['VecSongs', 'songlist', 'songs', 'list', 'items', 'trackList', 'data', 'tracks']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get radar recommend failed: {e}", exc_info=True)
+            return []
+
+    def get_recommend_songlist(self) -> List[Dict[str, Any]]:
+        """
+        获取推荐歌单数据.
+
+        Returns:
+            推荐歌单列表
+        """
+        try:
+            result = self.client.get_recommend_songlist()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # List is the key for recommend songlist (capitalized)
+                for key in ['List', 'songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get recommend songlist failed: {e}", exc_info=True)
+            return []
+
+    def get_recommend_newsong(self) -> List[Dict[str, Any]]:
+        """
+        获取推荐新歌数据.
+
+        Returns:
+            推荐新歌列表
+        """
+        try:
+            result = self.client.get_recommend_newsong()
+            if not result:
+                return []
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict):
+                # songlist is the key for new songs
+                for key in ['songlist', 'songs', 'list', 'items', 'data']:
+                    if key in result and isinstance(result[key], list):
+                        return result[key]
+            return []
+        except Exception as e:
+            logger.error(f"Get recommend newsong failed: {e}", exc_info=True)
+            return []

@@ -266,7 +266,7 @@ class QQMusicClient:
         else:
             # Use unsigned endpoint (works for most APIs)
             url = APIConfig.ENDPOINT
-            data_to_send = json.dumps(request_data).encode('utf-8')
+            data_to_send = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
         response = self.session.post(
             url,
@@ -276,7 +276,11 @@ class QQMusicClient:
         )
         response.raise_for_status()
 
-        data = response.json()
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON response: {e}") from e
+
         result_key = f'{module}.{method}'
 
         if result_key not in data:
@@ -659,6 +663,53 @@ class QQMusicClient:
 
         return self._make_request('music.musicToplist.Toplist', 'GetDetail', params)
 
+    def get_home_feed(self) -> Dict:
+        """获取主页推荐数据."""
+        data = {
+            "direction": 0,
+            "page": 1,
+            "s_num": 0,
+        }
+        return self._make_request("music.recommend.RecommendFeed", "get_recommend_feed", data)
+
+    def get_guess_recommend(self) -> Dict:
+        """获取猜你喜欢推荐数据."""
+        data = {
+            "id": 99,
+            "num": 5,
+            "from": 0,
+            "scene": 0,
+            "song_ids": [],
+            "ext": {"bluetooth": ""},
+            "should_count_down": 1,
+        }
+        return self._make_request("music.radioProxy.MbTrackRadioSvr", "get_radio_track", data)
+
+    def get_radar_recommend(self) -> Dict:
+        """获取雷达推荐数据."""
+        data = {
+            "Page": 1,
+            "ReqType": 0,
+            "FavSongs": [],
+            "EntranceSongs": [],
+        }
+        return self._make_request("music.recommend.TrackRelationServer", "GetRadarSong", data)
+
+    def get_recommend_songlist(self) -> Dict:
+        """
+        获取推荐歌单数据.
+
+        Returns:
+            推荐歌单字典
+        """
+        data = {"From": 0, "Size": 25}
+        return self._make_request('music.playlist.PlaylistSquare', 'GetRecommendFeed', data)
+
+    def get_recommend_newsong(self) -> Dict:
+        """获取推荐新歌数据."""
+        data = {"type": 5}
+        return self._make_request("newsong.NewSongServer", "get_new_song_info", data)
+
     def query_songs_by_ids(self, song_ids: List[int]) -> List[Dict]:
         """
         Query song info by ids to get mids.
@@ -679,6 +730,100 @@ class QQMusicClient:
 
         result = self._make_request('music.trackInfo.UniformRuleCtrl', 'CgiGetTrackInfo', params)
         return result.get('tracks', [])
+
+    def get_fav_song(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorite songs (dirid=201)."""
+        params = {
+            "disstid": 0,
+            "dirid": 201,
+            "tag": True,
+            "song_begin": num * (page - 1),
+            "song_num": num,
+            "userinfo": True,
+            "orderlist": True,
+            "enc_host_uin": euin,
+        }
+        return self._make_request("music.srfDissInfo.DissInfo", "CgiGetDiss", params)
+
+    def get_created_songlist(self, uin: str) -> Dict:
+        """Get user's created playlists."""
+        params = {"uin": uin}
+        return self._make_request("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin", params)
+
+    def get_fav_songlist(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorited external playlists."""
+        params = {"uin": euin, "offset": (page - 1) * num, "size": num}
+        return self._make_request("music.musicasset.PlaylistFavRead", "CgiGetPlaylistFavInfo", params)
+
+    def get_fav_album(self, euin: str, page: int = 1, num: int = 30) -> Dict:
+        """Get user's favorited albums."""
+        params = {"euin": euin, "offset": (page - 1) * num, "size": num}
+        return self._make_request("music.musicasset.AlbumFavRead", "CgiGetAlbumFavInfo", params)
+
+    def get_euin(self) -> str:
+        """
+        Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.
+
+        Returns:
+            encrypt_uin string, or empty string if failed
+        """
+        if not self.credential:
+            return ""
+
+        try:
+            musicid = self.credential.get('musicid', '')
+            if not musicid:
+                return ""
+
+            # Check cache in credential first
+            euin = self.credential.get("encrypt_uin") or self.credential.get("encryptUin")
+            if euin:
+                return euin
+
+            url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
+
+            cookies = {
+                'uin': str(musicid),
+                'qqmusic_key': self.credential.get('musickey', ''),
+                'qm_keyst': self.credential.get('musickey', ''),
+                'tmeLoginType': str(self.credential.get('login_type', 2)),
+            }
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+                'Referer': 'https://y.qq.com/',
+            }
+
+            params = {
+                'format': 'json',
+                'uin': musicid,
+                'cid': '205360838',
+                'reqfrom': '1',
+                'reqtype': '0',
+            }
+
+            response = self.session.get(
+                url,
+                params=params,
+                cookies=cookies,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            euin = data.get('data', {}).get('creator', {}).get('encrypt_uin', '')
+
+            if euin:
+                # Cache in credential
+                self.credential['encrypt_uin'] = euin
+                self.credential['encryptUin'] = euin
+
+            return euin or ""
+
+        except Exception as e:
+            logger.error(f"Failed to get euin: {e}")
+            return ""
 
     def verify_login(self) -> Dict[str, Any]:
         """

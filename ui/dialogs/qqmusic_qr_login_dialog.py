@@ -489,9 +489,3 @@ class QQMusicQRLoginDialog(QDialog):
     def _on_status_update(self, status: str):
         """Handle status update event."""
         self._status_label.setText(status)
-
-    def closeEvent(self, event):
-        """Handle dialog close event."""
-        if self._login_thread:
-            self._login_thread.stop()
-        event.accept()

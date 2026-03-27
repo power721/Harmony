@@ -7,10 +7,13 @@ import hashlib
 import base64
 import zlib
 import json
+import logging
 from typing import Optional
 
 from Crypto.Cipher import DES3
 from Crypto.Util.Padding import unpad
+
+logger = logging.getLogger(__name__)
 
 
 def generate_sign(request_data: dict) -> str:
@@ -91,7 +94,7 @@ def qrc_decrypt(encrypted_qrc_hex: str) -> str:
             return zlib.decompress(bytes(decrypted), -15).decode('utf-8')
 
     except Exception as e:
-        print(f"QRC decryption failed: {e}")
+        logger.error(f"QRC decryption failed: {e}")
         return ""
 
 

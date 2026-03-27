@@ -54,7 +54,7 @@ def add_tracks_to_playlist(
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            if hasattr(parent, "window()") and parent.window():
+            if hasattr(parent, "window") and parent.window():
                 parent.window()._nav_playlists.click()
         return False
 

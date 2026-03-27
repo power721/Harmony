@@ -34,6 +34,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
 from PySide6.QtGui import QCursor, QColor, QBrush, QAction
 
+from ui.widgets.recommend_card import RecommendSection
+
 
 class CustomQCompleter(QCompleter):
     """自定义QCompleter用于搜索建议."""
@@ -177,6 +179,72 @@ class HotkeyWorker(QThread):
         except Exception as e:
             logger.error(f"Get hotkey failed: {e}")
             self.hotkey_ready.emit([])
+
+
+class RecommendWorker(QThread):
+    """Background worker for fetching recommendations."""
+
+    recommend_ready = Signal(str, list)  # (recommend_type, list of recommendations)
+
+    def __init__(self, qqmusic_service, recommend_type: str):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+        self._recommend_type = recommend_type
+
+    def run(self):
+        try:
+            if not self._qqmusic_service:
+                self.recommend_ready.emit(self._recommend_type, [])
+                return
+
+            result = []
+            if self._recommend_type == "home_feed":
+                result = self._qqmusic_service.get_home_feed()
+            elif self._recommend_type == "guess":
+                result = self._qqmusic_service.get_guess_recommend()
+            elif self._recommend_type == "radar":
+                result = self._qqmusic_service.get_radar_recommend()
+            elif self._recommend_type == "songlist":
+                result = self._qqmusic_service.get_recommend_songlist()
+            elif self._recommend_type == "newsong":
+                result = self._qqmusic_service.get_recommend_newsong()
+
+            self.recommend_ready.emit(self._recommend_type, result)
+        except Exception as e:
+            logger.error(f"Get recommendation {self._recommend_type} failed: {e}")
+            self.recommend_ready.emit(self._recommend_type, [])
+
+
+class FavWorker(QThread):
+    """Background worker for loading favorites."""
+
+    fav_ready = Signal(str, list)  # (fav_type, list of items)
+
+    def __init__(self, qqmusic_service, fav_type: str, page: int = 1, num: int = 30):
+        super().__init__()
+        self._qqmusic_service = qqmusic_service
+        self._fav_type = fav_type
+        self._page = page
+        self._num = num
+
+    def run(self):
+        try:
+            if not self._qqmusic_service:
+                self.fav_ready.emit(self._fav_type, [])
+                return
+            result = []
+            if self._fav_type == "fav_songs":
+                result = self._qqmusic_service.get_my_fav_songs(page=self._page, num=self._num)
+            elif self._fav_type == "created_playlists":
+                result = self._qqmusic_service.get_my_created_songlists()
+            elif self._fav_type == "fav_playlists":
+                result = self._qqmusic_service.get_my_fav_songlists(page=self._page, num=self._num)
+            elif self._fav_type == "fav_albums":
+                result = self._qqmusic_service.get_my_fav_albums(page=self._page, num=self._num)
+            self.fav_ready.emit(self._fav_type, result)
+        except Exception as e:
+            logger.error(f"Get favorites {self._fav_type} failed: {e}")
+            self.fav_ready.emit(self._fav_type, [])
 
 
 class HotkeyPopup(QWidget):
@@ -342,6 +410,20 @@ class OnlineMusicView(QWidget):
         self._hotkey_popup: Optional[HotkeyPopup] = None
         self._hotkeys: List[Dict[str, Any]] = []  # Cached hotkeys
 
+        # Recommend state
+        self._recommend_workers: List[RecommendWorker] = []
+        self._recommendations: Dict[str, List[Dict[str, Any]]] = {}
+        self._recommendations_loaded = False
+
+        # Favorites state
+        self._fav_workers: List[FavWorker] = []
+        self._fav_loaded = False
+        self._fav_data: Dict[str, list] = {}  # Store loaded favorites data
+
+        # Navigation history stack - tracks where user came from
+        # Each entry is a dict: {'page': 'top_list'|'results'|'playlists'|'albums', 'data': ...}
+        self._navigation_stack: List[Dict[str, Any]] = []
+
         # State for non-song search (load more)
         self._grid_page = 1  # Current page for grid views (singer/album/playlist)
         self._grid_total = 0  # Total results for current grid search
@@ -370,6 +452,18 @@ class OnlineMusicView(QWidget):
         # Search bar
         search_bar = self._create_search_bar()
         layout.addWidget(search_bar)
+
+        # My Favorites section (shown when logged in, above recommendations)
+        # 4 cards: fav_songs, created_playlists, fav_playlists, fav_albums
+        self._favorites_section = RecommendSection(title=t("my_favorites"), parent=self)
+        self._favorites_section.recommendation_clicked.connect(self._on_favorites_card_clicked)
+        self._favorites_section.hide()
+        layout.addWidget(self._favorites_section)
+
+        # Recommendations section (shown when logged in)
+        self._recommend_section = RecommendSection(title=t("recommendations"), parent=self)
+        self._recommend_section.recommendation_clicked.connect(self._on_recommendation_clicked)
+        layout.addWidget(self._recommend_section)
 
         # Type tabs (hidden by default)
         self._tabs = self._create_type_tabs()
@@ -403,10 +497,15 @@ class OnlineMusicView(QWidget):
         self._detail_view.album_clicked.connect(self._on_album_clicked)
         self._stack.addWidget(self._detail_view)
 
-        layout.addWidget(self._stack)
+        layout.addWidget(self._stack, 1)  # Give stretch factor so it doesn't push other widgets
 
         # Apply styles
         self._apply_styles()
+
+        # Load recommendations if logged in (after UI is fully set up)
+        if self._service._has_qqmusic_credential():
+            self._load_recommendations()
+            self._load_favorites()
 
     def showEvent(self, event):
         """Handle show event - load top lists on first display."""
@@ -597,10 +696,39 @@ class OnlineMusicView(QWidget):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 10, 0, 0)
 
+        # Header with back button and results info
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
+
+        # Back button (hidden by default, shown for favorites views)
+        self._fav_back_btn = QPushButton(f"← {t('back')}")
+        self._fav_back_btn.setCursor(Qt.PointingHandCursor)
+        self._fav_back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #1db954;
+                border: none;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                color: #1ed760;
+            }
+        """)
+        self._fav_back_btn.clicked.connect(self._on_fav_back_clicked)
+        self._fav_back_btn.hide()
+        header_layout.addWidget(self._fav_back_btn)
+
         # Results info
         self._results_info = QLabel()
         self._results_info.setStyleSheet("color: #808080; font-size: 12px;")
-        layout.addWidget(self._results_info)
+        header_layout.addWidget(self._results_info)
+        header_layout.addStretch()
+
+        layout.addWidget(header_widget)
 
         # Stacked widget for different result types
         self._results_stack = QStackedWidget()
@@ -869,9 +997,17 @@ class OnlineMusicView(QWidget):
                 self._login_status_label.setText(t("qqmusic_logged_in"))
 
             self._login_btn.setText(t("logout"))
+
+            # Load recommendations when logged in (only if UI is fully set up)
+            if hasattr(self, '_recommend_section'):
+                self._load_recommendations()
         else:
             self._login_status_label.setText(t("qqmusic_not_logged_in"))
             self._login_btn.setText(t("login"))
+
+            # Hide recommendations when not logged in
+            if hasattr(self, '_recommend_section'):
+                self._recommend_section.hide()
 
     def _on_login_clicked(self):
         """Handle login button click."""
@@ -899,12 +1035,689 @@ class OnlineMusicView(QWidget):
         logger.info("QQ Music credentials obtained, refreshing service...")
         self._refresh_qqmusic_service()
         self._update_login_status()
+        # Reload favorites with new credentials
+        self._fav_loaded = False
+        self._load_favorites()
+
+    def _load_recommendations(self):
+        """Load all 5 types of recommendations."""
+        if self._recommendations_loaded:
+            return
+
+        self._recommend_section.show_loading()
+        self._recommendations_loaded = True
+
+        # Define 5 recommendation types with their display titles
+        recommend_types = [
+            ("home_feed", t("home_recommend")),
+            ("guess", t("guess_you_like")),
+            ("radar", t("radar_recommend")),
+            ("songlist", t("recommend_playlists")),
+            ("newsong", t("new_songs")),
+        ]
+
+        for recommend_type, title in recommend_types:
+            worker = RecommendWorker(self._qqmusic_service, recommend_type)
+            worker.recommend_ready.connect(self._on_recommend_ready)
+            self._recommend_workers.append(worker)
+            worker.start()
+
+    def _on_recommend_ready(self, recommend_type: str, data: Any):
+        """Handle recommendation data ready."""
+        logger.info(f"Recommendation {recommend_type} loaded: {type(data)}")
+
+        # Debug: Log the actual data structure
+        if isinstance(data, dict):
+            logger.debug(f"  Dict keys: {list(data.keys())[:10]}")
+        elif isinstance(data, list):
+            logger.debug(f"  List length: {len(data)}")
+            if data and isinstance(data[0], dict):
+                logger.debug(f"  First item keys: {list(data[0].keys())[:10]}")
+
+        # Store raw data for parsing
+        self._recommendations[recommend_type] = data
+
+        # Check if all recommendations are loaded
+        expected_types = ["home_feed", "guess", "radar", "songlist", "newsong"]
+        loaded_count = sum(1 for t in expected_types if t in self._recommendations)
+
+        # Only display when all 5 are loaded
+        if loaded_count == len(expected_types):
+            self._display_recommendations()
+
+    def _display_recommendations(self):
+        """Parse and display all loaded recommendations."""
+        cards = []
+
+        # Define order and titles
+        recommend_config = [
+            ("home_feed", t("home_recommend")),
+            ("guess", t("guess_you_like")),
+            ("radar", t("radar_recommend")),
+            ("songlist", t("recommend_playlists")),
+            ("newsong", t("new_songs")),
+        ]
+
+        for recommend_type, title in recommend_config:
+            data = self._recommendations.get(recommend_type)
+            if not data:
+                continue
+
+            parsed = self._parse_recommendation(recommend_type, data)
+            if parsed:
+                parsed['recommend_type'] = recommend_type
+                parsed['title'] = title
+                cards.append(parsed)
+                logger.info(f"Added card for {recommend_type}: cover_url={parsed.get('cover_url')}")
+
+        logger.info(f"Total cards to display: {len(cards)}")
+        if cards:
+            self._recommend_section.load_recommendations(cards)
+
+    def _load_favorites(self):
+        """Load user's favorites counts and display 4 summary cards."""
+        if self._fav_loaded:
+            return
+
+        if not self._qqmusic_service or not self._qqmusic_service._credential:
+            return
+
+        self._fav_loaded = True
+        self._favorites_section.show_loading()
+        self._fav_data = {}  # Store data for click handling
+
+        for fav_type in ["fav_songs", "created_playlists", "fav_playlists", "fav_albums"]:
+            worker = FavWorker(self._qqmusic_service, fav_type)
+            worker.fav_ready.connect(self._on_fav_ready)
+            self._fav_workers.append(worker)
+            worker.start()
+
+    def _on_fav_ready(self, fav_type: str, data: list):
+        """Handle favorites data ready - store for later use."""
+        self._fav_data[fav_type] = data
+
+        # Check if all 4 types loaded
+        if len(self._fav_data) == 4:
+            self._display_favorites_cards()
+
+    def _get_random_cover(self, items: list) -> str:
+        """Get a random cover from a list of items."""
+        import random
+
+        if not items:
+            return ""
+
+        # Filter items that have cover_url
+        items_with_cover = [item for item in items if item.get("cover_url")]
+
+        if not items_with_cover:
+            return ""
+
+        # Select a random item
+        random_item = random.choice(items_with_cover)
+        return random_item.get("cover_url", "")
+
+    def _get_random_cover_from_items(self, data: list, recommend_type: str) -> str:
+        """Extract a random cover from recommendation data based on type."""
+        import random
+
+        if not data:
+            return ""
+
+        # Filter items that have valid cover data
+        valid_items = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            cover_url = None
+
+            if recommend_type == 'songlist':
+                # Playlist structure
+                playlist_info = item.get('Playlist', item)
+                if isinstance(playlist_info, dict):
+                    # Try basic/content structures
+                    if 'basic' in playlist_info:
+                        basic = playlist_info.get('basic', {})
+                        if isinstance(basic, dict):
+                            cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
+
+                    if not cover_url and 'content' in playlist_info:
+                        content = playlist_info.get('content', {})
+                        if isinstance(content, dict):
+                            cover = content.get('cover_url') or content.get('cover')
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
+
+                    if not cover_url:
+                        cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
+                                playlist_info.get('picurl') or playlist_info.get('pic'))
+                        if cover:
+                            if isinstance(cover, dict):
+                                cover_url = cover.get('default_url') or cover.get('small_url')
+                            else:
+                                cover_url = cover
+
+                    # Try to get from songlist
+                    if not cover_url:
+                        song_list = playlist_info.get('songlist', [])
+                        if song_list:
+                            album = song_list[0].get('album', {})
+                            if isinstance(album, dict):
+                                album_mid = album.get('mid')
+                                if album_mid:
+                                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            elif recommend_type == 'radar':
+                # Radar structure
+                track_info = item.get('Track', {})
+                if isinstance(track_info, dict):
+                    album = track_info.get('album', {})
+                    if isinstance(album, dict):
+                        album_mid = album.get('mid')
+                        if album_mid:
+                            cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            else:
+                # Song structure (guess, home_feed, newsong)
+                cover_url = (item.get('cover') or item.get('picurl') or
+                            item.get('cover_url') or item.get('pic'))
+
+                if not cover_url:
+                    album_mid = None
+                    album = item.get('album', {})
+                    if isinstance(album, dict):
+                        album_mid = album.get('mid')
+                    if not album_mid:
+                        album_mid = item.get('albummid') or item.get('album_mid')
+
+                    if album_mid:
+                        cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+
+            if cover_url:
+                valid_items.append(cover_url)
+
+        if valid_items:
+            return random.choice(valid_items)
+
+        return ""
+
+    def _display_favorites_cards(self):
+        """Display 4 summary cards in the favorites section."""
+        from ui.icons import get_icon, IconName
+
+        cards = []
+
+        # Card 1: 收藏歌曲
+        fav_songs = self._fav_data.get("fav_songs", [])
+        cards.append({
+            "id": "fav_songs",
+            "title": t("fav_songs"),
+            "subtitle": f"{len(fav_songs)} {t('songs')}",
+            "cover_url": self._get_random_cover(fav_songs),
+            "card_type": "fav_songs",
+        })
+
+        # Card 2: 创建的歌单
+        created_pl = self._fav_data.get("created_playlists", [])
+        cards.append({
+            "id": "created_playlists",
+            "title": t("created_playlists"),
+            "subtitle": f"{len(created_pl)} {t('playlists')}",
+            "cover_url": self._get_random_cover(created_pl),
+            "card_type": "created_playlists",
+        })
+
+        # Card 3: 收藏的歌单
+        fav_pl = self._fav_data.get("fav_playlists", [])
+        cards.append({
+            "id": "fav_playlists",
+            "title": t("fav_playlists"),
+            "subtitle": f"{len(fav_pl)} {t('playlists')}",
+            "cover_url": self._get_random_cover(fav_pl),
+            "card_type": "fav_playlists",
+        })
+
+        # Card 4: 收藏专辑
+        fav_albums = self._fav_data.get("fav_albums", [])
+        cards.append({
+            "id": "fav_albums",
+            "title": t("fav_albums"),
+            "subtitle": f"{len(fav_albums)} {t('albums')}",
+            "cover_url": self._get_random_cover(fav_albums),
+            "card_type": "fav_albums",
+        })
+
+        self._favorites_section.load_recommendations(cards)
+
+    def _parse_recommendation(self, recommend_type: str, data: Any) -> Optional[Dict[str, Any]]:
+        """Parse recommendation data to extract card info."""
+        try:
+            # Handle list response (API returns list of songs/playlists)
+            if isinstance(data, list):
+                if not data:
+                    return None
+
+                # Get first item for structure analysis
+                first_item = data[0]
+                if not isinstance(first_item, dict):
+                    return None
+
+                logger.debug(f"Parsing {recommend_type} list item: keys={list(first_item.keys())[:15]}")
+
+                # Get a random cover from all items
+                cover_url = self._get_random_cover_from_items(data, recommend_type)
+                playlist_id = None
+
+                # Handle different response structures based on type
+                if recommend_type == 'songlist':
+                    # Playlist structure: {'Playlist': {...}, 'WhereFrom': ..., 'ext': ...}
+                    # or direct structure with tid/id/disstid
+                    logger.debug(f"songlist first_item keys: {list(first_item.keys())}")
+
+                    playlist_info = first_item.get('Playlist', {})
+                    if isinstance(playlist_info, dict) and playlist_info:
+                        logger.debug(f"songlist Playlist keys: {list(playlist_info.keys())}")
+
+                        # Try nested structures first (basic/content)
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+
+                        if not playlist_id and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+
+                        # Fallback to direct fields
+                        if not playlist_id:
+                            playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
+
+                        logger.debug(f"songlist from Playlist: id={playlist_id}")
+                    else:
+                        # Try direct structure - check for various ID fields
+                        playlist_id = (first_item.get('tid') or first_item.get('id') or
+                                      first_item.get('disstid') or first_item.get('dissid'))
+                        logger.debug(f"songlist direct: id={playlist_id}")
+
+                elif recommend_type == 'radar':
+                    # Radar structure: {'Track': {...}, 'Abt': ..., 'Ext': ...}
+                    # Cover is already extracted by _get_random_cover_from_items
+                    pass
+
+                else:
+                    # Song structure: {'album': {...}, 'singer': [...], ...}
+                    # This handles guess, home_feed, newsong types
+                    logger.debug(f"{recommend_type} first_item keys: {list(first_item.keys())}")
+
+                    # Cover is already extracted by _get_random_cover_from_items
+                    # Get playlist ID if available (for playlist-based recommendations)
+                    playlist_id = (first_item.get('id') or first_item.get('disstid') or
+                                  first_item.get('tid') or first_item.get('playlist_id'))
+
+                    logger.debug(f"{recommend_type}: cover_url={cover_url}, playlist_id={playlist_id}")
+
+                return {
+                    'id': playlist_id,
+                    'cover_url': cover_url,
+                    'raw_data': first_item,  # Save first item for click handling
+                    'full_data': data,  # Save full data list for song-based recommendations
+                    'recommend_type': recommend_type,
+                }
+
+            # Handle dict response (API returns dict with embedded list)
+            if isinstance(data, dict):
+                # Log the structure for debugging
+                logger.debug(f"Parsing {recommend_type} dict: keys={list(data.keys())[:10]}")
+
+                # Try to find the main content
+                content = None
+                for key in ['songlist', 'songs', 'list', 'data', 'items', 'playlist']:
+                    if key in data:
+                        content = data[key]
+                        break
+
+                if content and isinstance(content, list) and content:
+                    first_item = content[0]
+                    if isinstance(first_item, dict):
+                        logger.debug(f"  First item keys: {list(first_item.keys())[:15]}")
+
+                        # Get a random cover from all items
+                        cover_url = self._get_random_cover_from_items(content, recommend_type)
+                        playlist_id = (first_item.get('id') or first_item.get('disstid') or
+                                      first_item.get('tid') or data.get('id'))
+
+                        return {
+                            'id': playlist_id,
+                            'cover_url': cover_url,
+                            'raw_data': first_item,  # Save first item for click handling
+                            'full_data': content,  # Save full data list for song-based recommendations
+                            'recommend_type': recommend_type,
+                        }
+
+                # Check for playlist info directly
+                playlist_id = data.get('id') or data.get('disstid')
+                cover_url = data.get('cover') or data.get('picurl') or data.get('pic')
+
+                return {
+                    'id': playlist_id,
+                    'cover_url': cover_url,
+                    'raw_data': data,
+                    'recommend_type': recommend_type,
+                }
+
+            return None
+        except Exception as e:
+            logger.error(f"Failed to parse recommendation {recommend_type}: {e}")
+            return None
+
+    def _on_favorites_card_clicked(self, data: Dict[str, Any]):
+        """Handle favorites section card click."""
+        card_type = data.get("card_type", "")
+
+        # Hide favorites and recommendations when viewing any favorites content
+        self._favorites_section.hide()
+        self._recommend_section.hide()
+        # Show back button
+        self._fav_back_btn.show()
+
+        if card_type == "fav_songs":
+            tracks = self._fav_data.get("fav_songs", [])
+            self._show_fav_songs_in_table(tracks)
+        elif card_type == "created_playlists":
+            playlists = self._fav_data.get("created_playlists", [])
+            self._show_playlist_list_in_detail(t("created_playlists"), playlists)
+        elif card_type == "fav_playlists":
+            playlists = self._fav_data.get("fav_playlists", [])
+            self._show_playlist_list_in_detail(t("fav_playlists"), playlists)
+        elif card_type == "fav_albums":
+            albums = self._fav_data.get("fav_albums", [])
+            self._show_album_list_in_detail(t("fav_albums"), albums)
+
+    def _show_fav_songs_in_table(self, tracks: list):
+        """Show favorite songs in the detail view with play all / add to queue buttons."""
+        # Convert to the format expected by load_songs_directly
+        songs = []
+        cover_url = ""
+        for t_data in tracks:
+            song = {
+                "mid": t_data.get("mid", ""),
+                "songmid": t_data.get("mid", ""),
+                "title": t_data.get("title", ""),
+                "songname": t_data.get("title", ""),
+                "name": t_data.get("title", ""),
+                "singer": [{"mid": "", "name": t_data.get("singer", "")}] if t_data.get("singer") else [],
+                "album": {
+                    "mid": t_data.get("album_mid", ""),
+                    "name": t_data.get("album", ""),
+                },
+                "interval": t_data.get("duration", 0),
+            }
+            songs.append(song)
+            # Use first song's cover
+            if not cover_url and t_data.get("cover_url"):
+                cover_url = t_data.get("cover_url")
+
+        # Use detail view to show songs with play all / add to queue buttons
+        self._detail_view.load_songs_directly(songs, t("fav_songs"), cover_url)
+        self._stack.setCurrentWidget(self._detail_view)
+
+    def _show_playlist_list_in_detail(self, title: str, playlists: list):
+        """Show a list of playlists in the grid view."""
+        from domain.online_music import OnlinePlaylist
+
+        # Clear previous data
+        self._playlists_page.clear()
+
+        # Convert dicts to OnlinePlaylist objects
+        online_playlists = []
+        for pl in playlists:
+            online_playlists.append(OnlinePlaylist(
+                id=str(pl.get("id", "")),
+                title=pl.get("title", ""),
+                cover_url=pl.get("cover_url", ""),
+                creator=pl.get("creator", ""),
+                song_count=pl.get("song_count", 0),
+            ))
+
+        self._playlists_page.load_data(online_playlists)
+        self._results_info.setText(title)
+        self._tabs.hide()
+        self._is_top_list_view = False
+        self._results_stack.setCurrentWidget(self._playlists_page)
+        self._stack.setCurrentWidget(self._results_page)
+
+        # Push navigation state
+        self._navigation_stack.append({
+            'page': 'playlists',
+            'title': title,
+            'data': playlists
+        })
+
+    def _show_album_list_in_detail(self, title: str, albums: list):
+        """Show a list of albums in the grid view."""
+        from domain.online_music import OnlineAlbum
+
+        # Clear previous data
+        self._albums_page.clear()
+
+        # Convert dicts to OnlineAlbum objects
+        online_albums = []
+        for album in albums:
+            singer_name = album.get("singer_name", "")
+            online_albums.append(OnlineAlbum(
+                mid=album.get("mid", ""),
+                name=album.get("title", ""),
+                singer_mid="",
+                singer_name=singer_name,
+                cover_url=album.get("cover_url", ""),
+                song_count=album.get("song_count", 0),
+            ))
+
+        self._albums_page.load_data(online_albums)
+        self._results_info.setText(title)
+        self._tabs.hide()
+        self._is_top_list_view = False
+        self._results_stack.setCurrentWidget(self._albums_page)
+        self._stack.setCurrentWidget(self._results_page)
+
+        # Push navigation state
+        self._navigation_stack.append({
+            'page': 'albums',
+            'title': title,
+            'data': albums
+        })
+
+    def _on_recommendation_clicked(self, data: Dict[str, Any]):
+        """Handle recommendation card click."""
+        # Hide favorites and recommendations when viewing details
+        self._favorites_section.hide()
+        self._recommend_section.hide()
+        # Show back button for playlist list view
+        self._fav_back_btn.show()
+
+        recommend_type = data.get('recommend_type', '')
+        raw_data = data.get('raw_data')
+        card_id = data.get('id')
+        full_data = data.get('full_data')  # Full song list for song-based recommendations
+
+        logger.info(f"Recommendation clicked: {recommend_type}, id={card_id}")
+
+        title = data.get('title', '')
+        cover_url = data.get('cover_url', '')
+
+        if not isinstance(raw_data, dict):
+            logger.warning(f"Invalid raw_data type: {type(raw_data)}")
+            return
+
+        # Handle songlist type - show list of playlists
+        if recommend_type == 'songlist':
+            # full_data contains the list of playlists
+            if full_data and isinstance(full_data, list):
+                playlists = []
+                for item in full_data:
+                    if isinstance(item, dict):
+                        # Extract playlist info from nested structure
+                        playlist_info = item.get('Playlist', item)
+                        if not isinstance(playlist_info, dict):
+                            continue
+
+                        # Try to get playlist details from various nested structures
+                        # Structure: basic/content/diy
+                        playlist_id = None
+                        playlist_title = None
+                        cover_url = None
+                        song_count = 0
+
+                        # Try basic structure first
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+                                playlist_title = basic.get('title') or basic.get('name')
+                                # Cover can be URL string or dict
+                                cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                                if cover:
+                                    if isinstance(cover, dict):
+                                        cover_url = cover.get('default_url') or cover.get('small_url')
+                                    else:
+                                        cover_url = cover
+
+                        # Try content structure
+                        if not playlist_id and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                playlist_id = content.get('tid') or content.get('id') or content.get('disstid')
+                                if not playlist_title:
+                                    playlist_title = content.get('title') or content.get('name')
+                                if not cover_url:
+                                    cover = content.get('cover_url') or content.get('cover')
+                                    if cover:
+                                        if isinstance(cover, dict):
+                                            cover_url = cover.get('default_url') or cover.get('small_url')
+                                        else:
+                                            cover_url = cover
+
+                        # Fallback to direct fields
+                        if not playlist_id:
+                            playlist_id = (playlist_info.get('tid') or playlist_info.get('id') or
+                                          playlist_info.get('disstid') or playlist_info.get('dissid'))
+                        if not playlist_title:
+                            playlist_title = playlist_info.get('title') or playlist_info.get('name')
+                        if not cover_url:
+                            cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
+                                    playlist_info.get('picurl') or playlist_info.get('pic'))
+                            if cover:
+                                if isinstance(cover, dict):
+                                    cover_url = cover.get('default_url') or cover.get('small_url')
+                                else:
+                                    cover_url = cover
+
+                        # Try to get song count from various fields
+                        song_count = 0
+
+                        # Check basic/content for song_count - try multiple field name variations
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                song_count = (basic.get('song_count') or basic.get('song_num') or
+                                             basic.get('songNum') or basic.get('song_cnt') or 0)
+                        if not song_count and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                song_count = (content.get('song_count') or content.get('song_num') or
+                                             content.get('songNum') or content.get('song_cnt') or 0)
+                        # Check songlist if exists
+                        if not song_count:
+                            song_list = playlist_info.get('songlist', [])
+                            if song_list:
+                                song_count = len(song_list)
+                        # Fallback to direct field - try multiple field name variations
+                        if not song_count:
+                            song_count = (playlist_info.get('song_count') or playlist_info.get('song_num') or
+                                         playlist_info.get('songNum') or playlist_info.get('song_cnt') or
+                                         playlist_info.get('songnum') or 0)
+
+                        if playlist_id:
+                            playlists.append({
+                                'id': str(playlist_id),
+                                'title': playlist_title or '',
+                                'cover_url': cover_url or '',
+                                'song_count': song_count,
+                            })
+
+                logger.info(f"Showing {len(playlists)} recommended playlists")
+                if playlists:
+                    self._show_playlist_list_in_detail(title, playlists)
+                else:
+                    logger.warning("No valid playlists found in songlist data")
+            else:
+                logger.warning(f"Invalid full_data for songlist: {type(full_data)}")
+            return
+
+        # Handle radar type - Track info, show all radar songs
+        if recommend_type == 'radar':
+            if full_data and isinstance(full_data, list):
+                # Radar data format: [{'Track': {...}, 'Abt': ..., 'Ext': ...}, ...]
+                # Need to extract Track from each item
+                songs = []
+                for item in full_data:
+                    if isinstance(item, dict):
+                        track = item.get('Track', item)
+                        if isinstance(track, dict):
+                            songs.append(track)
+                logger.info(f"Loading radar songs: {len(songs)} songs")
+                if songs:
+                    self._detail_view.load_songs_directly(songs, title, cover_url)
+                    self._stack.setCurrentWidget(self._detail_view)
+                else:
+                    logger.warning("No valid radar songs found")
+            else:
+                # Fallback to album
+                track_info = raw_data.get('Track', raw_data)
+                album = track_info.get('album', {})
+                if isinstance(album, dict) and album.get('mid'):
+                    logger.info(f"Loading radar album: {album.get('mid')}")
+                    self._detail_view.load_album(album.get('mid'), album.get('name', title), "")
+                    self._stack.setCurrentWidget(self._detail_view)
+            return
+
+        # Handle guess, home_feed, newsong types - these return songs, show all songs
+        if recommend_type in ('guess', 'home_feed', 'newsong'):
+            if full_data and isinstance(full_data, list):
+                logger.info(f"Loading {recommend_type} songs: {len(full_data)} songs")
+                self._detail_view.load_songs_directly(full_data, title, cover_url)
+                self._stack.setCurrentWidget(self._detail_view)
+                return
+
+            # Fallback to album if no full_data
+            album = raw_data.get('album', {})
+            if isinstance(album, dict) and album.get('mid'):
+                logger.info(f"Loading album from {recommend_type}: {album.get('mid')}")
+                self._detail_view.load_album(album.get('mid'), album.get('name', title), "")
+                self._stack.setCurrentWidget(self._detail_view)
+                return
+
+        logger.warning(f"Could not determine how to handle recommendation: {recommend_type}")
 
     def _on_search(self):
         """Handle search."""
         keyword = self._search_input.text().strip()
         if not keyword:
             return
+
+        # Hide favorites and recommendations sections when searching
+        self._favorites_section.hide()
+        self._recommend_section.hide()
 
         self._current_keyword = keyword
         self._current_page = 1
@@ -1007,12 +1820,19 @@ class OnlineMusicView(QWidget):
             self._grid_total = 0
             # Don't clear _current_tracks - keep the top list songs that were already loaded
             self._tabs.hide()
+            # Hide back button
+            self._fav_back_btn.hide()
             # Clear grid views
             self._singers_page.clear()
             self._albums_page.clear()
             self._playlists_page.clear()
             # Switch to top list page
             self._stack.setCurrentWidget(self._top_list_page)
+            # Show favorites and recommendations when returning to main view
+            if self._fav_loaded and self._fav_data:
+                self._favorites_section.show()
+            if self._recommendations_loaded:
+                self._recommend_section.show()
         elif text and len(text) >= 1 and self._qqmusic_service:
             # Trigger completion after delay (debounce)
             self._completion_timer.start(300)  # 300ms delay
@@ -1210,18 +2030,52 @@ class OnlineMusicView(QWidget):
     def _on_artist_clicked(self, artist: OnlineArtist):
         """Handle artist click - show artist detail view."""
         logger.info(f"Artist clicked: {artist.name}, mid: {artist.mid}")
+        # Push navigation state if we're coming from search results or grid view
+        if self._stack.currentWidget() in [self._results_page]:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'artists' if self._results_stack.currentWidget() == self._singers_page else 'other'
+            })
         self._detail_view.load_artist(artist.mid, artist.name)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _on_album_clicked(self, album: OnlineAlbum):
         """Handle album click - show album detail view."""
         logger.info(f"Album clicked: {album.name}, mid: {album.mid}")
+        # Push navigation state if we're coming from search results or detail view
+        current_widget = self._stack.currentWidget()
+        if current_widget == self._results_page:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'albums' if self._results_stack.currentWidget() == self._albums_page else 'other'
+            })
+        elif current_widget == self._detail_view:
+            # Coming from artist detail - push detail state
+            self._navigation_stack.append({
+                'page': 'detail',
+                'type': self._detail_view._detail_type,
+                'mid': self._detail_view._mid
+            })
         self._detail_view.load_album(album.mid, album.name, album.singer_name)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _on_playlist_clicked(self, playlist: OnlinePlaylist):
         """Handle playlist click - show playlist detail view."""
         logger.info(f"Playlist clicked: {playlist.title}, id: {playlist.id}")
+        # Push navigation state if we're coming from search results or detail view
+        current_widget = self._stack.currentWidget()
+        if current_widget == self._results_page:
+            self._navigation_stack.append({
+                'page': 'results',
+                'tab': 'playlists' if self._results_stack.currentWidget() == self._playlists_page else 'other'
+            })
+        elif current_widget == self._detail_view:
+            # Coming from artist detail - push detail state
+            self._navigation_stack.append({
+                'page': 'detail',
+                'type': self._detail_view._detail_type,
+                'mid': self._detail_view._mid
+            })
         self._detail_view.load_playlist(playlist.id, playlist.title, playlist.creator)
         self._stack.setCurrentWidget(self._detail_view)
 
@@ -1288,8 +2142,78 @@ class OnlineMusicView(QWidget):
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""
-        # Return to search results page
-        self._stack.setCurrentWidget(self._results_page)
+        # Pop from navigation stack if available
+        if self._navigation_stack:
+            prev_state = self._navigation_stack.pop()
+            page = prev_state.get('page')
+
+            if page == 'playlists':
+                # Return to playlist list
+                title = prev_state.get('title', '')
+                playlists = prev_state.get('data', [])
+                self._show_playlist_list_in_detail(title, playlists)
+                return
+            elif page == 'albums':
+                # Return to album list
+                title = prev_state.get('title', '')
+                albums = prev_state.get('data', [])
+                self._show_album_list_in_detail(title, albums)
+                return
+            elif page == 'results':
+                # Return to search results
+                self._stack.setCurrentWidget(self._results_page)
+                # Restore correct tab if specified
+                tab = prev_state.get('tab', '')
+                if tab == 'artists':
+                    self._results_stack.setCurrentWidget(self._singers_page)
+                elif tab == 'albums':
+                    self._results_stack.setCurrentWidget(self._albums_page)
+                elif tab == 'playlists':
+                    self._results_stack.setCurrentWidget(self._playlists_page)
+                return
+            elif page == 'detail':
+                # Return to previous detail view (e.g., artist detail)
+                detail_type = prev_state.get('type', '')
+                mid = prev_state.get('mid')
+                if detail_type == 'artist' and mid:
+                    # Reload artist detail
+                    self._detail_view.load_artist(mid)
+                    return
+                elif detail_type == 'album' and mid:
+                    # Reload album detail
+                    self._detail_view.load_album(mid)
+                    return
+                elif detail_type == 'playlist' and mid:
+                    # Reload playlist detail
+                    self._detail_view.load_playlist(mid)
+                    return
+
+        # Default behavior: return to previous page based on context
+        # If tabs are visible, we came from search results
+        # Otherwise, return to top list page
+        if self._tabs.isVisible():
+            self._stack.setCurrentWidget(self._results_page)
+        else:
+            self._stack.setCurrentWidget(self._top_list_page)
+            # Show favorites and recommendations when returning to main view
+            if self._fav_loaded and self._fav_data:
+                self._favorites_section.show()
+            if self._recommendations_loaded:
+                self._recommend_section.show()
+
+    def _on_fav_back_clicked(self):
+        """Handle back button click from favorites view."""
+        # Hide back button
+        self._fav_back_btn.hide()
+        # Clear navigation stack when returning to main view
+        self._navigation_stack.clear()
+        # Show favorites and recommendations
+        if self._fav_loaded and self._fav_data:
+            self._favorites_section.show()
+        if self._recommendations_loaded:
+            self._recommend_section.show()
+        # Return to top list page
+        self._stack.setCurrentWidget(self._top_list_page)
 
     def _get_cover_url(self, track: OnlineTrack) -> str:
         """Get cover URL for online track."""
@@ -1824,6 +2748,10 @@ class OnlineMusicView(QWidget):
             self._albums_page.refresh_ui()
         if hasattr(self, '_playlists_page'):
             self._playlists_page.refresh_ui()
+
+        # Update recommend section
+        if hasattr(self, '_recommend_section'):
+            self._recommend_section.refresh_ui()
 
         # Update detail view
         if hasattr(self, '_detail_view'):

@@ -85,7 +85,7 @@ class TestCloudFile:
         assert cloud_file.metadata is None
         assert cloud_file.local_path is None
         assert isinstance(cloud_file.created_at, datetime)
-        assert cloud_file.updated_at is None  # updated_at is not auto-set
+        assert isinstance(cloud_file.updated_at, datetime)  # updated_at is auto-set
 
     def test_audio_file_initialization(self, sample_cloud_file_data):
         """Test cloud file for audio."""

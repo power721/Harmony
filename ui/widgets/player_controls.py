@@ -2,9 +2,8 @@
 Player controls widget for playback control.
 """
 import logging
-import threading
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, QRunnable, QThreadPool
 from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen
 from PySide6.QtWidgets import (
     QWidget,
@@ -935,16 +934,21 @@ class PlayerControls(QWidget):
                 logger.error(f"Cover load error for track {track_dict.get('title', 'Unknown')}: {e}", exc_info=True)
             return None
 
-        def worker():
-            cover_path = load_cover()
-            logger.info(f"[PlayerControls] Worker emitting cover_path: {cover_path}, version: {version}")
-            # Use signal for thread-safe UI update with version
-            self._cover_loaded.emit(cover_path or "", version)
+        class CoverLoadWorker(QRunnable):
+            def __init__(self, load_func, signal, version):
+                super().__init__()
+                self.load_func = load_func
+                self.signal = signal
+                self.version = version
 
-        # Run in thread
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
-        thread.start()
+            def run(self):
+                cover_path = self.load_func()
+                logger.info(f"[PlayerControls] Worker emitting cover_path: {cover_path}, version: {self.version}")
+                self.signal.emit(cover_path or "", self.version)
+
+        # Run in Qt thread pool
+        worker = CoverLoadWorker(load_cover, self._cover_loaded, version)
+        QThreadPool.globalInstance().start(worker)
 
     def _get_album_cover(self, album: str, artist: str) -> str:
         """

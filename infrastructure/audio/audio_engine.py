@@ -400,12 +400,9 @@ class PlayerEngine(QObject):
             if i is not None and 0 <= i < len(self._playlist):
                 item = self._playlist[i]
                 if item.cloud_file_id == cloud_file_id:
-                    # Call remove_track within lock - it will try to acquire lock again (RLock allows this)
-                    pass
-        # Call remove_track outside lock to avoid nested emit
-        if i is not None:
-            self.remove_track(i)
-            return i
+                    # RLock allows reentrant acquire by remove_track
+                    self.remove_track(i)
+                    return i
         return None
 
     def remove_playlist_item_by_track_id(self, track_id: int) -> list[int]:
@@ -578,6 +575,9 @@ class PlayerEngine(QObject):
     def play_next(self):
         """Play the next track. Manual skip ignores single track loop mode."""
         need_stop = False
+        current_index = -1
+        item = None
+
         with self._playlist_lock:
             if not self._playlist:
                 return
@@ -596,31 +596,32 @@ class PlayerEngine(QObject):
                     need_stop = True
 
             current_index = self._current_index
+            if 0 <= current_index < len(self._playlist):
+                item = self._playlist[current_index]
 
         if need_stop:
             self.stop()
             return
 
+        if item is None:
+            return
+
         self._load_track(current_index)
 
         # Check if track needs download or file doesn't exist
-        with self._playlist_lock:
-            if current_index < len(self._playlist):
-                item = self._playlist[current_index]
-                needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
-                item_copy = item
-            else:
-                needs_download = False
-                item_copy = None
+        needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
 
-        if item_copy and needs_download:
-            item_copy.needs_download = True
-            self.track_needs_download.emit(item_copy)
-        elif item_copy and item_copy.local_path and Path(item_copy.local_path).exists():
+        if needs_download:
+            item.needs_download = True
+            self.track_needs_download.emit(item)
+        elif item.local_path and Path(item.local_path).exists():
             self._player.play()
 
     def play_previous(self):
         """Play the previous track. Manual skip ignores single track loop mode."""
+        current_index = -1
+        item = None
+
         with self._playlist_lock:
             if not self._playlist:
                 return
@@ -651,24 +652,21 @@ class PlayerEngine(QObject):
                         self._current_index = 0
 
                 current_index = self._current_index
-                item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
+                if 0 <= current_index < len(self._playlist):
+                    item = self._playlist[current_index]
+
+            if item is None:
+                return
 
             self._load_track(current_index)
 
             # Check if track needs download or file doesn't exist
-            with self._playlist_lock:
-                if current_index < len(self._playlist):
-                    item = self._playlist[current_index]
-                    needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
-                    item_copy = item
-                else:
-                    needs_download = False
-                    item_copy = None
+            needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
 
-            if item_copy and needs_download:
-                item_copy.needs_download = True
-                self.track_needs_download.emit(item_copy)
-            elif item_copy and item_copy.local_path and Path(item_copy.local_path).exists():
+            if needs_download:
+                item.needs_download = True
+                self.track_needs_download.emit(item)
+            elif item.local_path and Path(item.local_path).exists():
                 self._player.play()
 
     def seek(self, position_ms: int):

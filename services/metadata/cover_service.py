@@ -473,7 +473,6 @@ class CoverService:
                 ext = '.jpg'
 
             cache_path = self.CACHE_DIR / f"{cache_key}{ext}"
-            print(f'Cache path: {cache_path}')
 
             with open(cache_path, 'wb') as f:
                 f.write(cover_data)
