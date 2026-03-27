@@ -583,6 +583,10 @@ class AlbumsView(QWidget):
 
     def _on_cover_updated(self, item_id, is_cloud: bool = False):
         """Handle cover update from EventBus - update specific album cover."""
+        # None means batch update - refresh all
+        if item_id is None:
+            self.refresh()
+            return
         # item_id format for album: "album_name:artist_name"
         if not isinstance(item_id, str) or ":" not in item_id:
             return

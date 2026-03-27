@@ -584,6 +584,10 @@ class ArtistsView(QWidget):
 
     def _on_cover_updated(self, item_id, is_cloud: bool = False):
         """Handle cover update from EventBus - update specific artist cover."""
+        # None means batch update - refresh all
+        if item_id is None:
+            self.refresh()
+            return
         # item_id for artist is the artist name
         if not isinstance(item_id, str):
             return

@@ -778,6 +778,15 @@ class ArtistView(QWidget):
         if not self._artist:
             return
 
+        # None means batch update - refresh all
+        if item_id is None:
+            if self._artist:
+                updated = self._library.get_artist_by_name(self._artist.name)
+                if updated:
+                    self._artist = updated
+                    self._do_load_artist(updated)
+            return
+
         # Check if this is an artist cover update
         if item_id == self._artist.name:
             # Reload artist from database to get updated cover_path
