@@ -760,6 +760,71 @@ class QQMusicClient:
         params = {"euin": euin, "offset": (page - 1) * num, "size": num}
         return self._make_request("music.musicasset.AlbumFavRead", "CgiGetAlbumFavInfo", params)
 
+    def get_euin(self) -> str:
+        """
+        Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.
+
+        Returns:
+            encrypt_uin string, or empty string if failed
+        """
+        if not self.credential:
+            return ""
+
+        try:
+            musicid = self.credential.get('musicid', '')
+            if not musicid:
+                return ""
+
+            # Check cache in credential first
+            euin = self.credential.get("encrypt_uin") or self.credential.get("encryptUin")
+            if euin:
+                return euin
+
+            url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
+
+            cookies = {
+                'uin': str(musicid),
+                'qqmusic_key': self.credential.get('musickey', ''),
+                'qm_keyst': self.credential.get('musickey', ''),
+                'tmeLoginType': str(self.credential.get('login_type', 2)),
+            }
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+                'Referer': 'https://y.qq.com/',
+            }
+
+            params = {
+                'format': 'json',
+                'uin': musicid,
+                'cid': '205360838',
+                'reqfrom': '1',
+                'reqtype': '0',
+            }
+
+            response = self.session.get(
+                url,
+                params=params,
+                cookies=cookies,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            euin = data.get('data', {}).get('creator', {}).get('encrypt_uin', '')
+
+            if euin:
+                # Cache in credential
+                self.credential['encrypt_uin'] = euin
+                self.credential['encryptUin'] = euin
+
+            return euin or ""
+
+        except Exception as e:
+            logger.error(f"Failed to get euin: {e}")
+            return ""
+
     def verify_login(self) -> Dict[str, Any]:
         """
         Verify if current credential is valid by calling profile API.
