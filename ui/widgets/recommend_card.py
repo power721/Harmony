@@ -198,9 +198,10 @@ class RecommendSection(QWidget):
 
     recommendation_clicked = Signal(dict)  # Emits recommendation data
 
-    def __init__(self, parent=None):
+    def __init__(self, title: str = None, parent=None):
         super().__init__(parent)
         self._cards: List[RecommendCard] = []
+        self._custom_title = title
         self._setup_ui()
 
     def _setup_ui(self):
@@ -213,7 +214,7 @@ class RecommendSection(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         # Title
-        self._title_label = QLabel(t("recommendations"))
+        self._title_label = QLabel(self._custom_title if self._custom_title else t("recommendations"))
         self._title_label.setStyleSheet("""
             QLabel {
                 color: #1db954;
@@ -351,4 +352,7 @@ class RecommendSection(QWidget):
     def refresh_ui(self):
         """Refresh UI for language changes."""
         if hasattr(self, '_title_label'):
-            self._title_label.setText(t("recommendations"))
+            if self._custom_title:
+                self._title_label.setText(self._custom_title)
+            else:
+                self._title_label.setText(t("recommendations"))
