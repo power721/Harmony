@@ -491,6 +491,6 @@
     "fav_playlists": "Favorite Playlists",
     "fav_albums": "Favorite Albums",
     "my_favorites": "My Favorites",
-    "playlists": "playlists",
-    "albums": "albums"
+    "playlist_count": "playlists",
+    "album_count": "albums"
 }
