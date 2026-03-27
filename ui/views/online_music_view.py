@@ -1398,30 +1398,28 @@ class OnlineMusicView(QWidget):
             self._show_album_list_in_detail(t("fav_albums"), albums)
 
     def _show_fav_songs_in_table(self, tracks: list):
-        """Show favorite songs in the grid view with cards."""
-        from domain.online_music import OnlineTrack, OnlineSinger, AlbumInfo
-
-        # Convert to OnlineTrack objects for display
-        online_tracks = []
+        """Show favorite songs in the detail view with play all / add to queue buttons."""
+        # Convert to the format expected by load_songs_directly
+        songs = []
         for t_data in tracks:
-            singer = OnlineSinger(mid="", name=t_data.get("singer", ""))
-            album = AlbumInfo(mid=t_data.get("album_mid", ""), name=t_data.get("album", ""))
-            track = OnlineTrack(
-                mid=t_data.get("mid", ""),
-                title=t_data.get("title", ""),
-                singer=[singer],
-                album=album,
-                duration=t_data.get("duration", 0),
-            )
-            online_tracks.append(track)
+            song = {
+                "mid": t_data.get("mid", ""),
+                "songmid": t_data.get("mid", ""),
+                "title": t_data.get("title", ""),
+                "songname": t_data.get("title", ""),
+                "name": t_data.get("title", ""),
+                "singer": [{"mid": "", "name": t_data.get("singer", "")}] if t_data.get("singer") else [],
+                "album": {
+                    "mid": t_data.get("album_mid", ""),
+                    "name": t_data.get("album", ""),
+                },
+                "interval": t_data.get("duration", 0),
+            }
+            songs.append(song)
 
-        self._current_tracks = online_tracks
-        self._display_tracks(self._current_tracks)
-        self._results_info.setText(f"{t('fav_songs')} - {len(self._current_tracks)} {t('songs')}")
-        self._tabs.hide()
-        self._is_top_list_view = False
-        self._results_stack.setCurrentWidget(self._songs_page)
-        self._stack.setCurrentWidget(self._results_page)
+        # Use detail view to show songs with play all / add to queue buttons
+        self._detail_view.load_songs_directly(songs, t("fav_songs"), "")
+        self._stack.setCurrentWidget(self._detail_view)
 
     def _show_playlist_list_in_detail(self, title: str, playlists: list):
         """Show a list of playlists in the grid view."""
