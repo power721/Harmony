@@ -228,13 +228,17 @@ class QueueItemDelegate(QStyledItemDelegate):
 
         rect = option.rect
 
-        # Background
+        # Background (semi-transparent to show blur through)
         if is_selected:
             painter.fillRect(rect, QColor(theme.highlight))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(rect, QColor(theme.background_hover))
+            hover_bg = QColor(theme.background_hover)
+            hover_bg.setAlpha(220)
+            painter.fillRect(rect, hover_bg)
         else:
-            painter.fillRect(rect, QColor(theme.background))
+            bg = QColor(theme.background)
+            bg.setAlpha(220)
+            painter.fillRect(rect, bg)
 
         # Separator line
         if not is_selected:
