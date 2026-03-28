@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QListView,
+    QFrame,
     QStyle,
 )
 
@@ -525,9 +526,14 @@ class QueueView(QWidget):
             background-color: %selection%;
         }
         QListView#queueList {
-            background-color: %background%;
+            background-color: transparent;
             border: none;
             outline: none;
+            border-radius: 8px;
+        }
+        QFrame#queueListContainer {
+            background-color: %background%;
+            border: none;
             border-radius: 8px;
         }
         QListView#queueList::item {
@@ -669,8 +675,19 @@ class QueueView(QWidget):
 
         layout.addWidget(header)
 
-        # Queue list
-        self._list_view = QListView()
+        # Queue list container (blur background + list stacked)
+        list_container = QFrame()
+        list_container.setObjectName("queueListContainer")
+        list_container_layout = QVBoxLayout(list_container)
+        list_container_layout.setContentsMargins(0, 0, 0, 0)
+        list_container_layout.setSpacing(0)
+
+        # Blur background label
+        self._bg_label = QLabel(list_container)
+        self._bg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bg_label.lower()
+
+        self._list_view = QListView(list_container)
         self._list_view.setObjectName("queueList")
         self._list_view.setMouseTracking(True)
         self._model = QueueTrackModel(self)
@@ -685,7 +702,9 @@ class QueueView(QWidget):
         self._list_view.setSpacing(0)
         self._list_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self._list_view.setFocusPolicy(Qt.NoFocus)
-        layout.addWidget(self._list_view)
+        list_container_layout.addWidget(self._list_view)
+
+        layout.addWidget(list_container)
 
         # Status bar
         self._status_label = QLabel(f"0 {t('tracks_in_queue')}")
@@ -884,16 +903,17 @@ class QueueView(QWidget):
             self._delegate._stop_animation()
 
     def _update_bg_blur(self, cover_pixmap):
-        """Set blurred cover as list viewport background."""
-        viewport = self._list_view.viewport()
-        if viewport.width() < 10 or viewport.height() < 10:
-            return
+        """Set blurred cover as background via QLabel."""
         if not cover_pixmap or cover_pixmap.isNull():
-            viewport.setStyleSheet("")
+            self._bg_label.clear()
             return
 
         # Cheap blur: downscale then upscale
-        w, h = viewport.width(), viewport.height()
+        w = self._list_view.viewport().width()
+        h = self._list_view.viewport().height()
+        if w < 10 or h < 10:
+            return
+
         small = cover_pixmap.scaled(w // 10, h // 10,
                                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                    Qt.TransformationMode.SmoothTransformation)
@@ -901,26 +921,14 @@ class QueueView(QWidget):
                                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                Qt.TransformationMode.SmoothTransformation)
 
-        # Darken the blur for readability
-        dark = QPixmap(blurred.size())
-        dark.fill(QColor(0, 0, 0, 180))
+        # Darken for readability
         painter = QPainter(blurred)
-        painter.drawPixmap(0, 0, dark)
+        painter.fillRect(blurred.rect(), QColor(0, 0, 0, 180))
         painter.end()
 
-        # Convert to base64 for stylesheet
-        from PySide6.QtCore import QByteArray
-        from PySide6.QtCore import QBuffer
-        buf = QByteArray()
-        buffer = QBuffer(buf)
-        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
-        blurred.save(buffer, "PNG")
-        buffer.close()
-        b64 = bytes(buf.toBase64()).decode()
-        viewport.setStyleSheet(
-            f"background-image: url(data:image/png;base64,{b64});"
-            f"background-position: center; background-repeat: no-repeat;"
-        )
+        self._bg_label.setPixmap(blurred)
+        self._bg_label.setGeometry(0, 0, w, h)
+        self._bg_label.lower()
 
     def _on_current_track_changed(self, track_dict):
         """Handle current track change."""
