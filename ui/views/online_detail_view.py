@@ -206,7 +206,7 @@ class AllTracksWorker(QThread):
                     title=song.get("name", song.get("title", "")),
                     singer=singers,
                     album=album,
-                    duration=song.get("duration", 0),
+                    duration=song.get("interval", song.get("duration", 0)),
                     pay_play=song.get("pay_play", 0)
                 )
                 tracks.append(track)
@@ -974,6 +974,13 @@ class OnlineDetailView(QWidget):
         self._request_id = getattr(self, '_request_id', 0) + 1
         current_request_id = self._request_id
 
+        # Clean up old worker if exists
+        if hasattr(self, '_detail_worker') and self._detail_worker:
+            if self._detail_worker.isRunning():
+                self._detail_worker.quit()
+                self._detail_worker.wait()
+            self._detail_worker.deleteLater()
+
         self._detail_worker = DetailWorker(
             self._service,
             self._detail_type,
@@ -983,6 +990,14 @@ class OnlineDetailView(QWidget):
             request_id=current_request_id
         )
         self._detail_worker.detail_loaded.connect(self._on_detail_loaded, Qt.QueuedConnection)
+
+        # Clean up worker after thread has fully stopped
+        def on_thread_finished():
+            if hasattr(self, '_detail_worker') and self._detail_worker:
+                self._detail_worker.deleteLater()
+                self._detail_worker = None
+
+        self._detail_worker.finished.connect(on_thread_finished)
         self._detail_worker.start()
 
     def _on_detail_loaded(self, detail_type: str, data: Optional[Dict], request_id: int):
@@ -1415,8 +1430,23 @@ class OnlineDetailView(QWidget):
         # Store append flag for callback
         self._albums_append = append
 
+        # Clean up old worker if exists
+        if hasattr(self, '_album_list_worker') and self._album_list_worker:
+            if self._album_list_worker.isRunning():
+                self._album_list_worker.quit()
+                self._album_list_worker.wait()
+            self._album_list_worker.deleteLater()
+
         self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin, request_id=current_request_id)
         self._album_list_worker.albums_loaded.connect(self._on_albums_loaded, Qt.QueuedConnection)
+
+        # Clean up worker after thread has fully stopped
+        def on_thread_finished():
+            if hasattr(self, '_album_list_worker') and self._album_list_worker:
+                self._album_list_worker.deleteLater()
+                self._album_list_worker = None
+
+        self._album_list_worker.finished.connect(on_thread_finished)
         self._album_list_worker.start()
 
     def _on_albums_loaded(self, albums: List[Dict[str, Any]], total: int = 0, request_id: int = 0):
@@ -1527,6 +1557,13 @@ class OnlineDetailView(QWidget):
         self._play_all_btn.setText(t("loading"))
         self._add_all_queue_btn.setText(t("loading"))
 
+        # Clean up old worker if exists
+        if hasattr(self, '_all_tracks_worker') and self._all_tracks_worker:
+            if self._all_tracks_worker.isRunning():
+                self._all_tracks_worker.quit()
+                self._all_tracks_worker.wait()
+            self._all_tracks_worker.deleteLater()
+
         # Start background worker to fetch all tracks
         self._all_tracks_worker = AllTracksWorker(
             service=self._service,
@@ -1538,6 +1575,14 @@ class OnlineDetailView(QWidget):
         self._all_tracks_worker.all_tracks_loaded.connect(
             lambda tracks: self._on_all_tracks_loaded(tracks, callback)
         )
+
+        # Clean up worker after thread has fully stopped
+        def on_thread_finished():
+            if hasattr(self, '_all_tracks_worker') and self._all_tracks_worker:
+                self._all_tracks_worker.deleteLater()
+                self._all_tracks_worker = None
+
+        self._all_tracks_worker.finished.connect(on_thread_finished)
         self._all_tracks_worker.start()
 
     def _on_all_tracks_loaded(self, tracks, callback):
@@ -1663,8 +1708,19 @@ class OnlineDetailView(QWidget):
 
         # Start download
         worker = DownloadWorker(self._download_service, track.mid, track.title)
+
+        # Handle download result
         worker.download_finished.connect(self._on_download_finished)
+
+        # Clean up worker after thread has fully stopped
+        def on_thread_finished():
+            if hasattr(self, '_download_workers') and worker in self._download_workers:
+                self._download_workers.remove(worker)
+                worker.deleteLater()
+
+        worker.finished.connect(on_thread_finished)
         worker.start()
+
         # Keep reference to prevent garbage collection
         if not hasattr(self, '_download_workers'):
             self._download_workers = []
