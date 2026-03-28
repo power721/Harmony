@@ -13,10 +13,45 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from system.i18n import t
+from system.theme import ThemeManager
 
 
 class AddToPlaylistDialog(QDialog):
     """Dialog for selecting a playlist to add tracks to."""
+
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+        QListWidget {
+            background-color: %background%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+        }
+        QListWidget::item {
+            color: %text%;
+        }
+        QListWidget::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+        }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: %highlight_hover%;
+        }
+    """
 
     def __init__(self, library_service, parent=None):
         """
@@ -31,44 +66,13 @@ class AddToPlaylistDialog(QDialog):
         self._track_ids = []
 
         self._setup_ui()
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the user interface."""
         self.setWindowTitle(t("select_playlist"))
         self.setMinimumWidth(400)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-                font-size: 13px;
-            }
-            QListWidget {
-                background-color: #181818;
-                border: 1px solid #404040;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
 
@@ -160,3 +164,7 @@ class AddToPlaylistDialog(QDialog):
             QMessageBox.Yes | QMessageBox.No,
         )
         return reply == QMessageBox.Yes
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))

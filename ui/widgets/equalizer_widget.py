@@ -53,6 +53,89 @@ class EqualizerWidget(QWidget):
         EqualizerPreset('Hip Hop', [5, 4, 2, 0, -1, 0, 2, 4, 5, 5]),
     ]
 
+    _PRESET_LABEL_STYLE = "color: %text_secondary%;"
+
+    _COMBO_STYLE = """
+        QComboBox {
+            background-color: %background_alt%;
+            color: %text%;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        QComboBox:hover {
+            background-color: %border%;
+        }
+        QComboBox::drop-down {
+            border: none;
+        }
+        QComboBox::down-arrow {
+            color: %text_secondary%;
+        }
+        QComboBox QAbstractItemView {
+            background-color: %background%;
+            color: %text%;
+            border: 1px solid %border%;
+            selection-background-color: %highlight%;
+            selection-color: %text%;
+            padding: 4px;
+        }
+        QComboBox QAbstractItemView::item {
+            color: %text%;
+            padding: 6px 12px;
+            min-height: 24px;
+        }
+        QComboBox QAbstractItemView::item:hover {
+            background-color: %border%;
+            color: %text%;
+        }
+        QComboBox QAbstractItemView::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+        }
+    """
+
+    _BUTTON_STYLE = """
+        QPushButton {
+            background-color: %background_alt%;
+            color: %text_secondary%;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background-color: %border%;
+            color: %text%;
+        }
+    """
+
+    _WIDGET_STYLE = """
+        EqualizerWidget {
+            background-color: %background%;
+            border-radius: 8px;
+        }
+    """
+
+    _FREQ_LABEL_STYLE = "color: %text_secondary%; font-size: 10px;"
+    _VALUE_LABEL_STYLE = "color: %text%; font-size: 11px;"
+    _SLIDER_STYLE = """
+        QSlider::groove:vertical {
+            width: 4px;
+            background: %border%;
+            border-radius: 2px;
+        }
+        QSlider::handle:vertical {
+            width: 12px;
+            height: 12px;
+            background: %highlight%;
+            border-radius: 6px;
+            margin: 0 -4px;
+        }
+        QSlider::handle:vertical:hover {
+            background: %highlight_hover%;
+        }
+    """
+
     def __init__(self, parent=None):
         """Initialize equalizer widget."""
         super().__init__(parent)
@@ -63,8 +146,14 @@ class EqualizerWidget(QWidget):
         self._setup_ui()
         self._apply_preset('Flat')
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Setup the user interface."""
+        from system.theme import ThemeManager
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
@@ -73,51 +162,13 @@ class EqualizerWidget(QWidget):
         preset_layout = QHBoxLayout()
 
         preset_label = QLabel('Preset:')
-        preset_label.setStyleSheet("color: #b3b3b3;")
+        preset_label.setStyleSheet(ThemeManager.instance().get_qss(self._PRESET_LABEL_STYLE))
         preset_layout.addWidget(preset_label)
 
         self._preset_combo = QComboBox()
         self._preset_combo.addEntries([p.name for p in self.PRESETS])
         self._preset_combo.currentTextChanged.connect(self._on_preset_changed)
-        self._preset_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #282828;
-                color: #ffffff;
-                border: none;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QComboBox:hover {
-                background-color: #383838;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::down-arrow {
-                color: #b3b3b3;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 1px solid #404040;
-                selection-background-color: #1db954;
-                selection-color: #ffffff;
-                padding: 4px;
-            }
-            QComboBox QAbstractItemView::item {
-                color: #ffffff;
-                padding: 6px 12px;
-                min-height: 24px;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background-color: #383838;
-                color: #ffffff;
-            }
-            QComboBox QAbstractItemView::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-            }
-        """)
+        self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
         preset_layout.addWidget(self._preset_combo)
 
         preset_layout.addStretch()
@@ -125,19 +176,7 @@ class EqualizerWidget(QWidget):
         # Reset button
         reset_btn = QPushButton('Reset')
         reset_btn.clicked.connect(lambda: self._apply_preset('Flat'))
-        reset_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #282828;
-                color: #b3b3b3;
-                border: none;
-                padding: 5px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #404040;
-                color: #ffffff;
-            }
-        """)
+        reset_btn.setStyleSheet(ThemeManager.instance().get_qss(self._BUTTON_STYLE))
         preset_layout.addWidget(reset_btn)
 
         layout.addLayout(preset_layout)
@@ -153,15 +192,12 @@ class EqualizerWidget(QWidget):
         layout.addLayout(bands_layout)
 
         # Apply container style
-        self.setStyleSheet("""
-            EqualizerWidget {
-                background-color: #181818;
-                border-radius: 8px;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._WIDGET_STYLE))
 
     def _create_band_slider(self, index: int, frequency: int) -> QWidget:
         """Create a slider for a frequency band."""
+        from system.theme import ThemeManager
+
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -170,13 +206,13 @@ class EqualizerWidget(QWidget):
         # Frequency label
         freq_label = QLabel(self._format_frequency(frequency))
         freq_label.setAlignment(Qt.AlignCenter)
-        freq_label.setStyleSheet("color: #b3b3b3; font-size: 10px;")
+        freq_label.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
         layout.addWidget(freq_label)
 
         # Value label
         value_label = QLabel('0')
         value_label.setAlignment(Qt.AlignCenter)
-        value_label.setStyleSheet("color: #ffffff; font-size: 11px;")
+        value_label.setStyleSheet(ThemeManager.instance().get_qss(self._VALUE_LABEL_STYLE))
         layout.addWidget(value_label)
 
         # Slider
@@ -184,23 +220,7 @@ class EqualizerWidget(QWidget):
         slider.setRange(-12, 12)
         slider.setValue(0)
         slider.setFixedWidth(40)
-        slider.setStyleSheet("""
-            QSlider::groove:vertical {
-                width: 4px;
-                background: #4d4d4d;
-                border-radius: 2px;
-            }
-            QSlider::handle:vertical {
-                width: 12px;
-                height: 12px;
-                background: #1db954;
-                border-radius: 6px;
-                margin: 0 -4px;
-            }
-            QSlider::handle:vertical:hover {
-                background: #1ed760;
-            }
-        """)
+        slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
         slider.valueChanged.connect(
             lambda value, idx=index, lbl=value_label:
             self._on_band_changed(idx, value, lbl)
@@ -251,6 +271,28 @@ class EqualizerWidget(QWidget):
         """Set band values."""
         if len(bands) == len(self._bands):
             self._bands = bands.copy()
+
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+
+        # Update all styled widgets
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._WIDGET_STYLE))
+
+        # Find and update all child widgets
+        for child in self.findChildren(QLabel):
+            if child.text() in [self._format_frequency(f) for f in self.FREQUENCY_BANDS]:
+                child.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
+            elif child.text().isdigit() or child.text().startswith('-'):
+                child.setStyleSheet(ThemeManager.instance().get_qss(self._VALUE_LABEL_STYLE))
+
+        # Update combo box
+        self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
+
+        # Update sliders
+        for slider in self.findChildren(QSlider):
+            slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
+
 
 
 class EqualizerDialog:

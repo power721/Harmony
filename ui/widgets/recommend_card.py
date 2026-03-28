@@ -84,8 +84,14 @@ class RecommendCard(QWidget):
         self._set_default_cover()
         self._load_cover()
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Set up the card UI."""
+        from system.theme import ThemeManager
+
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -98,9 +104,10 @@ class RecommendCard(QWidget):
         self._cover_container.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
 
         # Pre-computed stylesheets for hover (H-08 optimization)
+        theme = ThemeManager.instance().current_theme
         radius = self.BORDER_RADIUS
-        self._style_normal = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; border: 2px solid #1db954; }}"
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
         self._cover_container.setStyleSheet(self._style_normal)
 
         # Cover label
@@ -123,14 +130,14 @@ class RecommendCard(QWidget):
         title = self._data.get('title', '') or self._data.get('name', '')
         self._name_label = QLabel(title)
         self._name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self._name_label.setStyleSheet("""
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
             QLabel {
-                color: #ffffff;
+                color: %text%;
                 font-size: 12px;
                 font-weight: bold;
                 background: transparent;
             }
-        """)
+        """))
         self._name_label.setWordWrap(True)
         self._name_label.setMaximumHeight(32)
 
@@ -192,11 +199,82 @@ class RecommendCard(QWidget):
             self.clicked.emit(self._data)
         super().mousePressEvent(event)
 
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+        radius = self.BORDER_RADIUS
+
+        # Update pre-computed stylesheets
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
+
+        # Apply current state
+        if self._is_hovering:
+            self._cover_container.setStyleSheet(self._style_hover)
+        else:
+            self._cover_container.setStyleSheet(self._style_normal)
+
+        # Update text labels
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text%;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """))
+
+
 
 class RecommendSection(QWidget):
     """Section widget displaying recommendation cards in a horizontal scroll."""
 
     recommendation_clicked = Signal(dict)  # Emits recommendation data
+
+    _STYLE_TEMPLATE = """
+        QLabel {
+            color: %highlight%;
+            font-size: 16px;
+            font-weight: bold;
+        }
+    """
+
+    _SCROLL_STYLE_TEMPLATE = """
+        QScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+        QScrollBar:horizontal {
+            background-color: %background%;
+            height: 8px;
+            border-radius: 4px;
+        }
+        QScrollBar::handle:horizontal {
+            background-color: %background_hover%;
+            border-radius: 4px;
+            min-width: 30px;
+        }
+        QScrollBar::handle:horizontal:hover {
+            background-color: %border%;
+        }
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+        }
+    """
+
+    _LOADING_STYLE_TEMPLATE = """
+        QProgressBar {
+            background-color: %background_hover%;
+            border: none;
+            border-radius: 2px;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 2px;
+        }
+    """
 
     def __init__(self, title: str = None, parent=None):
         super().__init__(parent)
@@ -204,8 +282,14 @@ class RecommendSection(QWidget):
         self._custom_title = title
         self._setup_ui()
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Set up the section UI."""
+        from system.theme import ThemeManager
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 5, 0, 0)
         layout.setSpacing(2)
@@ -215,13 +299,7 @@ class RecommendSection(QWidget):
 
         # Title
         self._title_label = QLabel(self._custom_title if self._custom_title else t("recommendations"))
-        self._title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
-                font-size: 16px;
-                font-weight: bold;
-            }
-        """)
+        self._title_label.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         layout.addWidget(self._title_label)
 
         # Scroll area for cards
@@ -230,28 +308,7 @@ class RecommendSection(QWidget):
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._scroll_area.setFixedHeight(200)
-        self._scroll_area.setStyleSheet("""
-            QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #3d3d3d;
-                border-radius: 4px;
-                min-width: 30px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #4d4d4d;
-            }
-            QScrollBar::add-line, QScrollBar::sub-line {
-                width: 0px;
-            }
-        """)
+        self._scroll_area.setStyleSheet(ThemeManager.instance().get_qss(self._SCROLL_STYLE_TEMPLATE))
 
         # Cards container
         self._cards_container = QWidget()
@@ -275,6 +332,8 @@ class RecommendSection(QWidget):
 
     def _create_loading_indicator(self) -> QWidget:
         """Create loading indicator."""
+        from system.theme import ThemeManager
+
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setAlignment(Qt.AlignCenter)
@@ -282,17 +341,7 @@ class RecommendSection(QWidget):
         progress = QProgressBar()
         progress.setRange(0, 0)  # Indeterminate
         progress.setFixedSize(150, 4)
-        progress.setStyleSheet("""
-            QProgressBar {
-                background-color: #2a2a2a;
-                border: none;
-                border-radius: 2px;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 2px;
-            }
-        """)
+        progress.setStyleSheet(ThemeManager.instance().get_qss(self._LOADING_STYLE_TEMPLATE))
         layout.addWidget(progress)
 
         return widget
@@ -353,3 +402,19 @@ class RecommendSection(QWidget):
                 self._title_label.setText(self._custom_title)
             else:
                 self._title_label.setText(t("recommendations"))
+
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+
+        # Update title label
+        self._title_label.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+
+        # Update scroll area
+        self._scroll_area.setStyleSheet(ThemeManager.instance().get_qss(self._SCROLL_STYLE_TEMPLATE))
+
+        # Update loading indicator
+        progress = self._loading.findChild(QProgressBar)
+        if progress:
+            progress.setStyleSheet(ThemeManager.instance().get_qss(self._LOADING_STYLE_TEMPLATE))
+

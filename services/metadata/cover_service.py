@@ -258,7 +258,6 @@ class CoverService:
         cache_key = self._get_cache_key(artist, title)
         cached_cover = self._get_cached_cover(cache_key)
         if cached_cover and cached_cover.exists():
-            logger.debug(f"[CoverService] Returning cached cover for online track: {cached_cover}")
             return str(cached_cover)
 
         try:

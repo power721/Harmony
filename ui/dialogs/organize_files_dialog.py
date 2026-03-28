@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from domain import PlaylistItem
 from domain.track import Track
 from system.i18n import t
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,72 @@ class OrganizeFilesThread(QThread):
 class OrganizeFilesDialog(QDialog):
     """Dialog for organizing music files into structured directories."""
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QPushButton {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            padding: 8px 16px;
+            min-width: 80px;
+        }
+        QPushButton:hover {
+            background-color: %background_hover%;
+        }
+        QPushButton:pressed {
+            background-color: %background_alt%;
+        }
+        QPushButton:disabled {
+            background-color: %background_alt%;
+            color: %border%;
+            border-color: %border%;
+        }
+        QTableWidget {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            gridline-color: %border%;
+        }
+        QTableWidget::item {
+            padding: 8px;
+            border-bottom: 1px solid %border%;
+        }
+        QTableWidget::item:hover {
+            background-color: %border%;
+        }
+        QTableWidget::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+        }
+        QHeaderView::section {
+            background-color: #383838;
+            color: %text%;
+            padding: 10px;
+            border: none;
+            border-bottom: 2px solid %background_hover%;
+            font-weight: bold;
+        }
+        QProgressBar {
+            background-color: %border%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            text-align: center;
+            color: %text%;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 3px;
+        }
+    """
+
     def __init__(self, tracks: List[Track], file_org_service, config_manager, parent=None):
         super().__init__(parent)
         self.tracks = tracks
@@ -61,6 +128,7 @@ class OrganizeFilesDialog(QDialog):
         self.previews = []
         self.organize_thread = None
         self._title_font = None  # Will be set in _setup_ui
+        ThemeManager.instance().register_widget(self)
         self._setup_ui()
         self._load_tracks()
 
@@ -77,71 +145,7 @@ class OrganizeFilesDialog(QDialog):
         self.resize(1000, 700)
 
         # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px 16px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #606060;
-                border-color: #3a3a3a;
-            }
-            QTableWidget {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                gridline-color: #3a3a3a;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #3a3a3a;
-            }
-            QTableWidget::item:hover {
-                background-color: #3a3a3a;
-            }
-            QTableWidget::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-            }
-            QHeaderView::section {
-                background-color: #383838;
-                color: #ffffff;
-                padding: 10px;
-                border: none;
-                border-bottom: 2px solid #4a4a4a;
-                font-weight: bold;
-            }
-            QProgressBar {
-                background-color: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 3px;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout()
         layout.setSpacing(15)
@@ -155,7 +159,8 @@ class OrganizeFilesDialog(QDialog):
         info_label = QLabel(
             f"{t('selected_tracks')}: {len(self.tracks)}"
         )
-        info_label.setStyleSheet("color: #a0a0a0;")
+        theme = ThemeManager.instance().current_theme
+        info_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(info_label)
 
         # Directory selection
@@ -165,13 +170,14 @@ class OrganizeFilesDialog(QDialog):
         dir_layout.addWidget(dir_label)
 
         self.dir_edit = QLabel()
-        self.dir_edit.setStyleSheet("""
-            QLabel {
-                background-color: #2a2a2a;
-                border: 1px solid #4a4a4a;
+        theme = ThemeManager.instance().current_theme
+        self.dir_edit.setStyleSheet(f"""
+            QLabel {{
+                background-color: {theme.background_hover};
+                border: 1px solid {theme.background_hover};
                 border-radius: 4px;
                 padding: 6px 12px;
-            }
+            }}
         """)
         self.dir_edit.setText(t("select_directory"))
         dir_layout.addWidget(self.dir_edit, 1)
@@ -217,7 +223,8 @@ class OrganizeFilesDialog(QDialog):
         # Status label
         self.status_label = QLabel()
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #a0a0a0;")
+        theme = ThemeManager.instance().current_theme
+        self.status_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(self.status_label)
 
         # Buttons
@@ -441,3 +448,20 @@ class OrganizeFilesDialog(QDialog):
             self.organize_thread.terminate()
             self.organize_thread.wait()
         super().closeEvent(event)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Update inline styles that use theme colors
+        theme = ThemeManager.instance().current_theme
+        if self.status_label:
+            self.status_label.setStyleSheet(f"color: {theme.text_secondary};")
+        if self.dir_edit:
+            self.dir_edit.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {theme.background_hover};
+                    border: 1px solid {theme.background_hover};
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                }}
+            """)

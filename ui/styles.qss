@@ -5,8 +5,8 @@
 
 /* Main Window */
 QMainWindow {
-    background-color: #121212;
-    color: #ffffff;
+    background-color: %background%;
+    color: %text%;
 }
 
 /* Scrollbar */
@@ -23,7 +23,7 @@ QScrollBar::handle:vertical {
 }
 
 QScrollBar::handle:vertical:hover {
-    background: #b3b3b3;
+    background: %text_secondary%;
 }
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
@@ -36,13 +36,13 @@ QScrollBar:horizontal {
 }
 
 QScrollBar::handle:horizontal {
-    background: #ffffff;
+    background: %text%;
     min-width: 30px;
     border-radius: 6px;
 }
 
 QScrollBar::handle:horizontal:hover {
-    background: #b3b3b3;
+    background: %text_secondary%;
 }
 
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
@@ -51,71 +51,71 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 
 /* Splitter */
 QSplitter::handle {
-    background-color: #282828;
+    background-color: %background_alt%;
 }
 
 QSplitter::handle:hover {
-    background-color: #404040;
+    background-color: %border%;
 }
 
 /* Buttons */
 QPushButton {
     background-color: transparent;
     border: none;
-    color: #b3b3b3;
+    color: %text_secondary%;
     padding: 8px 16px;
     border-radius: 4px;
     font-weight: 500;
 }
 
 QPushButton:hover {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QPushButton:pressed {
-    background-color: #404040;
+    background-color: %background_hover%;
 }
 
 QPushButton:checked {
-    background-color: #1db954;
-    color: #ffffff;
+    background-color: %highlight%;
+    color: %text%;
 }
 
 /* Primary Button */
 QPushButton[primary="true"] {
-    background-color: #1db954;
-    color: #ffffff;
+    background-color: %highlight%;
+    color: %text%;
     font-weight: bold;
     padding: 12px 24px;
     border-radius: 25px;
 }
 
 QPushButton[primary="true"]:hover {
-    background-color: #1ed760;
+    background-color: %highlight_hover%;
 }
 
 /* Input Fields */
 QLineEdit, QTextEdit {
-    background-color: #ffffff;
+    background-color: %text%;
     border: none;
     border-radius: 4px;
     padding: 10px;
-    color: #000000;
+    color: %background%;
 }
 
 QLineEdit:focus, QTextEdit:focus {
-    border: 2px solid #1db954;
+    border: 2px solid %highlight%;
 }
 
 /* Labels */
 QLabel {
-    color: #ffffff;
+    color: %text%;
     background-color: transparent;
 }
 
 QLabel[secondary="true"] {
-    color: #b3b3b3;
+    color: %text_secondary%;
 }
 
 /* Lists */
@@ -127,92 +127,92 @@ QListWidget {
 
 QListWidget::item {
     padding: 10px;
-    color: #b3b3b3;
+    color: %text_secondary%;
     border-radius: 4px;
 }
 
 QListWidget::item:selected {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QListWidget::item:hover {
-    background-color: #282828;
+    background-color: %background_alt%;
 }
 
 /* Tables */
 QTableWidget {
     background-color: transparent;
     border: none;
-    gridline-color: #282828;
+    gridline-color: %background_alt%;
     outline: none;
 }
 
 QTableWidget::item {
     padding: 8px;
-    color: #b3b3b3;
+    color: %text_secondary%;
 }
 
 QTableWidget::item:selected {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QTableWidget::item:hover {
-    background-color: #282828;
+    background-color: %background_alt%;
 }
 
 QTableWidget QHeaderView::section {
     background-color: transparent;
-    color: #b3b3b3;
+    color: %text_secondary%;
     padding: 10px;
     border: none;
-    border-bottom: 1px solid #282828;
+    border-bottom: 1px solid %background_alt%;
     font-weight: bold;
 }
 
 /* Sliders */
 QSlider::groove:horizontal {
     height: 4px;
-    background: #4d4d4d;
+    background: %border%;
     border-radius: 2px;
 }
 
 QSlider::handle:horizontal {
     width: 12px;
     height: 12px;
-    background: #ffffff;
+    background: %text%;
     border-radius: 6px;
     margin: -4px 0;
 }
 
 QSlider::handle:horizontal:hover {
-    background: #1db954;
+    background: %highlight%;
 }
 
 QSlider::groove:vertical {
     width: 4px;
-    background: #4d4d4d;
+    background: %border%;
     border-radius: 2px;
 }
 
 QSlider::handle:vertical {
     width: 12px;
     height: 12px;
-    background: #ffffff;
+    background: %text%;
     border-radius: 6px;
     margin: 0 -4px;
 }
 
 QSlider::handle:vertical:hover {
-    background: #1db954;
+    background: %highlight%;
 }
 
 /* Menu */
 QMenu {
-    background-color: #282828;
-    color: #ffffff;
-    border: 1px solid #404040;
+    background-color: %background_alt%;
+    color: %text%;
+    border: 1px solid %border%;
     padding: 4px;
 }
 
@@ -222,19 +222,19 @@ QMenu::item {
 }
 
 QMenu::item:selected {
-    background-color: #1db954;
+    background-color: %highlight%;
 }
 
 QMenu::separator {
     height: 1px;
-    background: #404040;
+    background: %border%;
     margin: 4px 8px;
 }
 
 /* Tooltips */
 QToolTip {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
     border: none;
     padding: 4px 8px;
     border-radius: 4px;
@@ -242,110 +242,110 @@ QToolTip {
 
 /* Message Box (QMessageBox) */
 QMessageBox {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QMessageBox QLabel {
-    color: #ffffff;
+    color: %text%;
     background-color: transparent;
 }
 
 QMessageBox QPushButton {
-    background-color: #3a3a3a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
     padding: 8px 16px;
     min-width: 80px;
 }
 
 QMessageBox QPushButton:hover {
-    background-color: #4a4a4a;
+    background-color: %border%;
 }
 
 QMessageBox QPushButton:pressed {
-    background-color: #2a2a2a;
+    background-color: %background_alt%;
 }
 
 /* Input Dialog */
 QInputDialog {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QInputDialog QLabel {
-    color: #ffffff;
+    color: %text%;
 }
 
 QInputDialog QLineEdit {
-    background-color: #3a3a3a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
     padding: 6px;
 }
 
 QInputDialog QLineEdit:focus {
-    border: 1px solid #1db954;
+    border: 1px solid %highlight%;
 }
 
 QInputDialog QPushButton {
-    background-color: #3a3a3a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
     padding: 8px 16px;
 }
 
 QInputDialog QPushButton:hover {
-    background-color: #4a4a4a;
+    background-color: %border%;
 }
 
 /* File Dialog */
 QFileDialog {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }
 
 QFileDialog QLabel {
-    color: #ffffff;
+    color: %text%;
 }
 
 QFileDialog QLineEdit {
-    background-color: #3a3a3a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
     padding: 6px;
 }
 
 QFileDialog QListView, QFileDialog QTreeView {
-    background-color: #2a2a2a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
 }
 
 QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected {
-    background-color: #1db954;
-    color: #ffffff;
+    background-color: %highlight%;
+    color: %text%;
 }
 
 QFileDialog QPushButton {
-    background-color: #3a3a3a;
-    color: #ffffff;
-    border: 1px solid #4a4a4a;
+    background-color: %background_hover%;
+    color: %text%;
+    border: 1px solid %border%;
     border-radius: 4px;
     padding: 8px 16px;
 }
 
 QFileDialog QPushButton:hover {
-    background-color: #4a4a4a;
+    background-color: %border%;
 }
 
 /* Dialog Base */
 QDialog {
-    background-color: #282828;
-    color: #ffffff;
+    background-color: %background_alt%;
+    color: %text%;
 }

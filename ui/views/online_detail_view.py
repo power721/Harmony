@@ -227,6 +227,28 @@ class OnlineAlbumCard(QWidget):
     CARD_HEIGHT = 200
     BORDER_RADIUS = 8
 
+    _STYLE_COVER_CONTAINER = """
+        QFrame {
+            background-color: %background_hover%;
+            border-radius: BORDER_RADIUSpx;
+        }
+    """
+    _STYLE_COVER_CONTAINER_HOVER = """
+        QFrame {
+            background-color: %background_hover%;
+            border-radius: BORDER_RADIUSpx;
+            border: 2px solid %highlight%;
+        }
+    """
+    _STYLE_NAME_LABEL = """
+        QLabel {
+            color: %text%;
+            font-size: 12px;
+            font-weight: bold;
+            background: transparent;
+        }
+    """
+
     def __init__(self, album_data: Dict[str, Any], parent=None):
         super().__init__(parent)
         self._album_data = album_data
@@ -246,6 +268,10 @@ class OnlineAlbumCard(QWidget):
         self._set_default_cover()
         QTimer.singleShot(10, self._load_cover)
 
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Set up the card UI."""
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
@@ -259,22 +285,11 @@ class OnlineAlbumCard(QWidget):
         # Cover container
         self._cover_container = QFrame()
         self._cover_container.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-            }}
-        """)
 
         # Cover label
         self._cover_label = QLabel(self._cover_container)
         self._cover_label.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
         self._cover_label.setAlignment(Qt.AlignCenter)
-        self._cover_label.setStyleSheet(f"""
-            QLabel {{
-                border-radius: {self.BORDER_RADIUS}px;
-            }}
-        """)
 
         # Info container
         info_widget = QWidget()
@@ -285,14 +300,6 @@ class OnlineAlbumCard(QWidget):
         # Album name
         self._name_label = QLabel(self._album.name or "Unknown")
         self._name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self._name_label.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                font-size: 12px;
-                font-weight: bold;
-                background: transparent;
-            }
-        """)
         self._name_label.setWordWrap(True)
         self._name_label.setMaximumHeight(32)
 
@@ -324,12 +331,15 @@ class OnlineAlbumCard(QWidget):
 
     def _set_default_cover(self):
         """Set default cover when no cover is available."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
         pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
-        pixmap.fill(QColor("#3d3d3d"))
+        pixmap.fill(QColor(tm.current_theme.border))
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QColor("#666666"))
+        painter.setPen(QColor(tm.current_theme.text_secondary))
         font = QFont()
         font.setPixelSize(48)
         painter.setFont(font)
@@ -344,25 +354,28 @@ class OnlineAlbumCard(QWidget):
     def enterEvent(self, event):
         """Handle mouse enter for hover effect."""
         self._is_hovering = True
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-                border: 2px solid #1db954;
-            }}
-        """)
+        self._apply_hover_style()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave for hover effect."""
         self._is_hovering = False
-        self._cover_container.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2a2a2a;
-                border-radius: {self.BORDER_RADIUS}px;
-            }}
-        """)
+        self._apply_normal_style()
         super().leaveEvent(event)
+
+    def _apply_hover_style(self):
+        """Apply hover style to cover container."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        style = tm.get_qss(self._STYLE_COVER_CONTAINER_HOVER.replace("BORDER_RADIUS", str(self.BORDER_RADIUS)))
+        self._cover_container.setStyleSheet(style)
+
+    def _apply_normal_style(self):
+        """Apply normal style to cover container."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        style = tm.get_qss(self._STYLE_COVER_CONTAINER.replace("BORDER_RADIUS", str(self.BORDER_RADIUS)))
+        self._cover_container.setStyleSheet(style)
 
     def mousePressEvent(self, event):
         """Handle mouse click."""
@@ -373,6 +386,20 @@ class OnlineAlbumCard(QWidget):
     def get_album(self) -> OnlineAlbum:
         """Get the album object."""
         return self._album
+
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Apply appropriate style based on hover state
+        if self._is_hovering:
+            self._apply_hover_style()
+        else:
+            self._apply_normal_style()
+
+        # Name label
+        self._name_label.setStyleSheet(tm.get_qss(self._STYLE_NAME_LABEL))
 
 
 class OnlineDetailView(QWidget):
@@ -386,6 +413,191 @@ class OnlineDetailView(QWidget):
     insert_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
     add_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
     album_clicked = Signal(object)  # OnlineAlbum
+
+    _STYLE_BUTTONS = """
+        QPushButton {
+            background: %background_alt%;
+            color: %text%;
+            border: none;
+            padding: 4px 16px;
+            border-radius: 14px;
+            font-size: 12px;
+        }
+        QPushButton:hover {
+            background: %border%;
+        }
+        QPushButton#primaryBtn {
+            background: %highlight%;
+        }
+        QPushButton#primaryBtn:hover {
+            background: %highlight_hover%;
+        }
+    """
+    _STYLE_COVER_LABEL = """
+        background: %background_alt%;
+        border-radius: 8px;
+    """
+    _STYLE_TYPE_LABEL = "color: %text_secondary%; font-size: 11px;"
+    _STYLE_NAME_LABEL = "color: %text%; font-size: 18px; font-weight: bold;"
+    _STYLE_SECONDARY_LABEL = "color: %text_secondary%; font-size: 12px;"
+    _STYLE_EXTRA_LABEL = "color: %text_secondary%; font-size: 11px;"
+    _STYLE_STATS_LABEL = "color: %highlight%; font-size: 12px;"
+    _STYLE_PAGE_LABEL = "color: %text_secondary%; padding: 0 10px;"
+    _STYLE_ALBUMS_SECTION = "background-color: %background_alt%;"
+    _STYLE_ALBUMS_TITLE = """
+        QLabel {
+            color: %highlight%;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 4px 0;
+        }
+    """
+    _STYLE_LOAD_MORE_ALBUMS = """
+        QPushButton {
+            background: transparent;
+            color: %highlight%;
+            border: 1px solid %highlight%;
+            border-radius: 14px;
+            padding: 4px 16px;
+            font-size: 12px;
+        }
+        QPushButton:hover {
+            background: %highlight%;
+            color: %text%;
+        }
+    """
+    _STYLE_SCROLL_AREA = """
+        QScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+        QScrollBar:horizontal {
+            background-color: %background_alt%;
+            height: 8px;
+            border-radius: 4px;
+        }
+        QScrollBar::handle:horizontal {
+            background-color: %border%;
+            border-radius: 4px;
+            min-width: 30px;
+        }
+        QScrollBar::handle:horizontal:hover {
+            background-color: %text_secondary%;
+        }
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+        }
+    """
+    _STYLE_SONGS_TITLE = """
+        QLabel {
+            color: %highlight%;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 4px 0;
+        }
+    """
+    _STYLE_SONGS_TABLE = """
+        QTableWidget#detailSongsTable {
+            background-color: %background_alt%;
+            border: none;
+            border-radius: 8px;
+            gridline-color: %background_hover%;
+        }
+        QTableWidget#detailSongsTable::item {
+            padding: 12px 8px;
+            color: %text%;
+            border: none;
+            border-bottom: 1px solid %background_hover%;
+        }
+        QTableWidget#detailSongsTable::item:alternate {
+            background-color: %background_hover%;
+        }
+        QTableWidget#detailSongsTable::item:!alternate {
+            background-color: %background_alt%;
+        }
+        QTableWidget#detailSongsTable::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+            font-weight: 500;
+        }
+        QTableWidget#detailSongsTable::item:selected:!alternate {
+            background-color: %highlight%;
+        }
+        QTableWidget#detailSongsTable::item:selected:alternate {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#detailSongsTable::item:hover {
+            background-color: %border%;
+        }
+        QTableWidget#detailSongsTable::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#detailSongsTable::item:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#detailSongsTable:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#detailSongsTable QHeaderView::section {
+            background-color: %background_hover%;
+            color: %highlight%;
+            padding: 14px 12px;
+            border: none;
+            border-bottom: 2px solid %highlight%;
+            font-weight: bold;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        QTableWidget#detailSongsTable QTableCornerButton::section {
+            background-color: %background_hover%;
+            border: none;
+            border-right: 1px solid %border%;
+            border-bottom: 2px solid %highlight%;
+        }
+        QTableWidget#detailSongsTable QScrollBar:vertical {
+            background-color: %background_alt%;
+            width: 12px;
+            border-radius: 6px;
+            margin: 0px;
+        }
+        QTableWidget#detailSongsTable QScrollBar::handle:vertical {
+            background-color: %border%;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QTableWidget#detailSongsTable QScrollBar::handle:vertical:hover {
+            background-color: %text_secondary%;
+        }
+        QTableWidget#detailSongsTable QScrollBar:horizontal {
+            background-color: %background_alt%;
+            height: 12px;
+            border-radius: 6px;
+        }
+        QTableWidget#detailSongsTable QScrollBar::handle:horizontal {
+            background-color: %border%;
+            border-radius: 6px;
+            min-width: 40px;
+        }
+        QTableWidget#detailSongsTable QScrollBar::handle:horizontal:hover {
+            background-color: %text_secondary%;
+        }
+        QTableWidget#detailSongsTable QScrollBar::add-line, QScrollBar::sub-line {
+            height: 0px;
+            width: 0px;
+        }
+    """
+    _STYLE_MENU = """
+        QMenu {
+            background: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item:selected {
+            background: %highlight%;
+        }
+    """
 
     def __init__(
         self,
@@ -428,7 +640,11 @@ class OnlineDetailView(QWidget):
         self._page_size = 30  # QQ Music API max per page
 
         self._setup_ui()
-        self._apply_styles()
+
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+        self.refresh_theme()
 
     def _setup_ui(self):
         """Setup UI components."""
@@ -479,10 +695,6 @@ class OnlineDetailView(QWidget):
         # Cover/Avatar placeholder - clickable
         self._cover_label = QLabel()
         self._cover_label.setFixedSize(120, 120)
-        self._cover_label.setStyleSheet("""
-            background: #333;
-            border-radius: 8px;
-        """)
         self._cover_label.setAlignment(Qt.AlignCenter)
         self._cover_label.setCursor(Qt.PointingHandCursor)
         self._cover_label.mousePressEvent = self._on_cover_clicked
@@ -496,28 +708,23 @@ class OnlineDetailView(QWidget):
 
         # Type label
         self._type_label = QLabel()
-        self._type_label.setStyleSheet("color: #808080; font-size: 11px;")
         info_layout.addWidget(self._type_label)
 
         # Name
         self._name_label = QLabel()
-        self._name_label.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
         info_layout.addWidget(self._name_label)
 
         # Secondary info (artist/creator)
         self._secondary_label = QLabel()
-        self._secondary_label.setStyleSheet("color: #808080; font-size: 12px;")
         info_layout.addWidget(self._secondary_label)
 
         # Extra info row (company, genre, language, etc.)
         self._extra_label = QLabel()
-        self._extra_label.setStyleSheet("color: #666; font-size: 11px;")
         self._extra_label.setWordWrap(True)
         info_layout.addWidget(self._extra_label)
 
         # Stats
         self._stats_label = QLabel()
-        self._stats_label.setStyleSheet("color: #1db954; font-size: 12px;")
         info_layout.addWidget(self._stats_label)
 
         info_layout.addStretch()
@@ -582,7 +789,6 @@ class OnlineDetailView(QWidget):
 
         # Page label
         self._page_label = QLabel("1 / 1")
-        self._page_label.setStyleSheet("color: #808080; padding: 0 10px;")
         layout.addWidget(self._page_label)
 
         # Next button
@@ -602,7 +808,6 @@ class OnlineDetailView(QWidget):
     def _create_albums_section(self) -> QWidget:
         """Create albums grid section for artist detail."""
         section = QWidget()
-        section.setStyleSheet("background-color: #1a1a1a;")
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 8, 0, 8)
         section_layout.setSpacing(12)
@@ -614,14 +819,6 @@ class OnlineDetailView(QWidget):
 
         # Section title
         self._albums_title_label = QLabel(t("albums"))
-        self._albums_title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 4px 0;
-            }
-        """)
         header_layout.addWidget(self._albums_title_label)
 
         header_layout.addStretch()
@@ -630,20 +827,6 @@ class OnlineDetailView(QWidget):
         self._load_more_albums_btn = QPushButton(t("load_more"))
         self._load_more_albums_btn.setCursor(Qt.PointingHandCursor)
         self._load_more_albums_btn.setFixedHeight(28)
-        self._load_more_albums_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #1db954;
-                border: 1px solid #1db954;
-                border-radius: 14px;
-                padding: 4px 16px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background: #1db954;
-                color: #000000;
-            }
-        """)
         self._load_more_albums_btn.clicked.connect(self._on_load_more_albums)
         header_layout.addWidget(self._load_more_albums_btn)
 
@@ -655,32 +838,9 @@ class OnlineDetailView(QWidget):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setFixedHeight(210)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #3d3d3d;
-                border-radius: 4px;
-                min-width: 30px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #4d4d4d;
-            }
-            QScrollBar::add-line, QScrollBar::sub-line {
-                width: 0px;
-            }
-        """)
 
         # Albums container
         self._albums_container = QWidget()
-        self._albums_container.setStyleSheet("background-color: transparent;")
         self._albums_container.setMinimumHeight(200)
         self._albums_layout = QHBoxLayout(self._albums_container)
         self._albums_layout.setContentsMargins(0, 0, 0, 0)
@@ -704,14 +864,6 @@ class OnlineDetailView(QWidget):
 
         # Section title
         self._songs_title_label = QLabel(t("songs"))
-        self._songs_title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 4px 0;
-            }
-        """)
         section_layout.addWidget(self._songs_title_label)
 
         # Actions
@@ -752,123 +904,51 @@ class OnlineDetailView(QWidget):
         table.setContextMenuPolicy(Qt.CustomContextMenu)
         table.customContextMenuRequested.connect(self._show_track_context_menu)
 
-        # Same style as library view
-        table.setStyleSheet("""
-            QTableWidget#detailSongsTable {
-                background-color: #1e1e1e;
-                border: none;
-                border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget#detailSongsTable::item {
-                padding: 12px 8px;
-                color: #e0e0e0;
-                border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            QTableWidget#detailSongsTable::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget#detailSongsTable::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            QTableWidget#detailSongsTable::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-                font-weight: 500;
-            }
-            QTableWidget#detailSongsTable::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget#detailSongsTable::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            QTableWidget#detailSongsTable::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget#detailSongsTable::item:selected:hover {
-                background-color: #1ed760;
-            }
-            QTableWidget#detailSongsTable::item:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#detailSongsTable:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#detailSongsTable QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid #1db954;
-                font-weight: bold;
-                font-size: 12px;
-                letter-spacing: 0.5px;
-            }
-            QTableWidget#detailSongsTable QTableCornerButton::section {
-                background-color: #2a2a2a;
-                border: none;
-                border-right: 1px solid #3a3a3a;
-                border-bottom: 2px solid #1db954;
-            }
-            QTableWidget#detailSongsTable QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QTableWidget#detailSongsTable QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QTableWidget#detailSongsTable QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QTableWidget#detailSongsTable QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget#detailSongsTable QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QTableWidget#detailSongsTable QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QTableWidget#detailSongsTable QScrollBar::add-line, QScrollBar::sub-line {
-                height: 0px;
-                width: 0px;
-            }
-        """)
-
         return table
 
-    def _apply_styles(self):
-        """Apply styles."""
-        self.setStyleSheet("""
-            QPushButton {
-                background: #333;
-                color: white;
-                border: none;
-                padding: 4px 16px;
-                border-radius: 14px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background: #444;
-            }
-            QPushButton#primaryBtn {
-                background: #1db954;
-            }
-            QPushButton#primaryBtn:hover {
-                background: #1ed760;
-            }
-        """)
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Main button styles
+        self.setStyleSheet(tm.get_qss(self._STYLE_BUTTONS))
+
+        # Info section labels
+        self._cover_label.setStyleSheet(tm.get_qss(self._STYLE_COVER_LABEL))
+        self._type_label.setStyleSheet(tm.get_qss(self._STYLE_TYPE_LABEL))
+        self._name_label.setStyleSheet(tm.get_qss(self._STYLE_NAME_LABEL))
+        self._secondary_label.setStyleSheet(tm.get_qss(self._STYLE_SECONDARY_LABEL))
+        self._extra_label.setStyleSheet(tm.get_qss(self._STYLE_EXTRA_LABEL))
+        self._stats_label.setStyleSheet(tm.get_qss(self._STYLE_STATS_LABEL))
+
+        # Page label
+        self._page_label.setStyleSheet(tm.get_qss(self._STYLE_PAGE_LABEL))
+
+        # Albums section
+        self._albums_section.setStyleSheet(tm.get_qss(self._STYLE_ALBUMS_SECTION))
+        self._albums_title_label.setStyleSheet(tm.get_qss(self._STYLE_ALBUMS_TITLE))
+        self._load_more_albums_btn.setStyleSheet(tm.get_qss(self._STYLE_LOAD_MORE_ALBUMS))
+
+        # Scroll area in albums section
+        scroll_area = self._albums_section.findChild(QScrollArea)
+        if scroll_area:
+            scroll_area.setStyleSheet(tm.get_qss(self._STYLE_SCROLL_AREA))
+
+        # Albums container
+        if hasattr(self, '_albums_container'):
+            self._albums_container.setStyleSheet("background-color: transparent;")
+
+        # Songs section
+        self._songs_title_label.setStyleSheet(tm.get_qss(self._STYLE_SONGS_TITLE))
+
+        # Songs table
+        self._songs_table.setStyleSheet(tm.get_qss(self._STYLE_SONGS_TABLE))
+
+        # Refresh all album cards
+        for card in self._album_cards:
+            if hasattr(card, 'refresh_theme'):
+                card.refresh_theme()
 
     def load_artist(self, mid: str, name: str = ""):
         """Load artist detail."""
@@ -1176,6 +1256,7 @@ class OnlineDetailView(QWidget):
         """Show cover image in a dialog (async loading)."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
         from PySide6.QtGui import QPixmap
+        from system.theme import ThemeManager
 
         # Create dialog first
         dialog = QDialog(self)
@@ -1187,7 +1268,7 @@ class OnlineDetailView(QWidget):
         # Image label with loading state
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet("background: #1a1a1a;")
+        image_label.setStyleSheet(f"background: {ThemeManager.instance().current_theme.background_alt};")
         image_label.setText(t("loading"))
         image_label.setMinimumSize(200, 200)
 
@@ -1623,16 +1704,8 @@ class OnlineDetailView(QWidget):
         track = selected_tracks[0] if is_single else None
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background: #2a2a2a;
-                color: white;
-                border: 1px solid #444;
-            }
-            QMenu::item:selected {
-                background: #1db954;
-            }
-        """)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_MENU))
 
         play_action = menu.addAction(t("play"))
 

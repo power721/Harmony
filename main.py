@@ -175,22 +175,26 @@ def main():
 
     qt_app.setFont(font)
 
-    # Load global stylesheet
+    # Create application with dependency injection
+    app = Application.create(qt_app)
+
+    # Load and apply themed global stylesheet
     try:
-        qss_path = get_resource_path("ui/styles.qss")
-        with open(qss_path, "r", encoding="utf-8") as f:
-            stylesheet = f.read()
-            qt_app.setStyleSheet(stylesheet)
+        theme = app.bootstrap.theme
+        theme.apply_global_stylesheet()
     except Exception as e:
-        logging.warning(f"Failed to load stylesheet: {e}")
+        logging.warning(f"Failed to load themed stylesheet: {e}")
+        try:
+            qss_path = get_resource_path("ui/styles.qss")
+            with open(qss_path, "r", encoding="utf-8") as f:
+                qt_app.setStyleSheet(f.read())
+        except Exception as e2:
+            logging.warning(f"Failed to load stylesheet: {e2}")
 
     # Set window icon
     icon_path = get_resource_path("icon.png")
     if icon_path.exists():
         qt_app.setWindowIcon(QIcon(str(icon_path)))
-
-    # Create application with dependency injection
-    app = Application.create(qt_app)
 
     # Create and show main window
     window = MainWindow()

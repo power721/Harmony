@@ -20,6 +20,7 @@ from shiboken6.Shiboken import isValid
 
 from services.lyrics.lyrics_service import LyricsService
 from system.i18n import t
+from system.theme import ThemeManager
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,77 @@ class LyricsDownloadDialog(QDialog):
     # Signals
     download_requested = Signal(dict, bool)  # Emits (song_info, download_cover)
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_hover%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+        QListWidget {
+            background-color: %background%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+        }
+        QListWidget::item {
+            padding: 8px;
+            border-bottom: 1px solid #303030;
+        }
+        QListWidget::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+        }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton:disabled {
+            background-color: %border%;
+            color: %text_secondary%;
+        }
+        QPushButton[role="cancel"] {
+            background-color: %border%;
+            color: %text%;
+        }
+        QCheckBox {
+            color: %text%;
+            font-size: 13px;
+            spacing: 8px;
+        }
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            border: 2px solid %border%;
+            background-color: %background%;
+        }
+        QCheckBox::indicator:checked {
+            background-color: %highlight%;
+            border-color: %highlight%;
+        }
+        QProgressBar {
+            background-color: %border%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            text-align: center;
+            color: %text%;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 3px;
+        }
+    """
+
     def __init__(
             self,
             track_title: str,
@@ -110,82 +182,14 @@ class LyricsDownloadDialog(QDialog):
 
         self._setup_ui()
         self._start_search()
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the dialog UI."""
         self.setWindowTitle(t("select_song"))
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-            }
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-            }
-            QListWidget {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #303030;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #808080;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #e0e0e0;
-            }
-            QCheckBox {
-                color: #e0e0e0;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 3px;
-                border: 2px solid #404040;
-                background-color: #1a1a1a;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #1db954;
-                border-color: #1db954;
-            }
-            QProgressBar {
-                background-color: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 3px;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
 
@@ -203,7 +207,7 @@ class LyricsDownloadDialog(QDialog):
         # Status label
         self._status_label = QLabel(t("searching"))
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #a0a0a0;")
+        self._status_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary};")
         layout.addWidget(self._status_label)
 
         # Song list
@@ -460,3 +464,9 @@ class LyricsDownloadDialog(QDialog):
                 return (selected_song, download_cover)
 
         return None
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        if self._status_label:
+            self._status_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary};")

@@ -18,61 +18,65 @@ from PySide6.QtGui import QFont
 
 from system.i18n import t
 from app.bootstrap import Bootstrap
+from system.theme import ThemeManager
 
 
 class HelpDialog(QDialog):
     """Dialog showing help information and keyboard shortcuts."""
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QGroupBox {
+            color: %highlight%;
+            font-weight: bold;
+            border: 1px solid %border%;
+            border-radius: 8px;
+            margin-top: 12px;
+            padding-top: 8px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 8px;
+        }
+        QPushButton {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: %border%;
+            border: 1px solid %highlight%;
+        }
+        QPushButton#rebuildBtn {
+            background-color: %highlight%;
+            color: #000000;
+            font-weight: bold;
+        }
+        QPushButton#rebuildBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(t("help"))
         self.setMinimumSize(500, 670)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-            }
-            QLabel {
-                color: #e0e0e0;
-            }
-            QGroupBox {
-                color: #1db954;
-                font-weight: bold;
-                border: 1px solid #3a3a3a;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 8px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 8px;
-            }
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #1db954;
-            }
-            QPushButton#rebuildBtn {
-                background-color: #1db954;
-                color: #000000;
-                font-weight: bold;
-            }
-            QPushButton#rebuildBtn:hover {
-                background-color: #1ed760;
-            }
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        ThemeManager.instance().register_widget(self)
 
         self._setup_ui()
 
@@ -96,7 +100,7 @@ class HelpDialog(QDialog):
         info_layout = QVBoxLayout(info_group)
 
         app_name = QLabel("Harmony")
-        app_name.setStyleSheet("font-size: 24px; font-weight: bold; color: #1db954;")
+        app_name.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
         app_name.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(app_name)
 
@@ -133,8 +137,8 @@ class HelpDialog(QDialog):
         for key, action in shortcuts:
             row = QHBoxLayout()
             key_label = QLabel(key)
-            key_label.setStyleSheet("""
-                background-color: #2a2a2a;
+            key_label.setStyleSheet(f"""
+                background-color: {ThemeManager.instance().current_theme.background_hover};
                 padding: 4px 10px;
                 border-radius: 4px;
                 font-family: monospace;
@@ -218,3 +222,12 @@ class HelpDialog(QDialog):
                 artists=result['artists']
             )
         )
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Re-apply inline styles that use theme colors
+        theme = ThemeManager.instance().current_theme
+        for child in self.findChildren(QLabel):
+            if child.text() == "Harmony":
+                child.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {theme.highlight};")

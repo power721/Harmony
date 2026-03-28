@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread
 
 from system.i18n import t
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,33 +35,33 @@ class BaseRenameWorker(QThread):
 class BaseRenameDialog(QDialog):
     """Base class for rename dialogs."""
 
-    # Common stylesheet for all rename dialogs
-    DARK_STYLE = """
+    # Common stylesheet template for all rename dialogs
+    _STYLE_TEMPLATE = """
         QDialog {
-            background-color: #282828;
-            color: #ffffff;
+            background-color: %background_alt%;
+            color: %text%;
         }
         QLabel {
-            color: #ffffff;
+            color: %text%;
             font-size: 13px;
         }
         QLineEdit {
-            background-color: #181818;
-            color: #ffffff;
-            border: 1px solid #404040;
+            background-color: %background%;
+            color: %text%;
+            border: 1px solid %border%;
             border-radius: 4px;
             padding: 10px;
             font-size: 14px;
         }
         QLineEdit:focus {
-            border: 1px solid #1db954;
+            border: 1px solid %highlight%;
         }
         QLineEdit:read-only {
-            background-color: #1a1a1a;
-            color: #b3b3b3;
+            background-color: %background%;
+            color: %text_secondary%;
         }
         QPushButton {
-            background-color: #1db954;
+            background-color: %highlight%;
             color: #000000;
             border: none;
             padding: 10px 24px;
@@ -69,28 +70,28 @@ class BaseRenameDialog(QDialog):
             font-size: 14px;
         }
         QPushButton:hover {
-            background-color: #1ed760;
+            background-color: %highlight_hover%;
         }
         QPushButton:disabled {
-            background-color: #404040;
-            color: #808080;
+            background-color: %border%;
+            color: %text_secondary%;
         }
         QPushButton[role="cancel"] {
-            background-color: #404040;
-            color: #ffffff;
+            background-color: %border%;
+            color: %text%;
         }
         QPushButton[role="cancel"]:hover {
-            background-color: #505050;
+            background-color: %background_hover%;
         }
         QProgressBar {
-            background-color: #181818;
+            background-color: %background%;
             border: none;
             border-radius: 4px;
             height: 6px;
             text-align: center;
         }
         QProgressBar::chunk {
-            background-color: #1db954;
+            background-color: %highlight%;
             border-radius: 4px;
         }
     """
@@ -103,6 +104,7 @@ class BaseRenameDialog(QDialog):
         self._progress_bar = None
         self._rename_btn = None
         self._cancel_btn = None
+        ThemeManager.instance().register_widget(self)
 
     def _setup_common_ui(self, title: str, min_width: int = 450):
         """Setup common UI elements.
@@ -113,7 +115,7 @@ class BaseRenameDialog(QDialog):
         """
         self.setWindowTitle(title)
         self.setMinimumWidth(min_width)
-        self.setStyleSheet(self.DARK_STYLE)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
@@ -124,9 +126,10 @@ class BaseRenameDialog(QDialog):
     def _add_info_label(self, layout: QVBoxLayout, text: str) -> QLabel:
         """Add info label to layout."""
         info_label = QLabel(text)
+        theme = ThemeManager.instance().current_theme
         info_label.setStyleSheet(
-            "color: #1db954; font-size: 14px; padding: 12px; "
-            "background-color: #1a1a1a; border-radius: 6px;"
+            f"color: {theme.highlight}; font-size: 14px; padding: 12px; "
+            f"background-color: {theme.background}; border-radius: 6px;"
         )
         layout.addWidget(info_label)
         return info_label
@@ -147,9 +150,10 @@ class BaseRenameDialog(QDialog):
     def _add_warning_label(self, layout: QVBoxLayout) -> QLabel:
         """Add warning label to layout."""
         self._warning_label = QLabel()
+        theme = ThemeManager.instance().current_theme
         self._warning_label.setStyleSheet(
-            "color: #f59e0b; font-size: 13px; padding: 10px; "
-            "background-color: #2a2a1a; border-radius: 4px;"
+            f"color: #f59e0b; font-size: 13px; padding: 10px; "
+            f"background-color: #2a2a1a; border-radius: 4px;"
         )
         self._warning_label.setWordWrap(True)
         self._warning_label.setVisible(False)
@@ -317,3 +321,14 @@ class BaseRenameDialog(QDialog):
     def _emit_success_signal(self):
         """Emit success signal with appropriate parameters."""
         pass
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Update inline styles that use theme colors
+        theme = ThemeManager.instance().current_theme
+        if self._warning_label:
+            self._warning_label.setStyleSheet(
+                f"color: #f59e0b; font-size: 13px; padding: 10px; "
+                f"background-color: #2a2a1a; border-radius: 4px;"
+            )

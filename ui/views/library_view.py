@@ -46,6 +46,151 @@ from ui.workers.acoustid_worker import AcoustIDWorker
 class LibraryView(QWidget):
     """Library view for browsing music."""
 
+    # QSS template with theme tokens
+    _STYLE_TEMPLATE = """
+        QLabel#libraryTitle {
+            color: %highlight%;
+            font-size: 28px;
+            font-weight: bold;
+            padding: 10px;
+        }
+        QLineEdit {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 2px solid %border%;
+            border-radius: 20px;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+        QLineEdit:focus {
+            border: 2px solid %highlight%;
+            background-color: %background_hover%;
+        }
+        QLineEdit::placeholder {
+            color: %text_secondary%;
+        }
+        QLineEdit::clear-button {
+            subcontrol-origin: padding;
+            subcontrol-position: right;
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            border-radius: 9px;
+            background-color: %border%;
+        }
+        QLineEdit::clear-button:hover {
+            background-color: %background_hover%;
+            border: 1px solid %border%;
+        }
+        QLineEdit::clear-button:pressed {
+            background-color: %background_alt%;
+        }
+        QTableWidget#tracksTable {
+            background-color: %background%;
+            border: none;
+            border-radius: 8px;
+            gridline-color: %background_hover%;
+        }
+        QTableWidget#tracksTable::item {
+            padding: 12px 8px;
+            color: %text%;
+            border: none;
+            border-bottom: 1px solid %background_hover%;
+        }
+        QTableWidget#tracksTable::item:alternate {
+            background-color: %background_alt%;
+        }
+        QTableWidget#tracksTable::item:!alternate {
+            background-color: %background%;
+        }
+        QTableWidget#tracksTable::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+            font-weight: 500;
+        }
+        QTableWidget#tracksTable::item:selected:!alternate {
+            background-color: %highlight%;
+        }
+        QTableWidget#tracksTable::item:selected:alternate {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#tracksTable::item:hover {
+            background-color: %background_hover%;
+        }
+        QTableWidget#tracksTable::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#tracksTable::item:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#tracksTable:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#tracksTable QHeaderView::section {
+            background-color: %background_hover%;
+            color: %highlight%;
+            padding: 14px 12px;
+            border: none;
+            border-bottom: 2px solid %highlight%;
+            border-radius: 0px;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+        }
+        QTableWidget#tracksTable QTableCornerButton::section {
+            background-color: %background_hover%;
+            border: none;
+            border-right: 1px solid %border%;
+            border-bottom: 2px solid %highlight%;
+        }
+        QTableWidget#tracksTable QScrollBar:vertical {
+            background-color: %background%;
+            width: 12px;
+            border-radius: 6px;
+            margin: 0px;
+        }
+        QTableWidget#tracksTable QScrollBar::handle:vertical {
+            background-color: %border%;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QTableWidget#tracksTable QScrollBar::handle:vertical:hover {
+            background-color: %border%;
+        }
+        QTableWidget#tracksTable QScrollBar:horizontal {
+            background-color: %background%;
+            height: 12px;
+            border-radius: 6px;
+        }
+        QTableWidget#tracksTable QScrollBar::handle:horizontal {
+            background-color: %border%;
+            border-radius: 6px;
+            min-width: 40px;
+        }
+        QTableWidget#tracksTable QScrollBar::handle:horizontal:hover {
+            background-color: %border%;
+        }
+        QTableWidget#tracksTable QScrollBar::add-line, QScrollBar::sub-line {
+            height: 0px;
+            width: 0px;
+        }
+    """
+    _CONTEXT_MENU_STYLE = """
+        QMenu {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+        }
+    """
+
     track_double_clicked = Signal(int)  # Signal when track is double-clicked
     cloud_file_double_clicked = Signal(str, int)  # Signal when cloud file is double-clicked (file_id, account_id)
     insert_to_queue = Signal(list)  # Signal when tracks should be inserted after current
@@ -87,6 +232,9 @@ class LibraryView(QWidget):
             "history": "",
         }  # 保存每个视图的搜索文本
 
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
         self._setup_ui()
         self._setup_connections()
         self.refresh()
@@ -103,14 +251,6 @@ class LibraryView(QWidget):
 
         self._title_label = QLabel(t("library"))
         self._title_label.setObjectName("libraryTitle")
-        self._title_label.setStyleSheet("""
-            QLabel#libraryTitle {
-                color: #1db954;
-                font-size: 28px;
-                font-weight: bold;
-                padding: 10px;
-            }
-        """)
         header_layout.addWidget(self._title_label)
 
         header_layout.addStretch()
@@ -120,41 +260,6 @@ class LibraryView(QWidget):
         self._search_input.setPlaceholderText(t("search_tracks"))
         self._search_input.setFixedWidth(300)
         self._search_input.setClearButtonEnabled(True)  # 启用清除按钮
-        self._search_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 2px solid #3a3a3a;
-                border-radius: 20px;
-                padding: 10px 15px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1db954;
-                background-color: #2d2d2d;
-            }
-            /* 占位符文本样式 */
-            QLineEdit::placeholder {
-                color: #808080;
-            }
-            /* 清除按钮样式 */
-            QLineEdit::clear-button {
-                subcontrol-origin: padding;
-                subcontrol-position: right;
-                width: 18px;
-                height: 18px;
-                margin-right: 8px;
-                border-radius: 9px;
-                background-color: #505050;
-            }
-            QLineEdit::clear-button:hover {
-                background-color: #606060;
-                border: 1px solid #707070;
-            }
-            QLineEdit::clear-button:pressed {
-                background-color: #404040;
-            }
-        """)
         header_layout.addWidget(self._search_input)
 
         layout.addLayout(header_layout)
@@ -180,28 +285,6 @@ class LibraryView(QWidget):
         # Remove focus outline
         self._tracks_table.setFocusPolicy(Qt.NoFocus)
 
-        # Set column widths - Title gets all remaining space
-        header = self._tracks_table.horizontalHeader()
-        header.setStretchLastSection(False)
-
-        # Set resize modes - Title stretches to fill remaining space
-        # Source: fixed width
-        # header.setSectionResizeMode(0, QHeaderView.Fixed)
-        # self._tracks_table.setColumnWidth(0, 80)
-        # # Title: stretch to fill all remaining space
-        # header.setSectionResizeMode(1, QHeaderView.Stretch)
-        # # Artist: fixed width
-        # header.setSectionResizeMode(2, QHeaderView.Fixed)
-        # self._tracks_table.setColumnWidth(2, 120)
-        # # Album: fixed width
-        # header.setSectionResizeMode(3, QHeaderView.Fixed)
-        # self._tracks_table.setColumnWidth(3, 150)
-        # # Duration: fit content
-        # header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        # # Favorites: fixed small width
-        # header.setSectionResizeMode(5, QHeaderView.Fixed)
-        # self._tracks_table.setColumnWidth(5, 40)
-
         # Set column widths
         header = self._tracks_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -211,114 +294,9 @@ class LibraryView(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
-        # Styling - Modern, eye-friendly design
-        self._tracks_table.setStyleSheet("""
-            QTableWidget#tracksTable {
-                background-color: #1e1e1e;
-                border: none;
-                border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget#tracksTable::item {
-                padding: 12px 8px;
-                color: #e0e0e0;
-                border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            /* Alternating row colors for better readability */
-            QTableWidget#tracksTable::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget#tracksTable::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            /* Selected state with vibrant accent */
-            QTableWidget#tracksTable::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-                font-weight: 500;
-            }
-            QTableWidget#tracksTable::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget#tracksTable::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            /* Hover effect for interactivity */
-            QTableWidget#tracksTable::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget#tracksTable::item:selected:hover {
-                background-color: #1ed760;
-            }
-            /* Remove focus outline */
-            QTableWidget#tracksTable::item:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#tracksTable:focus {
-                outline: none;
-                border: none;
-            }
-            /* Header styling */
-            QTableWidget#tracksTable QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid #1db954;
-                border-radius: 0px;
-                font-weight: bold;
-                font-size: 13px;
-                letter-spacing: 0.5px;
-            }
-            /* First header (top-left corner) */
-            QTableWidget#tracksTable QTableCornerButton::section {
-                background-color: #2a2a2a;
-                border: none;
-                border-right: 1px solid #3a3a3a;
-                border-bottom: 2px solid #1db954;
-            }
-            /* Scrollbar styling */
-            QTableWidget#tracksTable QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QTableWidget#tracksTable QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QTableWidget#tracksTable QScrollBar::add-line, QScrollBar::sub-line {
-                height: 0px;
-                width: 0px;
-            }
-        """)
-
         # Loading indicator
         self._loading_label = QLabel("⏳ " + t("loading"))
         self._loading_label.setAlignment(Qt.AlignCenter)
-        self._loading_label.setStyleSheet(
-            "color: #1db954; font-size: 16px; padding: 40px; background-color: #1e1e1e; border-radius: 8px;"
-        )
         self._loading_label.setVisible(False)
         layout.addWidget(self._loading_label)
 
@@ -326,10 +304,10 @@ class LibraryView(QWidget):
 
         # Status bar
         self._status_label = QLabel(t("no_tracks"))
-        self._status_label.setStyleSheet(
-            "color: #808080; font-size: 13px; padding: 8px 0px;"
-        )
         layout.addWidget(self._status_label)
+
+        # Apply themed styles
+        self.refresh_theme()
 
     def _setup_connections(self):
         """Setup signal connections."""
@@ -349,6 +327,25 @@ class LibraryView(QWidget):
         # Connect to file organization events
         event_bus = EventBus.instance()
         event_bus.tracks_organized.connect(self._on_tracks_organized)
+
+    def refresh_theme(self):
+        """Apply themed styles from ThemeManager."""
+        from system.theme import ThemeManager
+        theme_manager = ThemeManager.instance()
+
+        self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))
+
+        # Update loading label with theme colors
+        theme = theme_manager.current_theme
+        self._loading_label.setStyleSheet(
+            f"color: {theme.highlight}; font-size: 16px; padding: 40px; "
+            f"background-color: #1e1e1e; border-radius: 8px;"
+        )
+
+        # Update status label with theme colors
+        self._status_label.setStyleSheet(
+            f"color: {theme.text_secondary}; font-size: 13px; padding: 8px 0px;"
+        )
 
     def refresh(self):
         """Refresh the library view."""
@@ -468,6 +465,14 @@ class LibraryView(QWidget):
 
     def _populate_favorites_table(self, favorites: list):
         """Populate table with favorites (mix of local and cloud)."""
+        from PySide6.QtGui import QBrush, QColor
+        from system.theme import ThemeManager
+
+        # Get theme colors
+        theme = ThemeManager.instance().current_theme
+        text_secondary_color = QColor(theme.text_secondary)
+        text_color = QColor(theme.text)
+
         self._tracks_table.setRowCount(0)
         self._current_tracks = []
 
@@ -498,36 +503,36 @@ class LibraryView(QWidget):
             self._current_tracks.append(track_data)
 
             # Cloud items have gray text
-            text_color = QBrush(QColor("#808080")) if is_undownloaded_cloud else QBrush(QColor("#e0e0e0"))
+            text_brush = QBrush(text_secondary_color) if is_undownloaded_cloud else QBrush(text_color)
 
             # Source
             source_value = item.get("source", "Local")
             source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
             source_text = t(source_key_map.get(source_value, "source_local"))
             source_item = QTableWidgetItem(source_text)
-            source_item.setForeground(text_color)
+            source_item.setForeground(text_brush)
             source_item.setData(Qt.UserRole, track_data)
             self._tracks_table.setItem(row, 0, source_item)
 
             # Title
             title_item = QTableWidgetItem(item.get("title", ""))
-            title_item.setForeground(text_color)
+            title_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 1, title_item)
 
             # Artist
             artist_item = QTableWidgetItem(item.get("artist", "") or t("unknown"))
-            artist_item.setForeground(text_color)
+            artist_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 2, artist_item)
 
             # Album
             album_item = QTableWidgetItem(item.get("album", "") or t("unknown"))
-            album_item.setForeground(text_color)
+            album_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 3, album_item)
 
             # Duration
             # format_duration imported at top
             duration_item = QTableWidgetItem(format_duration(item.get("duration", 0)))
-            duration_item.setForeground(text_color)
+            duration_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 4, duration_item)
 
     def _load_history(self):
@@ -602,6 +607,13 @@ class LibraryView(QWidget):
         """Populate the table with tracks."""
         # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor
+        from system.theme import ThemeManager
+
+        # Get theme colors for consistent styling
+        theme = ThemeManager.instance().current_theme
+        text_secondary_color = QColor(theme.text_secondary)
+        text_color = QColor(theme.text)
+        highlight_color = QColor(theme.highlight)
 
         # Clear and rebuild track_id -> row mapping for O(1) lookup
         self._track_id_to_row.clear()
@@ -625,7 +637,7 @@ class LibraryView(QWidget):
                 source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
                 source_text = t(source_key_map.get(source_value, "source_local"))
                 source_item = QTableWidgetItem(source_text)
-                source_item.setForeground(QBrush(QColor("#808080")))
+                source_item.setForeground(QBrush(text_secondary_color))
                 source_item.setData(Qt.UserRole, track.id)
                 self._tracks_table.setItem(row, 0, source_item)
 
@@ -644,7 +656,7 @@ class LibraryView(QWidget):
 
                 title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
                 title_item = QTableWidgetItem(title_text)
-                title_item.setForeground(QBrush(QColor("#e0e0e0")))
+                title_item.setForeground(QBrush(text_color))
 
                 # Make currently playing row bold and green
                 if is_currently_playing:
@@ -653,31 +665,33 @@ class LibraryView(QWidget):
                     font = title_item.font()
                     font.setBold(True)
                     title_item.setFont(font)
-                    title_item.setForeground(QBrush(QColor("#1db954")))
+                    title_item.setForeground(QBrush(highlight_color))
 
                 self._tracks_table.setItem(row, 1, title_item)
 
                 # Artist
                 artist_item = QTableWidgetItem(track.artist or t("unknown"))
-                artist_item.setForeground(QBrush(QColor("#b0b0b0")))
+                artist_item.setForeground(QBrush(text_secondary_color))
                 self._tracks_table.setItem(row, 2, artist_item)
 
                 # Album
                 album_item = QTableWidgetItem(track.album or t("unknown"))
-                album_item.setForeground(QBrush(QColor("#b0b0b0")))
+                album_item.setForeground(QBrush(text_secondary_color))
                 self._tracks_table.setItem(row, 3, album_item)
 
                 # Duration
                 duration_item = QTableWidgetItem(format_duration(track.duration))
-                duration_item.setForeground(QBrush(QColor("#909090")))
+                duration_item.setForeground(QBrush(text_secondary_color))
                 self._tracks_table.setItem(row, 4, duration_item)
 
                 # Favorite indicator (check if actually favorited) - O(1) set lookup
                 is_fav = track.id in favorite_ids
                 fav_text = "★" if is_fav else ""
                 fav_item = QTableWidgetItem(fav_text)
+                from system.theme import ThemeManager
+                tm = ThemeManager.instance()
                 fav_item.setForeground(
-                    QBrush(QColor("#ffd700" if is_fav else "#505050"))
+                    QBrush(QColor(tm.current_theme.highlight if is_fav else tm.current_theme.border))
                 )
                 self._tracks_table.setItem(row, 5, fav_item)
 
@@ -852,6 +866,12 @@ class LibraryView(QWidget):
     ):
         """Set the playing status for a specific track in the table."""
         from PySide6.QtGui import QBrush, QColor
+        from system.theme import ThemeManager
+
+        # Get theme colors
+        theme = ThemeManager.instance().current_theme
+        highlight_color = QColor(theme.highlight)
+        text_color = QColor(theme.text)
 
         # O(1) lookup by track_id
         row = self._track_id_to_row.get(track_id)
@@ -884,7 +904,7 @@ class LibraryView(QWidget):
                 font = title_item.font()
                 font.setBold(True)
                 title_item.setFont(font)
-                title_item.setForeground(QBrush(QColor("#1db954")))
+                title_item.setForeground(QBrush(highlight_color))
         else:
             # Remove playing indicator
             title_item.setText(original_title)
@@ -894,7 +914,7 @@ class LibraryView(QWidget):
                 font = title_item.font()
                 font.setBold(False)
                 title_item.setFont(font)
-                title_item.setForeground(QBrush(QColor("#e0e0e0")))
+                title_item.setForeground(QBrush(text_color))
 
     def _scroll_to_playing_track(self):
         """Scroll to the currently playing track."""
@@ -1011,19 +1031,8 @@ class LibraryView(QWidget):
                     is_qq_source = True
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
-        """)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._CONTEXT_MENU_STYLE))
 
         # Play action
         play_action = menu.addAction(t("play"))
@@ -1303,8 +1312,10 @@ class LibraryView(QWidget):
         """Update the favorite indicator in a specific row."""
         fav_text = "★" if is_favorite else ""
         fav_item = QTableWidgetItem(fav_text)
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
         fav_item.setForeground(
-            QBrush(QColor("#ffd700" if is_favorite else "#505050"))
+            QBrush(QColor(tm.current_theme.highlight if is_favorite else tm.current_theme.border))
         )
         self._tracks_table.setItem(row, 5, fav_item)
 
@@ -1731,7 +1742,9 @@ class LibraryView(QWidget):
 
             title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
             title_item.setText(title_text)
-            title_item.setForeground(QBrush(QColor("#1db954" if is_currently_playing else "#e0e0e0")))
+            from system.theme import ThemeManager
+            tm = ThemeManager.instance()
+            title_item.setForeground(QBrush(QColor(tm.current_theme.highlight if is_currently_playing else tm.current_theme.text)))
 
             if is_currently_playing:
                 font = title_item.font()

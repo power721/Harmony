@@ -49,6 +49,7 @@ class Bootstrap:
         self._config: Optional[ConfigManager] = None
         self._event_bus: Optional[EventBus] = None
         self._http_client: Optional[HttpClient] = None
+        self._theme: Optional["ThemeManager"] = None
 
         # Repositories
         self._track_repo: Optional[SqliteTrackRepository] = None
@@ -117,6 +118,14 @@ class Bootstrap:
         if self._http_client is None:
             self._http_client = HttpClient()
         return self._http_client
+
+    @property
+    def theme(self) -> "ThemeManager":
+        """Get theme manager."""
+        if self._theme is None:
+            from system.theme import ThemeManager
+            self._theme = ThemeManager.instance(self.config)
+        return self._theme
 
     # ===== Repositories =====
 

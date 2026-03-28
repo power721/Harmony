@@ -407,6 +407,56 @@ class OnlineGridView(QWidget):
     item_clicked = Signal(object)  # Emits OnlineItem object
     load_more_requested = Signal()  # Emitted when "load more" button is clicked
 
+    _STYLE_MAIN = """
+        background-color: %background%;
+    """
+    _STYLE_LIST_VIEW = """
+        QListView {
+            background-color: %background%;
+            border: none;
+        }
+        QListView::item {
+            background: transparent;
+        }
+        QScrollBar:vertical {
+            background-color: %background%;
+            width: 12px;
+        }
+        QScrollBar::handle:vertical {
+            background-color: %border%;
+            border-radius: 6px;
+            min-height: 30px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background-color: %text_secondary%;
+        }
+    """
+    _STYLE_LOAD_MORE_BTN = """
+        QPushButton {
+            background: %background_hover%;
+            color: %highlight%;
+            border: 1px solid %highlight%;
+            border-radius: 20px;
+            font-size: 14px;
+            padding: 0 20px;
+        }
+        QPushButton:hover {
+            background: %highlight%;
+            color: white;
+        }
+    """
+    _STYLE_PROGRESS_BAR = """
+        QProgressBar {
+            background-color: %background_hover%;
+            border: none;
+            border-radius: 2px;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 2px;
+        }
+    """
+
     def __init__(self, data_type: str, parent=None):
         """
         Initialize grid view.
@@ -424,6 +474,10 @@ class OnlineGridView(QWidget):
         self._setup_ui()
         self._connect_signals()
 
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def showEvent(self, event):
         """Load data when view is first shown (lazy loading)."""
         super().showEvent(event)
@@ -432,7 +486,6 @@ class OnlineGridView(QWidget):
 
     def _setup_ui(self):
         """Set up the grid view UI."""
-        self.setStyleSheet("background-color: #121212;")
         self.setMouseTracking(True)
 
         layout = QVBoxLayout(self)
@@ -448,27 +501,6 @@ class OnlineGridView(QWidget):
         self._list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._list_view.setVerticalScrollMode(QListView.ScrollPerPixel)
         self._list_view.setMouseTracking(True)
-        self._list_view.setStyleSheet("""
-            QListView {
-                background-color: #121212;
-                border: none;
-            }
-            QListView::item {
-                background: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: #121212;
-                width: 12px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #3d3d3d;
-                border-radius: 6px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #4d4d4d;
-            }
-        """)
 
         # Model and delegate
         self._model = OnlineItemModel(self)
@@ -490,20 +522,6 @@ class OnlineGridView(QWidget):
         self._load_more_btn.setText(t("load_more"))
         self._load_more_btn.setCursor(Qt.PointingHandCursor)
         self._load_more_btn.setFixedHeight(40)
-        self._load_more_btn.setStyleSheet("""
-            QPushButton {
-                background: #2a2a2a;
-                color: #1db954;
-                border: 1px solid #1db954;
-                border-radius: 20px;
-                font-size: 14px;
-                padding: 0 20px;
-            }
-            QPushButton:hover {
-                background: #1db954;
-                color: white;
-            }
-        """)
         self._load_more_btn.clicked.connect(self._on_load_more_clicked)
         self._load_more_btn.hide()
         layout.addWidget(self._load_more_btn)
@@ -522,21 +540,9 @@ class OnlineGridView(QWidget):
         progress = QProgressBar()
         progress.setRange(0, 0)  # Indeterminate
         progress.setFixedSize(200, 4)
-        progress.setStyleSheet("""
-            QProgressBar {
-                background-color: #2a2a2a;
-                border: none;
-                border-radius: 2px;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 2px;
-            }
-        """)
         layout.addWidget(progress)
 
         self._loading_label = QLabel(t("loading"))
-        self._loading_label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
         layout.addWidget(self._loading_label)
 
         return widget
@@ -639,3 +645,28 @@ class OnlineGridView(QWidget):
         # Update loading label text
         if hasattr(self, '_loading_label'):
             self._loading_label.setText(t("loading"))
+
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Main widget
+        self.setStyleSheet(tm.get_qss(self._STYLE_MAIN))
+
+        # List view
+        self._list_view.setStyleSheet(tm.get_qss(self._STYLE_LIST_VIEW))
+
+        # Load more button
+        self._load_more_btn.setStyleSheet(tm.get_qss(self._STYLE_LOAD_MORE_BTN))
+
+        # Progress bar
+        if hasattr(self, '_loading'):
+            progress = self._loading.findChild(QProgressBar)
+            if progress:
+                progress.setStyleSheet(tm.get_qss(self._STYLE_PROGRESS_BAR))
+
+        # Loading label
+        self._loading_label.setStyleSheet(
+            f"color: {tm.current_theme.text_secondary}; font-size: 14px;"
+        )

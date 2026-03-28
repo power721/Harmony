@@ -40,6 +40,27 @@ class CloudFileContextMenu(QObject):
         open_in_cloud_requested: Emitted when user wants to open in cloud drive
     """
 
+    _STYLE_TEMPLATE = """
+        QMenu {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+        }
+        QMenu::item:disabled {
+            color: %text_secondary%;
+        }
+    """
+
     play_requested = Signal(CloudFile)
     insert_to_queue_requested = Signal(CloudFile)
     add_to_queue_requested = Signal(CloudFile)
@@ -66,26 +87,7 @@ class CloudFileContextMenu(QObject):
         super().__init__(parent)
         self._cloud_file_service = cloud_file_service
         self._cover_service = cover_service
-        self._menu_style = """
-            QMenu {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-            QMenu::item:disabled {
-                color: #808080;
-            }
-        """
+        self._menu_style = ""
 
     def show_menu(self, file: CloudFile, current_audio_files: list = None, account_id: int = None):
         """
@@ -103,7 +105,8 @@ class CloudFileContextMenu(QObject):
         has_local_path = self._check_file_downloaded(file, current_audio_files, account_id)
 
         menu = QMenu()
-        menu.setStyleSheet(self._menu_style)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Play action
         play_action = menu.addAction(t("play"))
@@ -237,6 +240,24 @@ class CloudAccountContextMenu(QObject):
         delete_requested: Emitted when user wants to delete account
     """
 
+    _STYLE_TEMPLATE = """
+        QMenu {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+        }
+    """
+
     get_info_requested = Signal(object)  # CloudAccount
     change_download_dir_requested = Signal()
     update_cookie_requested = Signal(object)  # CloudAccount
@@ -244,28 +265,13 @@ class CloudAccountContextMenu(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._menu_style = """
-            QMenu {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-        """
+        self._menu_style = ""
 
     def show_menu(self, account):
         """Show context menu for an account."""
         menu = QMenu()
-        menu.setStyleSheet(self._menu_style)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Account info action
         info_action = menu.addAction("ℹ️ " + t("get_account_info"))

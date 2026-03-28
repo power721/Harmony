@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
 from system.i18n import t
+from system.theme import ThemeManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,6 +24,50 @@ class CloudLoginDialog(QDialog):
     """Dialog for QR code login to cloud services"""
 
     login_success = Signal(dict)  # Emits account info on success
+
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QPushButton {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            padding: 8px 16px;
+        }
+        QPushButton:hover {
+            background-color: %background_hover%;
+        }
+        QPushButton:pressed {
+            background-color: %background_alt%;
+        }
+        QProgressBar {
+            background-color: %border%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            text-align: center;
+            color: %text%;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 3px;
+        }
+        QTextEdit, QLineEdit {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            padding: 8px;
+        }
+        QTextEdit:focus, QLineEdit:focus {
+            border: 1px solid %highlight%;
+        }
+    """
 
     def __init__(self, provider: str = "quark", parent=None):
         super().__init__(parent)
@@ -34,6 +79,7 @@ class CloudLoginDialog(QDialog):
         self._poll_attempts = 0
         self._setup_ui()
         self._start_login_flow()
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the dialog UI"""
@@ -42,49 +88,7 @@ class CloudLoginDialog(QDialog):
         self.setMinimumSize(450, 520)
 
         # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QProgressBar {
-                background-color: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                text-align: center;
-                color: #ffffff;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 3px;
-            }
-            QTextEdit, QLineEdit {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px;
-            }
-            QTextEdit:focus, QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         main_layout = QVBoxLayout()
         main_layout.setSpacing(15)
@@ -149,13 +153,13 @@ class CloudLoginDialog(QDialog):
         self._qr_label.setMaximumSize(250, 250)
         self._qr_label.setAlignment(Qt.AlignCenter)
         self._qr_label.setScaledContents(False)
-        self._qr_label.setStyleSheet("border: 2px solid #404040; border-radius: 8px; background: white;")
+        self._qr_label.setStyleSheet("border: 2px solid %border%; border-radius: 8px; background: white;")
         layout.addWidget(self._qr_label, 0, Qt.AlignCenter)
 
         # Status label
         self._status_label = QLabel(t("generating_qr"))
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #a0a0a0;")
+        self._status_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary};")
         layout.addWidget(self._status_label)
 
         # Progress bar
@@ -175,13 +179,14 @@ class CloudLoginDialog(QDialog):
 
         # Title
         title = QLabel(t("input_cookie"))
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1db954;")
+        theme = ThemeManager.instance().current_theme
+        title.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {theme.highlight};")
         layout.addWidget(title)
 
         # Help text
         help_label = QLabel(t("cookie_help"))
         help_label.setWordWrap(True)
-        help_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        help_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         layout.addWidget(help_label)
 
         # Cookie input
@@ -199,7 +204,7 @@ class CloudLoginDialog(QDialog):
         self._cookie_status_label = QLabel()
         self._cookie_status_label.setAlignment(Qt.AlignCenter)
         self._cookie_status_label.setWordWrap(True)
-        self._cookie_status_label.setStyleSheet("color: #a0a0a0;")
+        self._cookie_status_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(self._cookie_status_label)
 
         layout.addStretch()
@@ -231,7 +236,8 @@ class CloudLoginDialog(QDialog):
             return
 
         self._cookie_status_label.setText(t("validating_cookie"))
-        self._cookie_status_label.setStyleSheet("color: #a0a0a0;")
+        theme = ThemeManager.instance().current_theme
+        self._cookie_status_label.setStyleSheet(f"color: {theme.text_secondary};")
         self._validate_btn.setEnabled(False)
 
         # Validate in a timer to avoid blocking UI
@@ -244,7 +250,8 @@ class CloudLoginDialog(QDialog):
 
         if result and result.get('status') == 'success':
             self._cookie_status_label.setText(t("login_successful"))
-            self._cookie_status_label.setStyleSheet("color: #1db954;")
+            theme = ThemeManager.instance().current_theme
+            self._cookie_status_label.setStyleSheet(f"color: {theme.highlight};")
             self.login_success.emit(result)
             QTimer.singleShot(1000, self.accept)
         else:
@@ -373,3 +380,12 @@ class CloudLoginDialog(QDialog):
         """Clean up on close"""
         self._poll_timer.stop()
         super().closeEvent(event)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        theme = ThemeManager.instance().current_theme
+        if self._status_label:
+            self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
+        if self._qr_label:
+            self._qr_label.setStyleSheet(f"border: 2px solid {theme.border}; border-radius: 8px; background: white;")

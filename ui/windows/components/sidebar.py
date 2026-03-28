@@ -46,6 +46,47 @@ class Sidebar(QWidget):
     PAGE_FAVORITES = 100
     PAGE_HISTORY = 101
 
+    _NAV_STYLE = """
+        QPushButton {
+            text-align: left;
+            padding: 12px 18px;
+            border-radius: 10px;
+            background: transparent;
+            color: %text_secondary%;
+            border: 2px solid transparent;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        QPushButton:hover {
+            background: %background_hover%;
+            color: %highlight%;
+            border: 2px solid %border%;
+        }
+        QPushButton:checked {
+            background: %highlight%;
+            color: #000000;
+            border: 2px solid %highlight%;
+            font-weight: bold;
+        }
+    """
+
+    _ACTION_BTN_STYLE = """
+        QPushButton#{btn_id} {
+            background-color: %background_hover%;
+            color: %text_secondary%;
+            border: 2px solid %border%;
+            border-radius: 16px;
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        QPushButton#{btn_id}:hover {
+            background-color: %border%;
+            border: 2px solid %highlight%;
+            color: %highlight%;
+        }
+    """
+
     def __init__(self, config_manager: "ConfigManager" = None, parent=None):
         """
         Initialize the sidebar.
@@ -58,6 +99,9 @@ class Sidebar(QWidget):
         self._config = config_manager
         self._nav_buttons = []
         self._setup_ui()
+
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the sidebar UI."""
@@ -77,31 +121,6 @@ class Sidebar(QWidget):
 
         layout.addSpacing(20)
 
-        # Navigation button style
-        nav_style = """
-            QPushButton {
-                text-align: left;
-                padding: 12px 18px;
-                border-radius: 10px;
-                background: transparent;
-                color: #c0c0c0;
-                border: 2px solid transparent;
-                font-size: 14px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background: #2a2a2a;
-                color: #1db954;
-                border: 2px solid #3a3a3a;
-            }
-            QPushButton:checked {
-                background: #1db954;
-                color: #000000;
-                border: 2px solid #1db954;
-                font-weight: bold;
-            }
-        """
-
         # Navigation buttons
         nav_items: List[Tuple[int, IconName, str]] = [
             (self.PAGE_LIBRARY, IconName.MUSIC, t("library")),
@@ -119,7 +138,6 @@ class Sidebar(QWidget):
             btn = IconButton(icon_name, text, size=18)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet(nav_style)
             btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
             layout.addWidget(btn)
             self._nav_buttons.append((page_index, btn))
@@ -135,22 +153,6 @@ class Sidebar(QWidget):
         self._language_btn.setObjectName("languageBtn")
         self._language_btn.setCursor(Qt.PointingHandCursor)
         self._language_btn.setFixedHeight(32)
-        self._language_btn.setStyleSheet("""
-            QPushButton#languageBtn {
-                background-color: #2a2a2a;
-                color: #c0c0c0;
-                border: 2px solid #3a3a3a;
-                border-radius: 16px;
-                padding: 6px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton#languageBtn:hover {
-                background-color: #3a3a3a;
-                border: 2px solid #1db954;
-                color: #1db954;
-            }
-        """)
         self._language_btn.clicked.connect(self.language_toggled)
         layout.addWidget(self._language_btn)
 
@@ -160,22 +162,6 @@ class Sidebar(QWidget):
         self._settings_btn.setObjectName("settingsBtn")
         self._settings_btn.setCursor(Qt.PointingHandCursor)
         self._settings_btn.setFixedHeight(32)
-        self._settings_btn.setStyleSheet("""
-            QPushButton#settingsBtn {
-                background-color: #2a2a2a;
-                color: #c0c0c0;
-                border: 2px solid #3a3a3a;
-                border-radius: 16px;
-                padding: 6px 16px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton#settingsBtn:hover {
-                background-color: #3a3a3a;
-                border: 2px solid #1db954;
-                color: #1db954;
-            }
-        """)
         self._settings_btn.clicked.connect(self.settings_requested)
         layout.addWidget(self._settings_btn)
 
@@ -185,6 +171,24 @@ class Sidebar(QWidget):
         self._add_music_btn.setCursor(Qt.PointingHandCursor)
         self._add_music_btn.clicked.connect(self.add_music_requested)
         layout.addWidget(self._add_music_btn)
+
+        # Apply initial theme
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Refresh all widget styles with current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        nav_style = tm.get_qss(self._NAV_STYLE)
+        for _, btn in self._nav_buttons:
+            btn.setStyleSheet(nav_style)
+
+        language_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "languageBtn")
+        self._language_btn.setStyleSheet(language_style)
+
+        settings_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "settingsBtn")
+        self._settings_btn.setStyleSheet(settings_style)
 
     def _on_nav_clicked(self, page_index: int):
         """Handle navigation button click."""

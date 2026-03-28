@@ -3,9 +3,11 @@ Queue view for managing the current playback queue.
 """
 
 from typing import List
+from pathlib import Path
+import logging
 
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QBrush
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import QColor, QBrush, QPixmap, QPainter, QFont
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -30,12 +32,463 @@ from services.library.playlist_service import PlaylistService
 from domain.playlist import Playlist
 from system.i18n import t
 from system.event_bus import EventBus
+from system.config import ConfigManager
 from utils.helpers import format_duration
 from utils.dedup import deduplicate_playlist_items, get_version_summary
+from app.bootstrap import Bootstrap
+
+logger = logging.getLogger(__name__)
+
+
+class QueueItemWidget(QWidget):
+    """Custom widget for queue items with cover art."""
+
+    # Signal for cover loaded in background thread
+    _cover_loaded = Signal(str, int)
+
+    # Style templates for different states
+    _STYLE_SELECTED = """
+        QWidget {
+            background-color: %highlight%;
+        }
+    """
+    _STYLE_CURRENT = """
+        QWidget {
+            background-color: transparent;
+        }
+    """
+    _STYLE_NORMAL = """
+        QWidget {
+            background-color: transparent;
+        }
+    """
+
+    def __init__(self, track: dict, index: int, is_current: bool, is_playing: bool, highlight_color: str = "#FFD700", parent=None):
+        super().__init__(parent)
+        self._track = track
+        self._index = index
+        self._is_current = is_current
+        self._is_playing = is_playing
+        self._cover_load_version = 0
+        self._current_cover_path = None
+        self._is_selected = False
+        self._highlight_color = highlight_color
+
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
+        self._setup_ui()
+
+        # Connect cover loaded signal
+        self._cover_loaded.connect(self._on_cover_loaded)
+
+        # Load cover asynchronously
+        QTimer.singleShot(50, self._load_cover_async)
+
+    def set_selected(self, selected: bool):
+        """Set selection state for the widget."""
+        self._is_selected = selected
+        self._update_style()
+
+    def refresh_theme(self):
+        """Refresh widget style when theme changes."""
+        # Update highlight color from theme
+        from system.theme import ThemeManager
+        self._highlight_color = ThemeManager.instance().current_theme.highlight
+        self._update_style()
+
+    def _update_style(self):
+        """Update widget style based on current/selected state."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        if self._is_selected:
+            # Selected track - use highlight background
+            self.setStyleSheet(f"""
+                QWidget {{
+                    background-color: {self._highlight_color};
+                }}
+            """)
+            self._index_label.setStyleSheet("""
+                QLabel {
+                    color: #000000;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+            """)
+            self._title_label.setStyleSheet("""
+                QLabel {
+                    color: #000000;
+                    font-size: 13px;
+                    font-weight: bold;
+                }
+            """)
+            self._artist_label.setStyleSheet("""
+                QLabel {
+                    color: #000000;
+                    font-size: 11px;
+                }
+            """)
+            self._duration_label.setStyleSheet("""
+                QLabel {
+                    color: #000000;
+                    font-size: 12px;
+                }
+            """)
+        elif self._is_current:
+            # Current playing track - highlight text only
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: transparent;
+                }
+            """)
+            self._index_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {self._highlight_color};
+                    font-size: 12px;
+                    font-weight: bold;
+                }}
+            """)
+            self._title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {self._highlight_color};
+                    font-size: 13px;
+                    font-weight: bold;
+                }}
+            """)
+            self._artist_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {self._highlight_color};
+                    font-size: 11px;
+                }}
+            """)
+            self._duration_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {self._highlight_color};
+                    font-size: 12px;
+                }}
+            """)
+        else:
+            # Normal state
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: transparent;
+                }
+            """)
+            self._index_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 12px;
+                }}
+            """)
+            self._title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text};
+                    font-size: 13px;
+                    font-weight: bold;
+                }}
+            """)
+            self._artist_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 11px;
+                }}
+            """)
+            self._duration_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 12px;
+                }}
+            """)
+
+    def _setup_ui(self):
+        """Setup the item UI."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(2)
+
+        # Index label
+        self._index_label = QLabel(f"{self._index + 1}")
+        self._index_label.setFixedWidth(30)
+        layout.addWidget(self._index_label)
+
+        # Cover art
+        self._cover_label = QLabel()
+        self._cover_label.setFixedSize(64, 64)
+        self._cover_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {theme.background_alt};
+                border-radius: 4px;
+            }}
+        """)
+        layout.addWidget(self._cover_label)
+
+        # Track info
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(2)
+
+        # Title
+        title = self._track.get("title", t("unknown"))
+        if self._is_current:
+            icon = "▶ " if self._is_playing else "⏸ "
+            title = f"{icon}{title}"
+
+        self._title_label = QLabel(title)
+        info_layout.addWidget(self._title_label)
+
+        # Artist and album
+        artist = self._track.get("artist", t("unknown"))
+        album = self._track.get("album", "")
+        artist_album = f"{artist}" + (f" • {album}" if album else "")
+
+        self._artist_label = QLabel(artist_album)
+        info_layout.addWidget(self._artist_label)
+
+        layout.addWidget(info_widget, 1)
+
+        # Duration
+        duration = format_duration(self._track.get("duration", 0))
+        self._duration_label = QLabel(duration)
+        layout.addWidget(self._duration_label)
+
+        # Apply initial style
+        self._update_style()
+
+    def _load_cover_async(self):
+        """Load cover art asynchronously."""
+        # Don't reload if already loaded
+        if self._current_cover_path:
+            return
+
+        def load_cover():
+            # Check if this is an online QQ Music track
+            source = self._track.get("source", "") or self._track.get("source_type", "")
+            cloud_file_id = self._track.get("cloud_file_id", "")
+            is_online = source == "QQ" or source == "online"
+
+            if is_online and cloud_file_id:
+                # For online QQ Music tracks, get cover directly by song_mid
+                try:
+                    from app.bootstrap import Bootstrap
+                    bootstrap = Bootstrap.instance()
+                    if bootstrap and hasattr(bootstrap, 'cover_service'):
+                        cover_service = bootstrap.cover_service
+                        if cover_service:
+                            cover_path = cover_service.get_online_cover(
+                                song_mid=cloud_file_id,
+                                album_mid=None,
+                                artist=self._track.get("artist", ""),
+                                title=self._track.get("title", "")
+                            )
+                            if cover_path:
+                                return cover_path
+                except Exception as e:
+                    logger.debug(f"QueueItem: Error getting online cover: {e}")
+
+            # Check if cover_path is already saved
+            cover_path = self._track.get("cover_path")
+            if cover_path and Path(cover_path).exists():
+                return cover_path
+
+            # Try to get cover from file path
+            path = self._track.get("path", "")
+            if path and Path(path).exists():
+                # Try to get embedded or cached cover
+                try:
+                    from app.bootstrap import Bootstrap
+                    bootstrap = Bootstrap.instance()
+                    if bootstrap and hasattr(bootstrap, 'cover_service'):
+                        cover_service = bootstrap.cover_service
+                        if cover_service:
+                            title = self._track.get("title", "")
+                            artist = self._track.get("artist", "")
+                            album = self._track.get("album", "")
+                            cover_path = cover_service.get_cover(
+                                path, title, artist, album, skip_online=True
+                            )
+                            if cover_path:
+                                logger.debug(f"QueueItem: Loaded cover from service: {cover_path}")
+                                return cover_path
+                            else:
+                                logger.debug(f"QueueItem: No cover found from service for {title}")
+                except Exception as e:
+                    logger.debug(f"QueueItem: Error loading cover: {e}")
+            else:
+                logger.debug(f"QueueItem: No valid path for track: {path}")
+
+            return None
+
+        # Run in thread
+        from threading import Thread
+        self._cover_load_version += 1
+        version = self._cover_load_version
+
+        def worker():
+            try:
+                cover_path = load_cover()
+                # Always emit, even if None
+                self._cover_loaded.emit(cover_path, version)
+            except Exception as e:
+                logger.debug(f"QueueItem: Error in cover loading thread: {e}")
+
+        Thread(target=worker, daemon=True).start()
+
+    def _on_cover_loaded(self, cover_path: str, version: int):
+        """Handle cover loaded from background thread."""
+        if version != self._cover_load_version:
+            logger.debug(f"QueueItem: Ignoring stale cover (version {version}, current {self._cover_load_version})")
+            return
+
+        if cover_path:
+            try:
+                pixmap = QPixmap(cover_path)
+                if not pixmap.isNull():
+                    scaled_pixmap = pixmap.scaled(
+                        64, 64,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation,
+                    )
+                    self._cover_label.setPixmap(scaled_pixmap)
+                    self._current_cover_path = cover_path
+                else:
+                    logger.warning(f"QueueItem: Pixmap is null for {cover_path}")
+                    self._set_default_cover()
+            except Exception as e:
+                logger.error(f"QueueItem: Error showing cover: {e}")
+                self._set_default_cover()
+        else:
+            self._set_default_cover()
+
+    def _set_default_cover(self):
+        """Set default cover when no cover is available."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(QColor(theme.background_alt))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QColor(theme.border))
+
+        font = QFont()
+        font.setPixelSize(32)
+        painter.setFont(font)
+        painter.drawText(0, 0, 64, 64, Qt.AlignCenter, "\u266B")
+        painter.end()
+
+        self._cover_label.setPixmap(pixmap)
+
+    def update_play_state(self, is_playing: bool):
+        """Update the playing state indicator."""
+        self._is_playing = is_playing
+        title = self._track.get("title", t("unknown"))
+        if self._is_current:
+            icon = "▶ " if self._is_playing else "⏸ "
+            self._title_label.setText(f"{icon}{title}")
+        else:
+            # Remove icon for non-current tracks
+            self._title_label.setText(title)
 
 
 class QueueView(QWidget):
     """View for managing the current playback queue."""
+
+    # QSS template with theme tokens
+    _STYLE_TEMPLATE = """
+        QLabel#queueTitle {
+            color: %highlight%;
+            font-size: 28px;
+            font-weight: bold;
+            padding: 10px;
+        }
+        QWidget#queueHeader {
+            background-color: #141414;
+        }
+        QPushButton#queueActionBtn {
+            background: transparent;
+            border: 2px solid %border%;
+            color: %text_secondary%;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        QPushButton#queueActionBtn:hover {
+            border-color: %highlight%;
+            color: %highlight%;
+            background-color: %selection%;
+        }
+        QListWidget#queueList {
+            background-color: #1e1e1e;
+            border: none;
+            outline: none;
+            border-radius: 8px;
+        }
+        QListWidget#queueList::item {
+            border-bottom: 1px solid %background_hover%;
+            margin: 0px;
+            background-color: #1e1e1e;
+        }
+        QListWidget#queueList::item:selected {
+            background-color: %highlight%;
+        }
+        QListWidget QScrollBar:vertical {
+            background-color: #1e1e1e;
+            width: 12px;
+            border-radius: 6px;
+        }
+        QListWidget QScrollBar::handle:vertical {
+            background-color: #404040;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QListWidget QScrollBar::handle:vertical:hover {
+            background-color: #505050;
+        }
+    """
+    _CONTEXT_MENU_STYLE = """
+        QMenu {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+        }
+    """
+    _EDIT_DIALOG_STYLE = """
+        QDialog { background-color: %background_alt%; color: %text%; }
+        QLabel { color: %text%; font-size: 13px; }
+        QLineEdit {
+            background-color: #181818;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        QLineEdit:focus { border: 1px solid %highlight%; }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover { background-color: %highlight_hover%; }
+        QPushButton[role="cancel"] { background-color: #404040; color: %text%; }
+        QPushButton[role="cancel"]:hover { background-color: #505050; }
+    """
 
     play_track = Signal(int)
     queue_reordered = Signal()  # Emitted when queue order changes via drag-drop
@@ -63,6 +516,11 @@ class QueueView(QWidget):
         self._library_service = library_service
         self._favorite_service = favorite_service
         self._playlist_service = playlist_service
+
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+        self._highlight_color = ThemeManager.instance().current_theme.highlight
+
         self._setup_ui()
         self._setup_connections()
 
@@ -86,14 +544,6 @@ class QueueView(QWidget):
 
         self._title_label = QLabel(t("play_queue"))
         self._title_label.setObjectName("queueTitle")
-        self._title_label.setStyleSheet("""
-            QLabel#queueTitle {
-                color: #1db954;
-                font-size: 28px;
-                font-weight: bold;
-                padding: 10px;
-            }
-        """)
         header_layout.addWidget(self._title_label)
 
         header_layout.addStretch()
@@ -125,101 +575,50 @@ class QueueView(QWidget):
         self._queue_list = QListWidget()
         self._queue_list.setObjectName("queueList")
         self._queue_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._queue_list.setAlternatingRowColors(True)
+        self._queue_list.setAlternatingRowColors(False)  # Disable alternating colors since we handle it
         self._queue_list.setDragDropMode(QAbstractItemView.InternalMove)
         self._queue_list.model().rowsMoved.connect(self._on_rows_moved)
         self._queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._queue_list.customContextMenuRequested.connect(self._show_context_menu)
         self._queue_list.itemDoubleClicked.connect(self._play_selected)
+        self._queue_list.setFocusPolicy(Qt.NoFocus)  # Remove focus frame
         layout.addWidget(self._queue_list)
 
         # Status bar
         self._status_label = QLabel(f"0 {t('tracks_in_queue')}")
-        self._status_label.setStyleSheet("color: #808080; font-size: 13px;")
         layout.addWidget(self._status_label)
 
         # Add track hint
         self._hint_label = QLabel(t("tip_right_click"))
-        self._hint_label.setStyleSheet("color: #606060; font-size: 11px;")
         layout.addWidget(self._hint_label)
 
-        # Apply modern styles
-        self.setStyleSheet("""
-            QWidget#queueHeader {
-                background-color: #141414;
-            }
-            QPushButton#queueActionBtn {
-                background: transparent;
-                border: 2px solid #404040;
-                color: #c0c0c0;
-                padding: 6px 14px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QPushButton#queueActionBtn:hover {
-                border-color: #1db954;
-                color: #1db954;
-                background-color: rgba(29, 185, 84, 0.1);
-            }
-            QListWidget#queueList {
-                background-color: #1e1e1e;
-                border: none;
-                outline: none;
-                border-radius: 8px;
-            }
-            QListWidget#queueList::item {
-                padding: 14px 18px;
-                color: #e0e0e0;
-                border-bottom: 1px solid #2a2a2a;
-                margin: 1px 0px;
-                background-color: #1e1e1e;
-            }
-            /* Alternating row colors */
-            QListWidget#queueList::item:alternate {
-                background-color: #252525;
-            }
-            QListWidget#queueList::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            QListWidget#queueList::item:selected {
-                background-color: #1db954;
-                color: #000000;
-                font-weight: bold;
-            }
-            QListWidget#queueList::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QListWidget#queueList::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            QListWidget#queueList::item:hover {
-                background-color: #2d2d2d;
-                color: #1db954;
-            }
-            QListWidget#queueList::item:selected:hover {
-                background-color: #1ed760;
-            }
-            QListWidget#queueList::item[current] {
-                background-color: #1db954;
-                color: #000000;
-                font-weight: bold;
-                border-left: 4px solid #000000;
-            }
-            QListWidget QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QListWidget QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QListWidget QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-        """)
+        # Apply themed styles
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Apply themed styles from ThemeManager."""
+        from system.theme import ThemeManager
+        theme_manager = ThemeManager.instance()
+        theme = theme_manager.current_theme
+
+        self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))
+        self._highlight_color = theme.highlight
+
+        # Update status label
+        self._status_label.setStyleSheet(
+            f"color: {theme.text_secondary}; font-size: 13px;"
+        )
+        # Update hint label
+        self._hint_label.setStyleSheet(
+            f"color: {theme.text_secondary}; font-size: 11px;"
+        )
+
+        # Refresh all queue item widgets
+        for i in range(self._queue_list.count()):
+            item = self._queue_list.item(i)
+            widget = self._queue_list.itemWidget(item)
+            if widget and hasattr(widget, 'refresh_theme'):
+                widget.refresh_theme()
 
     def _setup_connections(self):
         """Setup signal connections."""
@@ -230,8 +629,19 @@ class QueueView(QWidget):
         self._player.engine.state_changed.connect(self._on_player_state_changed)
         self._player.engine.playlist_changed.connect(self._refresh_queue)
 
+        # Connect to selection changes to update widget styles
+        self._queue_list.itemSelectionChanged.connect(self._on_selection_changed)
+
         # Track playlist size to detect playlist changes
         self._last_playlist_size = 0
+
+    def _on_selection_changed(self):
+        """Handle selection changes to update widget styles."""
+        for i in range(self._queue_list.count()):
+            item = self._queue_list.item(i)
+            widget = self._queue_list.itemWidget(item)
+            if widget and isinstance(widget, QueueItemWidget):
+                widget.set_selected(item.isSelected())
 
     def _initialize_view(self):
         """Initialize the queue view with current content and indicators."""
@@ -254,30 +664,23 @@ class QueueView(QWidget):
         self._queue_list.clear()
 
         for i, track in enumerate(playlist):
-            title = track.get("title", t("unknown"))
-            artist = track.get("artist", t("unknown"))
-            duration = format_duration(track.get("duration", 0))
+            is_current = (i == current_index)
 
-            # Add play/pause icon for current track
-            if i == current_index:
-                icon = "▶️ " if is_playing else "⏸️ "
-                item_text = f"{i + 1}. {icon}{title} - {artist} [{duration}]"
-            else:
-                item_text = f"{i + 1}. {title} - {artist} [{duration}]"
-
-            item = QListWidgetItem(item_text)
+            # Create list item
+            item = QListWidgetItem()
             item.setData(Qt.UserRole, track)
+            item.setSizeHint(QSize(0, 84))  # Set item height (64px cover + padding)
 
-            # Set default text color
-            item.setForeground(QBrush(QColor("#e0e0e0")))
+            # Create custom widget
+            widget = QueueItemWidget(track, i, is_current, is_playing, self._highlight_color)
 
-            # Highlight current track
-            if i == current_index:
-                item.setData(Qt.UserRole + 1, True)  # Mark as current
-                item.setBackground(QColor("#1db954"))
-                item.setForeground(QBrush(QColor("#000000")))
-
+            # Add item to list
             self._queue_list.addItem(item)
+            self._queue_list.setItemWidget(item, widget)
+
+            # Mark current track
+            if is_current:
+                item.setData(Qt.UserRole + 1, True)
 
         # Restore selection
         for row in selected_indices:
@@ -317,30 +720,23 @@ class QueueView(QWidget):
         self._queue_list.clear()
 
         for i, track in enumerate(playlist):
-            title = track.get("title", t("unknown"))
-            artist = track.get("artist", t("unknown"))
-            duration = format_duration(track.get("duration", 0))
+            is_current = (i == current_index)
 
-            # Add play/pause icon for current track
-            if i == current_index:
-                icon = "▶️ " if is_playing else "⏸️ "
-                item_text = f"{i + 1}. {icon}{title} - {artist} [{duration}]"
-            else:
-                item_text = f"{i + 1}. {title} - {artist} [{duration}]"
-
-            item = QListWidgetItem(item_text)
+            # Create list item
+            item = QListWidgetItem()
             item.setData(Qt.UserRole, track)
+            item.setSizeHint(QSize(0, 84))  # Set item height (64px cover + padding)
 
-            # Set default text color
-            item.setForeground(QBrush(QColor("#e0e0e0")))
+            # Create custom widget
+            widget = QueueItemWidget(track, i, is_current, is_playing, self._highlight_color)
 
-            # Highlight current track
-            if i == current_index:
-                item.setData(Qt.UserRole + 1, True)  # Mark as current
-                item.setBackground(QColor("#1db954"))
-                item.setForeground(QBrush(QColor("#000000")))
-
+            # Add item to list
             self._queue_list.addItem(item)
+            self._queue_list.setItemWidget(item, widget)
+
+            # Mark current track
+            if is_current:
+                item.setData(Qt.UserRole + 1, True)
 
         # Restore selection
         for row in selected_indices:
@@ -388,34 +784,27 @@ class QueueView(QWidget):
 
         for i in range(self._queue_list.count()):
             item = self._queue_list.item(i)
-            track = item.data(Qt.UserRole)
+            widget = self._queue_list.itemWidget(item)
 
             if i == current_index:
-                item.setBackground(QColor("#1db954"))
-                item.setForeground(QColor("#000000"))
-
-                # Update the text with play/pause icon
-                if track and isinstance(track, dict):
-                    title = track.get("title", "Unknown")
-                    artist = track.get("artist", "Unknown")
-                    duration = format_duration(track.get("duration", 0))
-                    icon = "▶️ " if is_playing else "⏸️ "
-                    item_text = f"{i + 1}. {icon}{title} - {artist} [{duration}]"
-                    item.setText(item_text)
+                item.setData(Qt.UserRole + 1, True)
+                # Set current property for QSS selector
+                item.setData(Qt.UserRole + 2, "true")
+                # Update widget to show current state
+                if widget and isinstance(widget, QueueItemWidget):
+                    widget._is_current = True
+                    widget._is_playing = is_playing
+                    widget.update_play_state(is_playing)
+                    widget._update_style()
             else:
-                item.setBackground(Qt.transparent)
-                item.setForeground(QColor("#e0e0e0"))
-
-                # Remove icon if it was previously added
-                if track and isinstance(track, dict):
-                    title = track.get("title", "Unknown")
-                    artist = track.get("artist", "Unknown")
-                    duration = format_duration(track.get("duration", 0))
-                    # Check if text has icon and remove it
-                    current_text = item.text()
-                    if "▶️ " in current_text or "⏸️ " in current_text:
-                        item_text = f"{i + 1}. {title} - {artist} [{duration}]"
-                        item.setText(item_text)
+                item.setData(Qt.UserRole + 1, False)
+                item.setData(Qt.UserRole + 2, "false")
+                # Update widget to show non-current state
+                if widget and isinstance(widget, QueueItemWidget):
+                    widget._is_current = False
+                    widget._is_playing = False
+                    widget.update_play_state(False)
+                    widget._update_style()
 
     def _on_current_track_changed(self, track_dict):
         """Handle current track change."""
@@ -633,22 +1022,11 @@ class QueueView(QWidget):
             return
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
-        """)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._CONTEXT_MENU_STYLE))
 
         # Play action
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(self._play_selected)
 
         menu.addSeparator()
@@ -766,30 +1144,8 @@ class QueueView(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle(t("edit_media_info_title"))
         dialog.setMinimumWidth(450)
-        dialog.setStyleSheet("""
-            QDialog { background-color: #282828; color: #ffffff; }
-            QLabel { color: #ffffff; font-size: 13px; }
-            QLineEdit {
-                background-color: #181818;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus { border: 1px solid #1db954; }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #1ed760; }
-            QPushButton[role="cancel"] { background-color: #404040; color: #ffffff; }
-            QPushButton[role="cancel"]:hover { background-color: #505050; }
-        """)
+        from system.theme import ThemeManager
+        dialog.setStyleSheet(ThemeManager.instance().get_qss(self._EDIT_DIALOG_STYLE))
 
         layout = QVBoxLayout(dialog)
 
@@ -805,7 +1161,8 @@ class QueueView(QWidget):
         album_input.setPlaceholderText(t("enter_album"))
 
         path_label = QLabel(track.path)
-        path_label.setStyleSheet("color: #808080; font-size: 11px;")
+        theme = ThemeManager.instance().current_theme
+        path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         path_label.setWordWrap(True)
 
         form_layout.addRow(t("title") + ":", title_input)

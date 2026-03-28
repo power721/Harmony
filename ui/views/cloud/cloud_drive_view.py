@@ -66,6 +66,75 @@ class CloudDriveView(QWidget):
         play_cloud_files: Emitted to play multiple cloud files
     """
 
+    _STYLE_TEMPLATE = """
+        QLabel#accountListTitle {
+            color: %highlight%;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        QPushButton#addAccountBtn {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        QPushButton#addAccountBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QListWidget#accountList {
+            background: transparent;
+            border: none;
+        }
+        QListWidget#accountList::item {
+            padding: 12px;
+            color: %text_secondary%;
+            border-radius: 8px;
+            margin: 2px 0px;
+        }
+        QListWidget#accountList::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+            font-weight: bold;
+        }
+        QListWidget#accountList::item:hover {
+            background-color: %background_hover%;
+            color: %highlight%;
+        }
+        QListWidget#accountList::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QLabel#accountTitle {
+            color: %highlight%;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        QLabel#pathLabel {
+            color: %text_secondary%;
+            font-size: 14px;
+            padding: 0 10px;
+        }
+        QLabel#emptyLabel {
+            color: %text_secondary%;
+            font-size: 14px;
+        }
+        QLabel#statusLabel {
+            color: %text_secondary%;
+            font-size: 12px;
+            padding: 5px;
+        }
+        QMessageBox {
+            background-color: %background%;
+        }
+        QMessageBox QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+    """
+
     track_double_clicked = Signal(str)
     play_cloud_files = Signal(str, int, list, float)
 
@@ -120,6 +189,10 @@ class CloudDriveView(QWidget):
         )
         self._account_context_menu = CloudAccountContextMenu(parent=self)
 
+        # Register for theme change notifications
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
         # Setup UI
         self._setup_ui()
         self._setup_connections()
@@ -157,12 +230,7 @@ class CloudDriveView(QWidget):
 
         # Title
         self._account_list_title = QLabel(t("cloud_drive"))
-        self._account_list_title.setStyleSheet("""
-            color: #1db954;
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        """)
+        self._account_list_title.setObjectName("accountListTitle")
         layout.addWidget(self._account_list_title)
 
         # Add account button
@@ -170,21 +238,6 @@ class CloudDriveView(QWidget):
         self._add_account_btn.setObjectName("addAccountBtn")
         self._add_account_btn.setCursor(Qt.PointingHandCursor)
         self._add_account_btn.clicked.connect(self._add_account)
-        # Apply style matching new playlist button
-        self._add_account_btn.setStyleSheet("""
-            QPushButton#addAccountBtn {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 20px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QPushButton#addAccountBtn:hover {
-                background-color: #1ed760;
-            }
-        """)
         layout.addWidget(self._add_account_btn)
 
         # Account list
@@ -198,31 +251,6 @@ class CloudDriveView(QWidget):
         self._account_list.customContextMenuRequested.connect(
             self._show_account_context_menu
         )
-        # Apply style matching playlist list
-        self._account_list.setStyleSheet("""
-            QListWidget#accountList {
-                background: transparent;
-                border: none;
-            }
-            QListWidget#accountList::item {
-                padding: 12px;
-                color: #c0c0c0;
-                border-radius: 8px;
-                margin: 2px 0px;
-            }
-            QListWidget#accountList::item:selected {
-                background-color: #1db954;
-                color: #000000;
-                font-weight: bold;
-            }
-            QListWidget#accountList::item:hover {
-                background-color: #2a2a2a;
-                color: #1db954;
-            }
-            QListWidget#accountList::item:selected:hover {
-                background-color: #1ed760;
-            }
-        """)
         layout.addWidget(self._account_list)
 
         return widget
@@ -239,11 +267,7 @@ class CloudDriveView(QWidget):
         header_layout = QHBoxLayout()
 
         self._account_title = QLabel(t("select_account"))
-        self._account_title.setStyleSheet("""
-            color: #1db954;
-            font-size: 24px;
-            font-weight: bold;
-        """)
+        self._account_title.setObjectName("accountTitle")
         header_layout.addWidget(self._account_title)
 
         header_layout.addStretch()
@@ -258,11 +282,7 @@ class CloudDriveView(QWidget):
 
         # Path label
         self._path_label = QLabel("/")
-        self._path_label.setStyleSheet("""
-            color: #c0c0c0;
-            font-size: 14px;
-            padding: 0 10px;
-        """)
+        self._path_label.setObjectName("pathLabel")
         header_layout.addWidget(self._path_label)
 
         layout.addLayout(header_layout)
@@ -276,7 +296,6 @@ class CloudDriveView(QWidget):
         empty_label = QLabel(t("add_cloud_account"))
         empty_label.setObjectName("emptyLabel")
         empty_label.setAlignment(Qt.AlignCenter)
-        empty_label.setStyleSheet("color: #808080; font-size: 14px;")
         empty_layout.addWidget(empty_label)
         empty_page.setLayout(empty_layout)
         self._stack.addWidget(empty_page)
@@ -297,7 +316,7 @@ class CloudDriveView(QWidget):
 
         # Status label
         self._status_label = QLabel()
-        self._status_label.setStyleSheet("color: #a0a0a0; font-size: 12px; padding: 5px;")
+        self._status_label.setObjectName("statusLabel")
         layout.addWidget(self._status_label)
 
         return widget
@@ -1090,15 +1109,16 @@ class CloudDriveView(QWidget):
         dialog.setIcon(QMessageBox.Information)
         dialog.setStandardButtons(QMessageBox.Ok)
 
-        dialog.setStyleSheet("""
+        from system.theme import ThemeManager
+        dialog.setStyleSheet(ThemeManager.instance().get_qss("""
             QMessageBox {
-                background-color: #1e1e1e;
+                background-color: %background%;
             }
             QMessageBox QLabel {
-                color: #e0e0e0;
+                color: %text%;
                 font-size: 13px;
             }
-        """)
+        """))
 
         dialog.exec()
 
@@ -1233,6 +1253,11 @@ class CloudDriveView(QWidget):
         # Refresh file table headers
         if hasattr(self, '_file_table'):
             self._file_table.refresh_ui()
+
+    def refresh_theme(self):
+        """Apply themed styles using ThemeManager tokens."""
+        from system.theme import ThemeManager
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
     def showEvent(self, event):
         """Handle show event."""

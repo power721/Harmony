@@ -55,10 +55,28 @@ class LyricsPanel(QWidget):
     open_location_requested = Signal()
     seek_requested = Signal(int)  # position in ms
 
+    _MENU_STYLE = """
+        QMenu {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+        }
+    """
+
     def __init__(self, parent=None):
         """Initialize the lyrics panel."""
         super().__init__(parent)
         self._setup_ui()
+
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the UI."""
@@ -98,20 +116,10 @@ class LyricsPanel(QWidget):
 
     def _show_context_menu(self, pos):
         """Show context menu for lyrics."""
+        from system.theme import ThemeManager
+
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
-        """)
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._MENU_STYLE))
 
         download_action = menu.addAction(t("download_lyrics"))
         download_action.triggered.connect(self.download_requested)
@@ -152,6 +160,11 @@ class LyricsPanel(QWidget):
         """Refresh UI texts with current language."""
         self._title_label.setText(t("lyrics"))
         self._download_btn.setText(t("download"))
+
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        # Context menu is created on-demand, no need to update here
+        pass
 
 
 class LyricsController(QObject):
@@ -386,6 +399,7 @@ class LyricsController(QObject):
         """Edit lyrics for current track."""
         from services import LyricsService
         from utils.lrc_parser import detect_and_parse
+        from system.theme import ThemeManager
 
         current_track = self._playback.engine.current_track
         if not current_track:
@@ -420,26 +434,26 @@ class LyricsController(QObject):
         dialog = QDialog(None)
         dialog.setWindowTitle(t("edit_lyrics_title"))
         dialog.setMinimumSize(600, 500)
-        dialog.setStyleSheet("""
+        dialog.setStyleSheet(ThemeManager.instance().get_qss("""
             QDialog {
-                background-color: #282828;
-                color: #ffffff;
+                background-color: %background_alt%;
+                color: %text%;
             }
             QLabel {
-                color: #ffffff;
+                color: %text%;
                 font-size: 13px;
             }
             QTextEdit {
-                background-color: #181818;
-                color: #e0e0e0;
-                border: 1px solid #404040;
+                background-color: %background%;
+                color: %text%;
+                border: 1px solid %border%;
                 border-radius: 4px;
                 padding: 10px;
                 font-family: 'Consolas', 'Monaco', monospace;
                 font-size: 13px;
             }
             QPushButton {
-                background-color: #1db954;
+                background-color: %highlight%;
                 color: #000000;
                 border: none;
                 padding: 8px 20px;
@@ -447,18 +461,18 @@ class LyricsController(QObject):
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #1ed760;
+                background-color: %highlight_hover%;
             }
-        """)
+        """))
 
         layout = QVBoxLayout(dialog)
 
         info_label = QLabel(f"{track_title} - {track_artist}")
-        info_label.setStyleSheet("color: #1db954; font-size: 14px; padding: 5px;")
+        info_label.setStyleSheet(ThemeManager.instance().get_qss("color: %highlight%; font-size: 14px; padding: 5px;"))
         layout.addWidget(info_label)
 
         help_label = QLabel(t("lyrics_format_help"))
-        help_label.setStyleSheet("color: #808080; font-size: 11px;")
+        help_label.setStyleSheet(ThemeManager.instance().get_qss("color: %text_secondary%; font-size: 11px;"))
         help_label.setWordWrap(True)
         layout.addWidget(help_label)
 

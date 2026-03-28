@@ -43,6 +43,9 @@ class SettingKey:
     UI_SPLITTER = "ui.splitter"
     UI_VIEW_TYPE = "ui.view_type"  # "library", "album", "artist", etc.
     UI_VIEW_DATA = "ui.view_data"  # JSON data for view-specific state
+    UI_HIGHLIGHT_COLOR = "ui.highlight_color"  # DEPRECATED: Highlight color (hex format)
+    UI_THEME = "ui.theme"  # Theme name: "dark", "gold", "ocean", "purple", "sunset", or "custom"
+    UI_THEME_CUSTOM = "ui.theme.custom"  # Custom theme colors dict (only if ui.theme is "custom")
 
     # AI settings
     AI_ENABLED = "ai.enabled"
@@ -413,6 +416,24 @@ class ConfigManager:
             data: JSON string with view-specific data
         """
         self.set(SettingKey.UI_VIEW_DATA, data)
+
+    def get_highlight_color(self) -> str:
+        """
+        Get the highlight color for current track and selection.
+
+        Returns:
+            Highlight color in hex format (default: "#FFD700" - gold)
+        """
+        return self.get(SettingKey.UI_HIGHLIGHT_COLOR, "#FFD700")
+
+    def set_highlight_color(self, color: str):
+        """
+        Set the highlight color.
+
+        Args:
+            color: Color in hex format (e.g., "#FFD700", "#1db954")
+        """
+        self.set(SettingKey.UI_HIGHLIGHT_COLOR, color)
 
     # ===== AI settings =====
 

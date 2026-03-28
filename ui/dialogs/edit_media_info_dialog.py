@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from services import MetadataService
 from system.i18n import t
 from system.event_bus import EventBus
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,82 @@ class EditMediaInfoDialog(QDialog):
     """Dialog for editing media information for one or more tracks."""
 
     tracks_updated = Signal(list)  # Emitted when tracks are updated with list of track IDs
+
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+        QLineEdit {
+            background-color: %background%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border: 1px solid %highlight%;
+        }
+        QCheckBox {
+            color: %text%;
+            font-size: 13px;
+            spacing: 8px;
+        }
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+        }
+        QCheckBox::indicator:checked {
+            background-color: %highlight%;
+            border: 2px solid %highlight%;
+            border-radius: 3px;
+        }
+        QCheckBox::indicator:unchecked {
+            background-color: %background%;
+            border: 2px solid %border%;
+            border-radius: 3px;
+        }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton[role="cancel"] {
+            background-color: %border%;
+            color: %text%;
+        }
+        QPushButton[role="cancel"]:hover {
+            background-color: %background_hover%;
+        }
+        QPushButton:disabled {
+            background-color: %border%;
+            color: %text_secondary%;
+        }
+    """
+
+    _PROGRESS_STYLE_TEMPLATE = """
+        QProgressBar {
+            border: 2px solid %border%;
+            border-radius: 5px;
+            text-align: center;
+            color: %text%;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 3px;
+        }
+    """
 
     def __init__(self, track_ids: List[int], library_service, parent=None):
         """
@@ -47,6 +124,7 @@ class EditMediaInfoDialog(QDialog):
         self._is_batch_edit = len(track_ids) > 1
 
         self._setup_ui()
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the user interface."""
@@ -57,68 +135,7 @@ class EditMediaInfoDialog(QDialog):
         else:
             self.setWindowTitle(t("edit_media_info_title"))
         self.setMinimumWidth(450)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-                font-size: 13px;
-            }
-            QLineEdit {
-                background-color: #181818;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QCheckBox {
-                color: #ffffff;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #1db954;
-                border: 2px solid #1db954;
-                border-radius: 3px;
-            }
-            QCheckBox::indicator:unchecked {
-                background-color: #181818;
-                border: 2px solid #404040;
-                border-radius: 3px;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
-            QPushButton:disabled {
-                background-color: #404040;
-                color: #808080;
-            }
-        """)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
 
@@ -134,7 +151,7 @@ class EditMediaInfoDialog(QDialog):
                 f"{t('batch_edit_info')}: {len(self._track_ids)} {t('tracks')}"
             )
             info_label.setStyleSheet(
-                "color: #1db954; font-size: 14px; padding: 10px; background-color: #1a1a1a; border-radius: 4px;"
+                f"color: {ThemeManager.instance().current_theme.highlight}; font-size: 14px; padding: 10px; background-color: {ThemeManager.instance().current_theme.background}; border-radius: 4px;"
             )
             layout.addWidget(info_label)
 
@@ -179,18 +196,7 @@ class EditMediaInfoDialog(QDialog):
         if self._is_batch_edit:
             self._progress_bar = QProgressBar()
             self._progress_bar.setVisible(False)
-            self._progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 2px solid #404040;
-                    border-radius: 5px;
-                    text-align: center;
-                    color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #1db954;
-                    border-radius: 3px;
-                }
-            """)
+            self._progress_bar.setStyleSheet(ThemeManager.instance().get_qss(self._PROGRESS_STYLE_TEMPLATE))
             layout.addWidget(self._progress_bar)
 
         # Buttons
@@ -257,11 +263,12 @@ class EditMediaInfoDialog(QDialog):
                 file_info_text += f" | {' | '.join(media_info)}"
 
             info_label = QLabel(file_info_text)
-            info_label.setStyleSheet("color: #808080; font-size: 11px;")
+            theme = ThemeManager.instance().current_theme
+            info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
 
             # File path
             path_label = QLabel(track.path)
-            path_label.setStyleSheet("color: #606060; font-size: 10px;")
+            path_label.setStyleSheet(f"color: {theme.border}; font-size: 10px;")
             path_label.setWordWrap(True)
 
             # Add both labels in a vertical layout
@@ -278,7 +285,7 @@ class EditMediaInfoDialog(QDialog):
             logger.error(f"Error displaying track info: {e}", exc_info=True)
             # Fallback to just show path if there's an error
             path_label = QLabel(track.path)
-            path_label.setStyleSheet("color: #808080; font-size: 11px;")
+            path_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary}; font-size: 11px;")
             path_label.setWordWrap(True)
             form_layout.addRow(t("file") + ":", path_label)
 
@@ -402,3 +409,9 @@ class EditMediaInfoDialog(QDialog):
     def get_updated_track_ids(self) -> List[int]:
         """Get the list of track IDs that were updated."""
         return self._track_ids
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        if self._progress_bar:
+            self._progress_bar.setStyleSheet(ThemeManager.instance().get_qss(self._PROGRESS_STYLE_TEMPLATE))

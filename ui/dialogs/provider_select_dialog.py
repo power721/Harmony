@@ -6,14 +6,42 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QWidget)
 
 from system.i18n import t
+from system.theme import ThemeManager
 
 
 class ProviderSelectDialog(QDialog):
     """Dialog for selecting cloud provider"""
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QPushButton {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 8px;
+            padding: 16px 24px;
+            font-size: 16px;
+        }
+        QPushButton:hover {
+            background-color: %background_hover%;
+            border: 1px solid %highlight%;
+        }
+        QPushButton:pressed {
+            background-color: %background_alt%;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._selected_provider = None
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        ThemeManager.instance().register_widget(self)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -21,39 +49,13 @@ class ProviderSelectDialog(QDialog):
         self.setWindowTitle(t("select_provider"))
         self.setMinimumSize(400, 250)
 
-        # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 8px;
-                padding: 16px 24px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-                border: 1px solid #1db954;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-        """)
-
         main_layout = QVBoxLayout()
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(30, 30, 30, 30)
 
         # Title
         title = QLabel(t("select_cloud_provider"))
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1db954;")
+        title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
         title.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title)
 
@@ -101,3 +103,12 @@ class ProviderSelectDialog(QDialog):
     def get_selected_provider(self) -> str:
         """Get the selected provider"""
         return self._selected_provider
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        theme = ThemeManager.instance().current_theme
+        # Update title style
+        for child in self.findChildren(QLabel):
+            if child.text() == t("select_cloud_provider"):
+                child.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {theme.highlight};")

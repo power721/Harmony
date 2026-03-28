@@ -40,31 +40,42 @@ from ui.widgets.recommend_card import RecommendSection
 class CustomQCompleter(QCompleter):
     """自定义QCompleter用于搜索建议."""
 
+    _STYLE_POPUP = """
+        QListView {
+            background-color: %background_hover%;
+            border: 1px solid %border%;
+            border-radius: 8px;
+            color: %text%;
+            selection-background-color: %highlight%;
+            selection-color: %text%;
+            outline: none;
+        }
+        QListView::item {
+            padding: 8px 12px;
+            border-bottom: 1px solid %border%;
+        }
+        QListView::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+        }
+        QListView::item:hover {
+            background-color: %border%;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 设置列表样式
-        self.popup().setStyleSheet("""
-            QListView {
-                background-color: #2a2a2a;
-                border: 1px solid #3a3a3a;
-                border-radius: 8px;
-                color: #e0e0e0;
-                selection-background-color: #1db954;
-                selection-color: #ffffff;
-                outline: none;
-            }
-            QListView::item {
-                padding: 8px 12px;
-                border-bottom: 1px solid #3a3a3a;
-            }
-            QListView::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-            }
-            QListView::item:hover {
-                background-color: #333;
-            }
-        """)
+        # Set themed popup style
+        self._apply_theme()
+
+    def _apply_theme(self):
+        """Apply themed styles to popup."""
+        from system.theme import ThemeManager
+        self.popup().setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_POPUP))
+
+    def refresh_theme(self):
+        """Refresh popup styles."""
+        self._apply_theme()
 
 from domain.online_music import (
     OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
@@ -254,6 +265,83 @@ class HotkeyPopup(QWidget):
     clear_history_requested = Signal()  # Emitted when clear history is requested
     delete_history_requested = Signal(str)  # Emitted when delete a history item is requested
 
+    _STYLE_CONTAINER = """
+        #hotkeyContainer {
+            background-color: %background_hover%;
+            border: 1px solid %border%;
+            border-radius: 8px;
+        }
+    """
+    _STYLE_TITLE = """
+        QLabel {
+            color: %highlight%;
+            font-size: 13px;
+            font-weight: bold;
+            padding: 10px 12px 6px 12px;
+        }
+    """
+    _STYLE_TITLE_NO_PADDING = """
+        QLabel {
+            color: %highlight%;
+            font-size: 13px;
+            font-weight: bold;
+        }
+    """
+    _STYLE_CLEAR_BTN = """
+        QPushButton {
+            color: %text_secondary%;
+            font-size: 12px;
+            border: none;
+            padding: 2px 8px;
+            background: transparent;
+        }
+        QPushButton:hover {
+            color: %highlight%;
+            text-decoration: underline;
+        }
+    """
+    _STYLE_SEPARATOR = "background-color: %border%; border: none; max-height: 1px;"
+    _STYLE_HISTORY_LABEL = """
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+            background: transparent;
+        }
+    """
+    _STYLE_DELETE_BTN = """
+        QPushButton {
+            color: %text_secondary%;
+            font-size: 12px;
+            border: none;
+            padding: 2px 8px;
+            background: transparent;
+        }
+        QPushButton:hover {
+            color: #ff4444;
+            text-decoration: underline;
+        }
+    """
+    _STYLE_HISTORY_ITEM = """
+        QWidget {
+            background-color: transparent;
+            border-radius: 4px;
+        }
+        QWidget:hover {
+            background-color: %border%;
+        }
+    """
+    _STYLE_HOTKEY_ITEM = """
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+        QLabel:hover {
+            background-color: %border%;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -262,6 +350,10 @@ class HotkeyPopup(QWidget):
 
         self._setup_ui()
 
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Setup UI components."""
         self._main_layout = QVBoxLayout(self)
@@ -269,18 +361,22 @@ class HotkeyPopup(QWidget):
 
         self._container = QWidget()
         self._container.setObjectName("hotkeyContainer")
-        self._container.setStyleSheet("""
-            #hotkeyContainer {
-                background-color: #2a2a2a;
-                border: 1px solid #3a3a3a;
-                border-radius: 8px;
-            }
-        """)
         self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
         self._container_layout.setSpacing(0)
 
         self._main_layout.addWidget(self._container)
+
+        # Apply initial theme
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Container
+        self._container.setStyleSheet(tm.get_qss(self._STYLE_CONTAINER))
 
     def set_hotkeys(self, hotkeys: List[Dict[str, Any]]):
         """Set hotkey list."""
@@ -288,14 +384,8 @@ class HotkeyPopup(QWidget):
 
         # Title
         title = QLabel(f"🔥 {t('hot_search')}")
-        title.setStyleSheet("""
-            QLabel {
-                color: #1db954;
-                font-size: 13px;
-                font-weight: bold;
-                padding: 10px 12px 6px 12px;
-            }
-        """)
+        from system.theme import ThemeManager
+        title.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TITLE))
         self._container_layout.addWidget(title)
 
         # Hotkey items
@@ -317,31 +407,14 @@ class HotkeyPopup(QWidget):
         title_layout.setContentsMargins(12, 10, 12, 6)
 
         title = QLabel(f"📝 {t('search_history')}")
-        title.setStyleSheet("""
-            QLabel {
-                color: #1db954;
-                font-size: 13px;
-                font-weight: bold;
-            }
-        """)
+        from system.theme import ThemeManager
+        title.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TITLE_NO_PADDING))
         title_layout.addWidget(title)
 
         title_layout.addStretch()
 
         clear_btn = QPushButton(t("clear_all"))
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                color: #999;
-                font-size: 12px;
-                border: none;
-                padding: 2px 8px;
-                background: transparent;
-            }
-            QPushButton:hover {
-                color: #1db954;
-                text-decoration: underline;
-            }
-        """)
+        clear_btn.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_CLEAR_BTN))
         clear_btn.setCursor(Qt.PointingHandCursor)
         clear_btn.clicked.connect(self._on_clear_clicked)
         title_layout.addWidget(clear_btn)
@@ -362,6 +435,9 @@ class HotkeyPopup(QWidget):
         """Set both search history and hotkeys in one popup."""
         self._clear_container()
 
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
         # Add search history section
         if history:
             # Title with clear button
@@ -369,31 +445,13 @@ class HotkeyPopup(QWidget):
             title_layout.setContentsMargins(12, 10, 12, 6)
 
             title = QLabel(f"📝 {t('search_history')}")
-            title.setStyleSheet("""
-                QLabel {
-                    color: #1db954;
-                    font-size: 13px;
-                    font-weight: bold;
-                }
-            """)
+            title.setStyleSheet(tm.get_qss(self._STYLE_TITLE_NO_PADDING))
             title_layout.addWidget(title)
 
             title_layout.addStretch()
 
             clear_btn = QPushButton(t("clear_all"))
-            clear_btn.setStyleSheet("""
-                QPushButton {
-                    color: #999;
-                    font-size: 12px;
-                    border: none;
-                    padding: 2px 8px;
-                    background: transparent;
-                }
-                QPushButton:hover {
-                    color: #1db954;
-                    text-decoration: underline;
-                }
-            """)
+            clear_btn.setStyleSheet(tm.get_qss(self._STYLE_CLEAR_BTN))
             clear_btn.setCursor(Qt.PointingHandCursor)
             clear_btn.clicked.connect(self._on_clear_clicked)
             title_layout.addWidget(clear_btn)
@@ -411,21 +469,14 @@ class HotkeyPopup(QWidget):
         if history and hotkeys:
             separator = QFrame()
             separator.setFrameShape(QFrame.HLine)
-            separator.setStyleSheet("background-color: #3a3a3a; border: none; max-height: 1px;")
+            separator.setStyleSheet(tm.get_qss(self._STYLE_SEPARATOR))
             self._container_layout.addWidget(separator)
 
         # Add hot search section
         if hotkeys:
             # Title
             hotkey_title = QLabel(f"🔥 {t('hot_search')}")
-            hotkey_title.setStyleSheet("""
-                QLabel {
-                    color: #1db954;
-                    font-size: 13px;
-                    font-weight: bold;
-                    padding: 10px 12px 6px 12px;
-                }
-            """)
+            hotkey_title.setStyleSheet(tm.get_qss(self._STYLE_TITLE))
             self._container_layout.addWidget(hotkey_title)
 
             for item in hotkeys[:5]:  # Limit to 5 hotkeys when combined
@@ -439,6 +490,9 @@ class HotkeyPopup(QWidget):
 
     def _add_history_item(self, keyword: str):
         """Add a history item with delete button."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(12, 4, 8, 4)
@@ -446,45 +500,19 @@ class HotkeyPopup(QWidget):
 
         # Keyword label
         label = QLabel(keyword)
-        label.setStyleSheet("""
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-                background: transparent;
-            }
-        """)
+        label.setStyleSheet(tm.get_qss(self._STYLE_HISTORY_LABEL))
         item_layout.addWidget(label)
 
         item_layout.addStretch()
 
         # Delete button - same style as clear button
         delete_btn = QPushButton(t("delete"))
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                color: #999;
-                font-size: 12px;
-                border: none;
-                padding: 2px 8px;
-                background: transparent;
-            }
-            QPushButton:hover {
-                color: #ff4444;
-                text-decoration: underline;
-            }
-        """)
+        delete_btn.setStyleSheet(tm.get_qss(self._STYLE_DELETE_BTN))
         delete_btn.setCursor(Qt.PointingHandCursor)
         delete_btn.clicked.connect(lambda: self._on_delete_clicked(keyword))
         item_layout.addWidget(delete_btn)
 
-        item_widget.setStyleSheet("""
-            QWidget {
-                background-color: transparent;
-                border-radius: 4px;
-            }
-            QWidget:hover {
-                background-color: #333;
-            }
-        """)
+        item_widget.setStyleSheet(tm.get_qss(self._STYLE_HISTORY_ITEM))
         item_widget.setCursor(Qt.PointingHandCursor)
         item_widget.mousePressEvent = lambda e: self._on_item_clicked(keyword)
 
@@ -492,18 +520,9 @@ class HotkeyPopup(QWidget):
 
     def _add_hotkey_item(self, title: str, query: str):
         """Add a hotkey item."""
+        from system.theme import ThemeManager
         label = QLabel(f"  {title}")
-        label.setStyleSheet("""
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-                padding: 8px 12px;
-                border-radius: 4px;
-            }
-            QLabel:hover {
-                background-color: #333;
-            }
-        """)
+        label.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_HOTKEY_ITEM))
         label.setCursor(Qt.PointingHandCursor)
         label.mousePressEvent = lambda e: self._on_item_clicked(query)
 
@@ -596,6 +615,207 @@ class OnlineMusicView(QWidget):
     insert_multiple_to_queue = Signal(list)  # list of (song_mid, metadata_dict)
     play_online_tracks = Signal(int, list)  # (start_index, list of (song_mid, metadata_dict))
 
+    _STYLE_TITLE = "color: %highlight%; font-size: 24px; font-weight: bold;"
+    _STYLE_STATUS_LABEL = "color: %text_secondary%; font-size: 12px;"
+    _STYLE_SEARCH_INPUT = """
+        QLineEdit {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 2px solid %border%;
+            border-radius: 25px;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+        QLineEdit:focus {
+            border: 2px solid %highlight%;
+            background-color: %background_alt%;
+        }
+        QLineEdit::placeholder {
+            color: %text_secondary%;
+        }
+        QLineEdit::clear-button {
+            subcontrol-origin: padding;
+            subcontrol-position: right;
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 10px;
+            background-color: %border%;
+        }
+        QLineEdit::clear-button:hover {
+            background-color: %text_secondary%;
+            border: 1px solid %text%;
+            cursor: pointer;
+        }
+        QLineEdit::clear-button:pressed {
+            background-color: %background_hover%;
+        }
+    """
+    _STYLE_TABS = """
+        QTabBar::tab {
+            background: transparent;
+            color: %text_secondary%;
+            padding: 8px 20px;
+            border-bottom: 2px solid transparent;
+        }
+        QTabBar::tab:selected {
+            color: %highlight%;
+            border-bottom: 2px solid %highlight%;
+        }
+        QTabBar::tab:hover {
+            color: %highlight%;
+        }
+    """
+    _STYLE_RANKINGS_TITLE = "color: %highlight%; font-size: 16px; font-weight: bold;"
+    _STYLE_FAV_BACK_BTN = """
+        QPushButton {
+            background-color: transparent;
+            color: %highlight%;
+            border: none;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 4px 8px;
+        }
+        QPushButton:hover {
+            color: %highlight_hover%;
+        }
+    """
+    _STYLE_RESULTS_INFO = "color: %text_secondary%; font-size: 12px;"
+    _STYLE_SONGS_TABLE = """
+        QTableWidget#songsTable {
+            background-color: %background_alt%;
+            border: none;
+            border-radius: 8px;
+            gridline-color: %background_hover%;
+        }
+        QTableWidget#songsTable::item {
+            padding: 12px 8px;
+            color: %text%;
+            border: none;
+            border-bottom: 1px solid %background_hover%;
+        }
+        QTableWidget#songsTable::item:alternate {
+            background-color: %background_hover%;
+        }
+        QTableWidget#songsTable::item:!alternate {
+            background-color: %background_alt%;
+        }
+        QTableWidget#songsTable::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+            font-weight: 500;
+        }
+        QTableWidget#songsTable::item:selected:!alternate {
+            background-color: %highlight%;
+        }
+        QTableWidget#songsTable::item:selected:alternate {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#songsTable::item:hover {
+            background-color: %border%;
+        }
+        QTableWidget#songsTable::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget#songsTable::item:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#songsTable:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#songsTable QHeaderView::section {
+            background-color: %background_hover%;
+            color: %highlight%;
+            padding: 14px 12px;
+            border: none;
+            border-bottom: 2px solid %highlight%;
+            font-weight: bold;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        QTableWidget#songsTable QTableCornerButton::section {
+            background-color: %background_hover%;
+            border: none;
+            border-right: 1px solid %border%;
+            border-bottom: 2px solid %highlight%;
+        }
+        QTableWidget#songsTable QScrollBar:vertical {
+            background-color: %background_alt%;
+            width: 12px;
+            border-radius: 6px;
+            margin: 0px;
+        }
+        QTableWidget#songsTable QScrollBar::handle:vertical {
+            background-color: %border%;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QTableWidget#songsTable QScrollBar::handle:vertical:hover {
+            background-color: %text_secondary%;
+        }
+        QTableWidget#songsTable QScrollBar:horizontal {
+            background-color: %background_alt%;
+            height: 12px;
+            border-radius: 6px;
+        }
+        QTableWidget#songsTable QScrollBar::handle:horizontal {
+            background-color: %border%;
+            border-radius: 6px;
+            min-width: 40px;
+        }
+        QTableWidget#songsTable QScrollBar::handle:horizontal:hover {
+            background-color: %text_secondary%;
+        }
+        QTableWidget#songsTable QScrollBar::add-line, QScrollBar::sub-line {
+            height: 0px;
+            width: 0px;
+        }
+    """
+    _STYLE_PAGE_LABEL = "color: %text_secondary%; padding: 0 10px;"
+    _STYLE_BUTTONS = """
+        QPushButton {
+            background: %background_alt%;
+            color: %text%;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background: %border%;
+        }
+        QPushButton:pressed {
+            background: %text_secondary%;
+        }
+        QListWidget {
+            background: %background_alt%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+        }
+        QListWidget::item {
+            padding: 10px;
+            color: %text%;
+        }
+        QListWidget::item:selected {
+            background: %highlight%;
+            color: %text%;
+        }
+        QListWidget::item:hover {
+            background: %background_hover%;
+        }
+    """
+    _STYLE_MENU = """
+        QMenu {
+            background: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item:selected {
+            background: %highlight%;
+        }
+    """
+
     def __init__(
         self,
         config_manager=None,
@@ -668,6 +888,11 @@ class OnlineMusicView(QWidget):
 
         self._setup_ui()
 
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+        self.refresh_theme()
+
     def _setup_ui(self):
         """Setup UI components."""
         layout = QVBoxLayout(self)
@@ -732,9 +957,6 @@ class OnlineMusicView(QWidget):
 
         layout.addWidget(self._stack, 1)  # Give stretch factor so it doesn't push other widgets
 
-        # Apply styles
-        self._apply_styles()
-
         # Load recommendations if logged in (after UI is fully set up)
         if self._service._has_qqmusic_credential():
             self._load_recommendations()
@@ -755,18 +977,12 @@ class OnlineMusicView(QWidget):
 
         # Title
         self._online_music_title = QLabel(t("online_music"))
-        self._online_music_title.setStyleSheet("""
-            color: #1db954;
-            font-size: 24px;
-            font-weight: bold;
-        """)
         layout.addWidget(self._online_music_title)
 
         layout.addStretch()
 
         # QQ Music login status
         self._login_status_label = QLabel()
-        self._login_status_label.setStyleSheet("color: #808080; font-size: 12px;")
         layout.addWidget(self._login_status_label)
 
         # Login/Logout button
@@ -811,40 +1027,6 @@ class OnlineMusicView(QWidget):
         # Connect completion activation
         self._completer.activated.connect(self._on_completion_selected)
 
-        self._search_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 2px solid #3a3a3a;
-                border-radius: 25px;
-                padding: 10px 20px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1db954;
-                background-color: #2d2d2d;
-            }
-            QLineEdit::placeholder {
-                color: #808080;
-            }
-            QLineEdit::clear-button {
-                subcontrol-origin: padding;
-                subcontrol-position: right;
-                width: 20px;
-                height: 20px;
-                margin-right: 10px;
-                border-radius: 10px;
-                background-color: #505050;
-            }
-            QLineEdit::clear-button:hover {
-                background-color: #606060;
-                border: 1px solid #707070;
-                cursor: pointer;
-            }
-            QLineEdit::clear-button:pressed {
-                background-color: #404040;
-            }
-        """)
         layout.addWidget(self._search_input, 1)
 
         # Search button
@@ -898,7 +1080,6 @@ class OnlineMusicView(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         self._rankings_title = QLabel(t("rankings"))
-        self._rankings_title.setStyleSheet("color: #1db954; font-size: 16px; font-weight: bold;")
         left_layout.addWidget(self._rankings_title)
 
         self._top_list_list = QListWidget()
@@ -914,7 +1095,6 @@ class OnlineMusicView(QWidget):
         right_layout.setContentsMargins(10, 0, 0, 0)
 
         self._top_list_title = QLabel(t("select_ranking"))
-        self._top_list_title.setStyleSheet("color: #1db954; font-size: 16px; font-weight: bold;")
         right_layout.addWidget(self._top_list_title)
 
         self._top_songs_table = self._create_songs_table()
@@ -939,26 +1119,12 @@ class OnlineMusicView(QWidget):
         # Back button (hidden by default, shown for favorites views)
         self._fav_back_btn = QPushButton(f"← {t('back')}")
         self._fav_back_btn.setCursor(Qt.PointingHandCursor)
-        self._fav_back_btn.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #1db954;
-                border: none;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 4px 8px;
-            }
-            QPushButton:hover {
-                color: #1ed760;
-            }
-        """)
         self._fav_back_btn.clicked.connect(self._on_fav_back_clicked)
         self._fav_back_btn.hide()
         header_layout.addWidget(self._fav_back_btn)
 
         # Results info
         self._results_info = QLabel()
-        self._results_info.setStyleSheet("color: #808080; font-size: 12px;")
         header_layout.addWidget(self._results_info)
         header_layout.addStretch()
 
@@ -1033,100 +1199,6 @@ class OnlineMusicView(QWidget):
         table.setContextMenuPolicy(Qt.CustomContextMenu)
         table.customContextMenuRequested.connect(self._show_track_context_menu)
 
-        # Same style as library view
-        table.setStyleSheet("""
-            QTableWidget#songsTable {
-                background-color: #1e1e1e;
-                border: none;
-                border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget#songsTable::item {
-                padding: 12px 8px;
-                color: #e0e0e0;
-                border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            QTableWidget#songsTable::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget#songsTable::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            QTableWidget#songsTable::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-                font-weight: 500;
-            }
-            QTableWidget#songsTable::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget#songsTable::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            QTableWidget#songsTable::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget#songsTable::item:selected:hover {
-                background-color: #1ed760;
-            }
-            QTableWidget#songsTable::item:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#songsTable:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#songsTable QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid #1db954;
-                font-weight: bold;
-                font-size: 12px;
-                letter-spacing: 0.5px;
-            }
-            QTableWidget#songsTable QTableCornerButton::section {
-                background-color: #2a2a2a;
-                border: none;
-                border-right: 1px solid #3a3a3a;
-                border-bottom: 2px solid #1db954;
-            }
-            QTableWidget#songsTable QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QTableWidget#songsTable QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QTableWidget#songsTable QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QTableWidget#songsTable QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget#songsTable QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QTableWidget#songsTable QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QTableWidget#songsTable QScrollBar::add-line, QScrollBar::sub-line {
-                height: 0px;
-                width: 0px;
-            }
-        """)
-
         return table
 
     def _create_pagination(self) -> QWidget:
@@ -1144,7 +1216,6 @@ class OnlineMusicView(QWidget):
         layout.addWidget(self._prev_btn)
 
         self._page_label = QLabel("1")
-        self._page_label.setStyleSheet("color: #808080; padding: 0 10px;")
         layout.addWidget(self._page_label)
 
         self._next_btn = QPushButton(t("next_page") + " →")
@@ -1157,39 +1228,46 @@ class OnlineMusicView(QWidget):
 
         return widget
 
-    def _apply_styles(self):
-        """Apply styles to the view."""
-        self.setStyleSheet("""
-            QPushButton {
-                background: #333;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: #444;
-            }
-            QPushButton:pressed {
-                background: #555;
-            }
-            QListWidget {
-                background: #1a1a1a;
-                border: 1px solid #333;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                padding: 10px;
-                color: white;
-            }
-            QListWidget::item:selected {
-                background: #1db954;
-                color: white;
-            }
-            QListWidget::item:hover {
-                background: #2a2a2a;
-            }
-        """)
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Main widget styles
+        self.setStyleSheet(tm.get_qss(self._STYLE_BUTTONS))
+
+        # Header
+        self._online_music_title.setStyleSheet(tm.get_qss(self._STYLE_TITLE))
+        self._login_status_label.setStyleSheet(tm.get_qss(self._STYLE_STATUS_LABEL))
+
+        # Search input
+        self._search_input.setStyleSheet(tm.get_qss(self._STYLE_SEARCH_INPUT))
+
+        # Tabs
+        self._tabs.setStyleSheet(tm.get_qss(self._STYLE_TABS))
+
+        # Top list page
+        self._rankings_title.setStyleSheet(tm.get_qss(self._STYLE_RANKINGS_TITLE))
+        self._top_list_title.setStyleSheet(tm.get_qss(self._STYLE_RANKINGS_TITLE))
+
+        # Results page
+        self._fav_back_btn.setStyleSheet(tm.get_qss(self._STYLE_FAV_BACK_BTN))
+        self._results_info.setStyleSheet(tm.get_qss(self._STYLE_RESULTS_INFO))
+
+        # Songs tables
+        self._top_songs_table.setStyleSheet(tm.get_qss(self._STYLE_SONGS_TABLE))
+        self._results_table.setStyleSheet(tm.get_qss(self._STYLE_SONGS_TABLE))
+
+        # Pagination
+        self._page_label.setStyleSheet(tm.get_qss(self._STYLE_PAGE_LABEL))
+
+        # Refresh completer popup
+        if hasattr(self, '_completer') and self._completer:
+            self._completer.refresh_theme()
+
+        # Refresh hotkey popup
+        if self._hotkey_popup:
+            self._hotkey_popup.refresh_theme()
 
     def _refresh_qqmusic_service(self):
         """Refresh QQ Music service with current credentials."""
@@ -2701,16 +2779,8 @@ class OnlineMusicView(QWidget):
             return
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background: #2a2a2a;
-                color: white;
-                border: 1px solid #444;
-            }
-            QMenu::item:selected {
-                background: #1db954;
-            }
-        """)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_MENU))
 
         play_action = menu.addAction(t("play"))
         play_action.triggered.connect(lambda: self._play_selected_tracks(tracks))

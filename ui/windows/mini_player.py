@@ -59,6 +59,84 @@ class MiniPlayer(QWidget):
     closed = Signal()  # Signal when mini player is closed
     _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
 
+    _CONTAINER_STYLE = """
+        QWidget {
+            background-color: %background_alt%;
+            border-radius: 14px;
+        }
+    """
+
+    _COVER_STYLE = """
+        QLabel {
+            background-color: %border%;
+            border-radius: 6px;
+        }
+    """
+
+    _TITLE_STYLE = """
+        color: %text%;
+        font-weight: bold;
+        font-size: 13px;
+    """
+
+    _SUBTITLE_STYLE = """
+        color: %text_secondary%;
+        font-size: 11px;
+    """
+
+    _CLOSE_BTN_STYLE = """
+        QPushButton {
+            background: transparent;
+            border: none;
+        }
+        QPushButton:hover {
+            background-color: %border%;
+            border-radius: 13px;
+        }
+    """
+
+    _SLIDER_STYLE = """
+        QSlider::groove:horizontal {
+            height: 3px;
+            background: %border%;
+            border-radius: 1px;
+        }
+        QSlider::handle:horizontal {
+            width: 10px;
+            height: 10px;
+            background: %highlight%;
+            border-radius: 5px;
+            margin: -3px 0;
+        }
+        QSlider::handle:horizontal:hover {
+            background: %highlight_hover%;
+        }
+    """
+
+    _PLAY_BTN_STYLE = """
+        QPushButton {
+            background: %highlight%;
+            border: none;
+            border-radius: 16px;
+        }
+        QPushButton:hover {
+            background: %highlight_hover%;
+        }
+    """
+
+    _CONTROL_BTN_STYLE = """
+        QPushButton {
+            background: transparent;
+            border: none;
+        }
+        QPushButton:hover {
+            background-color: %selection%;
+            border-radius: 12px;
+        }
+    """
+
+    _TIME_STYLE = "color: %text_secondary%; font-size: 10px; font-family: monospace;"
+
     def __init__(self, player: PlaybackService, parent=None):
         """
         Initialize mini player.
@@ -81,6 +159,9 @@ class MiniPlayer(QWidget):
         self._setup_connections()
         self._setup_window_properties()
         self._setup_shadow()
+
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
 
     def _setup_window_properties(self):
         """Setup window properties."""
@@ -112,14 +193,6 @@ class MiniPlayer(QWidget):
         self._container = QWidget(self)
         self._container.setGeometry(0, 0, 350, 150)
 
-        # Create rounded rectangle background
-        self._container.setStyleSheet("""
-            QWidget {
-                background-color: #282828;
-                border-radius: 14px;
-            }
-        """)
-
         layout = QVBoxLayout(self._container)
         layout.setContentsMargins(15, 10, 15, 10)
         layout.setSpacing(8)
@@ -131,12 +204,6 @@ class MiniPlayer(QWidget):
         self._cover_label = QLabel()
         self._cover_label.setFixedSize(50, 50)
         self._cover_label.setAlignment(Qt.AlignCenter)
-        self._cover_label.setStyleSheet("""
-            QLabel {
-                background-color: #404040;
-                border-radius: 6px;
-            }
-        """)
         self._set_default_cover()
         top_layout.addWidget(self._cover_label)
 
@@ -145,26 +212,13 @@ class MiniPlayer(QWidget):
         info_layout.setSpacing(2)
 
         self._title_label = QLabel(t("not_playing"))
-        self._title_label.setStyleSheet("""
-            color: #ffffff;
-            font-weight: bold;
-            font-size: 13px;
-        """)
         # self._title_label.setWordWrap(True)
         info_layout.addWidget(self._title_label)
 
         self._album_label = QLabel("")
-        self._album_label.setStyleSheet("""
-            color: #b3b3b3;
-            font-size: 11px;
-        """)
         # info_layout.addWidget(self._album_label)
 
         self._artist_label = QLabel("")
-        self._artist_label.setStyleSheet("""
-            color: #b3b3b3;
-            font-size: 11px;
-        """)
         # self._artist_label.setWordWrap(True)
         info_layout.addWidget(self._artist_label)
 
@@ -177,16 +231,6 @@ class MiniPlayer(QWidget):
         self._close_btn.setFixedSize(26, 26)
         self._close_btn.setCursor(Qt.PointingHandCursor)
         self._close_btn.setIcon(get_icon(IconName.TIMES, None))
-        self._close_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: #404040;
-                border-radius: 13px;
-            }
-        """)
         top_layout.addWidget(self._close_btn)
 
         layout.addLayout(top_layout)
@@ -201,23 +245,6 @@ class MiniPlayer(QWidget):
         self._progress_slider.setRange(0, 1000)
         self._progress_slider.setValue(0)
         self._progress_slider.setCursor(Qt.PointingHandCursor)
-        self._progress_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 3px;
-                background: #404040;
-                border-radius: 1px;
-            }
-            QSlider::handle:horizontal {
-                width: 10px;
-                height: 10px;
-                background: #1db954;
-                border-radius: 5px;
-                margin: -3px 0;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #1ed760;
-            }
-        """)
         layout.addWidget(self._progress_slider)
 
         # Bottom row - controls and time
@@ -225,7 +252,6 @@ class MiniPlayer(QWidget):
 
         # Time labels
         self._current_time = QLabel("0:00")
-        self._current_time.setStyleSheet("color: #b3b3b3; font-size: 10px; font-family: monospace;")
         bottom_layout.addWidget(self._current_time)
 
         bottom_layout.addStretch()
@@ -235,16 +261,6 @@ class MiniPlayer(QWidget):
         bottom_layout.addWidget(self._prev_btn)
 
         self._play_pause_btn = self._create_control_button(IconName.PLAY, 32, None)
-        self._play_pause_btn.setStyleSheet("""
-            QPushButton {
-                background: #1db954;
-                border: none;
-                border-radius: 16px;
-            }
-            QPushButton:hover {
-                background: #1ed760;
-            }
-        """)
         bottom_layout.addWidget(self._play_pause_btn)
 
         self._next_btn = self._create_control_button(IconName.NEXT, 28)
@@ -253,10 +269,30 @@ class MiniPlayer(QWidget):
         bottom_layout.addStretch()
 
         self._total_time = QLabel("0:00")
-        self._total_time.setStyleSheet("color: #b3b3b3; font-size: 10px; font-family: monospace;")
         bottom_layout.addWidget(self._total_time)
 
         layout.addLayout(bottom_layout)
+
+        # Apply initial theme
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Refresh all widget styles with current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        self._container.setStyleSheet(tm.get_qss(self._CONTAINER_STYLE))
+        self._cover_label.setStyleSheet(tm.get_qss(self._COVER_STYLE))
+        self._title_label.setStyleSheet(tm.get_qss(self._TITLE_STYLE))
+        self._album_label.setStyleSheet(tm.get_qss(self._SUBTITLE_STYLE))
+        self._artist_label.setStyleSheet(tm.get_qss(self._SUBTITLE_STYLE))
+        self._close_btn.setStyleSheet(tm.get_qss(self._CLOSE_BTN_STYLE))
+        self._progress_slider.setStyleSheet(tm.get_qss(self._SLIDER_STYLE))
+        self._play_pause_btn.setStyleSheet(tm.get_qss(self._PLAY_BTN_STYLE))
+        self._prev_btn.setStyleSheet(tm.get_qss(self._CONTROL_BTN_STYLE))
+        self._next_btn.setStyleSheet(tm.get_qss(self._CONTROL_BTN_STYLE))
+        self._current_time.setStyleSheet(tm.get_qss(self._TIME_STYLE))
+        self._total_time.setStyleSheet(tm.get_qss(self._TIME_STYLE))
 
     def _create_control_button(self, icon_name: str, size: int, color: str = None) -> QPushButton:
         """Create a control button with SVG icon."""
@@ -265,17 +301,6 @@ class MiniPlayer(QWidget):
         btn.setCursor(Qt.PointingHandCursor)
         btn.setIcon(get_icon(icon_name, color, 16))
         btn.setIconSize(QSize(16, 16))
-
-        btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 12px;
-            }
-        """)
         return btn
 
     def _setup_connections(self):

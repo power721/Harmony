@@ -15,6 +15,7 @@ from domain.track import Track
 from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
+from system.theme import ThemeManager
 from ui.dialogs.base_cover_download_dialog import (
     BaseCoverDownloadDialog, CoverDownloadThread
 )
@@ -101,7 +102,7 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
         self.setWindowTitle(t("download_cover_manual"))
         self.setMinimumSize(900, 700)
         self.resize(1000, 750)
-        self.setStyleSheet(self.DARK_STYLE)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout()
         layout.setSpacing(15)
@@ -126,13 +127,14 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Track details
         self._details_label = QLabel()
-        self._details_label.setStyleSheet("""
-            QLabel {
-                background-color: #2a2a2a;
+        theme = ThemeManager.instance().current_theme
+        self._details_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {theme.background_hover};
                 border-radius: 6px;
                 padding: 12px;
-                color: #e0e0e0;
-            }
+                color: {theme.text};
+            }}
         """)
         layout.addWidget(self._details_label)
 
@@ -181,12 +183,13 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
         self._cover_label = QLabel()
         self._cover_label.setMinimumSize(400, 400)
         self._cover_label.setAlignment(Qt.AlignCenter)
-        self._cover_label.setStyleSheet("""
-            QLabel {
-                border: 2px solid #404040;
+        theme = ThemeManager.instance().current_theme
+        self._cover_label.setStyleSheet(f"""
+            QLabel {{
+                border: 2px solid {theme.border};
                 border-radius: 8px;
-                background-color: #1a1a1a;
-            }
+                background-color: {theme.background};
+            }}
         """)
         self._cover_label.setText(t("cover_load_failed"))
 
@@ -205,7 +208,8 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
         # Match score display
         self._score_label = QLabel()
         self._score_label.setAlignment(Qt.AlignCenter)
-        self._score_label.setStyleSheet("color: #1db954; font-weight: bold;")
+        theme = ThemeManager.instance().current_theme
+        self._score_label.setStyleSheet(f"color: {theme.highlight}; font-weight: bold;")
         right_layout.addWidget(self._score_label)
 
         splitter.addWidget(right_widget)
@@ -221,7 +225,8 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
         # Status label
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #a0a0a0;")
+        theme = ThemeManager.instance().current_theme
+        self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(self._status_label)
 
         # Buttons

@@ -21,10 +21,21 @@ _ICON_CACHE: dict = {}
 
 # Icon colors for different states
 class IconColor:
-    DEFAULT = "#c0c0c0"
-    HOVER = "#1db954"
-    ACTIVE = "#000000"  # Black on green background
-    DISABLED = "#505050"
+    """Icon colors for different states - these are defaults, actual colors come from theme."""
+    DEFAULT = "#c0c0c0"  # Fallback
+    HOVER = "#1db954"    # Fallback
+    ACTIVE = "#000000"   # Black on green background
+    DISABLED = "#505050" # Fallback
+
+    @classmethod
+    def get_colors_from_theme(cls, theme):
+        """Get icon colors from current theme."""
+        return {
+            'default': theme.text_secondary,
+            'hover': theme.highlight,
+            'active': '#000000',  # Black for contrast on highlight bg
+            'disabled': theme.border,
+        }
 
 
 class IconName:
@@ -193,10 +204,22 @@ class IconButton(QPushButton):
         super().__init__(text, parent)
         self._icon_name = icon_name
         self._icon_size = size
-        self._default_color = IconColor.DEFAULT
-        self._hover_color = IconColor.HOVER
-        self._active_color = IconColor.ACTIVE
-        self._disabled_color = IconColor.DISABLED
+
+        # Get colors from theme if available
+        try:
+            from system.theme import ThemeManager
+            tm = ThemeManager.instance()
+            colors = IconColor.get_colors_from_theme(tm.current_theme)
+            self._default_color = colors['default']
+            self._hover_color = colors['hover']
+            self._active_color = colors['active']
+            self._disabled_color = colors['disabled']
+        except:
+            # Fallback to defaults
+            self._default_color = IconColor.DEFAULT
+            self._hover_color = IconColor.HOVER
+            self._active_color = IconColor.ACTIVE
+            self._disabled_color = IconColor.DISABLED
 
         self._update_icon()
         self.setIconSize(QSize(size, size))

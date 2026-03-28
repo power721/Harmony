@@ -37,48 +37,51 @@ from utils import format_duration
 class DarkInputDialog(QDialog):
     """Custom input dialog with dark theme styling."""
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QLineEdit {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+        }
+        QLineEdit:focus {
+            border: 1px solid %highlight%;
+        }
+        QPushButton {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px 20px;
+            min-width: 80px;
+        }
+        QPushButton:hover {
+            background-color: %background_hover%;
+        }
+        QPushButton:pressed {
+            background-color: %background_hover%;
+        }
+        QDialogButtonBox {
+            button-layout: 2;
+        }
+    """
+
     def __init__(self, title: str, label: str, text: str = "", parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(350)
 
-        # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px 20px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QDialogButtonBox {
-                button-layout: 2;
-            }
-        """)
+        # Apply themed styling
+        from system.theme import ThemeManager
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -123,6 +126,163 @@ class DarkInputDialog(QDialog):
 class PlaylistView(QWidget):
     """Playlist view for managing playlists."""
 
+    # QSS template with theme tokens
+    _STYLE_TEMPLATE = """
+        QWidget#playlistListPanel {
+            background-color: #141414;
+            border-right: 1px solid %background_hover%;
+        }
+        QWidget#playlistContentPanel {
+            background-color: #141414;
+        }
+        QPushButton#newPlaylistBtn {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        QPushButton#newPlaylistBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton#playlistActionBtn {
+            background: transparent;
+            border: 2px solid %border%;
+            color: %text_secondary%;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        QPushButton#playlistActionBtn:hover {
+            border-color: %highlight%;
+            color: %highlight%;
+            background-color: %selection%;
+        }
+        QPushButton#playlistActionBtn:disabled {
+            border-color: %background_hover%;
+            color: %border%;
+        }
+        QListWidget#playlistList {
+            background: transparent;
+            border: none;
+        }
+        QListWidget#playlistList::item {
+            padding: 12px;
+            color: %text_secondary%;
+            border-radius: 8px;
+            margin: 2px 0px;
+        }
+        QListWidget#playlistList::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+            font-weight: bold;
+        }
+        QListWidget#playlistList::item:hover {
+            background-color: %background_hover%;
+            color: %highlight%;
+        }
+        QListWidget#playlistList::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget {
+            background-color: #1e1e1e;
+            border: none;
+            border-radius: 8px;
+            gridline-color: %background_hover%;
+        }
+        QTableWidget::item {
+            padding: 12px 8px;
+            color: %text%;
+            border: none;
+            border-bottom: 1px solid %background_hover%;
+        }
+        QTableWidget::item:alternate {
+            background-color: #252525;
+        }
+        QTableWidget::item:!alternate {
+            background-color: #1e1e1e;
+        }
+        QTableWidget::item:selected {
+            background-color: %highlight%;
+            color: %text%;
+            font-weight: 500;
+        }
+        QTableWidget::item:selected:!alternate {
+            background-color: %highlight%;
+        }
+        QTableWidget::item:selected:alternate {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget::item:hover {
+            background-color: #2d2d2d;
+        }
+        QTableWidget::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        QTableWidget QHeaderView::section {
+            background-color: %background_hover%;
+            color: %highlight%;
+            padding: 14px 12px;
+            border: none;
+            border-bottom: 2px solid %highlight%;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+        }
+        QTableWidget QScrollBar:vertical {
+            background-color: #1e1e1e;
+            width: 12px;
+            border-radius: 6px;
+        }
+        QTableWidget QScrollBar::handle:vertical {
+            background-color: #404040;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QTableWidget QScrollBar::handle:vertical:hover {
+            background-color: #505050;
+        }
+    """
+    _CONTEXT_MENU_STYLE = """
+        QMenu {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+        }
+    """
+    _EDIT_DIALOG_STYLE = """
+        QDialog { background-color: %background_alt%; color: %text%; }
+        QLabel { color: %text%; font-size: 13px; }
+        QLineEdit {
+            background-color: #181818;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        QLineEdit:focus { border: 1px solid %highlight%; }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover { background-color: %highlight_hover%; }
+        QPushButton[role="cancel"] { background-color: #404040; color: %text%; }
+        QPushButton[role="cancel"]:hover { background-color: #505050; }
+    """
+
     track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)
     playlist_track_double_clicked = Signal(int,
                                            int)  # Signal when playlist track is double-clicked (playlist_id, track_id)
@@ -152,6 +312,9 @@ class PlaylistView(QWidget):
         self._player = player
         self._current_playlist_id: Optional[int] = None
 
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
         self._setup_ui()
         self._setup_connections()
         self._refresh_playlists()
@@ -178,8 +341,32 @@ class PlaylistView(QWidget):
 
         layout.addWidget(splitter)
 
-        # Apply styles
-        self._apply_styles()
+        # Apply themed styles
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Apply themed styles from ThemeManager."""
+        from system.theme import ThemeManager
+        theme_manager = ThemeManager.instance()
+        theme = theme_manager.current_theme
+
+        self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))
+
+        # Update title labels with theme colors
+        self._playlist_list_title.setStyleSheet(f"""
+            color: {theme.highlight};
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        """)
+        self._playlist_title.setStyleSheet(f"""
+            color: {theme.highlight};
+            font-size: 24px;
+            font-weight: bold;
+        """)
+        self._status_label.setStyleSheet(
+            f"color: {theme.text_secondary}; font-size: 13px; padding: 8px 0px;"
+        )
 
     def _create_playlist_list(self) -> QWidget:
         """Create the playlist list widget."""
@@ -191,12 +378,6 @@ class PlaylistView(QWidget):
 
         # Title
         self._playlist_list_title = QLabel(t("playlists"))
-        self._playlist_list_title.setStyleSheet("""
-            color: #1db954;
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        """)
         layout.addWidget(self._playlist_list_title)
 
         # New playlist button
@@ -226,11 +407,6 @@ class PlaylistView(QWidget):
         header_layout = QHBoxLayout()
 
         self._playlist_title = QLabel(t("select_playlist_placeholder"))
-        self._playlist_title.setStyleSheet("""
-            color: #1db954;
-            font-size: 24px;
-            font-weight: bold;
-        """)
         header_layout.addWidget(self._playlist_title)
 
         header_layout.addStretch()
@@ -291,134 +467,9 @@ class PlaylistView(QWidget):
 
         # Status
         self._status_label = QLabel("")
-        self._status_label.setStyleSheet(
-            "color: #808080; font-size: 13px; padding: 8px 0px;"
-        )
         layout.addWidget(self._status_label)
 
         return widget
-
-    def _apply_styles(self):
-        """Apply modern widget styles."""
-        self.setStyleSheet("""
-            QWidget#playlistListPanel {
-                background-color: #141414;
-                border-right: 1px solid #2a2a2a;
-            }
-            QWidget#playlistContentPanel {
-                background-color: #141414;
-            }
-            QPushButton#newPlaylistBtn {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 10px 15px;
-                border-radius: 20px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QPushButton#newPlaylistBtn:hover {
-                background-color: #1ed760;
-            }
-            QPushButton#playlistActionBtn {
-                background: transparent;
-                border: 2px solid #404040;
-                color: #c0c0c0;
-                padding: 8px 15px;
-                border-radius: 6px;
-                font-weight: 500;
-            }
-            QPushButton#playlistActionBtn:hover {
-                border-color: #1db954;
-                color: #1db954;
-                background-color: rgba(29, 185, 84, 0.1);
-            }
-            QPushButton#playlistActionBtn:disabled {
-                border-color: #2a2a2a;
-                color: #404040;
-            }
-            QListWidget#playlistList {
-                background: transparent;
-                border: none;
-            }
-            QListWidget#playlistList::item {
-                padding: 12px;
-                color: #c0c0c0;
-                border-radius: 8px;
-                margin: 2px 0px;
-            }
-            QListWidget#playlistList::item:selected {
-                background-color: #1db954;
-                color: #000000;
-                font-weight: bold;
-            }
-            QListWidget#playlistList::item:hover {
-                background-color: #2a2a2a;
-                color: #1db954;
-            }
-            QListWidget#playlistList::item:selected:hover {
-                background-color: #1ed760;
-            }
-            QTableWidget {
-                background-color: #1e1e1e;
-                border: none;
-                border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget::item {
-                padding: 12px 8px;
-                color: #e0e0e0;
-                border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            /* Alternating row colors */
-            QTableWidget::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            QTableWidget::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-                font-weight: 500;
-            }
-            QTableWidget::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            QTableWidget::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget::item:selected:hover {
-                background-color: #1ed760;
-            }
-            QTableWidget QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid #1db954;
-                font-weight: bold;
-                font-size: 13px;
-                letter-spacing: 0.5px;
-            }
-            QTableWidget QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QTableWidget QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-        """)
 
     def _setup_connections(self):
         """Setup signal connections."""
@@ -596,6 +647,12 @@ class PlaylistView(QWidget):
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
         from domain.track import TrackSource
+        from system.theme import ThemeManager
+
+        # Get theme colors
+        theme = ThemeManager.instance().current_theme
+        text_secondary_color = QColor(theme.text_secondary)
+        text_color = QColor(theme.text)
 
         self._tracks_table.setRowCount(len(tracks))
 
@@ -604,27 +661,27 @@ class PlaylistView(QWidget):
             source_text = self._get_source_display_name(track.source)
             source_item = QTableWidgetItem(source_text)
             source_item.setData(Qt.UserRole, track.id)
-            source_item.setForeground(QBrush(QColor("#909090")))
+            source_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 0, source_item)
 
             # Title
             title_item = QTableWidgetItem(track.title or track.path.split("/")[-1])
-            title_item.setForeground(QBrush(QColor("#e0e0e0")))
+            title_item.setForeground(QBrush(text_color))
             self._tracks_table.setItem(row, 1, title_item)
 
             # Artist
             artist_item = QTableWidgetItem(track.artist or t("unknown"))
-            artist_item.setForeground(QBrush(QColor("#b0b0b0")))
+            artist_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 2, artist_item)
 
             # Album
             album_item = QTableWidgetItem(track.album or t("unknown"))
-            album_item.setForeground(QBrush(QColor("#b0b0b0")))
+            album_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 3, album_item)
 
             # Duration
             duration_item = QTableWidgetItem(format_duration(track.duration))
-            duration_item.setForeground(QBrush(QColor("#909090")))
+            duration_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 4, duration_item)
 
     def _get_source_display_name(self, source) -> str:
@@ -656,19 +713,8 @@ class PlaylistView(QWidget):
             return
 
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
-        """)
+        from system.theme import ThemeManager
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._CONTEXT_MENU_STYLE))
 
         remove_action = QAction(t("remove_from_playlist"), self)
         remove_action.triggered.connect(lambda: self._remove_track(item))
@@ -803,30 +849,8 @@ class PlaylistView(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle(t("edit_media_info_title"))
         dialog.setMinimumWidth(450)
-        dialog.setStyleSheet("""
-            QDialog { background-color: #282828; color: #ffffff; }
-            QLabel { color: #ffffff; font-size: 13px; }
-            QLineEdit {
-                background-color: #181818;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus { border: 1px solid #1db954; }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #1ed760; }
-            QPushButton[role="cancel"] { background-color: #404040; color: #ffffff; }
-            QPushButton[role="cancel"]:hover { background-color: #505050; }
-        """)
+        from system.theme import ThemeManager
+        dialog.setStyleSheet(ThemeManager.instance().get_qss(self._EDIT_DIALOG_STYLE))
 
         layout = QVBoxLayout(dialog)
 
@@ -842,7 +866,8 @@ class PlaylistView(QWidget):
         album_input.setPlaceholderText(t("enter_album"))
 
         path_label = QLabel(track.path)
-        path_label.setStyleSheet("color: #808080; font-size: 11px;")
+        theme = ThemeManager.instance().current_theme
+        path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         path_label.setWordWrap(True)
 
         form_layout.addRow(t("title") + ":", title_input)

@@ -6,10 +6,12 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget,
-    QWidget, QComboBox, QFileDialog, QProgressDialog
+    QWidget, QComboBox, QFileDialog, QProgressDialog, QColorDialog,
+    QGridLayout, QFrame
 )
 
 from system.i18n import t
@@ -577,6 +579,139 @@ class GeneralSettingsDialog(QDialog):
         repair_layout.addStretch()
         tab_widget.addTab(repair_tab, t("repair_tab"))
 
+        # Appearance Tab
+        appearance_tab = QWidget()
+        appearance_layout = QVBoxLayout(appearance_tab)
+        appearance_layout.setSpacing(10)
+
+        # Preset Themes
+        preset_group = QGroupBox(t("theme_settings"))
+        preset_section = QVBoxLayout()
+        preset_section.setSpacing(10)
+
+        preset_label = QLabel(t("theme_presets"))
+        preset_label.setStyleSheet("font-weight: bold;")
+        preset_section.addWidget(preset_label)
+
+        preset_btn_layout = QHBoxLayout()
+        preset_btn_layout.setSpacing(8)
+
+        from system.theme import PRESET_THEMES, ThemeManager
+        self._theme_preset_buttons = {}
+        for theme_key in PRESET_THEMES:
+            theme = PRESET_THEMES[theme_key]
+            btn = QPushButton(t(theme.display_name))
+            btn.setFixedHeight(35)
+            btn.setProperty("_skip_theme", True)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {theme.highlight};
+                    color: #ffffff;
+                    border: 2px solid transparent;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    border: 2px solid #ffffff;
+                }}
+            """)
+            btn.clicked.connect(lambda checked, k=theme_key: self._select_theme_preset(k))
+            preset_btn_layout.addWidget(btn)
+            self._theme_preset_buttons[theme_key] = btn
+
+        preset_section.addLayout(preset_btn_layout)
+
+        # Custom Colors Group
+        colors_group = QGroupBox(t("theme_custom_colors"))
+        colors_layout = QGridLayout()
+        colors_layout.setSpacing(8)
+        colors_layout.setHorizontalSpacing(30)  # Add extra spacing between columns
+
+        self._theme_color_labels = {}
+        color_fields = [
+            ('background', t("theme_background")),
+            ('background_alt', t("theme_background_alt")),
+            ('background_hover', t("theme_background_hover")),
+            ('text', t("theme_text")),
+            ('text_secondary', t("theme_text_secondary")),
+            ('highlight', t("theme_highlight")),
+            ('highlight_hover', t("theme_highlight_hover")),
+            ('selection', t("theme_selection")),
+            ('border', t("theme_border")),
+        ]
+
+        self._theme_color_inputs = {}
+        self._theme_color_pickers = {}
+
+        # Two-column layout
+        for index, (field, label_text) in enumerate(color_fields):
+            column = index % 2  # 0 for left column, 1 for right column
+            row = index // 2    # Integer division to get row number
+
+            # Each column uses 3 grid columns: label, color button, hex input
+            grid_col = column * 3
+
+            label = QLabel(label_text)
+            colors_layout.addWidget(label, row, grid_col)
+
+            # Color preview button
+            color_btn = QPushButton()
+            color_btn.setFixedSize(60, 28)
+            color_btn.setProperty("_skip_theme", True)
+            colors_layout.addWidget(color_btn, row, grid_col + 1)
+
+            # Hex input
+            hex_input = QLineEdit()
+            hex_input.setPlaceholderText("#RRGGBB")
+            hex_input.setMaximumWidth(100)
+            hex_input.setProperty("_skip_theme", True)
+            hex_input.textChanged.connect(lambda text, f=field: self._on_theme_color_input_changed(f, text))
+            colors_layout.addWidget(hex_input, row, grid_col + 2)
+
+            self._theme_color_labels[field] = label
+            self._theme_color_pickers[field] = color_btn
+            self._theme_color_inputs[field] = hex_input
+
+            # Connect picker click
+            color_btn.clicked.connect(lambda checked, f=field: self._pick_theme_color(f))
+
+        colors_group.setLayout(colors_layout)
+        preset_section.addWidget(colors_group)
+
+        # Preview
+        preview_group = QGroupBox(t("theme_preview"))
+        preview_layout = QVBoxLayout()
+
+        self._theme_preview_frame = QFrame()
+        self._theme_preview_frame.setFixedHeight(80)
+        self._theme_preview_frame.setProperty("_skip_theme", True)
+        preview_layout.addWidget(self._theme_preview_frame)
+
+        preview_group.setLayout(preview_layout)
+        preset_section.addWidget(preview_group)
+
+        # Apply / Reset buttons
+        theme_btn_layout = QHBoxLayout()
+        self._theme_apply_btn = QPushButton(t("theme_apply"))
+        self._theme_apply_btn.clicked.connect(self._apply_custom_theme)
+        theme_btn_layout.addWidget(self._theme_apply_btn)
+
+        self._theme_reset_btn = QPushButton(t("theme_reset"))
+        self._theme_reset_btn.clicked.connect(self._reset_theme_colors)
+        theme_btn_layout.addWidget(self._theme_reset_btn)
+
+        preset_section.addLayout(theme_btn_layout)
+
+        preset_group.setLayout(preset_section)
+        appearance_layout.addWidget(preset_group)
+
+        # Store temporary edit state
+        self._theme_edit_colors = {}
+        self._selected_preset_key = 'dark'
+
+        appearance_layout.addStretch()
+        tab_widget.addTab(appearance_tab, t("appearance_tab"))
+
         layout.addWidget(tab_widget)
 
         # Buttons
@@ -703,6 +838,10 @@ class GeneralSettingsDialog(QDialog):
         # Update cover status
         self._update_covers_status()
 
+        # Load theme settings
+        theme_name = self._config.get('ui.theme', 'dark')
+        self._select_theme_preset(theme_name, load_only=True)
+
     def _save_settings(self):
         """Save settings to config."""
         # AI settings
@@ -784,6 +923,18 @@ class GeneralSettingsDialog(QDialog):
         except ValueError as e:
             QMessageBox.warning(self, t("warning"), f"Invalid cache cleanup settings: {e}")
             return
+
+        # Save theme (if changed from preset)
+        if self._theme_edit_colors:
+            self._apply_custom_theme()
+        else:
+            # Just ensure the current preset is applied
+            try:
+                from system.theme import ThemeManager
+                theme = ThemeManager.instance()
+                theme.set_theme(self._selected_preset_key)
+            except Exception as e:
+                logger.warning(f"Failed to apply theme: {e}")
 
         QMessageBox.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
@@ -1334,6 +1485,191 @@ class GeneralSettingsDialog(QDialog):
             self._batch_worker.quit()
             self._batch_worker.wait()
         event.accept()
+
+    def _select_theme_preset(self, theme_key: str, load_only: bool = False):
+        """Select a preset theme and update the color editor."""
+        from system.theme import PRESET_THEMES
+
+        self._selected_preset_key = theme_key
+        theme = PRESET_THEMES.get(theme_key)
+        if not theme:
+            return
+
+        # Highlight selected button
+        for key, btn in self._theme_preset_buttons.items():
+            if key == theme_key:
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {theme.highlight};
+                        color: #ffffff;
+                        border: 2px solid #ffffff;
+                        border-radius: 4px;
+                        font-weight: bold;
+                    }}
+                """)
+            else:
+                other = PRESET_THEMES[key]
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {other.highlight};
+                        color: #ffffff;
+                        border: 2px solid transparent;
+                        border-radius: 4px;
+                        font-weight: bold;
+                    }}
+                    QPushButton:hover {{
+                        border: 2px solid #ffffff;
+                    }}
+                """)
+
+        # Fill color inputs from preset
+        color_map = {
+            'background': theme.background,
+            'background_alt': theme.background_alt,
+            'background_hover': theme.background_hover,
+            'text': theme.text,
+            'text_secondary': theme.text_secondary,
+            'highlight': theme.highlight,
+            'highlight_hover': theme.highlight_hover,
+            'selection': theme.selection,
+            'border': theme.border,
+        }
+
+        for field, color in color_map.items():
+            self._theme_color_inputs[field].blockSignals(True)
+            self._theme_color_inputs[field].setText(color)
+            self._theme_color_inputs[field].blockSignals(False)
+            self._theme_color_pickers[field].setStyleSheet(
+                f"background-color: {color}; border: 1px solid #4a4a4a; border-radius: 4px;"
+            )
+
+        # Clear edit state
+        self._theme_edit_colors = {}
+        self._update_theme_preview(color_map)
+
+        # Don't apply immediately - let user preview and click "Apply" button
+
+    def _on_theme_color_input_changed(self, field: str, text: str):
+        """Handle hex input change for a theme color field."""
+        text = text.strip()
+        if text.startswith("#") and len(text) == 7:
+            color = QColor(text)
+            if color.isValid():
+                self._theme_edit_colors[field] = text
+                self._theme_color_pickers[field].setStyleSheet(
+                    f"background-color: {text}; border: 1px solid #4a4a4a; border-radius: 4px;"
+                )
+                self._update_theme_preview_from_state()
+
+    def _pick_theme_color(self, field: str):
+        """Open color picker for a theme color field."""
+        current_text = self._theme_color_inputs[field].text().strip()
+        initial = QColor(current_text) if current_text.startswith("#") else QColor()
+        color = QColorDialog.getColor(initial, self, t("choose_color"))
+        if color.isValid():
+            hex_color = color.name()
+            self._theme_color_inputs[field].blockSignals(True)
+            self._theme_color_inputs[field].setText(hex_color)
+            self._theme_color_inputs[field].blockSignals(False)
+            self._theme_edit_colors[field] = hex_color
+            self._theme_color_pickers[field].setStyleSheet(
+                f"background-color: {hex_color}; border: 1px solid #4a4a4a; border-radius: 4px;"
+            )
+            self._update_theme_preview_from_state()
+
+    def _get_current_theme_colors(self) -> dict:
+        """Get current theme colors from inputs, applying edits on top of preset."""
+        from system.theme import PRESET_THEMES
+        base = PRESET_THEMES.get(self._selected_preset_key, PRESET_THEMES['dark'])
+        color_map = {
+            'background': base.background,
+            'background_alt': base.background_alt,
+            'background_hover': base.background_hover,
+            'text': base.text,
+            'text_secondary': base.text_secondary,
+            'highlight': base.highlight,
+            'highlight_hover': base.highlight_hover,
+            'selection': base.selection,
+            'border': base.border,
+        }
+        color_map.update(self._theme_edit_colors)
+        return color_map
+
+    def _update_theme_preview_from_state(self):
+        """Update preview using current input state."""
+        self._update_theme_preview(self._get_current_theme_colors())
+
+    def _update_theme_preview(self, colors: dict):
+        """Update the live preview frame with given colors."""
+        c = colors
+        self._theme_preview_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {c.get('background', '#121212')};
+                border: 1px solid {c.get('border', '#3a3a3a')};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        """)
+        # Clear old preview content
+        layout = self._theme_preview_frame.layout()
+        if layout is not None:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+        else:
+            layout = QVBoxLayout(self._theme_preview_frame)
+            layout.setContentsMargins(12, 8, 12, 8)
+
+        title = QLabel(t("theme_preview_text"))
+        title.setStyleSheet(f"color: {c.get('text', '#ffffff')}; font-size: 14px; font-weight: bold;")
+        secondary = QLabel(t("theme_preview_secondary"))
+        secondary.setStyleSheet(f"color: {c.get('text_secondary', '#b3b3b3')}; font-size: 11px;")
+
+        accent = QLabel("  ■  ")
+        accent.setStyleSheet(f"color: {c.get('highlight', '#1db954')}; font-size: 16px; font-weight: bold;")
+        accent.setMaximumWidth(40)
+
+        h_layout = QHBoxLayout()
+        h_layout.addWidget(accent)
+        h_layout.addWidget(title)
+        h_layout.addStretch()
+        layout.addLayout(h_layout)
+        layout.addWidget(secondary)
+
+    def _apply_custom_theme(self):
+        """Apply the current theme (preset or custom)."""
+        colors = self._get_current_theme_colors()
+        from system.theme import Theme, ThemeManager
+
+        # Check if we're applying a preset or custom theme
+        if not self._theme_edit_colors:
+            # No custom edits - apply preset theme
+            try:
+                ThemeManager.instance().set_theme(self._selected_preset_key)
+                QMessageBox.information(self, t("success"), t("theme_saved"))
+            except Exception as e:
+                logger.warning(f"Failed to apply theme: {e}")
+        else:
+            # Has custom edits - apply as custom theme
+            custom_theme = Theme(
+                name='Custom',
+                display_name='theme_custom',
+                **colors
+            )
+            try:
+                ThemeManager.instance().set_custom_theme(custom_theme)
+                QMessageBox.information(self, t("success"), t("theme_saved"))
+            except Exception as e:
+                logger.warning(f"Failed to apply custom theme: {e}")
+
+    def _reset_theme_colors(self):
+        """Reset custom color edits back to the selected preset."""
+        self._theme_edit_colors = {}
+        self._select_theme_preset(self._selected_preset_key)
 
 # Backward compatibility alias
 AISettingsDialog = GeneralSettingsDialog

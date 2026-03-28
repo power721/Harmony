@@ -38,6 +38,131 @@ class PlayerControls(QWidget):
     # Signal for album link clicked
     album_clicked = Signal(str, str)  # Emits album name and artist name
 
+    # QSS templates with theme tokens
+    _STYLE_COVER = """
+        QLabel#coverArt {
+            background-color: %background_alt%;
+            border-radius: 4px;
+        }
+    """
+
+    _STYLE_TITLE = "color: %text%; font-weight: bold;"
+
+    _STYLE_ALBUM = """
+        QLabel#trackAlbum {
+            color: %text_secondary%;
+        }
+        QLabel#trackAlbum:hover {
+            color: %highlight%;
+            text-decoration: underline;
+        }
+    """
+
+    _STYLE_TIME = "color: %text_secondary%; font-size: 11px;"
+
+    _STYLE_MAIN = """
+        QWidget#playerControls {
+            background-color: %background%;
+            border-top: 1px solid %background_alt%;
+        }
+        QPushButton#controlBtn {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+        }
+        QPushButton#controlBtn:hover {
+            color: %text%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+        }
+        QPushButton#controlBtn[active="true"] {
+            color: %highlight%;
+        }
+        QPushButton#controlBtn[active="true"]:hover {
+            color: %highlight_hover%;
+        }
+        QPushButton#favoriteBtn {
+            background: transparent;
+            border: 2px solid %text_secondary%;
+            color: %text_secondary%;
+            border-radius: 20px;
+            font-size: 28px;
+        }
+        QPushButton#favoriteBtn:hover {
+            border-color: #ff4444;
+            color: #ff4444;
+        }
+        QPushButton#favoriteBtn:checked {
+            background-color: #ff4444;
+            border-color: #ff4444;
+            color: %text%;
+        }
+        QPushButton#favoriteBtn:checked:hover {
+            background-color: #ff6666;
+        }
+        QSlider#progressSlider::groove:horizontal {
+            height: 4px;
+            background: %border%;
+            border-radius: 2px;
+        }
+        QSlider#progressSlider::handle:horizontal {
+            width: 12px;
+            height: 12px;
+            background: %text%;
+            border-radius: 6px;
+            margin: -4px 0;
+        }
+        QSlider#progressSlider::handle:horizontal:hover {
+            background: %highlight%;
+        }
+        QPushButton#volumeBtn, QPushButton#queueBtn {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+        }
+        QPushButton#volumeBtn:hover, QPushButton#queueBtn:hover {
+            color: %text%;
+        }
+    """
+
+    _STYLE_FAVORITE_ACTIVE = """
+        QPushButton {
+            background-color: #ff4444;
+            border: 2px solid #ff4444;
+            border-radius: 20px;
+        }
+        QPushButton:hover {
+            background-color: #ff6666;
+            border-color: #ff6666;
+        }
+    """
+
+    _STYLE_FAVORITE_INACTIVE = """
+        QPushButton {
+            background: transparent;
+            border: 2px solid %text_secondary%;
+            border-radius: 20px;
+        }
+        QPushButton:hover {
+            border-color: #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+        }
+    """
+
+    _STYLE_BUTTON_ACTIVE = """
+        QPushButton {
+            background: %text%;
+            border: none;
+            color: %highlight%;
+            border-radius: 6px;
+            padding: 0px;
+        }
+        QPushButton:hover {
+            color: %highlight_hover%;
+            background: %text%;
+        }
+    """
+
     def __init__(self, player: PlaybackService, parent=None):
         """
         Initialize player controls.
@@ -55,6 +180,10 @@ class PlayerControls(QWidget):
 
         self._setup_ui()
         self._setup_connections()
+
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
 
         # Update position timer
         self._position_timer = QTimer(self)
@@ -95,7 +224,7 @@ class PlayerControls(QWidget):
         layout.addWidget(volume_widget, 1)
 
         # Apply styles
-        self._apply_styles()
+        self.refresh_theme()
 
     def _create_info_widget(self) -> QWidget:
         """Create track info widget."""
@@ -107,12 +236,6 @@ class PlayerControls(QWidget):
         self._cover_label = ClickableLabel()
         self._cover_label.setFixedSize(60, 60)
         self._cover_label.setObjectName("coverArt")
-        self._cover_label.setStyleSheet("""
-            QLabel#coverArt {
-                background-color: #282828;
-                border-radius: 4px;
-            }
-        """)
         # Enable mouse tracking and click events
         self._cover_label.setMouseTracking(True)
         self._cover_label.setCursor(QCursor(Qt.PointingHandCursor))
@@ -127,7 +250,6 @@ class PlayerControls(QWidget):
 
         self._title_label = QLabel(t("not_playing"))
         self._title_label.setObjectName("trackTitle")
-        self._title_label.setStyleSheet("color: #ffffff; font-weight: bold;")
 
         # Multi-artist widget
         self._artist_widget = MultiArtistWidget()
@@ -135,15 +257,6 @@ class PlayerControls(QWidget):
 
         self._album_label = ClickableLabel()
         self._album_label.setObjectName("trackAlbum")
-        self._album_label.setStyleSheet("""
-            QLabel#trackAlbum {
-                color: #b3b3b3;
-            }
-            QLabel#trackAlbum:hover {
-                color: #1db954;
-                text-decoration: underline;
-            }
-        """)
         self._album_label.setCursor(QCursor(Qt.PointingHandCursor))
         self._album_label.clicked.connect(self._on_album_label_clicked)
 
@@ -180,7 +293,6 @@ class PlayerControls(QWidget):
 
         self._current_time_label = QLabel("0:00")
         self._current_time_label.setObjectName("timeLabel")
-        self._current_time_label.setStyleSheet("color: #b3b3b3; font-size: 11px;")
         self._current_time_label.setFixedWidth(32)
 
         self._progress_slider = ClickableSlider(Qt.Horizontal)
@@ -191,7 +303,6 @@ class PlayerControls(QWidget):
 
         self._total_time_label = QLabel("0:00")
         self._total_time_label.setObjectName("timeLabel")
-        self._total_time_label.setStyleSheet("color: #b3b3b3; font-size: 11px;")
         self._total_time_label.setFixedWidth(32)
 
         progress_layout.addWidget(self._current_time_label)
@@ -288,72 +399,47 @@ class PlayerControls(QWidget):
 
         return btn
 
-    def _apply_styles(self):
-        """Apply widget styles."""
-        self.setStyleSheet("""
-            QWidget#playerControls {
-                background-color: #181818;
-                border-top: 1px solid #282828;
-            }
-            QPushButton#controlBtn {
-                background: transparent;
-                border: none;
-                color: #b3b3b3;
-            }
-            QPushButton#controlBtn:hover {
-                color: #ffffff;
-                background: rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
-            }
-            QPushButton#controlBtn[active="true"] {
-                color: #1db954;
-            }
-            QPushButton#controlBtn[active="true"]:hover {
-                color: #1ed760;
-            }
-            QPushButton#favoriteBtn {
-                background: transparent;
-                border: 2px solid #b3b3b3;
-                color: #b3b3b3;
-                border-radius: 20px;
-                font-size: 28px;
-            }
-            QPushButton#favoriteBtn:hover {
-                border-color: #ff4444;
-                color: #ff4444;
-            }
-            QPushButton#favoriteBtn:checked {
-                background-color: #ff4444;
-                border-color: #ff4444;
-                color: #ffffff;
-            }
-            QPushButton#favoriteBtn:checked:hover {
-                background-color: #ff6666;
-            }
-            QSlider#progressSlider::groove:horizontal {
-                height: 4px;
-                background: #4d4d4d;
-                border-radius: 2px;
-            }
-            QSlider#progressSlider::handle:horizontal {
-                width: 12px;
-                height: 12px;
-                background: #ffffff;
-                border-radius: 6px;
-                margin: -4px 0;
-            }
-            QSlider#progressSlider::handle:horizontal:hover {
-                background: #1db954;
-            }
-            QPushButton#volumeBtn, QPushButton#queueBtn {
-                background: transparent;
-                border: none;
-                color: #b3b3b3;
-            }
-            QPushButton#volumeBtn:hover, QPushButton#queueBtn:hover {
-                color: #ffffff;
-            }
-        """)
+    def refresh_theme(self):
+        """Refresh all styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
+        # Main stylesheet
+        self.setStyleSheet(tm.get_qss(self._STYLE_MAIN))
+
+        # Child widget styles
+        self._cover_label.setStyleSheet(tm.get_qss(self._STYLE_COVER))
+        self._title_label.setStyleSheet(tm.get_qss(self._STYLE_TITLE))
+        self._album_label.setStyleSheet(tm.get_qss(self._STYLE_ALBUM))
+        self._current_time_label.setStyleSheet(tm.get_qss(self._STYLE_TIME))
+        self._total_time_label.setStyleSheet(tm.get_qss(self._STYLE_TIME))
+
+        # Refresh favorite button style based on current state
+        current_track = self._player.engine.current_track
+        if current_track:
+            track_id = current_track.get("id")
+            cloud_file_id = current_track.get("cloud_file_id")
+            is_fav = self._player.is_favorite(track_id, cloud_file_id)
+            self._update_favorite_button_style(is_fav)
+        else:
+            self._update_favorite_button_style(False)
+
+        # Refresh active button styles
+        current_mode = self._player.engine.play_mode
+        if current_mode in (
+                PlayMode.RANDOM,
+                PlayMode.RANDOM_LOOP,
+                PlayMode.RANDOM_TRACK_LOOP,
+        ):
+            self._update_button_style(self._shuffle_btn, active=True)
+        else:
+            self._update_button_style(self._shuffle_btn, active=False)
+
+        if current_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP,
+                            PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            self._update_button_style(self._repeat_btn, active=True)
+        else:
+            self._update_button_style(self._repeat_btn, active=False)
 
     def _setup_connections(self):
         """Setup signal connections."""
@@ -668,34 +754,17 @@ class PlayerControls(QWidget):
 
     def _update_favorite_button_style(self, is_favorite: bool):
         """Update favorite button style based on favorite status."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
         if is_favorite:
             # Filled star in red for favorited tracks
-            self._favorite_btn.setIcon(get_icon(IconName.STAR_FILLED, "#ffffff"))
-            self._favorite_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #ff4444;
-                    border: 2px solid #ff4444;
-                    border-radius: 20px;
-                }
-                QPushButton:hover {
-                    background-color: #ff6666;
-                    border-color: #ff6666;
-                }
-            """)
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_FILLED, tm.current_theme.text))
+            self._favorite_btn.setStyleSheet(self._STYLE_FAVORITE_ACTIVE)
         else:
             # Outline star for non-favorite
-            self._favorite_btn.setIcon(get_icon(IconName.STAR_OUTLINE, "#b3b3b3"))
-            self._favorite_btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                    border: 2px solid #b3b3b3;
-                    border-radius: 20px;
-                }
-                QPushButton:hover {
-                    border-color: #ff4444;
-                    background: rgba(255, 68, 68, 0.1);
-                }
-            """)
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_OUTLINE, tm.current_theme.text_secondary))
+            self._favorite_btn.setStyleSheet(tm.get_qss(self._STYLE_FAVORITE_INACTIVE))
         self._favorite_btn.setIconSize(QSize(24, 24))
 
     def _toggle_shuffle(self):
@@ -729,22 +798,10 @@ class PlayerControls(QWidget):
 
     def _update_button_style(self, button: QPushButton, active: bool):
         """Update button style based on active state."""
-
         if active:
-            # Set white background and green color for active state
-            button.setStyleSheet("""
-                QPushButton {
-                    background: #ffffff;
-                    border: none;
-                    color: #1db954;
-                    border-radius: 6px;
-                    padding: 0px;
-                }
-                QPushButton:hover {
-                    color: #1ed760;
-                    background: #ffffff;
-                }
-            """)
+            from system.theme import ThemeManager
+            tm = ThemeManager.instance()
+            button.setStyleSheet(tm.get_qss(self._STYLE_BUTTON_ACTIVE))
         else:
             # Clear inline style to use default from stylesheet
             button.setStyleSheet("")
@@ -898,7 +955,6 @@ class PlayerControls(QWidget):
                             title=track_dict.get("title", "")
                         )
                         if cover_path:
-                            logger.debug(f"[PlayerControls] Got online cover: {cover_path}")
                             return cover_path
                 except Exception as e:
                     logger.error(f"[PlayerControls] Error getting online cover: {e}")
@@ -988,7 +1044,6 @@ class PlayerControls(QWidget):
                 f"[PlayerControls] Ignoring stale cover result (version {version}, current {self._cover_load_version})")
             return
 
-        logger.info(f"[PlayerControls] _show_cover called with: {cover_path}")
         if cover_path:
             try:
                 pixmap = QPixmap(cover_path)
@@ -1089,12 +1144,26 @@ class MultiArtistWidget(QWidget):
 
     artist_clicked = Signal(str)  # Emits artist name when clicked
 
+    _STYLE_ARTIST = """
+        QLabel {
+            color: %text_secondary%;
+        }
+        QLabel:hover {
+            color: %highlight%;
+            text-decoration: underline;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._artists: list[str] = []
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
+
+        # Register with theme system
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
 
     def set_artists(self, artist_string: str):
         """
@@ -1118,28 +1187,37 @@ class MultiArtistWidget(QWidget):
 
         self._artists = split_artists(artist_string)
 
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+
         for i, artist_name in enumerate(self._artists):
             if i > 0:
                 # Add separator
                 sep = QLabel(", ")
-                sep.setStyleSheet("color: #b3b3b3;")
+                sep.setStyleSheet(f"color: {tm.current_theme.text_secondary};")
                 self._layout.addWidget(sep)
 
             label = ClickableLabel(artist_name)
-            label.setStyleSheet("""
-                QLabel {
-                    color: #b3b3b3;
-                }
-                QLabel:hover {
-                    color: #1db954;
-                    text-decoration: underline;
-                }
-            """)
+            label.setStyleSheet(tm.get_qss(self._STYLE_ARTIST))
             label.setCursor(QCursor(Qt.PointingHandCursor))
             label.clicked.connect(lambda name=artist_name: self.artist_clicked.emit(name))
             self._layout.addWidget(label)
 
         self._layout.addStretch()
+
+    def refresh_theme(self):
+        """Refresh artist label styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        for i in range(self._layout.count()):
+            item = self._layout.itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                # Re-apply themed style to artist labels and separators
+                if isinstance(widget, ClickableLabel):
+                    widget.setStyleSheet(tm.get_qss(self._STYLE_ARTIST))
+                elif isinstance(widget, QLabel):
+                    widget.setStyleSheet(f"color: {tm.current_theme.text_secondary};")
 
     def clear(self):
         """Clear all artists."""
@@ -1152,6 +1230,14 @@ class MultiArtistWidget(QWidget):
 
 class CoverDialog(QDialog):
     """Dialog to display large cover art."""
+
+    _STYLE_DIALOG = """
+        QDialog {
+            background-color: %background%;
+        }
+    """
+
+    _STYLE_IMAGE = "background-color: %background%;"
 
     def __init__(self, cover_path: str, parent=None):
         """
@@ -1186,7 +1272,7 @@ class CoverDialog(QDialog):
         # Image label (no scroll area needed now)
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet("background-color: #1e1e1e;")
+        self._image_label = image_label
 
         # Load and scale image to fit dialog
         pixmap = QPixmap(self._cover_path)
@@ -1204,12 +1290,16 @@ class CoverDialog(QDialog):
 
         layout.addWidget(image_label)
 
-        # Apply dialog style
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1e1e1e;
-            }
-        """)
+        # Apply themed styles
+        self.refresh_theme()
+
+    def refresh_theme(self):
+        """Refresh dialog styles using current theme tokens."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        self.setStyleSheet(tm.get_qss(self._STYLE_DIALOG))
+        if hasattr(self, '_image_label'):
+            self._image_label.setStyleSheet(tm.get_qss(self._STYLE_IMAGE))
 
     def keyPressEvent(self, event):
         """Handle key press - close on Escape."""

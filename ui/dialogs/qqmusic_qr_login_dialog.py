@@ -18,6 +18,7 @@ from services.cloud.qqmusic.qr_login import (
     QQMusicQRLogin, QRLoginType, QRCodeLoginEvents, QR, Credential
 )
 from system.i18n import t, get_language
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,64 @@ class QQMusicQRLoginDialog(QDialog):
     # Signal emitted when credentials are successfully obtained
     credentials_obtained = Signal(dict)
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_alt%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+        }
+        QRadioButton {
+            color: %text%;
+            font-size: 13px;
+            spacing: 8px;
+        }
+        QRadioButton::indicator {
+            width: 18px;
+            height: 18px;
+            border: 2px solid %background_hover%;
+            border-radius: 9px;
+            background-color: %background_alt%;
+        }
+        QRadioButton::indicator:checked {
+            border: 2px solid %highlight%;
+            background-color: %highlight%;
+        }
+        QRadioButton::indicator:hover {
+            border: 2px solid %highlight%;
+        }
+        QPushButton {
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
+            border-radius: 4px;
+            padding: 8px 20px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: %background_hover%;
+            border: 1px solid %highlight%;
+        }
+        QPushButton:pressed {
+            background-color: %background_alt%;
+        }
+        QPushButton:disabled {
+            background-color: %background_alt%;
+            color: %border%;
+        }
+        QProgressBar {
+            border: none;
+            background-color: %background_alt%;
+            height: 4px;
+            border-radius: 2px;
+        }
+        QProgressBar::chunk {
+            background-color: %highlight%;
+            border-radius: 2px;
+        }
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(t("qqmusic_login_title"))
@@ -164,70 +223,11 @@ class QQMusicQRLoginDialog(QDialog):
 
         self._setup_ui()
         self._start_login()
-
-    def _apply_dark_style(self):
-        """Apply dark theme style."""
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QRadioButton {
-                color: #ffffff;
-                font-size: 13px;
-                spacing: 8px;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #4a4a4a;
-                border-radius: 9px;
-                background-color: #2a2a2a;
-            }
-            QRadioButton::indicator:checked {
-                border: 2px solid #1db954;
-                background-color: #1db954;
-            }
-            QRadioButton::indicator:hover {
-                border: 2px solid #1db954;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-                border: 1px solid #1db954;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QPushButton:disabled {
-                background-color: #2a2a2a;
-                color: #606060;
-            }
-            QProgressBar {
-                border: none;
-                background-color: #2a2a2a;
-                height: 4px;
-                border-radius: 2px;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
-                border-radius: 2px;
-            }
-        """)
+        ThemeManager.instance().register_widget(self)
 
     def _setup_ui(self):
         """Setup the UI."""
-        self._apply_dark_style()
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -241,7 +241,8 @@ class QQMusicQRLoginDialog(QDialog):
         # Login type selection
         type_layout = QHBoxLayout()
         type_label = QLabel(t("qqmusic_login_method"))
-        type_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
+        theme = ThemeManager.instance().current_theme
+        type_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {theme.text};")
         self._qq_radio = QRadioButton(t("qqmusic_qq_login"))
         self._wx_radio = QRadioButton(t("qqmusic_wx_login"))
         self._wx_radio.setChecked(True)  # 默认微信登录
@@ -263,7 +264,7 @@ class QQMusicQRLoginDialog(QDialog):
         self._status_label = QLabel(t("qqmusic_loading_qr"))
         self._status_label.setAlignment(Qt.AlignCenter)
         self._status_label.setWordWrap(True)
-        self._status_label.setStyleSheet("font-size: 14px; color: #1db954; padding: 8px; font-weight: bold;")
+        self._status_label.setStyleSheet(f"font-size: 14px; color: {theme.highlight}; padding: 8px; font-weight: bold;")
         layout.addWidget(self._status_label)
 
         # QR code container
@@ -276,7 +277,7 @@ class QQMusicQRLoginDialog(QDialog):
         self._qr_label.setMinimumSize(300, 300)
         self._qr_label.setMaximumSize(300, 300)
         self._qr_label.setAlignment(Qt.AlignCenter)
-        self._qr_label.setStyleSheet("border: 2px solid #4a4a4a; border-radius: 8px; background: #ffffff;")
+        self._qr_label.setStyleSheet(f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
         qr_layout.addWidget(self._qr_label)
 
         layout.addWidget(qr_container, alignment=Qt.AlignCenter)
@@ -292,7 +293,7 @@ class QQMusicQRLoginDialog(QDialog):
         # Instructions
         self._instructions_label = QLabel()
         self._instructions_label.setAlignment(Qt.AlignCenter)
-        self._instructions_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self._instructions_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         self._update_instructions()
         layout.addWidget(self._instructions_label)
 
@@ -489,3 +490,14 @@ class QQMusicQRLoginDialog(QDialog):
     def _on_status_update(self, status: str):
         """Handle status update event."""
         self._status_label.setText(status)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        theme = ThemeManager.instance().current_theme
+        if self._status_label:
+            self._status_label.setStyleSheet(f"font-size: 14px; color: {theme.highlight}; padding: 8px; font-weight: bold;")
+        if self._qr_label:
+            self._qr_label.setStyleSheet(f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
+        if self._instructions_label:
+            self._instructions_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")

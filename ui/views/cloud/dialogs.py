@@ -37,6 +37,46 @@ class CloudMediaInfoDialog(QDialog):
     Updates both the file and the database.
     """
 
+    _STYLE_TEMPLATE = """
+        QDialog {
+            background-color: %background_hover%;
+            color: %text%;
+        }
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+        QLineEdit {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border: 1px solid %highlight%;
+        }
+        QPushButton {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton[role="cancel"] {
+            background-color: %border%;
+            color: %text%;
+        }
+        QPushButton[role="cancel"]:hover {
+            background-color: %background_hover%;
+        }
+    """
+
     def __init__(
         self,
         file: CloudFile,
@@ -57,49 +97,16 @@ class CloudMediaInfoDialog(QDialog):
 
         self.setWindowTitle(f"{t('edit_media_info_title')} - {file.name}")
         self.setMinimumWidth(450)
+
+        # Register for theme change notifications
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
         self._setup_ui()
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-            }
-            QLabel {
-                color: #e0e0e0;
-                font-size: 13px;
-            }
-            QLineEdit {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-                border: 1px solid #404040;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #e0e0e0;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
-        """)
+        from system.theme import ThemeManager
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
@@ -144,6 +151,9 @@ class CloudMediaInfoDialog(QDialog):
 
     def _add_file_info(self, form_layout: QFormLayout):
         """Add file information section to the form."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         try:
             track_file = Path(self._file.local_path)
             file_size = track_file.stat().st_size
@@ -186,11 +196,11 @@ class CloudMediaInfoDialog(QDialog):
                 file_info_text += f" | {' | '.join(media_info)}"
 
             info_label = QLabel(file_info_text)
-            info_label.setStyleSheet("color: #808080; font-size: 11px;")
+            info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
 
             # File path
             path_label = QLabel(self._file.local_path)
-            path_label.setStyleSheet("color: #606060; font-size: 10px;")
+            path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 10px;")
             path_label.setWordWrap(True)
 
             # Add both labels in a vertical layout
@@ -206,7 +216,7 @@ class CloudMediaInfoDialog(QDialog):
         except Exception as e:
             logger.error(f"Error showing file info: {e}", exc_info=True)
             path_label = QLabel(self._file.local_path)
-            path_label.setStyleSheet("color: #808080; font-size: 11px;")
+            path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
             path_label.setWordWrap(True)
             form_layout.addRow(t("file") + ":", path_label)
 
@@ -259,6 +269,11 @@ class CloudMediaInfoDialog(QDialog):
             self.accept()
         else:
             QMessageBox.warning(self, t("error"), t("failed_to_save_metadata"))
+
+    def refresh_theme(self):
+        """Apply themed styles using ThemeManager tokens."""
+        from system.theme import ThemeManager
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
 
 def show_media_info_dialog(

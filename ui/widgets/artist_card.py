@@ -41,6 +41,57 @@ class ArtistCard(QWidget):
     CARD_HEIGHT = 220
     BORDER_RADIUS = 80  # Circular
 
+    _STYLE_TEMPLATE = """
+        QMenu {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            padding: 8px 24px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+            color: #000000;
+        }
+    """
+
+    def __init__(self, artist: Artist, parent=None):
+        super().__init__(parent)
+        self._artist = artist
+        self._is_hovering = False
+
+        self._setup_ui()
+        self._load_avatar()
+
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
+
+class ArtistCard(QWidget):
+    """
+    Card widget for displaying artist information.
+
+    Features:
+        - Circular artist avatar
+        - Artist name and song count
+        - Click signal for navigation
+        - Right-click context menu for cover download
+    """
+
+    clicked = Signal(object)  # Emits Artist object
+    download_cover_requested = Signal(object)  # Emits Artist object
+
+    # Card size constants
+    AVATAR_SIZE = 160
+    CARD_WIDTH = 180
+    CARD_HEIGHT = 220
+    BORDER_RADIUS = 80  # Circular
+
     def __init__(self, artist: Artist, parent=None):
         super().__init__(parent)
         self._artist = artist
@@ -51,6 +102,8 @@ class ArtistCard(QWidget):
 
     def _setup_ui(self):
         """Set up the card UI."""
+        from system.theme import ThemeManager
+
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -66,9 +119,10 @@ class ArtistCard(QWidget):
         self._avatar_container.setFixedSize(self.AVATAR_SIZE, self.AVATAR_SIZE)
 
         # Pre-computed stylesheets for hover (H-08 optimization)
+        theme = ThemeManager.instance().current_theme
         radius = self.BORDER_RADIUS
-        self._style_normal = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: #2a2a2a; border-radius: {radius}px; border: 2px solid #1db954; }}"
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
         self._avatar_container.setStyleSheet(self._style_normal)
 
         # Avatar label
@@ -90,27 +144,27 @@ class ArtistCard(QWidget):
         # Artist name
         self._name_label = QLabel(self._artist.display_name)
         self._name_label.setAlignment(Qt.AlignCenter)
-        self._name_label.setStyleSheet("""
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
             QLabel {
-                color: #ffffff;
+                color: %text%;
                 font-size: 14px;
                 font-weight: bold;
                 background: transparent;
             }
-        """)
+        """))
         self._name_label.setWordWrap(True)
 
         # Song count
         song_count_text = t("songs_count", "{count} songs").replace("{count}", str(self._artist.song_count))
         self._count_label = QLabel(song_count_text)
         self._count_label.setAlignment(Qt.AlignCenter)
-        self._count_label.setStyleSheet("""
+        self._count_label.setStyleSheet(ThemeManager.instance().get_qss("""
             QLabel {
-                color: #b3b3b3;
+                color: %text_secondary%;
                 font-size: 12px;
                 background: transparent;
             }
-        """)
+        """))
 
         info_layout.addWidget(self._name_label)
         info_layout.addWidget(self._count_label)
@@ -121,24 +175,10 @@ class ArtistCard(QWidget):
 
     def _show_context_menu(self, pos):
         """Show context menu."""
+        from system.theme import ThemeManager
+
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 8px 24px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
-        """)
+        menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Download cover action
         download_action = QAction(t("download_cover_manual", "下载封面"), self)
@@ -257,3 +297,38 @@ class ArtistCard(QWidget):
         """Update avatar after download."""
         self._artist.cover_path = cover_path
         self._load_avatar()
+
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+        radius = self.BORDER_RADIUS
+
+        # Update pre-computed stylesheets
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
+
+        # Apply current state
+        if self._is_hovering:
+            self._avatar_container.setStyleSheet(self._style_hover)
+        else:
+            self._avatar_container.setStyleSheet(self._style_normal)
+
+        # Update text labels
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text%;
+                font-size: 14px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """))
+        self._count_label.setStyleSheet(ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text_secondary%;
+                font-size: 12px;
+                background: transparent;
+            }
+        """))
+

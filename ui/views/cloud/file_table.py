@@ -34,6 +34,107 @@ class CloudFileTable(QWidget):
     - Double-click handling for navigation and playback
     """
 
+    _STYLE_TEMPLATE = """
+        QTableWidget#cloudFileTable {
+            background-color: %background%;
+            border: none;
+            border-radius: 8px;
+            gridline-color: %background_hover%;
+        }
+        QTableWidget#cloudFileTable::item {
+            padding: 12px 8px;
+            color: %text%;
+            border: none;
+            border-bottom: 1px solid %background_hover%;
+        }
+        /* Alternating row colors for better readability */
+        QTableWidget#cloudFileTable::item:alternate {
+            background-color: %background_alt%;
+        }
+        QTableWidget#cloudFileTable::item:!alternate {
+            background-color: %background%;
+        }
+        /* Selected state with vibrant accent */
+        QTableWidget#cloudFileTable::item:selected {
+            background-color: %highlight%;
+            color: #ffffff;
+            font-weight: 500;
+        }
+        QTableWidget#cloudFileTable::item:selected:!alternate {
+            background-color: %highlight%;
+        }
+        QTableWidget#cloudFileTable::item:selected:alternate {
+            background-color: %highlight_hover%;
+        }
+        /* Hover effect for interactivity */
+        QTableWidget#cloudFileTable::item:hover {
+            background-color: %background_hover%;
+        }
+        QTableWidget#cloudFileTable::item:selected:hover {
+            background-color: %highlight_hover%;
+        }
+        /* Remove focus outline */
+        QTableWidget#cloudFileTable::item:focus {
+            outline: none;
+            border: none;
+        }
+        QTableWidget#cloudFileTable:focus {
+            outline: none;
+            border: none;
+        }
+        /* Header styling */
+        QTableWidget#cloudFileTable QHeaderView::section {
+            background-color: %background_hover%;
+            color: %highlight%;
+            padding: 14px 12px;
+            border: none;
+            border-bottom: 2px solid %highlight%;
+            border-radius: 0px;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+        }
+        /* First header (top-left corner) */
+        QTableWidget#cloudFileTable QTableCornerButton::section {
+            background-color: %background_hover%;
+            border: none;
+            border-right: 1px solid %border%;
+            border-bottom: 2px solid %highlight%;
+        }
+        /* Scrollbar styling */
+        QTableWidget#cloudFileTable QScrollBar:vertical {
+            background-color: %background%;
+            width: 12px;
+            border-radius: 6px;
+            margin: 0px;
+        }
+        QTableWidget#cloudFileTable QScrollBar::handle:vertical {
+            background-color: %border%;
+            border-radius: 6px;
+            min-height: 40px;
+        }
+        QTableWidget#cloudFileTable QScrollBar::handle:vertical:hover {
+            background-color: %background_hover%;
+        }
+        QTableWidget#cloudFileTable QScrollBar:horizontal {
+            background-color: %background%;
+            height: 12px;
+            border-radius: 6px;
+        }
+        QTableWidget#cloudFileTable QScrollBar::handle:horizontal {
+            background-color: %border%;
+            border-radius: 6px;
+            min-width: 40px;
+        }
+        QTableWidget#cloudFileTable QScrollBar::handle:horizontal:hover {
+            background-color: %background_hover%;
+        }
+        QTableWidget#cloudFileTable QScrollBar::add-line, QScrollBar::sub-line {
+            height: 0px;
+            width: 0px;
+        }
+    """
+
     # Signals
     folder_double_clicked = Signal(CloudFile)  # User double-clicked a folder
     audio_double_clicked = Signal(CloudFile)  # User double-clicked an audio file
@@ -44,6 +145,11 @@ class CloudFileTable(QWidget):
         super().__init__(parent)
         self._current_playing_file_id: Optional[str] = None
         self._player: Optional["PlaybackService"] = None
+
+        # Register for theme change notifications
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -73,106 +179,8 @@ class CloudFileTable(QWidget):
         self._table.cellDoubleClicked.connect(self._on_double_click)
 
         # Apply style matching library table
-        self._table.setStyleSheet("""
-            QTableWidget#cloudFileTable {
-                background-color: #1e1e1e;
-                border: none;
-                border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget#cloudFileTable::item {
-                padding: 12px 8px;
-                color: #e0e0e0;
-                border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            /* Alternating row colors for better readability */
-            QTableWidget#cloudFileTable::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget#cloudFileTable::item:!alternate {
-                background-color: #1e1e1e;
-            }
-            /* Selected state with vibrant accent */
-            QTableWidget#cloudFileTable::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
-                font-weight: 500;
-            }
-            QTableWidget#cloudFileTable::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget#cloudFileTable::item:selected:alternate {
-                background-color: #1ed760;
-            }
-            /* Hover effect for interactivity */
-            QTableWidget#cloudFileTable::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget#cloudFileTable::item:selected:hover {
-                background-color: #1ed760;
-            }
-            /* Remove focus outline */
-            QTableWidget#cloudFileTable::item:focus {
-                outline: none;
-                border: none;
-            }
-            QTableWidget#cloudFileTable:focus {
-                outline: none;
-                border: none;
-            }
-            /* Header styling */
-            QTableWidget#cloudFileTable QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid #1db954;
-                border-radius: 0px;
-                font-weight: bold;
-                font-size: 13px;
-                letter-spacing: 0.5px;
-            }
-            /* First header (top-left corner) */
-            QTableWidget#cloudFileTable QTableCornerButton::section {
-                background-color: #2a2a2a;
-                border: none;
-                border-right: 1px solid #3a3a3a;
-                border-bottom: 2px solid #1db954;
-            }
-            /* Scrollbar styling */
-            QTableWidget#cloudFileTable QScrollBar:vertical {
-                background-color: #1e1e1e;
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QTableWidget#cloudFileTable QScrollBar::handle:vertical {
-                background-color: #404040;
-                border-radius: 6px;
-                min-height: 40px;
-            }
-            QTableWidget#cloudFileTable QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QTableWidget#cloudFileTable QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget#cloudFileTable QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QTableWidget#cloudFileTable QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QTableWidget#cloudFileTable QScrollBar::add-line, QScrollBar::sub-line {
-                height: 0px;
-                width: 0px;
-            }
-        """)
+        from system.theme import ThemeManager
+        self._table.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Set column widths
         header = self._table.horizontalHeader()
@@ -205,6 +213,9 @@ class CloudFileTable(QWidget):
             files: List of CloudFile objects
             current_playing_file_id: Currently playing file ID for indicator
         """
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         self._current_playing_file_id = current_playing_file_id
         self._table.setRowCount(0)
         self._table.setUpdatesEnabled(False)
@@ -223,7 +234,7 @@ class CloudFileTable(QWidget):
                 # Name column
                 name_item = QTableWidgetItem(file.name)
                 name_item.setData(Qt.UserRole, file)
-                name_item.setForeground(QBrush(QColor("#e0e0e0")))
+                name_item.setForeground(QBrush(QColor(theme.text)))
 
                 if file.file_type == "folder":
                     name_item.setText(f"📁 {file.name}")
@@ -234,7 +245,7 @@ class CloudFileTable(QWidget):
 
                 # Type column
                 type_item = QTableWidgetItem(self._get_file_type_label(file.file_type))
-                type_item.setForeground(QBrush(QColor("#b0b0b0")))
+                type_item.setForeground(QBrush(QColor(theme.text_secondary)))
                 self._table.setItem(row, 1, type_item)
 
                 # Size column
@@ -243,7 +254,7 @@ class CloudFileTable(QWidget):
                     size_mb = file.size / (1024 * 1024)
                     size_text = f"{size_mb:.1f} MB"
                 size_item = QTableWidgetItem(size_text)
-                size_item.setForeground(QBrush(QColor("#909090")))
+                size_item.setForeground(QBrush(QColor(theme.text_secondary)))
                 self._table.setItem(row, 2, size_item)
 
                 # Duration column
@@ -251,13 +262,13 @@ class CloudFileTable(QWidget):
                 if file.file_type == "audio" and file.duration:
                     duration_text = format_duration(file.duration)
                 duration_item = QTableWidgetItem(duration_text)
-                duration_item.setForeground(QBrush(QColor("#909090")))
+                duration_item.setForeground(QBrush(QColor(theme.text_secondary)))
                 self._table.setItem(row, 3, duration_item)
 
                 # Status column (downloaded indicator)
                 status_text = "✓" if file.local_path else ""
                 status_item = QTableWidgetItem(status_text)
-                status_item.setForeground(QBrush(QColor("#1db954")))
+                status_item.setForeground(QBrush(QColor(theme.highlight)))
                 status_item.setTextAlignment(Qt.AlignCenter)
                 self._table.setItem(row, 4, status_item)
 
@@ -267,6 +278,8 @@ class CloudFileTable(QWidget):
     def _add_playing_indicator(self, item: QTableWidgetItem, name: str) -> QTableWidgetItem:
         """Add playing indicator to the name item."""
         from domain.playback import PlaybackState
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
 
         if self._player and hasattr(self._player, 'engine'):
             if self._player.engine.state == PlaybackState.PLAYING:
@@ -280,7 +293,7 @@ class CloudFileTable(QWidget):
         font = item.font()
         font.setBold(True)
         item.setFont(font)
-        item.setForeground(QBrush(QColor("#1db954")))
+        item.setForeground(QBrush(QColor(theme.highlight)))
 
         return item
 
@@ -322,6 +335,9 @@ class CloudFileTable(QWidget):
             file_id: File ID to update
             is_playing: Whether the file is currently playing
         """
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         self._current_playing_file_id = file_id if is_playing else None
 
         for row in range(self._table.rowCount()):
@@ -341,7 +357,7 @@ class CloudFileTable(QWidget):
                 else:
                     # Reset to normal
                     item.setText(file.name)
-                    item.setForeground(QBrush(QColor("#e0e0e0")))
+                    item.setForeground(QBrush(QColor(theme.text)))
                     font = item.font()
                     font.setBold(False)
                     item.setFont(font)
@@ -354,6 +370,9 @@ class CloudFileTable(QWidget):
             file_id: File ID to update
             local_path: New local path
         """
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         for row in range(self._table.rowCount()):
             item = self._table.item(row, 0)
             if not item:
@@ -368,7 +387,7 @@ class CloudFileTable(QWidget):
                 status_item = self._table.item(row, 4)
                 if status_item:
                     status_item.setText("✓")
-                    status_item.setForeground(QBrush(QColor("#1db954")))
+                    status_item.setForeground(QBrush(QColor(theme.highlight)))
                 break
 
     def get_current_files(self) -> List[CloudFile]:
@@ -404,3 +423,8 @@ class CloudFileTable(QWidget):
         self._table.setHorizontalHeaderLabels([
             t("title"), t("type"), t("size"), t("duration"), "⬇"
         ])
+
+    def refresh_theme(self):
+        """Apply themed styles using ThemeManager tokens."""
+        from system.theme import ThemeManager
+        self._table.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))

@@ -41,6 +41,7 @@ from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from system.theme import ThemeManager
 from ui.icons import IconName, IconButton, set_button_icon
 from domain.track import Track
 from domain.playlist_item import PlaylistItem
@@ -68,6 +69,81 @@ class MainWindow(QMainWindow):
     # Signals
     play_track = Signal(int)  # Signal to play a track by ID
     lyricsHtmlReady = Signal(str)
+
+    _STYLE_TEMPLATE = """
+        QMainWindow {
+            background-color: %background%;
+            color: %text%;
+        }
+        QWidget#sidebar {
+            background-color: %background%;
+            border-right: 1px solid %background_hover%;
+        }
+        QLabel#logo {
+            color: %highlight%;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        QPushButton#addMusicBtn {
+            background-color: %highlight%;
+            color: #000000;
+            border: none;
+            padding: 14px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        QPushButton#addMusicBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton#downloadLyricsBtn {
+            background: transparent;
+            border: 2px solid %border%;
+            color: %text_secondary%;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        QPushButton#downloadLyricsBtn:hover {
+            border-color: %highlight%;
+            color: %highlight%;
+            background-color: %selection%;
+        }
+        QWidget#lyricsPanel {
+            background-color: %background_alt%;
+            border-left: 1px solid %background_hover%;
+        }
+        QLabel#lyricsTitle {
+            color: %highlight%;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        /* Splitter styling */
+        QSplitter::handle {
+            background-color: %background_hover%;
+            width: 2px;
+        }
+        QSplitter::handle:hover {
+            background-color: %highlight%;
+        }
+        /* Stacked widget background */
+        QStackedWidget {
+            background-color: %background%;
+            border-radius: 8px;
+        }
+        /* Status bar styling */
+        QStatusBar {
+            color: %text%;
+        }
+        QStatusBar::item {
+            border: none;
+        }
+        QStatusBar QLabel {
+            color: %text%;
+        }
+    """
 
     def __init__(self):
         """Initialize the main window."""
@@ -230,6 +306,9 @@ class MainWindow(QMainWindow):
         # Restore geometry
         self._restore_settings()
 
+        # Register for theme change notifications
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Setup the user interface."""
         self.setWindowTitle(t("app_title"))
@@ -339,8 +418,8 @@ class MainWindow(QMainWindow):
         self._player_controls = PlayerControls(self._player)
         main_layout.addWidget(self._player_controls)
 
-        # Apply dark theme styling
-        self._apply_styles()
+        # Apply themed styling
+        self.refresh_theme()
 
     def _create_sidebar(self) -> QWidget:
         """Create the sidebar navigation using Sidebar component."""
@@ -489,82 +568,9 @@ class MainWindow(QMainWindow):
         self._tray_icon.activated.connect(self._on_tray_activated)
         self._tray_icon.show()
 
-    def _apply_styles(self):
-        """Apply modern dark theme styles with better colors."""
-        style = """
-            QMainWindow {
-                background-color: #0a0a0a;
-                color: #e0e0e0;
-            }
-            QWidget#sidebar {
-                background-color: #141414;
-                border-right: 1px solid #2a2a2a;
-            }
-            QLabel#logo {
-                color: #1db954;
-                font-size: 24px;
-                font-weight: bold;
-            }
-            QPushButton#addMusicBtn {
-                background-color: #1db954;
-                color: #000000;
-                border: none;
-                padding: 14px;
-                border-radius: 25px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton#addMusicBtn:hover {
-                background-color: #1ed760;
-            }
-            QPushButton#downloadLyricsBtn {
-                background: transparent;
-                border: 2px solid #404040;
-                color: #c0c0c0;
-                padding: 6px 14px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QPushButton#downloadLyricsBtn:hover {
-                border-color: #1db954;
-                color: #1db954;
-                background-color: rgba(29, 185, 84, 0.1);
-            }
-            QWidget#lyricsPanel {
-                background-color: #1a1a1a;
-                border-left: 1px solid #2a2a2a;
-            }
-            QLabel#lyricsTitle {
-                color: #1db954;
-                font-size: 16px;
-                font-weight: bold;
-                margin-bottom: 15px;
-            }
-            /* Splitter styling */
-            QSplitter::handle {
-                background-color: #2a2a2a;
-                width: 2px;
-            }
-            QSplitter::handle:hover {
-                background-color: #1db954;
-            }
-            /* Stacked widget background */
-            QStackedWidget {
-                background-color: #141414;
-                border-radius: 8px;
-            }
-            /* Status bar styling */
-            QStatusBar {
-                color: #ffffff;
-            }
-            QStatusBar::item {
-                border: none;
-            }
-            QStatusBar QLabel {
-                color: #ffffff;
-            }
-        """
+    def refresh_theme(self):
+        """Apply themed styles using ThemeManager tokens."""
+        style = ThemeManager.instance().get_qss(self._STYLE_TEMPLATE)
         self.setStyleSheet(style)
 
     def _show_page(self, index: int):

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from services.metadata import CoverService
 from system.i18n import t
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -170,61 +171,61 @@ class BaseCoverDownloadDialog(QDialog):
 
     cover_saved = Signal(str)  # Emits cover path
 
-    # Common stylesheet for all dialogs
-    DARK_STYLE = """
+    # Common stylesheet template for all dialogs
+    _STYLE_TEMPLATE = """
         QDialog {
-            background-color: #282828;
-            color: #ffffff;
+            background-color: %background_alt%;
+            color: %text%;
         }
         QLabel {
-            color: #ffffff;
+            color: %text%;
         }
         QPushButton {
-            background-color: #3a3a3a;
-            color: #ffffff;
-            border: 1px solid #4a4a4a;
+            background-color: %border%;
+            color: %text%;
+            border: 1px solid %background_hover%;
             border-radius: 4px;
             padding: 8px 16px;
             min-width: 80px;
         }
         QPushButton:hover {
-            background-color: #4a4a4a;
+            background-color: %background_hover%;
         }
         QPushButton:pressed {
-            background-color: #2a2a2a;
+            background-color: %background_alt%;
         }
         QPushButton:disabled {
-            background-color: #2a2a2a;
-            color: #606060;
-            border-color: #3a3a3a;
+            background-color: %background_alt%;
+            color: %border%;
+            border-color: %border%;
         }
         QProgressBar {
-            background-color: #3a3a3a;
-            border: 1px solid #4a4a4a;
+            background-color: %border%;
+            border: 1px solid %background_hover%;
             border-radius: 4px;
             text-align: center;
-            color: #ffffff;
+            color: %text%;
         }
         QProgressBar::chunk {
-            background-color: #1db954;
+            background-color: %highlight%;
             border-radius: 3px;
         }
         QListWidget {
-            background-color: #2a2a2a;
-            color: #ffffff;
-            border: 1px solid #4a4a4a;
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %background_hover%;
             border-radius: 4px;
         }
         QListWidget::item {
             padding: 8px;
-            border-bottom: 1px solid #3a3a3a;
+            border-bottom: 1px solid %border%;
         }
         QListWidget::item:hover {
-            background-color: #3a3a3a;
+            background-color: %border%;
         }
         QListWidget::item:selected {
-            background-color: #1db954;
-            color: #ffffff;
+            background-color: %highlight%;
+            color: %text%;
         }
     """
 
@@ -236,6 +237,7 @@ class BaseCoverDownloadDialog(QDialog):
         self._current_cover_data = None
         self._current_cover_url = None
         self._search_results = []
+        ThemeManager.instance().register_widget(self)
 
     # ========================================================================
     # Properties
@@ -276,7 +278,7 @@ class BaseCoverDownloadDialog(QDialog):
         self.setWindowTitle(t("download_cover_manual"))
         self.setMinimumSize(800, 600)
         self.resize(900, 650)
-        self.setStyleSheet(self.DARK_STYLE)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         layout = QVBoxLayout()
         layout.setSpacing(15)
@@ -284,7 +286,8 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Info label at top
         info_label = QLabel(info_text)
-        info_label.setStyleSheet("font-size: 16px; padding: 10px;")
+        theme = ThemeManager.instance().current_theme
+        info_label.setStyleSheet(f"font-size: 16px; padding: 10px;")
         layout.addWidget(info_label)
 
         # Main content area with splitter
@@ -326,22 +329,23 @@ class BaseCoverDownloadDialog(QDialog):
         self._cover_label.setAlignment(Qt.AlignCenter)
 
         # Set border style based on circular flag
+        theme = ThemeManager.instance().current_theme
         if circular:
             border_radius = cover_size // 2
             self._cover_label.setStyleSheet(f"""
                 QLabel {{
-                    border: 2px solid #404040;
+                    border: 2px solid {theme.border};
                     border-radius: {border_radius}px;
-                    background-color: #1a1a1a;
+                    background-color: {theme.background};
                 }}
             """)
         else:
-            self._cover_label.setStyleSheet("""
-                QLabel {
-                    border: 2px solid #404040;
+            self._cover_label.setStyleSheet(f"""
+                QLabel {{
+                    border: 2px solid {theme.border};
                     border-radius: 8px;
-                    background-color: #1a1a1a;
-                }
+                    background-color: {theme.background};
+                }}
             """)
         self._cover_label.setText(t("searching"))
 
@@ -360,7 +364,8 @@ class BaseCoverDownloadDialog(QDialog):
         # Match score display
         self._score_label = QLabel()
         self._score_label.setAlignment(Qt.AlignCenter)
-        self._score_label.setStyleSheet("color: #1db954; font-weight: bold;")
+        theme = ThemeManager.instance().current_theme
+        self._score_label.setStyleSheet(f"color: {theme.highlight}; font-weight: bold;")
         right_layout.addWidget(self._score_label)
 
         splitter.addWidget(right_widget)
@@ -376,7 +381,8 @@ class BaseCoverDownloadDialog(QDialog):
         # Status label
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignCenter)
-        self._status_label.setStyleSheet("color: #a0a0a0;")
+        theme = ThemeManager.instance().current_theme
+        self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
         layout.addWidget(self._status_label)
 
         # Buttons
@@ -635,3 +641,13 @@ class BaseCoverDownloadDialog(QDialog):
         """Clean up on close."""
         self._cleanup_threads()
         super().closeEvent(event)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Update inline styles that use theme colors
+        theme = ThemeManager.instance().current_theme
+        if self._score_label:
+            self._score_label.setStyleSheet(f"color: {theme.highlight}; font-weight: bold;")
+        if self._status_label:
+            self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
