@@ -7,7 +7,7 @@ from pathlib import Path
 import logging
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, QPoint
-from PySide6.QtGui import QColor, QBrush, QPixmap, QPainter, QFont
+from PySide6.QtGui import QColor, QBrush, QPixmap, QPainter, QFont, QImage
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -22,7 +22,13 @@ from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
     QDialogButtonBox,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QListView,
 )
+
+import hashlib
+from infrastructure.cache.pixmap_cache import CoverPixmapCache
 
 from domain.playback import PlaybackState
 from services.playback import PlaybackService
@@ -159,6 +165,251 @@ class QueueTrackModel(QAbstractListModel):
         if 0 <= row < len(self._tracks):
             idx = self.index(row)
             self.dataChanged.emit(idx, idx, [self.CoverRole])
+
+
+class CoverLoadWorker(QRunnable):
+    """Worker to load cover in background thread."""
+
+    def __init__(self, row: int, load_func, callback_signal):
+        super().__init__()
+        self.row = row
+        self.load_func = load_func
+        self.callback_signal = callback_signal
+        self.setAutoDelete(True)
+
+    def run(self):
+        try:
+            cover_path = self.load_func()
+            qimage = None
+            if cover_path:
+                qimage = QImage(cover_path)
+            self.callback_signal.emit(self.row, cover_path, qimage)
+        except Exception:
+            self.callback_signal.emit(self.row, None, None)
+
+
+class QueueItemDelegate(QStyledItemDelegate):
+    """Delegate for painting queue items without per-item QWidget overhead."""
+
+    _cover_loaded_signal = Signal(int, object, object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cover_loaded_signal.connect(self._on_cover_loaded)
+        self._cover_versions: dict = {}
+        CoverPixmapCache.initialize()
+        self._cover_size = 64
+        self._index_width = 30
+        self._padding = 10
+
+    def sizeHint(self, option, index):
+        return QSize(0, 72)
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        track = index.data(QueueTrackModel.TrackRole)
+        is_selected = index.data(QueueTrackModel.IsSelectedRole)
+        is_current = index.data(QueueTrackModel.IsCurrentRole)
+        is_playing = index.data(QueueTrackModel.IsPlayingRole)
+        row = index.data(QueueTrackModel.IndexRole)
+
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = option.rect
+
+        # Background
+        if is_selected:
+            painter.fillRect(rect, QColor(theme.highlight))
+        else:
+            painter.fillRect(rect, QColor(theme.background))
+
+        # Separator line
+        if not is_selected:
+            painter.setPen(QColor(theme.background_hover))
+            painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+
+        # Text colors
+        if is_selected:
+            text_color = QColor(theme.background)
+            secondary_color = QColor(theme.background)
+        elif is_current:
+            text_color = QColor(theme.highlight)
+            secondary_color = QColor(theme.highlight)
+        else:
+            text_color = QColor(theme.text)
+            secondary_color = QColor(theme.text_secondary)
+
+        x = rect.left() + self._padding
+
+        # Index number
+        painter.setPen(secondary_color)
+        font = painter.font()
+        font.setPixelSize(12)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(x, rect.top(), self._index_width, rect.height(),
+                         Qt.AlignVCenter | Qt.AlignHCenter, f"{row + 1}")
+        x += self._index_width
+
+        # Cover art
+        cover_rect = QRect(x + 2, rect.top() + 4, self._cover_size, self._cover_size)
+        self._paint_cover(painter, cover_rect, track, row, theme)
+        x += self._cover_size + 8
+
+        # Title
+        title = track.get("title", "Unknown") if isinstance(track, dict) else "Unknown"
+        if is_current:
+            icon = "\u25B6 " if is_playing else "\u23F8 "
+            title = f"{icon}{title}"
+
+        painter.setPen(text_color)
+        font.setPixelSize(13)
+        font.setBold(True)
+        painter.setFont(font)
+        title_rect = QRect(x, rect.top() + 14, rect.right() - x - 60, 22)
+        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter,
+                         self._elided_text(painter, title, title_rect.width()))
+
+        # Artist + Album
+        artist = track.get("artist", "Unknown") if isinstance(track, dict) else "Unknown"
+        album = track.get("album", "") if isinstance(track, dict) else ""
+        artist_album = artist + (f" \u2022 {album}" if album else "")
+
+        painter.setPen(secondary_color)
+        font.setPixelSize(11)
+        font.setBold(False)
+        painter.setFont(font)
+        info_rect = QRect(x, rect.top() + 38, rect.right() - x - 60, 22)
+        painter.drawText(info_rect, Qt.AlignLeft | Qt.AlignVCenter,
+                         self._elided_text(painter, artist_album, info_rect.width()))
+
+        # Duration
+        duration = track.get("duration", 0) if isinstance(track, dict) else 0
+        from utils.helpers import format_duration
+        duration_text = format_duration(duration)
+        font.setPixelSize(12)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.drawText(rect.right() - self._padding - 50, rect.top(), 50, rect.height(),
+                         Qt.AlignVCenter | Qt.AlignRight, duration_text)
+
+        painter.restore()
+
+    def _paint_cover(self, painter: QPainter, rect: QRect, track, row: int, theme):
+        """Paint cover art with caching and async loading."""
+        from PySide6.QtGui import QPixmap as Pm
+
+        cache_key = self._get_cover_cache_key(track)
+
+        # Try cache
+        cached = CoverPixmapCache.get(cache_key)
+        if cached and not cached.isNull():
+            painter.drawPixmap(rect, cached)
+            return
+
+        # Draw placeholder (music note icon)
+        placeholder = Pm(self._cover_size, self._cover_size)
+        placeholder.fill(QColor(theme.background_alt))
+        p = QPainter(placeholder)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(QColor(theme.border))
+        font = p.font()
+        font.setPixelSize(28)
+        p.setFont(font)
+        p.drawText(0, 0, self._cover_size, self._cover_size, Qt.AlignCenter, "\u266B")
+        p.end()
+        painter.drawPixmap(rect, placeholder)
+
+        # Request async load (debounced by version tracking)
+        version = self._cover_versions.get(row, 0) + 1
+        self._cover_versions[row] = version
+        worker = CoverLoadWorker(row, self._resolve_cover_path, self._cover_loaded_signal)
+        # Store version on worker for validation in callback
+        worker._version = version
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_cover_loaded(self, row: int, cover_path: str, qimage):
+        """Handle cover loaded — will be wired up in Task 6."""
+        # Stub: full implementation in Task 6
+        pass
+
+    def _get_cover_cache_key(self, track) -> str:
+        """Generate cache key for a track."""
+        if not isinstance(track, dict):
+            return CoverPixmapCache.make_key_from_path("")
+        artist = track.get("artist", "")
+        album = track.get("album", "")
+        if artist and album:
+            return CoverPixmapCache.make_key(artist, album)
+        path = track.get("path", "") or track.get("cover_path", "")
+        return CoverPixmapCache.make_key_from_path(path)
+
+    def _resolve_cover_path(self, track) -> str:
+        """Resolve cover path for a track (runs in worker thread)."""
+        from pathlib import Path
+
+        if not isinstance(track, dict):
+            return None
+
+        source = track.get("source", "") or track.get("source_type", "")
+        cloud_file_id = track.get("cloud_file_id", "")
+        is_online = source == "QQ" or source == "online"
+
+        if is_online and cloud_file_id:
+            try:
+                from app.bootstrap import Bootstrap
+                bootstrap = Bootstrap.instance()
+                if bootstrap and hasattr(bootstrap, 'cover_service'):
+                    cover_path = bootstrap.cover_service.get_online_cover(
+                        song_mid=cloud_file_id,
+                        album_mid=None,
+                        artist=track.get("artist", ""),
+                        title=track.get("title", ""),
+                    )
+                    if cover_path:
+                        return cover_path
+            except Exception:
+                pass
+
+        cover_path = track.get("cover_path")
+        if cover_path and Path(cover_path).exists():
+            return cover_path
+
+        path = track.get("path", "")
+        if path and Path(path).exists():
+            try:
+                from app.bootstrap import Bootstrap
+                bootstrap = Bootstrap.instance()
+                if bootstrap and hasattr(bootstrap, 'cover_service'):
+                    cover_path = bootstrap.cover_service.get_cover(
+                        path, track.get("title", ""), track.get("artist", ""),
+                        track.get("album", ""), skip_online=True,
+                    )
+                    if cover_path:
+                        return cover_path
+            except Exception:
+                pass
+
+        return None
+
+    @staticmethod
+    def _elided_text(painter, text: str, max_width: int) -> str:
+        """Return elided text if too wide."""
+        fm = painter.fontMetrics()
+        if fm.horizontalAdvance(text) <= max_width:
+            return text
+        return fm.elidedText(text, Qt.ElideRight, max_width)
+
+    def _make_style_option(self, index: QModelIndex) -> QStyleOptionViewItem:
+        """Create a QStyleOptionViewItem for testing paint."""
+        from PySide6.QtWidgets import QStyle
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 400, 72)
+        option.state = QStyle.StateFlag.State_Enabled
+        return option
 
 
 class QueueItemWidget(QWidget):
