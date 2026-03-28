@@ -73,10 +73,6 @@ class LyricsWidget(QWidget):
         self.font_normal = QFont("Microsoft YaHei", 18)
         self.font_current = QFont("Microsoft YaHei", 26, QFont.Bold)
 
-        # 颜色
-        self.color_normal = QColor(150, 150, 150)
-        self.color_current = QColor(255, 255, 255)
-
         # 动画
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._animate)
@@ -84,9 +80,34 @@ class LyricsWidget(QWidget):
 
         self.setMouseTracking(True)
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
+        # Initialize colors from theme
+        self._init_colors()
+
     # =====================================================
     # API
     # =====================================================
+
+    def _init_colors(self):
+        """Initialize colors from current theme."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        self.color_normal = QColor(theme.text_secondary)
+        self.color_current = QColor(theme.text)
+        self.color_background = QColor(theme.background)
+        self.color_no_lyrics = QColor(theme.text_secondary)
+        self.color_badge_qrc = QColor(255, 180, 100)  # Custom orange for QRC badge
+        self.color_badge_yrc = QColor(100, 200, 255)  # Custom cyan for YRC badge
+        self.color_gradient_base = QColor(180, 180, 180)  # Pre-highlight text
+
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        self._init_colors()
+        self.update()  # Trigger repaint
 
     def set_lyrics(self, lrc_text):
 
@@ -138,7 +159,7 @@ class LyricsWidget(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.TextAntialiasing)
 
-        p.fillRect(self.rect(), QColor(10, 10, 10))
+        p.fillRect(self.rect(), self.color_background)
 
         if self.is_qrc:
             self._draw_qrc_badge(p)
@@ -148,7 +169,7 @@ class LyricsWidget(QWidget):
         lines = self.engine.lines
 
         if not lines:
-            p.setPen(QColor(120, 120, 120))
+            p.setPen(self.color_no_lyrics)
             p.setFont(self.font_normal)
             p.drawText(self.rect(), Qt.AlignCenter, t("no_lyrics"))
             return
@@ -172,12 +193,12 @@ class LyricsWidget(QWidget):
     # =====================================================
 
     def _draw_yrc_badge(self, p):
-        p.setPen(QColor(100, 200, 255))
+        p.setPen(self.color_badge_yrc)
         p.setFont(QFont("Segoe UI Emoji", 12))
         p.drawText(self.width() - 30, 25, "🇾")
 
     def _draw_qrc_badge(self, p):
-        p.setPen(QColor(255, 180, 100))
+        p.setPen(self.color_badge_qrc)
         p.setFont(QFont("Segoe UI Emoji", 12))
         p.drawText(self.width() - 30, 25, "🇶")
 
@@ -275,7 +296,7 @@ class LyricsWidget(QWidget):
             # 1. 未开始
             # =========================
             if self.current_time < start:
-                color = QColor(180, 180, 180)
+                color = self.color_gradient_base
 
             # =========================
             # 2. 已完成（扫光完成）
@@ -296,7 +317,7 @@ class LyricsWidget(QWidget):
                 p.setFont(font)
 
                 # 先画灰色底
-                p.setPen(QColor(180, 180, 180))
+                p.setPen(self.color_gradient_base)
                 p.drawText(QRectF(cur_x, y - 30, width, 60), Qt.AlignCenter, w.text)
 
                 # 再画“扫光层”
