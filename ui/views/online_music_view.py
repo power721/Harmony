@@ -251,10 +251,12 @@ class HotkeyPopup(QWidget):
     """Popup widget for displaying hot search keywords - autocomplete style."""
 
     hotkey_clicked = Signal(str)  # Emitted when a hotkey is clicked
+    clear_history_requested = Signal()  # Emitted when clear history is requested
+    delete_history_requested = Signal(str)  # Emitted when delete a history item is requested
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
 
@@ -262,24 +264,30 @@ class HotkeyPopup(QWidget):
 
     def _setup_ui(self):
         """Setup UI components."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout = QVBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
 
-        container = QWidget()
-        container.setObjectName("hotkeyContainer")
-        container.setStyleSheet("""
+        self._container = QWidget()
+        self._container.setObjectName("hotkeyContainer")
+        self._container.setStyleSheet("""
             #hotkeyContainer {
                 background-color: #2a2a2a;
                 border: 1px solid #3a3a3a;
                 border-radius: 8px;
             }
         """)
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(0)
+        self._container_layout = QVBoxLayout(self._container)
+        self._container_layout.setContentsMargins(0, 0, 0, 0)
+        self._container_layout.setSpacing(0)
+
+        self._main_layout.addWidget(self._container)
+
+    def set_hotkeys(self, hotkeys: List[Dict[str, Any]]):
+        """Set hotkey list."""
+        self._clear_container()
 
         # Title
-        title = QLabel("🔥 " + t("hot_search"))
+        title = QLabel(f"🔥 {t('hot_search')}")
         title.setStyleSheet("""
             QLabel {
                 color: #1db954;
@@ -288,79 +296,267 @@ class HotkeyPopup(QWidget):
                 padding: 10px 12px 6px 12px;
             }
         """)
-        container_layout.addWidget(title)
+        self._container_layout.addWidget(title)
 
-        # List widget for hotkey items
-        self._list = QListWidget()
-        self._list.setObjectName("hotkeyList")
-        self._list.setStyleSheet("""
-            #hotkeyList {
-                background-color: transparent;
-                border: none;
-                outline: none;
-                padding: 0px 4px 4px 4px;
-            }
-            #hotkeyList::item {
-                padding: 8px 12px;
-                color: #e0e0e0;
-                border-radius: 4px;
+        # Hotkey items
+        for item in hotkeys[:10]:
+            title_text = item.get('title', '')
+            query = item.get('query', title_text)
+            if not title_text:
+                continue
+            self._add_hotkey_item(title_text, query)
+
+        self._adjust_size()
+
+    def set_search_history(self, history: List[str]):
+        """Set search history list."""
+        self._clear_container()
+
+        # Title with clear button
+        title_layout = QHBoxLayout()
+        title_layout.setContentsMargins(12, 10, 12, 6)
+
+        title = QLabel(f"📝 {t('search_history')}")
+        title.setStyleSheet("""
+            QLabel {
+                color: #1db954;
                 font-size: 13px;
+                font-weight: bold;
             }
-            #hotkeyList::item:hover {
+        """)
+        title_layout.addWidget(title)
+
+        title_layout.addStretch()
+
+        clear_btn = QPushButton(t("clear_all"))
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                color: #999;
+                font-size: 12px;
+                border: none;
+                padding: 2px 8px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #1db954;
+                text-decoration: underline;
+            }
+        """)
+        clear_btn.setCursor(Qt.PointingHandCursor)
+        clear_btn.clicked.connect(self._on_clear_clicked)
+        title_layout.addWidget(clear_btn)
+
+        title_widget = QWidget()
+        title_widget.setLayout(title_layout)
+        self._container_layout.addWidget(title_widget)
+
+        # History items
+        for keyword in history:
+            if not keyword:
+                continue
+            self._add_history_item(keyword)
+
+        self._adjust_size()
+
+    def set_combined(self, history: List[str], hotkeys: List[Dict[str, Any]]):
+        """Set both search history and hotkeys in one popup."""
+        self._clear_container()
+
+        # Add search history section
+        if history:
+            # Title with clear button
+            title_layout = QHBoxLayout()
+            title_layout.setContentsMargins(12, 10, 12, 6)
+
+            title = QLabel(f"📝 {t('search_history')}")
+            title.setStyleSheet("""
+                QLabel {
+                    color: #1db954;
+                    font-size: 13px;
+                    font-weight: bold;
+                }
+            """)
+            title_layout.addWidget(title)
+
+            title_layout.addStretch()
+
+            clear_btn = QPushButton(t("clear_all"))
+            clear_btn.setStyleSheet("""
+                QPushButton {
+                    color: #999;
+                    font-size: 12px;
+                    border: none;
+                    padding: 2px 8px;
+                    background: transparent;
+                }
+                QPushButton:hover {
+                    color: #1db954;
+                    text-decoration: underline;
+                }
+            """)
+            clear_btn.setCursor(Qt.PointingHandCursor)
+            clear_btn.clicked.connect(self._on_clear_clicked)
+            title_layout.addWidget(clear_btn)
+
+            title_widget = QWidget()
+            title_widget.setLayout(title_layout)
+            self._container_layout.addWidget(title_widget)
+
+            for keyword in history:
+                if not keyword:
+                    continue
+                self._add_history_item(keyword)
+
+        # Add separator if both sections exist
+        if history and hotkeys:
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setStyleSheet("background-color: #3a3a3a; border: none; max-height: 1px;")
+            self._container_layout.addWidget(separator)
+
+        # Add hot search section
+        if hotkeys:
+            # Title
+            hotkey_title = QLabel(f"🔥 {t('hot_search')}")
+            hotkey_title.setStyleSheet("""
+                QLabel {
+                    color: #1db954;
+                    font-size: 13px;
+                    font-weight: bold;
+                    padding: 10px 12px 6px 12px;
+                }
+            """)
+            self._container_layout.addWidget(hotkey_title)
+
+            for item in hotkeys[:5]:  # Limit to 5 hotkeys when combined
+                title_text = item.get('title', '')
+                query = item.get('query', title_text)
+                if not title_text:
+                    continue
+                self._add_hotkey_item(title_text, query)
+
+        self._adjust_size()
+
+    def _add_history_item(self, keyword: str):
+        """Add a history item with delete button."""
+        item_widget = QWidget()
+        item_layout = QHBoxLayout(item_widget)
+        item_layout.setContentsMargins(12, 4, 8, 4)
+        item_layout.setSpacing(8)
+
+        # Keyword label
+        label = QLabel(keyword)
+        label.setStyleSheet("""
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+                background: transparent;
+            }
+        """)
+        label.setCursor(Qt.PointingHandCursor)
+        label.mousePressEvent = lambda e: self._on_item_clicked(keyword)
+        item_layout.addWidget(label)
+
+        item_layout.addStretch()
+
+        # Delete button - same style as clear button
+        delete_btn = QPushButton(t("delete"))
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                color: #999;
+                font-size: 12px;
+                border: none;
+                padding: 2px 8px;
+                background: transparent;
+            }
+            QPushButton:hover {
+                color: #ff4444;
+                text-decoration: underline;
+            }
+        """)
+        delete_btn.setCursor(Qt.PointingHandCursor)
+        delete_btn.clicked.connect(lambda: self._on_delete_clicked(keyword))
+        item_layout.addWidget(delete_btn)
+
+        item_widget.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+                border-radius: 4px;
+            }
+            QWidget:hover {
                 background-color: #333;
             }
         """)
-        self._list.setSpacing(0)
-        self._list.setCursor(Qt.PointingHandCursor)
-        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._list.currentRowChanged.connect(self._on_item_selected)
-        container_layout.addWidget(self._list)
 
-        layout.addWidget(container)
+        self._container_layout.addWidget(item_widget)
 
-    def set_hotkeys(self, hotkeys: List[Dict[str, Any]]):
-        """Set hotkey list."""
-        self._list.clear()
-        for item in hotkeys[:10]:
-            title = item.get('title', '')
-            query = item.get('query', title)
-            if not title:
-                continue
-            list_item = QListWidgetItem(f"  {title}")
-            list_item.setData(Qt.UserRole, query)
-            self._list.addItem(list_item)
-        self._adjust_size()
+    def _add_hotkey_item(self, title: str, query: str):
+        """Add a hotkey item."""
+        label = QLabel(f"  {title}")
+        label.setStyleSheet("""
+            QLabel {
+                color: #e0e0e0;
+                font-size: 13px;
+                padding: 8px 12px;
+                border-radius: 4px;
+            }
+            QLabel:hover {
+                background-color: #333;
+            }
+        """)
+        label.setCursor(Qt.PointingHandCursor)
+        label.mousePressEvent = lambda e: self._on_item_clicked(query)
+
+        self._container_layout.addWidget(label)
+
+    def _clear_container(self):
+        """Clear all items from container."""
+        while self._container_layout.count():
+            item = self._container_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _on_item_clicked(self, query: str):
+        """Handle item click."""
+        self.hide()
+        self.hotkey_clicked.emit(query)
+
+    def _on_clear_clicked(self):
+        """Handle clear button click."""
+        self.hide()
+        self.clear_history_requested.emit()
+
+    def _on_delete_clicked(self, keyword: str):
+        """Handle delete button click."""
+        self.delete_history_requested.emit(keyword)
 
     def _adjust_size(self):
         """Adjust popup size to fit content."""
-        count = self._list.count()
-        if count == 0:
+        if self._container_layout.count() == 0:
             self.hide()
             return
-        item_height = self._list.sizeHintForRow(0) if count > 0 else 30
-        title_height = 36  # approximate title label height
-        total_height = title_height + count * item_height + 8  # padding
-        self.setFixedHeight(min(total_height, 400))
-        # Will be repositioned by show_at
 
-    def _on_item_selected(self, row: int):
-        """Handle item click/double-click in list."""
-        if row < 0:
-            return
-        item = self._list.item(row)
-        if item:
-            query = item.data(Qt.UserRole)
-            if query:
-                self.hide()
-                self.hotkey_clicked.emit(query)
+        # Force layout update
+        self._container_layout.update()
+        self._container.adjustSize()
+        self.adjustSize()
+
+        # Set a minimum width
+        if self.width() < 200:
+            self.setMinimumWidth(200)
+
+        # Limit max height
+        if self.height() > 400:
+            self.setFixedHeight(400)
 
     def show_at(self, global_pos: QPoint, input_width: int = 0):
         """Show popup at global position."""
         if input_width > 0:
-            self.setFixedWidth(input_width)
+            self.setMinimumWidth(input_width)
+            self.setMaximumWidth(input_width)
         self.move(global_pos)
         self.show()
+        self.raise_()  # Ensure it's on top
 
 
 class SearchInputWithHotkey(QLineEdit):
@@ -368,6 +564,7 @@ class SearchInputWithHotkey(QLineEdit):
 
     focus_gained = Signal()
     focus_lost = Signal()
+    escape_pressed = Signal()
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
@@ -376,6 +573,16 @@ class SearchInputWithHotkey(QLineEdit):
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
         self.focus_lost.emit()
+
+    def keyPressEvent(self, event):
+        """Handle key press events."""
+        if event.key() == Qt.Key_Escape:
+            # Emit escape signal and accept the event
+            self.escape_pressed.emit()
+            event.accept()
+        else:
+            # Pass other keys to parent
+            super().keyPressEvent(event)
 
 
 class OnlineMusicView(QWidget):
@@ -585,6 +792,7 @@ class OnlineMusicView(QWidget):
         # Connect focus events for hotkey popup
         self._search_input.focus_gained.connect(self._on_search_focus_gained)
         self._search_input.focus_lost.connect(self._on_search_focus_lost)
+        self._search_input.escape_pressed.connect(self._on_escape_pressed)
 
         # Setup completer for search suggestions
         self._completer = CustomQCompleter(self)
@@ -1735,7 +1943,12 @@ class OnlineMusicView(QWidget):
         """Handle search."""
         keyword = self._search_input.text().strip()
         if not keyword:
+            self._search_input.clearFocus()
             return
+
+        # Save to search history
+        if self._config:
+            self._config.add_search_history(keyword)
 
         # Hide favorites and recommendations sections when searching
         self._favorites_section.hide()
@@ -1763,29 +1976,50 @@ class OnlineMusicView(QWidget):
     def _on_search_focus_gained(self):
         """Handle search input focus gained - show hotkey popup if empty."""
         text = self._search_input.text().strip()
-        if not text and self._qqmusic_service:
+        if not text:
+            # Always show popup when gaining focus and input is empty
+            # Even if popup is already visible
             self._show_hotkey_popup()
 
     def _on_search_focus_lost(self):
         """Handle search input focus lost - hide hotkey popup."""
         # Delay hiding to allow click on hotkey items
-        QTimer.singleShot(100, self._hide_hotkey_popup)
+        QTimer.singleShot(200, self._hide_hotkey_popup)
 
     def _show_hotkey_popup(self):
-        """Show hotkey popup below search input."""
+        """Show hotkey popup below search input with search history and hotkeys."""
         if not self._hotkey_popup:
             self._hotkey_popup = HotkeyPopup(self)
             self._hotkey_popup.hotkey_clicked.connect(self._on_hotkey_clicked)
+            self._hotkey_popup.clear_history_requested.connect(self._on_clear_history)
+            self._hotkey_popup.delete_history_requested.connect(self._on_delete_history_item)
 
-        # Use cached hotkeys if available
-        if self._hotkeys:
-            self._hotkey_popup.set_hotkeys(self._hotkeys)
-            # Position popup below search input
+        # Get search history
+        history = self._config.get_search_history() if self._config else []
+
+        # If we have both history and hotkeys cached, show combined
+        if history and self._hotkeys:
+            self._hotkey_popup.set_combined(history, self._hotkeys)
             input_rect = self._search_input.rect()
             global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
             self._hotkey_popup.show_at(global_pos, self._search_input.width())
-        else:
-            # Fetch hotkeys
+        # If we have history but no hotkeys, show history and load hotkeys
+        elif history:
+            self._hotkey_popup.set_search_history(history)
+            input_rect = self._search_input.rect()
+            global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
+            self._hotkey_popup.show_at(global_pos, self._search_input.width())
+            # Load hotkeys in background
+            if not self._hotkeys and self._qqmusic_service:
+                self._load_hotkeys()
+        # If we have hotkeys but no history, show hotkeys
+        elif self._hotkeys:
+            self._hotkey_popup.set_hotkeys(self._hotkeys)
+            input_rect = self._search_input.rect()
+            global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
+            self._hotkey_popup.show_at(global_pos, self._search_input.width())
+        # No history and no hotkeys - load hotkeys
+        elif self._qqmusic_service:
             self._load_hotkeys()
 
     def _hide_hotkey_popup(self):
@@ -1817,7 +2051,18 @@ class OnlineMusicView(QWidget):
                 if not self._hotkey_popup:
                     self._hotkey_popup = HotkeyPopup(self)
                     self._hotkey_popup.hotkey_clicked.connect(self._on_hotkey_clicked)
-                self._hotkey_popup.set_hotkeys(hotkeys)
+                    self._hotkey_popup.clear_history_requested.connect(self._on_clear_history)
+                    self._hotkey_popup.delete_history_requested.connect(self._on_delete_history_item)
+
+                # Get search history and show combined
+                history = self._config.get_search_history() if self._config else []
+                if history and hotkeys:
+                    self._hotkey_popup.set_combined(history, hotkeys)
+                elif history:
+                    self._hotkey_popup.set_search_history(history)
+                else:
+                    self._hotkey_popup.set_hotkeys(hotkeys)
+
                 # Position popup below search input
                 input_rect = self._search_input.rect()
                 global_pos = self._search_input.mapToGlobal(input_rect.bottomLeft())
@@ -1827,6 +2072,34 @@ class OnlineMusicView(QWidget):
         """Handle hotkey button click."""
         self._search_input.setText(title)
         self._on_search()
+
+    def _on_clear_history(self):
+        """Handle clear all search history."""
+        if self._config:
+            self._config.clear_search_history()
+            # Refresh popup if it's visible
+            if self._hotkey_popup and self._hotkey_popup.isVisible():
+                self._show_hotkey_popup()
+
+    def _on_delete_history_item(self, keyword: str):
+        """Handle delete a search history item."""
+        if self._config:
+            self._config.remove_search_history_item(keyword)
+            # Refresh popup
+            self._show_hotkey_popup()
+
+    def _on_escape_pressed(self):
+        """Handle Escape key press - hide both hotkey popup and completer popup, then clear focus."""
+        # Hide hotkey popup
+        if self._hotkey_popup and self._hotkey_popup.isVisible():
+            self._hotkey_popup.hide()
+
+        # Hide completer popup
+        if self._completer and self._completer.popup().isVisible():
+            self._completer.popup().hide()
+
+        # Clear focus from search input
+        self._search_input.clearFocus()
 
     def _on_search_text_changed(self, text: str):
         """Handle search text change - show top lists when cleared."""

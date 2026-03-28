@@ -71,6 +71,9 @@ class SettingKey:
     CACHE_CLEANUP_INTERVAL_HOURS = "cache.cleanup_interval_hours"  # int
     CACHE_CLEANUP_LAST_RUN = "cache.cleanup_last_run"  # timestamp
 
+    # Search history
+    SEARCH_HISTORY = "search.history"  # JSON array of recent search keywords
+
 
 class ConfigManager:
     """
@@ -759,3 +762,76 @@ class ConfigManager:
             timestamp: Unix timestamp
         """
         self.set(SettingKey.CACHE_CLEANUP_LAST_RUN, timestamp)
+
+    # ===== Search history =====
+
+    def get_search_history(self) -> list:
+        """
+        Get search history list.
+
+        Returns:
+            List of search keywords (max 5, newest first)
+        """
+        history = self.get(SettingKey.SEARCH_HISTORY, [])
+        if isinstance(history, str):
+            try:
+                import json
+                history = json.loads(history)
+            except:
+                history = []
+        return history if isinstance(history, list) else []
+
+    def add_search_history(self, keyword: str) -> list:
+        """
+        Add a keyword to search history.
+
+        Args:
+            keyword: Search keyword to add
+
+        Returns:
+            Updated search history list
+        """
+        if not keyword or not keyword.strip():
+            return self.get_search_history()
+
+        keyword = keyword.strip()
+        history = self.get_search_history()
+
+        # Remove if already exists (to move to front)
+        if keyword in history:
+            history.remove(keyword)
+
+        # Add to front
+        history.insert(0, keyword)
+
+        # Keep only last 5
+        history = history[:5]
+
+        # Save
+        self.set(SettingKey.SEARCH_HISTORY, history)
+
+        return history
+
+    def clear_search_history(self):
+        """
+        Clear search history.
+        """
+        self.set(SettingKey.SEARCH_HISTORY, [])
+
+    def remove_search_history_item(self, keyword: str) -> list:
+        """
+        Remove a specific item from search history.
+
+        Args:
+            keyword: Search keyword to remove
+
+        Returns:
+            Updated search history list
+        """
+        history = self.get_search_history()
+
+        if keyword in history:
+            history.remove(keyword)
+            self.set(SettingKey.SEARCH_HISTORY, history)
+
+        return history
