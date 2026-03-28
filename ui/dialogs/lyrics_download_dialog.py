@@ -101,11 +101,11 @@ class LyricsDownloadDialog(QDialog):
         }
         QListWidget::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
         }
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 8px 20px;
             border-radius: 4px;

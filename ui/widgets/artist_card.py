@@ -55,7 +55,7 @@ class ArtistCard(QWidget):
         }
         QMenu::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
         }
     """
 
@@ -70,35 +70,6 @@ class ArtistCard(QWidget):
         # Register with theme manager
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
-
-
-class ArtistCard(QWidget):
-    """
-    Card widget for displaying artist information.
-
-    Features:
-        - Circular artist avatar
-        - Artist name and song count
-        - Click signal for navigation
-        - Right-click context menu for cover download
-    """
-
-    clicked = Signal(object)  # Emits Artist object
-    download_cover_requested = Signal(object)  # Emits Artist object
-
-    # Card size constants
-    AVATAR_SIZE = 160
-    CARD_WIDTH = 180
-    CARD_HEIGHT = 220
-    BORDER_RADIUS = 80  # Circular
-
-    def __init__(self, artist: Artist, parent=None):
-        super().__init__(parent)
-        self._artist = artist
-        self._is_hovering = False
-
-        self._setup_ui()
-        self._load_avatar()
 
     def _setup_ui(self):
         """Set up the card UI."""
@@ -247,19 +218,23 @@ class ArtistCard(QWidget):
 
     def _set_default_avatar(self):
         """Set default avatar when no image is available."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+
         pixmap = QPixmap(self.AVATAR_SIZE, self.AVATAR_SIZE)
         pixmap.fill(Qt.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Draw circular background
-        painter.setBrush(QColor("#3d3d3d"))
+        # Draw circular background with theme color
+        painter.setBrush(QColor(theme.text_secondary))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(0, 0, self.AVATAR_SIZE, self.AVATAR_SIZE)
 
-        # Draw person icon
-        painter.setPen(QColor("#666666"))
+        # Draw person icon with contrasting color
+        painter.setPen(QColor(theme.text))
         font = QFont()
         font.setPixelSize(60)
         painter.setFont(font)
@@ -331,4 +306,7 @@ class ArtistCard(QWidget):
                 background: transparent;
             }
         """))
+
+        # Reload avatar to apply new theme colors to default avatar
+        self._load_avatar()
 

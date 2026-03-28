@@ -80,9 +80,16 @@ class ArtistView(QWidget):
         self._setup_ui()
         self._connect_signals()
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def _setup_ui(self):
         """Set up the artist view UI."""
-        self.setStyleSheet("background-color: #121212;")
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        self.setStyleSheet(f"background-color: {theme.background};")
 
         # Main layout
         layout = QVBoxLayout(self)
@@ -94,28 +101,28 @@ class ArtistView(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                background-color: #121212;
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background-color: {theme.background};
                 border: none;
-            }
-            QScrollBar:vertical {
-                background-color: #121212;
+            }}
+            QScrollBar:vertical {{
+                background-color: {theme.background};
                 width: 12px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #3d3d3d;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {theme.background_alt};
                 border-radius: 6px;
                 min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #4d4d4d;
-            }
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         # Content container
         self._content = QWidget()
-        self._content.setStyleSheet("background-color: #121212;")
+        self._content.setStyleSheet(f"background-color: {theme.background};")
         content_layout = QVBoxLayout(self._content)
         content_layout.setContentsMargins(0, 0, 0, 20)
         content_layout.setSpacing(0)
@@ -144,17 +151,248 @@ class ArtistView(QWidget):
         """Connect signals."""
         EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        # Update main background
+        self.setStyleSheet(f"background-color: {theme.background};")
+
+        # Update scroll area
+        scroll_area = self.findChild(QScrollArea)
+        if scroll_area:
+            scroll_area.setStyleSheet(f"""
+                QScrollArea {{
+                    background-color: {theme.background};
+                    border: none;
+                }}
+                QScrollBar:vertical {{
+                    background-color: {theme.background};
+                    width: 12px;
+                }}
+                QScrollBar::handle:vertical {{
+                    background-color: {theme.background_alt};
+                    border-radius: 6px;
+                    min-height: 30px;
+                }}
+                QScrollBar::handle:vertical:hover {{
+                    background-color: {theme.background_hover};
+                }}
+            """)
+
+        # Update content widget
+        if hasattr(self, '_content'):
+            self._content.setStyleSheet(f"background-color: {theme.background};")
+
+        # Update header gradient
+        if hasattr(self, '_header'):
+            self._header.setStyleSheet(f"""
+                QFrame {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:0, y2:1,
+                        stop:0 {theme.highlight}, stop:1 {theme.background}
+                    );
+                }}
+            """)
+
+        # Update cover label
+        if hasattr(self, '_cover_label'):
+            self._cover_label.setStyleSheet(f"""
+                QLabel {{
+                    background-color: {theme.background_hover};
+                    border-radius: 100px;
+                }}
+            """)
+
+        # Update type label
+        if hasattr(self, '_type_label'):
+            self._type_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 12px;
+                    font-weight: bold;
+                }}
+            """)
+
+        # Update name label
+        if hasattr(self, '_name_label'):
+            self._name_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text};
+                    font-size: 48px;
+                    font-weight: bold;
+                }}
+            """)
+
+        # Update stats label
+        if hasattr(self, '_stats_label'):
+            self._stats_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 14px;
+                }}
+            """)
+
+        # Update play button
+        if hasattr(self, '_play_btn'):
+            self._play_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {theme.highlight};
+                    color: {theme.background};
+                    border: none;
+                    border-radius: 18px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding: 10px 30px;
+                }}
+                QPushButton:hover {{
+                    background-color: {theme.highlight_hover};
+                }}
+            """)
+
+        # Update shuffle button
+        if hasattr(self, '_shuffle_btn'):
+            self._shuffle_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {theme.text_secondary};
+                    border: 1px solid {theme.border};
+                    border-radius: 18px;
+                    font-size: 14px;
+                    padding: 10px 20px;
+                }}
+                QPushButton:hover {{
+                    color: {theme.text};
+                    border-color: {theme.text};
+                }}
+            """)
+
+        # Update back button
+        if hasattr(self, '_back_btn'):
+            self._back_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {theme.text_secondary};
+                    border: 1px solid {theme.border};
+                    border-radius: 18px;
+                    font-size: 14px;
+                    padding: 10px 20px;
+                }}
+                QPushButton:hover {{
+                    color: {theme.text};
+                    border-color: {theme.text};
+                }}
+            """)
+
+        # Update albums title
+        if hasattr(self, '_albums_title_label'):
+            self._albums_title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.highlight};
+                    font-size: 24px;
+                    font-weight: bold;
+                    padding: 10px;
+                }}
+            """)
+
+        # Update tracks title
+        if hasattr(self, '_tracks_title_label'):
+            self._tracks_title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.highlight};
+                    font-size: 24px;
+                    font-weight: bold;
+                    padding: 10px;
+                }}
+            """)
+
+        # Update tracks table
+        if hasattr(self, '_tracks_table'):
+            self._tracks_table.setStyleSheet(f"""
+                QTableWidget {{
+                    background-color: {theme.background};
+                    border: none;
+                    border-radius: 8px;
+                    gridline-color: {theme.background_hover};
+                }}
+                QTableWidget::item {{
+                    padding: 12px 8px;
+                    color: {theme.text};
+                    border: none;
+                    border-bottom: 1px solid {theme.background_hover};
+                }}
+                QTableWidget::item:alternate {{
+                    background-color: {theme.background_alt};
+                }}
+                QTableWidget::item:!alternate {{
+                    background-color: {theme.background};
+                }}
+                QTableWidget::item:selected {{
+                    background-color: {theme.highlight};
+                    color: {theme.text};
+                    font-weight: 500;
+                }}
+                QTableWidget::item:selected:!alternate {{
+                    background-color: {theme.highlight};
+                }}
+                QTableWidget::item:selected:alternate {{
+                    background-color: {theme.highlight_hover};
+                }}
+                QTableWidget::item:hover {{
+                    background-color: {theme.background_hover};
+                }}
+                QTableWidget::item:selected:hover {{
+                    background-color: {theme.highlight_hover};
+                }}
+                QTableWidget QHeaderView::section {{
+                    background-color: {theme.background_hover};
+                    color: {theme.highlight};
+                    padding: 14px 12px;
+                    border: none;
+                    border-bottom: 2px solid {theme.highlight};
+                    font-weight: bold;
+                    font-size: 13px;
+                    letter-spacing: 0.5px;
+                }}
+                QTableWidget QTableCornerButton::section {{
+                    background-color: {theme.background_hover};
+                    border: none;
+                    border-bottom: 2px solid {theme.highlight};
+                }}
+                QTableWidget QScrollBar:vertical {{
+                    background-color: {theme.background};
+                    width: 12px;
+                    border-radius: 6px;
+                }}
+                QTableWidget QScrollBar::handle:vertical {{
+                    background-color: {theme.border};
+                    border-radius: 6px;
+                    min-height: 40px;
+                }}
+                QTableWidget QScrollBar::handle:vertical:hover {{
+                    background-color: {theme.background_hover};
+                }}
+            """)
+
+        # Update loading label
+        if hasattr(self, '_loading_label'):
+            self._loading_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 14px;")
+
     def _create_header(self) -> QWidget:
         """Create artist header with cover and info."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         header = QFrame()
         header.setMinimumHeight(280)
-        header.setStyleSheet("""
-            QFrame {
+        header.setStyleSheet(f"""
+            QFrame {{
                 background: qlineargradient(
                     x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1e3a5f, stop:1 #121212
+                    stop:0 {theme.highlight}, stop:1 {theme.background}
                 );
-            }
+            }}
         """)
 
         layout = QHBoxLayout(header)
@@ -164,11 +402,11 @@ class ArtistView(QWidget):
         # Artist cover (clickable to show large image)
         self._cover_label = ClickableLabel()
         self._cover_label.setFixedSize(200, 200)
-        self._cover_label.setStyleSheet("""
-            QLabel {
-                background-color: #2a2a2a;
+        self._cover_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {theme.background_hover};
                 border-radius: 100px;
-            }
+            }}
         """)
         self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
@@ -181,34 +419,34 @@ class ArtistView(QWidget):
 
         # Artist type label
         self._type_label = QLabel(t("artist_type"))
-        self._type_label.setStyleSheet("""
-            QLabel {
-                color: #b3b3b3;
+        self._type_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text_secondary};
                 font-size: 12px;
                 font-weight: bold;
-            }
+            }}
         """)
         info_layout.addWidget(self._type_label)
 
         # Artist name
         self._name_label = QLabel("Artist Name")
         self._name_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._name_label.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
+        self._name_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text};
                 font-size: 48px;
                 font-weight: bold;
-            }
+            }}
         """)
         info_layout.addWidget(self._name_label)
 
         # Stats
         self._stats_label = QLabel("")
-        self._stats_label.setStyleSheet("""
-            QLabel {
-                color: #b3b3b3;
+        self._stats_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text_secondary};
                 font-size: 14px;
-            }
+            }}
         """)
         info_layout.addWidget(self._stats_label)
 
@@ -219,18 +457,18 @@ class ArtistView(QWidget):
         self._play_btn = QPushButton(t("play_all"))
         self._play_btn.setFixedSize(120, 36)
         self._play_btn.setCursor(Qt.PointingHandCursor)
-        self._play_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
+        self._play_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.highlight};
+                color: {theme.background};
                 border: none;
                 border-radius: 18px;
                 font-size: 14px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {theme.highlight_hover};
+            }}
         """)
         self._play_btn.clicked.connect(self._on_play_all)
         btn_layout.addWidget(self._play_btn)
@@ -238,18 +476,18 @@ class ArtistView(QWidget):
         self._shuffle_btn = QPushButton(t("shuffle"))
         self._shuffle_btn.setFixedSize(100, 36)
         self._shuffle_btn.setCursor(Qt.PointingHandCursor)
-        self._shuffle_btn.setStyleSheet("""
-            QPushButton {
+        self._shuffle_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #b3b3b3;
-                border: 1px solid #535353;
+                color: {theme.text_secondary};
+                border: 1px solid {theme.border};
                 border-radius: 18px;
                 font-size: 14px;
-            }
-            QPushButton:hover {
-                color: #ffffff;
-                border-color: #ffffff;
-            }
+            }}
+            QPushButton:hover {{
+                color: {theme.text};
+                border-color: {theme.text};
+            }}
         """)
         self._shuffle_btn.clicked.connect(self._on_shuffle)
         btn_layout.addWidget(self._shuffle_btn)
@@ -257,18 +495,18 @@ class ArtistView(QWidget):
         self._back_btn = QPushButton(t("back"))
         self._back_btn.setFixedSize(80, 36)
         self._back_btn.setCursor(Qt.PointingHandCursor)
-        self._back_btn.setStyleSheet("""
-            QPushButton {
+        self._back_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #b3b3b3;
-                border: 1px solid #535353;
+                color: {theme.text_secondary};
+                border: 1px solid {theme.border};
                 border-radius: 18px;
                 font-size: 14px;
-            }
-            QPushButton:hover {
-                color: #ffffff;
-                border-color: #ffffff;
-            }
+            }}
+            QPushButton:hover {{
+                color: {theme.text};
+                border-color: {theme.text};
+            }}
         """)
         self._back_btn.clicked.connect(self.back_clicked.emit)
         btn_layout.addWidget(self._back_btn)
@@ -283,6 +521,9 @@ class ArtistView(QWidget):
 
     def _create_albums_section(self) -> QWidget:
         """Create albums grid section."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         section = QWidget()
         section.setMinimumHeight(560)
         layout = QVBoxLayout(section)
@@ -291,13 +532,13 @@ class ArtistView(QWidget):
 
         # Section title - same style as library view
         self._albums_title_label = QLabel(t("albums"))
-        self._albums_title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
+        self._albums_title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.highlight};
                 font-size: 24px;
                 font-weight: bold;
                 padding: 10px;
-            }
+            }}
         """)
         layout.addWidget(self._albums_title_label)
 
@@ -307,24 +548,24 @@ class ArtistView(QWidget):
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setMaximumHeight(600)  # ~2 rows of album cards
-        scroll_area.setStyleSheet("""
-            QScrollArea {
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
                 background-color: transparent;
                 border: none;
-            }
-            QScrollBar:vertical {
-                background-color: #1e1e1e;
+            }}
+            QScrollBar:vertical {{
+                background-color: {theme.background};
                 width: 10px;
                 border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #3d3d3d;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {theme.background_alt};
                 border-radius: 5px;
                 min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #4d4d4d;
-            }
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         # Albums grid container
@@ -341,6 +582,9 @@ class ArtistView(QWidget):
 
     def _create_tracks_section(self) -> QWidget:
         """Create tracks table section with same style as library view."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         section = QWidget()
         layout = QVBoxLayout(section)
         layout.setContentsMargins(20, 20, 20, 0)
@@ -348,13 +592,13 @@ class ArtistView(QWidget):
 
         # Section title
         self._tracks_title_label = QLabel(t("all_tracks"))
-        self._tracks_title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
+        self._tracks_title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.highlight};
                 font-size: 24px;
                 font-weight: bold;
                 padding: 10px;
-            }
+            }}
         """)
         layout.addWidget(self._tracks_title_label)
 
@@ -393,105 +637,88 @@ class ArtistView(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
         # Styling - same as LibraryView
-        self._tracks_table.setStyleSheet("""
-            QTableWidget#tracksTable {
-                background-color: #1e1e1e;
+        self._tracks_table.setStyleSheet(f"""
+            QTableWidget#tracksTable {{
+                background-color: {theme.background};
                 border: none;
                 border-radius: 8px;
-                gridline-color: #2a2a2a;
-            }
-            QTableWidget#tracksTable::item {
+                gridline-color: {theme.background_hover};
+            }}
+            QTableWidget#tracksTable::item {{
                 padding: 12px 8px;
-                color: #e0e0e0;
+                color: {theme.text};
                 border: none;
-                border-bottom: 1px solid #2a2a2a;
-            }
+                border-bottom: 1px solid {theme.background_hover};
+            }}
             /* Alternating row colors for better readability */
-            QTableWidget#tracksTable::item:alternate {
-                background-color: #252525;
-            }
-            QTableWidget#tracksTable::item:!alternate {
-                background-color: #1e1e1e;
-            }
+            QTableWidget#tracksTable::item:alternate {{
+                background-color: {theme.background_alt};
+            }}
+            QTableWidget#tracksTable::item:!alternate {{
+                background-color: {theme.background};
+            }}
             /* Selected state with vibrant accent */
-            QTableWidget#tracksTable::item:selected {
-                background-color: #1db954;
-                color: #ffffff;
+            QTableWidget#tracksTable::item:selected {{
+                background-color: {theme.highlight};
+                color: {theme.text};
                 font-weight: 500;
-            }
-            QTableWidget#tracksTable::item:selected:!alternate {
-                background-color: #1db954;
-            }
-            QTableWidget#tracksTable::item:selected:alternate {
-                background-color: #1ed760;
-            }
+            }}
+            QTableWidget#tracksTable::item:selected:!alternate {{
+                background-color: {theme.highlight};
+            }}
+            QTableWidget#tracksTable::item:selected:alternate {{
+                background-color: {theme.highlight_hover};
+            }}
             /* Hover effect for interactivity */
-            QTableWidget#tracksTable::item:hover {
-                background-color: #2d2d2d;
-            }
-            QTableWidget#tracksTable::item:selected:hover {
-                background-color: #1ed760;
-            }
+            QTableWidget#tracksTable::item:hover {{
+                background-color: {theme.background_hover};
+            }}
+            QTableWidget#tracksTable::item:selected:hover {{
+                background-color: {theme.highlight_hover};
+            }}
             /* Remove focus outline */
-            QTableWidget#tracksTable::item:focus {
+            QTableWidget#tracksTable::item:focus {{
                 outline: none;
                 border: none;
-            }
-            QTableWidget#tracksTable:focus {
+            }}
+            QTableWidget#tracksTable:focus {{
                 outline: none;
                 border: none;
-            }
+            }}
             /* Header styling */
-            QTableWidget#tracksTable QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #1db954;
+            QTableWidget#tracksTable QHeaderView::section {{
+                background-color: {theme.background_hover};
+                color: {theme.highlight};
                 padding: 14px 12px;
                 border: none;
-                border-bottom: 2px solid #1db954;
+                border-bottom: 2px solid {theme.highlight};
                 border-radius: 0px;
                 font-weight: bold;
                 font-size: 13px;
                 letter-spacing: 0.5px;
-            }
+            }}
             /* First header (top-left corner) */
-            QTableWidget#tracksTable QTableCornerButton::section {
-                background-color: #2a2a2a;
+            QTableWidget#tracksTable QTableCornerButton::section {{
+                background-color: {theme.background_hover};
                 border: none;
-                border-right: 1px solid #3a3a3a;
-                border-bottom: 2px solid #1db954;
-            }
+                border-right: 1px solid {theme.border};
+                border-bottom: 2px solid {theme.highlight};
+            }}
             /* Scrollbar styling */
-            QTableWidget#tracksTable QScrollBar:vertical {
-                background-color: #1e1e1e;
+            QTableWidget#tracksTable QScrollBar:vertical {{
+                background-color: {theme.background};
                 width: 12px;
                 border-radius: 6px;
                 margin: 0px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:vertical {
-                background-color: #404040;
+            }}
+            QTableWidget#tracksTable QScrollBar::handle:vertical {{
+                background-color: {theme.border};
                 border-radius: 6px;
                 min-height: 40px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:vertical:hover {
-                background-color: #505050;
-            }
-            QTableWidget#tracksTable QScrollBar:horizontal {
-                background-color: #1e1e1e;
-                height: 12px;
-                border-radius: 6px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:horizontal {
-                background-color: #404040;
-                border-radius: 6px;
-                min-width: 40px;
-            }
-            QTableWidget#tracksTable QScrollBar::handle:horizontal:hover {
-                background-color: #505050;
-            }
-            QTableWidget#tracksTable QScrollBar::add-line, QScrollBar::sub-line {
-                height: 0px;
-                width: 0px;
-            }
+            }}
+            QTableWidget#tracksTable QScrollBar::handle:vertical:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         self._tracks_table.doubleClicked.connect(self._on_track_double_clicked)
@@ -504,6 +731,9 @@ class ArtistView(QWidget):
 
     def _create_loading_indicator(self) -> QWidget:
         """Create loading indicator."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setAlignment(Qt.AlignCenter)
@@ -511,21 +741,21 @@ class ArtistView(QWidget):
         progress = QProgressBar()
         progress.setRange(0, 0)  # Indeterminate
         progress.setFixedSize(200, 4)
-        progress.setStyleSheet("""
-            QProgressBar {
-                background-color: #2a2a2a;
+        progress.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {theme.background_hover};
                 border: none;
                 border-radius: 2px;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme.highlight};
                 border-radius: 2px;
-            }
+            }}
         """)
         layout.addWidget(progress)
 
         self._loading_label = QLabel(t("loading_artist"))
-        self._loading_label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
+        self._loading_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 14px;")
         layout.addWidget(self._loading_label)
 
         return widget
@@ -730,19 +960,22 @@ class ArtistView(QWidget):
         if not selected_tracks:
             return
 
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #282828;
-                color: #ffffff;
-                border: 1px solid #404040;
-            }
-            QMenu::item {
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+            }}
+            QMenu::item {{
                 padding: 8px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-            }
+            }}
+            QMenu::item:selected {{
+                background-color: {theme.highlight};
+            }}
         """)
 
         # Play action
@@ -889,13 +1122,16 @@ class ArtistCoverDialog(QDialog):
         dialog_height = min(int(screen_height * 0.8), 800)
         self.setFixedSize(dialog_width, dialog_height)
 
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Image label
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet("background-color: #1e1e1e;")
+        image_label.setStyleSheet(f"background-color: {theme.background_alt};")
 
         # Load and scale image to fit dialog
         pixmap = QPixmap(self._cover_path)
@@ -914,10 +1150,10 @@ class ArtistCoverDialog(QDialog):
         layout.addWidget(image_label)
 
         # Apply dialog style
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1e1e1e;
-            }
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.background};
+            }}
         """)
 
     def keyPressEvent(self, event):

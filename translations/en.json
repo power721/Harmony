@@ -550,6 +550,8 @@
     "theme_ocean": "Ocean (Deep Blue)",
     "theme_purple": "Purple (Mysterious)",
     "theme_sunset": "Sunset (Warm Red)",
+    "theme_light": "Light (Clean White)",
+    "theme_sepia": "Sepia (Warm Paper)",
     "theme_custom": "Custom Theme",
     "theme_background": "Background",
     "theme_background_alt": "Alt Background",

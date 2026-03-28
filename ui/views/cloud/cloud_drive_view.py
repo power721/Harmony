@@ -75,7 +75,7 @@ class CloudDriveView(QWidget):
         }
         QPushButton#addAccountBtn {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 10px 15px;
             border-radius: 20px;
@@ -97,7 +97,7 @@ class CloudDriveView(QWidget):
         }
         QListWidget#accountList::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             font-weight: bold;
         }
         QListWidget#accountList::item:hover {

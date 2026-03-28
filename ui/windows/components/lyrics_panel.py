@@ -454,7 +454,7 @@ class LyricsController(QObject):
             }
             QPushButton {
                 background-color: %highlight%;
-                color: #000000;
+                color: %background%;
                 border: none;
                 padding: 8px 20px;
                 border-radius: 4px;
@@ -480,7 +480,7 @@ class LyricsController(QObject):
         layout.addWidget(text_edit)
 
         # Load existing lyrics
-        existing_lyrics = LyricsService.load_lyrics(track_path)
+        existing_lyrics = LyricsService.get_lyrics(track_path, track_title, track_artist)
         if existing_lyrics:
             text_edit.setPlainText(existing_lyrics)
 

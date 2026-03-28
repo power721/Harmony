@@ -62,7 +62,7 @@ class BaseRenameDialog(QDialog):
         }
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 10px 24px;
             border-radius: 4px;

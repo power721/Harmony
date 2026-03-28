@@ -21,62 +21,6 @@ from system.i18n import t
 
 logger = logging.getLogger(__name__)
 
-
-class AlbumCard(QWidget):
-    """
-    Card widget for displaying album information.
-
-    Features:
-        - Album cover with hover effect
-        - Album name and artist
-        - Click signal for navigation
-        - Right-click context menu for cover download
-        - Lazy cover loading for performance
-    """
-
-    clicked = Signal(object)  # Emits Album object
-    download_cover_requested = Signal(object)  # Emits Album object
-
-    # Card size constants
-    COVER_SIZE = 180
-    CARD_WIDTH = 180
-    CARD_HEIGHT = 240
-    BORDER_RADIUS = 8
-
-    _STYLE_TEMPLATE = """
-        QMenu {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 4px;
-        }
-        QMenu::item {
-            padding: 8px 24px;
-            border-radius: 4px;
-        }
-        QMenu::item:selected {
-            background-color: %highlight%;
-            color: #000000;
-        }
-    """
-
-    def __init__(self, album: Album, parent=None):
-        super().__init__(parent)
-        self._album = album
-        self._is_hovering = False
-        self._cover_loaded = False
-
-        self._setup_ui()
-        # Set default cover immediately, load actual cover lazily
-        self._set_default_cover()
-        QTimer.singleShot(10, self._load_cover)
-
-        # Register with theme manager
-        from system.theme import ThemeManager
-        ThemeManager.instance().register_widget(self)
-
-
 class AlbumCard(QWidget):
     """
     Card widget for displaying album information.

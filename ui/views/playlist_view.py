@@ -129,15 +129,15 @@ class PlaylistView(QWidget):
     # QSS template with theme tokens
     _STYLE_TEMPLATE = """
         QWidget#playlistListPanel {
-            background-color: #141414;
+            background-color: %background%;
             border-right: 1px solid %background_hover%;
         }
         QWidget#playlistContentPanel {
-            background-color: #141414;
+            background-color: %background%;
         }
         QPushButton#newPlaylistBtn {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 10px 15px;
             border-radius: 20px;
@@ -176,7 +176,7 @@ class PlaylistView(QWidget):
         }
         QListWidget#playlistList::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             font-weight: bold;
         }
         QListWidget#playlistList::item:hover {
@@ -187,7 +187,7 @@ class PlaylistView(QWidget):
             background-color: %highlight_hover%;
         }
         QTableWidget {
-            background-color: #1e1e1e;
+            background-color: %background%;
             border: none;
             border-radius: 8px;
             gridline-color: %background_hover%;
@@ -199,10 +199,10 @@ class PlaylistView(QWidget):
             border-bottom: 1px solid %background_hover%;
         }
         QTableWidget::item:alternate {
-            background-color: #252525;
+            background-color: %background_alt%;
         }
         QTableWidget::item:!alternate {
-            background-color: #1e1e1e;
+            background-color: %background%;
         }
         QTableWidget::item:selected {
             background-color: %highlight%;
@@ -216,7 +216,7 @@ class PlaylistView(QWidget):
             background-color: %highlight_hover%;
         }
         QTableWidget::item:hover {
-            background-color: #2d2d2d;
+            background-color: %background_hover%;
         }
         QTableWidget::item:selected:hover {
             background-color: %highlight_hover%;
@@ -232,17 +232,17 @@ class PlaylistView(QWidget):
             letter-spacing: 0.5px;
         }
         QTableWidget QScrollBar:vertical {
-            background-color: #1e1e1e;
+            background-color: %background%;
             width: 12px;
             border-radius: 6px;
         }
         QTableWidget QScrollBar::handle:vertical {
-            background-color: #404040;
+            background-color: %border%;
             border-radius: 6px;
             min-height: 40px;
         }
         QTableWidget QScrollBar::handle:vertical:hover {
-            background-color: #505050;
+            background-color: %background_hover%;
         }
     """
     _CONTEXT_MENU_STYLE = """
@@ -272,15 +272,15 @@ class PlaylistView(QWidget):
         QLineEdit:focus { border: 1px solid %highlight%; }
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 8px 20px;
             border-radius: 4px;
             font-weight: bold;
         }
         QPushButton:hover { background-color: %highlight_hover%; }
-        QPushButton[role="cancel"] { background-color: #404040; color: %text%; }
-        QPushButton[role="cancel"]:hover { background-color: #505050; }
+        QPushButton[role="cancel"] { background-color: %border%; color: %text%; }
+        QPushButton[role="cancel"]:hover { background-color: %background_hover%; }
     """
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)

@@ -341,7 +341,7 @@ class LibraryView(QWidget):
         theme = theme_manager.current_theme
         self._loading_label.setStyleSheet(
             f"color: {theme.highlight}; font-size: 16px; padding: 40px; "
-            f"background-color: #1e1e1e; border-radius: 8px;"
+            f"background-color: {theme.background_alt}; border-radius: 8px;"
         )
 
         # Update status label with theme colors

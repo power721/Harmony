@@ -31,6 +31,7 @@ from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePl
 from services.online import OnlineMusicService, OnlineDownloadService
 from system.i18n import t
 from system.event_bus import EventBus
+from system.theme import ThemeManager
 from utils import format_duration
 
 logger = logging.getLogger(__name__)
@@ -227,28 +228,6 @@ class OnlineAlbumCard(QWidget):
     CARD_HEIGHT = 200
     BORDER_RADIUS = 8
 
-    _STYLE_COVER_CONTAINER = """
-        QFrame {
-            background-color: %background_hover%;
-            border-radius: BORDER_RADIUSpx;
-        }
-    """
-    _STYLE_COVER_CONTAINER_HOVER = """
-        QFrame {
-            background-color: %background_hover%;
-            border-radius: BORDER_RADIUSpx;
-            border: 2px solid %highlight%;
-        }
-    """
-    _STYLE_NAME_LABEL = """
-        QLabel {
-            color: %text%;
-            font-size: 12px;
-            font-weight: bold;
-            background: transparent;
-        }
-    """
-
     def __init__(self, album_data: Dict[str, Any], parent=None):
         super().__init__(parent)
         self._album_data = album_data
@@ -274,6 +253,8 @@ class OnlineAlbumCard(QWidget):
 
     def _setup_ui(self):
         """Set up the card UI."""
+        from system.theme import ThemeManager
+
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -285,6 +266,13 @@ class OnlineAlbumCard(QWidget):
         # Cover container
         self._cover_container = QFrame()
         self._cover_container.setFixedSize(self.COVER_SIZE, self.COVER_SIZE)
+
+        # Pre-computed stylesheets for hover (H-08 optimization)
+        theme = ThemeManager.instance().current_theme
+        radius = self.BORDER_RADIUS
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
+        self._cover_container.setStyleSheet(self._style_normal)
 
         # Cover label
         self._cover_label = QLabel(self._cover_container)
@@ -300,6 +288,14 @@ class OnlineAlbumCard(QWidget):
         # Album name
         self._name_label = QLabel(self._album.name or "Unknown")
         self._name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text%;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """))
         self._name_label.setWordWrap(True)
         self._name_label.setMaximumHeight(32)
 
@@ -354,28 +350,14 @@ class OnlineAlbumCard(QWidget):
     def enterEvent(self, event):
         """Handle mouse enter for hover effect."""
         self._is_hovering = True
-        self._apply_hover_style()
+        self._cover_container.setStyleSheet(self._style_hover)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave for hover effect."""
         self._is_hovering = False
-        self._apply_normal_style()
+        self._cover_container.setStyleSheet(self._style_normal)
         super().leaveEvent(event)
-
-    def _apply_hover_style(self):
-        """Apply hover style to cover container."""
-        from system.theme import ThemeManager
-        tm = ThemeManager.instance()
-        style = tm.get_qss(self._STYLE_COVER_CONTAINER_HOVER.replace("BORDER_RADIUS", str(self.BORDER_RADIUS)))
-        self._cover_container.setStyleSheet(style)
-
-    def _apply_normal_style(self):
-        """Apply normal style to cover container."""
-        from system.theme import ThemeManager
-        tm = ThemeManager.instance()
-        style = tm.get_qss(self._STYLE_COVER_CONTAINER.replace("BORDER_RADIUS", str(self.BORDER_RADIUS)))
-        self._cover_container.setStyleSheet(style)
 
     def mousePressEvent(self, event):
         """Handle mouse click."""
@@ -390,16 +372,32 @@ class OnlineAlbumCard(QWidget):
     def refresh_theme(self):
         """Refresh all styles using current theme tokens."""
         from system.theme import ThemeManager
-        tm = ThemeManager.instance()
 
-        # Apply appropriate style based on hover state
+        theme = ThemeManager.instance().current_theme
+        radius = self.BORDER_RADIUS
+
+        # Update pre-computed stylesheets
+        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
+        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
+
+        # Apply current state
         if self._is_hovering:
-            self._apply_hover_style()
+            self._cover_container.setStyleSheet(self._style_hover)
         else:
-            self._apply_normal_style()
+            self._cover_container.setStyleSheet(self._style_normal)
 
-        # Name label
-        self._name_label.setStyleSheet(tm.get_qss(self._STYLE_NAME_LABEL))
+        # Update text labels
+        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text%;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """))
+
+        # Update default cover with new theme colors
+        self._set_default_cover()
 
 
 class OnlineDetailView(QWidget):

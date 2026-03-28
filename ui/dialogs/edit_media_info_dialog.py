@@ -74,7 +74,7 @@ class EditMediaInfoDialog(QDialog):
         }
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 8px 20px;
             border-radius: 4px;

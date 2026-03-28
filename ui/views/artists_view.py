@@ -100,19 +100,23 @@ class ArtistDelegate(QStyledItemDelegate):
 
     def _create_default_cover(self) -> QPixmap:
         """Create default cover pixmap."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+
         pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
         pixmap.fill(Qt.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Draw circular background
-        painter.setBrush(QColor("#3d3d3d"))
+        # Draw circular background with theme color
+        painter.setBrush(QColor(theme.text_secondary))
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
 
-        # Draw person icon
-        painter.setPen(QColor("#666666"))
+        # Draw person icon with contrasting theme color
+        painter.setPen(QColor(theme.text))
         font = QFont()
         font.setPixelSize(80)
         painter.setFont(font)
@@ -168,6 +172,9 @@ class ArtistDelegate(QStyledItemDelegate):
         if not artist:
             return
 
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         rect = option.rect
         is_hovered = option.state & QStyle.State_MouseOver
 
@@ -179,14 +186,14 @@ class ArtistDelegate(QStyledItemDelegate):
         # Draw border on hover
         if is_hovered:
             painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(QPen(QColor("#1db954"), 3))
+            painter.setPen(QPen(QColor(theme.highlight), 3))
             painter.setBrush(Qt.NoBrush)
             painter.drawEllipse(cover_x - 2, cover_y - 2, self.COVER_SIZE + 4, self.COVER_SIZE + 4)
 
         painter.drawPixmap(cover_x, cover_y, cover)
 
         # Draw artist name
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(theme.text))
         font = QFont()
         font.setPixelSize(13)
         font.setBold(True)
@@ -201,7 +208,7 @@ class ArtistDelegate(QStyledItemDelegate):
         painter.drawText(name_rect, Qt.AlignHCenter | Qt.TextWordWrap, artist.display_name)
 
         # Draw stats
-        painter.setPen(QColor("#b3b3b3"))
+        painter.setPen(QColor(theme.text_secondary))
         font.setBold(False)
         font.setPixelSize(11)
         painter.setFont(font)
@@ -218,6 +225,10 @@ class ArtistDelegate(QStyledItemDelegate):
     def clear_cache(self):
         """Clear cover cache."""
         self._cover_cache.clear()
+
+    def refresh_theme(self):
+        """Refresh default cover when theme changes."""
+        self._default_cover = self._create_default_cover()
 
 
 class ArtistsView(QWidget):
@@ -249,6 +260,10 @@ class ArtistsView(QWidget):
         self._setup_ui()
         self._connect_signals()
 
+        # Register with theme manager
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
     def showEvent(self, event):
         """Load data when view is first shown."""
         super().showEvent(event)
@@ -257,7 +272,10 @@ class ArtistsView(QWidget):
 
     def _setup_ui(self):
         """Set up the artists view UI."""
-        self.setStyleSheet("background-color: #121212;")
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        self.setStyleSheet(f"background-color: {theme.background};")
         self.setMouseTracking(True)
 
         # Main layout
@@ -280,26 +298,26 @@ class ArtistsView(QWidget):
         self._list_view.setMouseTracking(True)
         self._list_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self._list_view.customContextMenuRequested.connect(self._show_context_menu)
-        self._list_view.setStyleSheet("""
-            QListView {
-                background-color: #121212;
+        self._list_view.setStyleSheet(f"""
+            QListView {{
+                background-color: {theme.background};
                 border: none;
-            }
-            QListView::item {
+            }}
+            QListView::item {{
                 background: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: #121212;
+            }}
+            QScrollBar:vertical {{
+                background-color: {theme.background};
                 width: 12px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #3d3d3d;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {theme.background_alt};
                 border-radius: 6px;
                 min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #4d4d4d;
-            }
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         # Model and delegate
@@ -323,13 +341,16 @@ class ArtistsView(QWidget):
 
     def _create_header(self) -> QWidget:
         """Create the header with title and search."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         header = QFrame()
         header.setFixedHeight(80)
-        header.setStyleSheet("""
-            QFrame {
-                background-color: #121212;
-                border-bottom: 1px solid #282828;
-            }
+        header.setStyleSheet(f"""
+            QFrame {{
+                background-color: {theme.background};
+                border-bottom: 1px solid {theme.border};
+            }}
         """)
 
         layout = QHBoxLayout(header)
@@ -337,23 +358,23 @@ class ArtistsView(QWidget):
 
         # Title
         self._title_label = QLabel(t("artists"))
-        self._title_label.setStyleSheet("""
-            QLabel {
-                color: #1db954;
+        self._title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.highlight};
                 font-size: 28px;
                 font-weight: bold;
                 padding: 10px;
-            }
+            }}
         """)
         layout.addWidget(self._title_label)
 
         # Artist count
         self._count_label = QLabel("")
-        self._count_label.setStyleSheet("""
-            QLabel {
-                color: #b3b3b3;
+        self._count_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text_secondary};
                 font-size: 14px;
-            }
+            }}
         """)
         layout.addWidget(self._count_label)
         layout.addStretch()
@@ -363,40 +384,40 @@ class ArtistsView(QWidget):
         self._search_input.setPlaceholderText(t("search"))
         self._search_input.setFixedWidth(300)
         self._search_input.setClearButtonEnabled(True)  # 启用清除按钮
-        self._search_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2a2a2a;
-                color: #e0e0e0;
-                border: 2px solid #3a3a3a;
+        self._search_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 2px solid {theme.border};
                 border-radius: 20px;
                 padding: 10px 15px;
                 font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1db954;
-                background-color: #2d2d2d;
-            }
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {theme.highlight};
+                background-color: {theme.background_hover};
+            }}
             /* 占位符文本样式 */
-            QLineEdit::placeholder {
-                color: #808080;
-            }
+            QLineEdit::placeholder {{
+                color: {theme.text_secondary};
+            }}
             /* 清除按钮样式 */
-            QLineEdit::clear-button {
+            QLineEdit::clear-button {{
                 subcontrol-origin: padding;
                 subcontrol-position: right;
                 width: 18px;
                 height: 18px;
                 margin-right: 8px;
                 border-radius: 9px;
-                background-color: #505050;
-            }
-            QLineEdit::clear-button:hover {
-                background-color: #606060;
-                border: 1px solid #707070;
-            }
-            QLineEdit::clear-button:pressed {
-                background-color: #404040;
-            }
+                background-color: {theme.border};
+            }}
+            QLineEdit::clear-button:hover {{
+                background-color: {theme.background_hover};
+                border: 1px solid {theme.border};
+            }}
+            QLineEdit::clear-button:pressed {{
+                background-color: {theme.background_alt};
+            }}
         """)
         layout.addWidget(self._search_input)
 
@@ -404,6 +425,9 @@ class ArtistsView(QWidget):
 
     def _create_loading_indicator(self) -> QWidget:
         """Create loading indicator."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setAlignment(Qt.AlignCenter)
@@ -411,21 +435,21 @@ class ArtistsView(QWidget):
         progress = QProgressBar()
         progress.setRange(0, 0)  # Indeterminate
         progress.setFixedSize(200, 4)
-        progress.setStyleSheet("""
-            QProgressBar {
-                background-color: #2a2a2a;
+        progress.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {theme.background_hover};
                 border: none;
                 border-radius: 2px;
-            }
-            QProgressBar::chunk {
-                background-color: #1db954;
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme.highlight};
                 border-radius: 2px;
-            }
+            }}
         """)
         layout.addWidget(progress)
 
         self._loading_label = QLabel(t("loading"))
-        self._loading_label.setStyleSheet("color: #b3b3b3; font-size: 14px;")
+        self._loading_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 14px;")
         layout.addWidget(self._loading_label)
 
         return widget
@@ -442,6 +466,112 @@ class ArtistsView(QWidget):
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
         EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
+    def refresh_theme(self):
+        """Refresh theme colors when theme changes."""
+        from system.theme import ThemeManager
+        from PySide6.QtWidgets import QFrame
+        theme = ThemeManager.instance().current_theme
+
+        # Update main background
+        self.setStyleSheet(f"background-color: {theme.background};")
+
+        # Update list view
+        if hasattr(self, '_list_view'):
+            self._list_view.setStyleSheet(f"""
+                QListView {{
+                    background-color: {theme.background};
+                    border: none;
+                }}
+                QListView::item {{
+                    background: transparent;
+                }}
+                QScrollBar:vertical {{
+                    background-color: {theme.background};
+                    width: 12px;
+                }}
+                QScrollBar::handle:vertical {{
+                    background-color: {theme.background_alt};
+                    border-radius: 6px;
+                    min-height: 30px;
+                }}
+                QScrollBar::handle:vertical:hover {{
+                    background-color: {theme.background_hover};
+                }}
+            """)
+
+        # Update header
+        header = self.findChild(QFrame)
+        if header:
+            header.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {theme.background};
+                    border-bottom: 1px solid {theme.border};
+                }}
+            """)
+
+        # Update title label
+        if hasattr(self, '_title_label'):
+            self._title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.highlight};
+                    font-size: 28px;
+                    font-weight: bold;
+                    padding: 10px;
+                }}
+            """)
+
+        # Update count label
+        if hasattr(self, '_count_label'):
+            self._count_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.text_secondary};
+                    font-size: 14px;
+                }}
+            """)
+
+        # Update search input
+        if hasattr(self, '_search_input'):
+            self._search_input.setStyleSheet(f"""
+                QLineEdit {{
+                    background-color: {theme.background_hover};
+                    color: {theme.text};
+                    border: 2px solid {theme.border};
+                    border-radius: 20px;
+                    padding: 10px 15px;
+                    font-size: 14px;
+                }}
+                QLineEdit:focus {{
+                    border: 2px solid {theme.highlight};
+                    background-color: {theme.background_hover};
+                }}
+                QLineEdit::placeholder {{
+                    color: {theme.text_secondary};
+                }}
+                QLineEdit::clear-button {{
+                    subcontrol-origin: padding;
+                    subcontrol-position: right;
+                    width: 18px;
+                    height: 18px;
+                    margin-right: 8px;
+                    border-radius: 9px;
+                    background-color: {theme.border};
+                }}
+                QLineEdit::clear-button:hover {{
+                    background-color: {theme.background_hover};
+                    border: 1px solid {theme.border};
+                }}
+                QLineEdit::clear-button:pressed {{
+                    background-color: {theme.background_alt};
+                }}
+            """)
+
+        # Update loading label
+        if hasattr(self, '_loading_label'):
+            self._loading_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 14px;")
+
+        # Refresh delegate's default cover
+        self._delegate.refresh_theme()
+
     def _on_item_entered(self, index):
         """Handle item entered for hover effect."""
         self._list_view.viewport().setCursor(Qt.PointingHandCursor)
@@ -456,23 +586,26 @@ class ArtistsView(QWidget):
         if not artist:
             return
 
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #3a3a3a;
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 6px;
                 padding: 4px;
-            }
-            QMenu::item {
+            }}
+            QMenu::item {{
                 padding: 8px 24px;
                 border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #1db954;
-                color: #000000;
-            }
+            }}
+            QMenu::item:selected {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
         """)
 
         # View details action

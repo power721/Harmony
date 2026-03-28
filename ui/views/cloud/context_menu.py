@@ -54,7 +54,7 @@ class CloudFileContextMenu(QObject):
         }
         QMenu::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
         }
         QMenu::item:disabled {
             color: %text_secondary%;
@@ -254,7 +254,7 @@ class CloudAccountContextMenu(QObject):
         }
         QMenu::item:selected {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
         }
     """
 

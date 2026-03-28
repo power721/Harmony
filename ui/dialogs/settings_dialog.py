@@ -62,83 +62,86 @@ class GeneralSettingsDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         self.setWindowTitle(t("settings"))
         self.setMinimumWidth(550)
 
-        # Apply dark theme styling
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
+        # Apply themed styling
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+            }}
+            QLabel {{
+                color: {theme.text};
+            }}
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 4px;
                 padding: 6px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QLineEdit:disabled {
-                background-color: #2a2a2a;
-                color: #606060;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {theme.highlight};
+            }}
+            QLineEdit:disabled {{
+                background-color: {theme.background};
+                color: {theme.text_secondary};
+            }}
+            QPushButton {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 4px;
                 padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QCheckBox {
-                color: #ffffff;
-            }
-            QCheckBox::indicator {
+            }}
+            QPushButton:hover {{
+                background-color: {theme.selection};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.background};
+            }}
+            QCheckBox {{
+                color: {theme.text};
+            }}
+            QCheckBox::indicator {{
                 width: 18px;
                 height: 18px;
-            }
-            QGroupBox {
-                color: #ffffff;
-                border: 1px solid #3a3a3a;
+            }}
+            QGroupBox {{
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 6px;
                 margin-top: 10px;
                 padding-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 8px;
-                color: #ffffff;
-            }
-            QTabWidget::pane {
-                border: 1px solid #3a3a3a;
-                background-color: #282828;
-            }
-            QTabBar::tab {
-                background-color: #2a2a2a;
-                color: #c0c0c0;
+                color: {theme.text};
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {theme.border};
+                background-color: {theme.background_alt};
+            }}
+            QTabBar::tab {{
+                background-color: {theme.background};
+                color: {theme.text_secondary};
                 padding: 8px 16px;
-                border: 1px solid #3a3a3a;
-            }
-            QTabBar::tab:selected {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border-bottom-color: #3a3a3a;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #353535;
-            }
+                border: 1px solid {theme.border};
+            }}
+            QTabBar::tab:selected {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border-bottom-color: {theme.background_hover};
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: {theme.selection};
+            }}
         """)
 
         layout = QVBoxLayout()
@@ -154,8 +157,10 @@ class GeneralSettingsDialog(QDialog):
         ai_layout.setSpacing(10)
 
         # Enable AI checkbox
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
         self._enable_checkbox = QCheckBox(t("ai_enable"))
-        self._enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
+        self._enable_checkbox.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {theme.text};")
         self._enable_checkbox.stateChanged.connect(self._on_enable_changed)
         ai_layout.addWidget(self._enable_checkbox)
 
@@ -196,8 +201,10 @@ class GeneralSettingsDialog(QDialog):
         settings_layout.addLayout(model_layout)
 
         # Hint label
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
         hint_label = QLabel(t("ai_settings_hint"))
-        hint_label.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        hint_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         hint_label.setWordWrap(True)
         settings_layout.addWidget(hint_label)
 
@@ -218,8 +225,10 @@ class GeneralSettingsDialog(QDialog):
         acoustid_layout.setSpacing(10)
 
         # Enable AcoustID checkbox
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
         self._acoustid_enable_checkbox = QCheckBox(t("acoustid_enable"))
-        self._acoustid_enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
+        self._acoustid_enable_checkbox.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {theme.text};")
         self._acoustid_enable_checkbox.stateChanged.connect(self._on_acoustid_enable_changed)
         acoustid_layout.addWidget(self._acoustid_enable_checkbox)
 
@@ -241,7 +250,7 @@ class GeneralSettingsDialog(QDialog):
 
         # AcoustID hint label
         acoustid_hint_label = QLabel(t("acoustid_settings_hint"))
-        acoustid_hint_label.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        acoustid_hint_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         acoustid_hint_label.setWordWrap(True)
         acoustid_settings_layout.addWidget(acoustid_hint_label)
 
@@ -293,7 +302,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Hint label for download directory
         download_dir_hint = QLabel(t("online_music_download_dir_hint"))
-        download_dir_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        download_dir_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         download_dir_hint.setWordWrap(True)
         qqmusic_layout.addWidget(download_dir_hint)
 
@@ -338,7 +347,7 @@ class GeneralSettingsDialog(QDialog):
         cache_info_group = QGroupBox(t("cache_current_info"))
         cache_info_layout = QVBoxLayout()
         self._cache_info_label = QLabel(t("loading"))
-        self._cache_info_label.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self._cache_info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         cache_info_layout.addWidget(self._cache_info_label)
 
         # Add button to open cache directory
@@ -447,7 +456,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Hint label
         cache_hint = QLabel(t("cache_settings_hint"))
-        cache_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        cache_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         cache_hint.setWordWrap(True)
         strategy_layout.addWidget(cache_hint)
 
@@ -481,11 +490,11 @@ class GeneralSettingsDialog(QDialog):
         artist_covers_section.setSpacing(8)
 
         self._artist_covers_count = QLabel()
-        self._artist_covers_count.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self._artist_covers_count.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         artist_covers_section.addWidget(self._artist_covers_count)
 
         artist_covers_hint = QLabel(t("batch_artist_covers_hint"))
-        artist_covers_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        artist_covers_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         artist_covers_hint.setWordWrap(True)
         artist_covers_section.addWidget(artist_covers_hint)
 
@@ -502,11 +511,11 @@ class GeneralSettingsDialog(QDialog):
         album_covers_section.setSpacing(8)
 
         self._album_covers_count = QLabel()
-        self._album_covers_count.setStyleSheet("color: #a0a0a0; font-size: 12px;")
+        self._album_covers_count.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         album_covers_section.addWidget(self._album_covers_count)
 
         album_covers_hint = QLabel(t("batch_album_covers_hint"))
-        album_covers_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        album_covers_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         album_covers_hint.setWordWrap(True)
         album_covers_section.addWidget(album_covers_hint)
 
@@ -531,7 +540,7 @@ class GeneralSettingsDialog(QDialog):
         artist_repair_section.setSpacing(8)
 
         artist_repair_hint = QLabel(t("artist_repair_hint"))
-        artist_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        artist_repair_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         artist_repair_hint.setWordWrap(True)
         artist_repair_section.addWidget(artist_repair_hint)
 
@@ -548,7 +557,7 @@ class GeneralSettingsDialog(QDialog):
         album_repair_section.setSpacing(8)
 
         album_repair_hint = QLabel(t("album_repair_hint"))
-        album_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        album_repair_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         album_repair_hint.setWordWrap(True)
         album_repair_section.addWidget(album_repair_hint)
 
@@ -565,7 +574,7 @@ class GeneralSettingsDialog(QDialog):
         junction_repair_section.setSpacing(8)
 
         junction_repair_hint = QLabel(t("junction_repair_hint"))
-        junction_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        junction_repair_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         junction_repair_hint.setWordWrap(True)
         junction_repair_section.addWidget(junction_repair_hint)
 
@@ -599,13 +608,13 @@ class GeneralSettingsDialog(QDialog):
         from system.theme import PRESET_THEMES, ThemeManager
         self._theme_preset_buttons = {}
         for theme_key in PRESET_THEMES:
-            theme = PRESET_THEMES[theme_key]
-            btn = QPushButton(t(theme.display_name))
+            theme_preset = PRESET_THEMES[theme_key]
+            btn = QPushButton(t(theme_preset.display_name))
             btn.setFixedHeight(35)
             btn.setProperty("_skip_theme", True)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {theme.highlight};
+                    background-color: {theme_preset.highlight};
                     color: #ffffff;
                     border: 2px solid transparent;
                     border-radius: 4px;

@@ -111,27 +111,27 @@ class QueueItemWidget(QWidget):
             """)
             self._index_label.setStyleSheet("""
                 QLabel {
-                    color: #000000;
+                    color: %background%;
                     font-size: 12px;
                     font-weight: bold;
                 }
             """)
             self._title_label.setStyleSheet("""
                 QLabel {
-                    color: #000000;
+                    color: %background%;
                     font-size: 13px;
                     font-weight: bold;
                 }
             """)
             self._artist_label.setStyleSheet("""
                 QLabel {
-                    color: #000000;
+                    color: %background%;
                     font-size: 11px;
                 }
             """)
             self._duration_label.setStyleSheet("""
                 QLabel {
-                    color: #000000;
+                    color: %background%;
                     font-size: 12px;
                 }
             """)
@@ -408,7 +408,7 @@ class QueueView(QWidget):
             padding: 10px;
         }
         QWidget#queueHeader {
-            background-color: #141414;
+            background-color: %background%;
         }
         QPushButton#queueActionBtn {
             background: transparent;
@@ -425,7 +425,7 @@ class QueueView(QWidget):
             background-color: %selection%;
         }
         QListWidget#queueList {
-            background-color: #1e1e1e;
+            background-color: %background%;
             border: none;
             outline: none;
             border-radius: 8px;
@@ -433,23 +433,23 @@ class QueueView(QWidget):
         QListWidget#queueList::item {
             border-bottom: 1px solid %background_hover%;
             margin: 0px;
-            background-color: #1e1e1e;
+            background-color: %background%;
         }
         QListWidget#queueList::item:selected {
             background-color: %highlight%;
         }
         QListWidget QScrollBar:vertical {
-            background-color: #1e1e1e;
+            background-color: %background%;
             width: 12px;
             border-radius: 6px;
         }
         QListWidget QScrollBar::handle:vertical {
-            background-color: #404040;
+            background-color: %border%;
             border-radius: 6px;
             min-height: 40px;
         }
         QListWidget QScrollBar::handle:vertical:hover {
-            background-color: #505050;
+            background-color: %background_hover%;
         }
     """
     _CONTEXT_MENU_STYLE = """
@@ -469,7 +469,7 @@ class QueueView(QWidget):
         QDialog { background-color: %background_alt%; color: %text%; }
         QLabel { color: %text%; font-size: 13px; }
         QLineEdit {
-            background-color: #181818;
+            background-color: %background_alt%;
             color: %text%;
             border: 1px solid %border%;
             border-radius: 4px;
@@ -479,15 +479,15 @@ class QueueView(QWidget):
         QLineEdit:focus { border: 1px solid %highlight%; }
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 8px 20px;
             border-radius: 4px;
             font-weight: bold;
         }
         QPushButton:hover { background-color: %highlight_hover%; }
-        QPushButton[role="cancel"] { background-color: #404040; color: %text%; }
-        QPushButton[role="cancel"]:hover { background-color: #505050; }
+        QPushButton[role="cancel"] { background-color: %border%; color: %text%; }
+        QPushButton[role="cancel"]:hover { background-color: %background_hover%; }
     """
 
     play_track = Signal(int)
@@ -1323,46 +1323,49 @@ class QueueView(QWidget):
             return
 
         # Show input dialog for playlist name
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         dialog = QDialog(self)
         dialog.setWindowTitle(t("create_playlist"))
         dialog.setMinimumWidth(350)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+            }}
+            QLabel {{
+                color: {theme.text};
+            }}
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 4px;
                 padding: 8px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {theme.highlight};
+            }}
+            QPushButton {{
+                background-color: {theme.highlight};
+                color: {theme.background};
                 border: none;
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-weight: bold;
                 min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {theme.highlight_hover};
+            }}
+            QPushButton[role="cancel"] {{
+                background-color: {theme.border};
+                color: {theme.text};
+            }}
+            QPushButton[role="cancel"]:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         layout = QVBoxLayout(dialog)
@@ -1480,14 +1483,14 @@ class QueueView(QWidget):
             }
             QListWidget::item:selected {
                 background-color: #1db954;
-                color: #000000;
+                color: %background%;
             }
             QListWidget::item:hover {
                 background-color: #2d2d2d;
             }
             QPushButton {
                 background-color: #1db954;
-                color: #000000;
+                color: %background%;
                 border: none;
                 border-radius: 4px;
                 padding: 8px 20px;
@@ -1599,46 +1602,49 @@ class QueueView(QWidget):
     def _create_playlist_from_queue_with_tracks(self, track_ids: list, parent_dialog=None):
         """Create a new playlist with specified track IDs."""
         # Show input dialog for playlist name
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         dialog = QDialog(self)
         dialog.setWindowTitle(t("create_playlist"))
         dialog.setMinimumWidth(350)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
+        dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+            }}
+            QLabel {{
+                color: {theme.text};
+            }}
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
                 border-radius: 4px;
                 padding: 8px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #1db954;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: #000000;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {theme.highlight};
+            }}
+            QPushButton {{
+                background-color: {theme.highlight};
+                color: {theme.background};
                 border: none;
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-weight: bold;
                 min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {theme.highlight_hover};
+            }}
+            QPushButton[role="cancel"] {{
+                background-color: {theme.border};
+                color: {theme.text};
+            }}
+            QPushButton[role="cancel"]:hover {{
+                background-color: {theme.background_hover};
+            }}
         """)
 
         layout = QVBoxLayout(dialog)

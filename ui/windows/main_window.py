@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
         }
         QPushButton#addMusicBtn {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             padding: 14px;
             border-radius: 25px;

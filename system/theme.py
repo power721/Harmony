@@ -116,6 +116,32 @@ PRESET_THEMES = {
         selection='rgba(42, 20, 20, 0.8)',
         border='#4a2a2a'
     ),
+    'light': Theme(
+        name='Light',
+        display_name='theme_light',
+        background='#ffffff',
+        background_alt='#f5f5f5',
+        background_hover='#e8e8e8',
+        text='#1a1a1a',
+        text_secondary='#666666',
+        highlight='#0066cc',  # Deep blue for better contrast on white
+        highlight_hover='#0080ff',
+        selection='rgba(232, 232, 232, 0.8)',
+        border='#d0d0d0'
+    ),
+    'sepia': Theme(
+        name='Sepia',
+        display_name='theme_sepia',
+        background='#f4ecd8',
+        background_alt='#ebe3cf',
+        background_hover='#ddd5c1',
+        text='#3d3d3d',
+        text_secondary='#666666',
+        highlight='#8b4513',  # Saddle brown
+        highlight_hover='#a0522d',
+        selection='rgba(221, 213, 193, 0.8)',
+        border='#c4b89e'
+    ),
 }
 
 

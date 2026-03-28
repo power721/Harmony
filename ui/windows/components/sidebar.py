@@ -64,7 +64,7 @@ class Sidebar(QWidget):
         }
         QPushButton:checked {
             background: %highlight%;
-            color: #000000;
+            color: %background%;
             border: 2px solid %highlight%;
             font-weight: bold;
         }

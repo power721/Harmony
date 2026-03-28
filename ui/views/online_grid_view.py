@@ -115,6 +115,10 @@ class OnlineItemDelegate(QStyledItemDelegate):
 
     def _create_default_cover(self) -> QPixmap:
         """Create default cover pixmap."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+
         pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
         pixmap.fill(Qt.transparent)
 
@@ -122,20 +126,20 @@ class OnlineItemDelegate(QStyledItemDelegate):
         painter.setRenderHint(QPainter.Antialiasing)
 
         if self._data_type == "singer":
-            # Circular background for artists
-            painter.setBrush(QColor("#3d3d3d"))
+            # Circular background for artists with theme color
+            painter.setBrush(QColor(theme.text_secondary))
             painter.setPen(Qt.NoPen)
             painter.drawEllipse(0, 0, self.COVER_SIZE, self.COVER_SIZE)
             icon = "\u265A"  # Chess queen (person icon)
         else:
-            # Rounded rectangle for albums/playlists
-            painter.setBrush(QColor("#3d3d3d"))
+            # Rounded rectangle for albums/playlists with theme color
+            painter.setBrush(QColor(theme.text_secondary))
             painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(0, 0, self.COVER_SIZE, self.COVER_SIZE, 8, 8)
             icon = "\u266B"  # Music note
 
-        # Draw icon
-        painter.setPen(QColor("#666666"))
+        # Draw icon with contrasting theme color
+        painter.setPen(QColor(theme.text))
         font = QFont()
         font.setPixelSize(60 if self._data_type == "singer" else 80)
         painter.setFont(font)
@@ -270,7 +274,6 @@ class OnlineItemDelegate(QStyledItemDelegate):
                 final = masked
 
             self._cover_cache[url] = final
-            logger.debug(f"Successfully loaded cover from cache: {url}")
 
             # Trigger repaint
             if self.parent():
@@ -286,6 +289,9 @@ class OnlineItemDelegate(QStyledItemDelegate):
         if not item:
             logger.warning(f"[OnlineItemDelegate] paint called but item is None, index={index.row()}")
             return
+
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
 
         rect = option.rect
         is_hovered = option.state & QStyle.State_MouseOver
@@ -311,7 +317,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
 
             if self._data_type == "singer":
                 # Circular border for artists
-                painter.setPen(QPen(QColor("#1db954"), 3))
+                painter.setPen(QPen(QColor(theme.highlight_hover), 3))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(cover_x - 2, cover_y - 2, self.COVER_SIZE + 4, self.COVER_SIZE + 4)
             else:
@@ -323,18 +329,21 @@ class OnlineItemDelegate(QStyledItemDelegate):
                     self.CARD_HEIGHT - 40
                 )
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(30, 30, 30, 200))
+                # Use semi-transparent background_hover for hover background
+                hover_bg = QColor(theme.background_hover)
+                hover_bg.setAlpha(200)
+                painter.setBrush(hover_bg)
                 painter.drawRoundedRect(bg_rect, 12, 12)
 
                 # Border
-                painter.setPen(QPen(QColor("#1db954"), 2))
+                painter.setPen(QPen(QColor(theme.highlight_hover), 2))
                 painter.setBrush(Qt.NoBrush)
-                painter.drawRoundedRect(cover_x, cover_y, self.COVER_SIZE, self.COVER_SIZE, 8, 8)
+                painter.drawRoundedRect(cover_x, cover_y, self.COVER_SIZE, self.COVER_SIZE, 4, 4)
 
         painter.drawPixmap(cover_x, cover_y, cover)
 
         # Draw text based on item type
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(theme.text))
         font = QFont()
         font.setPixelSize(13)
         font.setBold(True)
@@ -363,7 +372,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
         painter.drawText(name_rect, name_align, name)
 
         # Draw subtitle
-        painter.setPen(QColor("#b3b3b3"))
+        painter.setPen(QColor(theme.text_secondary))
         font.setBold(False)
         font.setPixelSize(11)
         painter.setFont(font)
@@ -396,6 +405,10 @@ class OnlineItemDelegate(QStyledItemDelegate):
         """Clear cover cache and pending downloads."""
         self._cover_cache.clear()
         self._pending_downloads.clear()
+
+    def refresh_theme(self):
+        """Refresh default cover when theme changes."""
+        self._default_cover = self._create_default_cover()
 
 
 class OnlineGridView(QWidget):
@@ -442,7 +455,7 @@ class OnlineGridView(QWidget):
         }
         QPushButton:hover {
             background: %highlight%;
-            color: white;
+            color: %background%;
         }
     """
     _STYLE_PROGRESS_BAR = """
@@ -670,3 +683,6 @@ class OnlineGridView(QWidget):
         self._loading_label.setStyleSheet(
             f"color: {tm.current_theme.text_secondary}; font-size: 14px;"
         )
+
+        # Refresh delegate's default cover
+        self._delegate.refresh_theme()

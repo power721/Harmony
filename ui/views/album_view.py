@@ -67,12 +67,12 @@ class AlbumView(QWidget):
             width: 12px;
         }
         QScrollBar::handle:vertical {
-            background-color: #3d3d3d;
+            background-color: %background_alt%;
             border-radius: 6px;
             min-height: 30px;
         }
         QScrollBar::handle:vertical:hover {
-            background-color: #4d4d4d;
+            background-color: %background_hover%;
         }
         QWidget#content {
             background-color: %background%;
@@ -121,7 +121,7 @@ class AlbumView(QWidget):
     _PLAY_BTN_TEMPLATE = """
         QPushButton {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             border: none;
             border-radius: 18px;
             font-size: 14px;
@@ -157,7 +157,7 @@ class AlbumView(QWidget):
 
     _TRACKS_TABLE_TEMPLATE = """
         QTableWidget#tracksTable {
-            background-color: #1e1e1e;
+            background-color: %background%;
             border: none;
             border-radius: 8px;
             gridline-color: %background_hover%;
@@ -169,10 +169,10 @@ class AlbumView(QWidget):
             border-bottom: 1px solid %background_hover%;
         }
         QTableWidget#tracksTable::item:alternate {
-            background-color: #252525;
+            background-color: %background_alt%;
         }
         QTableWidget#tracksTable::item:!alternate {
-            background-color: #1e1e1e;
+            background-color: %background%;
         }
         QTableWidget#tracksTable::item:selected {
             background-color: %highlight%;
@@ -186,7 +186,7 @@ class AlbumView(QWidget):
             background-color: %highlight_hover%;
         }
         QTableWidget#tracksTable::item:hover {
-            background-color: #2d2d2d;
+            background-color: %background_hover%;
         }
         QTableWidget#tracksTable::item:selected:hover {
             background-color: %highlight_hover%;
@@ -207,7 +207,7 @@ class AlbumView(QWidget):
             border-bottom: 2px solid %highlight%;
         }
         QTableWidget#tracksTable QScrollBar:vertical {
-            background-color: #1e1e1e;
+            background-color: %background%;
             width: 12px;
             border-radius: 6px;
         }
@@ -217,7 +217,7 @@ class AlbumView(QWidget):
             min-height: 40px;
         }
         QTableWidget#tracksTable QScrollBar::handle:vertical:hover {
-            background-color: #505050;
+            background-color: %background_hover%;
         }
     """
 
@@ -767,6 +767,9 @@ class AlbumCoverDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the dialog UI."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
         self.setWindowTitle(self._album_name or t("album_art"))
         self.setModal(True)
 
@@ -786,7 +789,7 @@ class AlbumCoverDialog(QDialog):
         # Image label
         image_label = QLabel()
         image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet("background-color: #1e1e1e;")
+        image_label.setStyleSheet(f"background-color: {theme.background_alt};")
 
         # Load and scale image to fit dialog
         pixmap = QPixmap(self._cover_path)
@@ -805,10 +808,10 @@ class AlbumCoverDialog(QDialog):
         layout.addWidget(image_label)
 
         # Apply dialog style
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1e1e1e;
-            }
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.background};
+            }}
         """)
 
     def keyPressEvent(self, event):

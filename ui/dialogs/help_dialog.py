@@ -59,7 +59,7 @@ class HelpDialog(QDialog):
         }
         QPushButton#rebuildBtn {
             background-color: %highlight%;
-            color: #000000;
+            color: %background%;
             font-weight: bold;
         }
         QPushButton#rebuildBtn:hover {

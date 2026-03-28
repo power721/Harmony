@@ -51,11 +51,11 @@ class TestTheme:
 class TestPresetThemes:
     """Tests for preset themes."""
 
-    def test_all_presets_have_5_themes(self):
-        assert len(PRESET_THEMES) == 5
+    def test_all_presets_have_7_themes(self):
+        assert len(PRESET_THEMES) == 7
 
     def test_preset_names(self):
-        expected = {'dark', 'gold', 'ocean', 'purple', 'sunset'}
+        expected = {'dark', 'gold', 'ocean', 'purple', 'sunset', 'light', 'sepia'}
         assert set(PRESET_THEMES.keys()) == expected
 
     def test_all_presets_have_complete_colors(self):
@@ -171,7 +171,9 @@ class TestThemeManager:
         themes = tm.get_available_themes()
         assert 'dark' in themes
         assert 'gold' in themes
-        assert len(themes) == 5
+        assert 'light' in themes
+        assert 'sepia' in themes
+        assert len(themes) == 7
 
     def test_load_custom_theme_from_config(self):
         config = MagicMock()

@@ -550,6 +550,8 @@
     "theme_ocean": "海洋（深邃蓝）",
     "theme_purple": "紫色（神秘优雅）",
     "theme_sunset": "日落（热烈红）",
+    "theme_light": "亮色（洁净白）",
+    "theme_sepia": "复古（暖黄纸）",
     "theme_custom": "自定义主题",
     "theme_background": "主背景",
     "theme_background_alt": "次背景",
