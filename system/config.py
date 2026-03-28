@@ -74,6 +74,13 @@ class SettingKey:
     # Search history
     SEARCH_HISTORY = "search.history"  # JSON array of recent search keywords
 
+    # Online music view state
+    ONLINE_MUSIC_KEYWORD = "online_music.keyword"  # Current search keyword
+    ONLINE_MUSIC_PAGE_TYPE = "online_music.page_type"  # "top_list", "search", "detail", "favorites"
+    ONLINE_MUSIC_DETAIL_TYPE = "online_music.detail_type"  # "artist", "album", "playlist", "fav_songs", "created_playlists", "fav_playlists", "fav_albums", "recommend_songs", "recommend_playlists"
+    ONLINE_MUSIC_DETAIL_MID = "online_music.detail_mid"  # mid of current detail view
+    ONLINE_MUSIC_DETAIL_DATA = "online_music.detail_data"  # JSON data for detail view
+
 
 class ConfigManager:
     """
@@ -835,3 +842,107 @@ class ConfigManager:
             self.set(SettingKey.SEARCH_HISTORY, history)
 
         return history
+
+    # ===== Online music view state =====
+
+    def get_online_music_keyword(self) -> str:
+        """
+        Get online music search keyword.
+
+        Returns:
+            Search keyword or empty string
+        """
+        return self.get(SettingKey.ONLINE_MUSIC_KEYWORD, "")
+
+    def set_online_music_keyword(self, keyword: str):
+        """
+        Set online music search keyword.
+
+        Args:
+            keyword: Search keyword
+        """
+        self.set(SettingKey.ONLINE_MUSIC_KEYWORD, keyword)
+
+    def get_online_music_page_type(self) -> str:
+        """
+        Get online music page type.
+
+        Returns:
+            Page type: "top_list", "search", or "detail"
+        """
+        return self.get(SettingKey.ONLINE_MUSIC_PAGE_TYPE, "top_list")
+
+    def set_online_music_page_type(self, page_type: str):
+        """
+        Set online music page type.
+
+        Args:
+            page_type: Page type ("top_list", "search", "detail")
+        """
+        self.set(SettingKey.ONLINE_MUSIC_PAGE_TYPE, page_type)
+
+    def get_online_music_detail_type(self) -> str:
+        """
+        Get online music detail view type.
+
+        Returns:
+            Detail type: "artist", "album", or "playlist"
+        """
+        return self.get(SettingKey.ONLINE_MUSIC_DETAIL_TYPE, "")
+
+    def set_online_music_detail_type(self, detail_type: str):
+        """
+        Set online music detail view type.
+
+        Args:
+            detail_type: Detail type ("artist", "album", "playlist")
+        """
+        self.set(SettingKey.ONLINE_MUSIC_DETAIL_TYPE, detail_type)
+
+    def get_online_music_detail_mid(self) -> str:
+        """
+        Get online music detail view mid.
+
+        Returns:
+            mid of artist/album/playlist
+        """
+        return self.get(SettingKey.ONLINE_MUSIC_DETAIL_MID, "")
+
+    def set_online_music_detail_mid(self, mid: str):
+        """
+        Set online music detail view mid.
+
+        Args:
+            mid: mid of artist/album/playlist
+        """
+        self.set(SettingKey.ONLINE_MUSIC_DETAIL_MID, mid)
+
+    def get_online_music_detail_data(self) -> dict:
+        """
+        Get online music detail view data.
+
+        Returns:
+            Dict with detail view data (name, cover_url, etc.)
+        """
+        data = self.get(SettingKey.ONLINE_MUSIC_DETAIL_DATA, {})
+        if isinstance(data, str):
+            try:
+                import json
+                data = json.loads(data)
+            except:
+                data = {}
+        return data if isinstance(data, dict) else {}
+
+    def set_online_music_detail_data(self, data: dict):
+        """
+        Set online music detail view data.
+
+        Args:
+            data: Dict with detail view data
+        """
+        try:
+            import json
+            self.set(SettingKey.ONLINE_MUSIC_DETAIL_DATA, json.dumps(data, ensure_ascii=False))
+        except (TypeError, ValueError) as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to save online music detail data: {e}")

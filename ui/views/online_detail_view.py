@@ -924,7 +924,7 @@ class OnlineDetailView(QWidget):
 
         self._load_detail()
 
-    def load_songs_directly(self, songs: List[Dict], title: str = "", cover_url: str = ""):
+    def load_songs_directly(self, songs: List[Dict], title: str = "", cover_url: str = "", detail_type: str = "playlist"):
         """
         Load songs directly without API call.
         Used for displaying recommendation song lists.
@@ -933,13 +933,18 @@ class OnlineDetailView(QWidget):
             songs: List of song dictionaries from API
             title: Title for the song list
             cover_url: Cover URL for the song list
+            detail_type: Detail type (default: "playlist", can be recommend type like "guess", "radar", etc.)
         """
-        self._detail_type = "playlist"
+        self._detail_type = detail_type
         self._mid = ""  # No playlist ID for direct songs
         self._current_page = 1
 
         # Set info
-        self._type_label.setText(t("playlists"))
+        type_text = t("playlists")
+        if detail_type in ["guess", "radar", "home_feed", "newsong", "songlist"]:
+            # Keep the recommend type as-is for later restoration
+            pass
+        self._type_label.setText(type_text)
         self._name_label.setText(title)
         self._secondary_label.setText("")
         self._extra_label.setText("")
@@ -1589,7 +1594,7 @@ class OnlineDetailView(QWidget):
             }
         """)
 
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
 
         insert_action = menu.addAction(t("insert_to_queue"))
         add_action = menu.addAction(t("add_to_queue"))
@@ -1794,6 +1799,55 @@ class OnlineDetailView(QWidget):
                 header.model().setHeaderData(2, Qt.Horizontal, t("artist"))
                 header.model().setHeaderData(3, Qt.Horizontal, t("album"))
                 header.model().setHeaderData(4, Qt.Horizontal, t("duration"))
+
+    def get_state(self) -> Dict[str, Any]:
+        """
+        Get current detail view state.
+
+        Returns:
+            Dict with detail_type, mid, and other data
+        """
+        if not self._detail_type or not self._mid:
+            return {}
+
+        state = {
+            "detail_type": self._detail_type,
+            "mid": self._mid,
+            "name": self._name_label.text(),
+            "cover_url": self._cover_url,
+        }
+
+        # Add type-specific data
+        if self._detail_type == "album":
+            state["singer_name"] = self._secondary_label.text()
+        elif self._detail_type == "playlist":
+            state["creator"] = self._secondary_label.text()
+
+        return state
+
+    def restore_state(self, state: Dict[str, Any]):
+        """
+        Restore detail view from saved state.
+
+        Args:
+            state: Dict with detail_type, mid, and other data
+        """
+        detail_type = state.get("detail_type")
+        mid = state.get("mid")
+        name = state.get("name", "")
+        cover_url = state.get("cover_url", "")
+
+        if not detail_type or not mid:
+            return
+
+        if detail_type == "artist":
+            self.load_artist(mid, name)
+        elif detail_type == "album":
+            singer_name = state.get("singer_name", "")
+            self.load_album(mid, name, singer_name)
+        elif detail_type == "playlist":
+            creator = state.get("creator", "")
+            self.load_playlist(mid, name, creator)
 
 
 class DownloadWorker(QThread):

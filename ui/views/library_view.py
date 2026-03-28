@@ -1026,7 +1026,7 @@ class LibraryView(QWidget):
         """)
 
         # Play action
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(lambda: self._play_selected_track())
 
         # Insert to queue action (insert after current playing track)

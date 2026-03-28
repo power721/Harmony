@@ -457,7 +457,7 @@ class PlaylistView(QWidget):
 
         # Update button texts
         self._new_playlist_btn.setText(t("new_playlist"))
-        self._play_playlist_btn.setText(t("play"))
+        self._play_playlist_btn.setText(t("play_now"))
         self._rename_playlist_btn.setText(t("rename"))
         self._delete_playlist_btn.setText("🗑️ " + t("delete_playlist"))
 

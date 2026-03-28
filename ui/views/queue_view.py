@@ -648,7 +648,7 @@ class QueueView(QWidget):
         """)
 
         # Play action
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(self._play_selected)
 
         menu.addSeparator()

@@ -746,7 +746,7 @@ class ArtistView(QWidget):
         """)
 
         # Play action
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(lambda: self.play_tracks.emit(selected_tracks))
 
         # Insert to queue action

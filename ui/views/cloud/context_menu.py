@@ -106,7 +106,7 @@ class CloudFileContextMenu(QObject):
         menu.setStyleSheet(self._menu_style)
 
         # Play action
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(lambda: self.play_requested.emit(file))
 
         menu.addSeparator()

@@ -633,6 +633,7 @@ class OnlineMusicView(QWidget):
         self._selected_top_id: Optional[int] = None
         self._top_lists_loaded = False  # Track if top lists have been loaded
         self._is_top_list_view = True  # True when viewing top list, False when viewing search results
+        self._is_restoring_state = False  # Flag to prevent showing recommendations during state restoration
 
         # Hotkey state
         self._hotkey_worker: Optional[HotkeyWorker] = None
@@ -665,6 +666,12 @@ class OnlineMusicView(QWidget):
         self._completion_timer = QTimer()
         self._completion_timer.setSingleShot(True)
         self._completion_timer.timeout.connect(self._trigger_completion)
+
+        # Check if we need to restore state (set flag before UI setup)
+        if self._config:
+            page_type = self._config.get_online_music_page_type()
+            if page_type == "detail":
+                self._is_restoring_state = True
 
         self._setup_ui()
 
@@ -1275,6 +1282,13 @@ class OnlineMusicView(QWidget):
 
     def _load_recommendations(self):
         """Load all 5 types of recommendations."""
+        # Don't load recommendations if we're restoring a detail view state
+        # UNLESS we're restoring a recommendation view
+        if self._is_restoring_state:
+            detail_type = self._config.get_online_music_detail_type() if self._config else ""
+            if not detail_type.startswith("recommend_"):
+                return
+
         if self._recommendations_loaded:
             return
 
@@ -1321,6 +1335,10 @@ class OnlineMusicView(QWidget):
 
     def _display_recommendations(self):
         """Parse and display all loaded recommendations."""
+        # Don't display recommendations if we're restoring a detail view state
+        if self._is_restoring_state:
+            return
+
         cards = []
 
         # Define order and titles
@@ -1350,6 +1368,13 @@ class OnlineMusicView(QWidget):
 
     def _load_favorites(self):
         """Load user's favorites counts and display 4 summary cards."""
+        # Don't load favorites if we're restoring a detail view state
+        # UNLESS we're restoring a fav_songs view
+        if self._is_restoring_state:
+            detail_type = self._config.get_online_music_detail_type() if self._config else ""
+            if detail_type != "fav_songs":
+                return
+
         if self._fav_loaded:
             return
 
@@ -1486,6 +1511,10 @@ class OnlineMusicView(QWidget):
 
     def _display_favorites_cards(self):
         """Display 4 summary cards in the favorites section."""
+        # Don't display favorites if we're restoring a detail view state
+        if self._is_restoring_state:
+            return
+
         from ui.icons import get_icon, IconName
 
         cards = []
@@ -1911,7 +1940,7 @@ class OnlineMusicView(QWidget):
                             songs.append(track)
                 logger.info(f"Loading radar songs: {len(songs)} songs")
                 if songs:
-                    self._detail_view.load_songs_directly(songs, title, cover_url)
+                    self._detail_view.load_songs_directly(songs, title, cover_url, detail_type="radar")
                     self._stack.setCurrentWidget(self._detail_view)
                 else:
                     logger.warning("No valid radar songs found")
@@ -1929,7 +1958,7 @@ class OnlineMusicView(QWidget):
         if recommend_type in ('guess', 'home_feed', 'newsong'):
             if full_data and isinstance(full_data, list):
                 logger.info(f"Loading {recommend_type} songs: {len(full_data)} songs")
-                self._detail_view.load_songs_directly(full_data, title, cover_url)
+                self._detail_view.load_songs_directly(full_data, title, cover_url, detail_type=recommend_type)
                 self._stack.setCurrentWidget(self._detail_view)
                 return
 
@@ -2441,6 +2470,9 @@ class OnlineMusicView(QWidget):
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""
+        # Reset the restoring state flag when user navigates away from detail view
+        self._is_restoring_state = False
+
         # Pop from navigation stack if available
         if self._navigation_stack:
             prev_state = self._navigation_stack.pop()
@@ -2494,10 +2526,16 @@ class OnlineMusicView(QWidget):
             self._stack.setCurrentWidget(self._results_page)
         else:
             self._stack.setCurrentWidget(self._top_list_page)
-            # Show favorites and recommendations when returning to main view
-            if self._fav_loaded and self._fav_data:
+            # Load favorites and recommendations if not loaded yet
+            # (they might not have loaded if we were restoring state)
+            if not self._fav_loaded:
+                self._load_favorites()
+            elif self._fav_data:
                 self._favorites_section.show()
-            if self._recommendations_loaded:
+
+            if not self._recommendations_loaded:
+                self._load_recommendations()
+            elif self._recommendations:
                 self._recommend_section.show()
 
     def _on_fav_back_clicked(self):
@@ -2730,7 +2768,7 @@ class OnlineMusicView(QWidget):
             }
         """)
 
-        play_action = menu.addAction(t("play"))
+        play_action = menu.addAction(t("play_now"))
         play_action.triggered.connect(lambda: self._play_selected_tracks(tracks))
 
         insert_to_queue_action = menu.addAction(t("insert_to_queue"))
@@ -3055,6 +3093,294 @@ class OnlineMusicView(QWidget):
         # Update detail view
         if hasattr(self, '_detail_view'):
             self._detail_view.refresh_ui()
+
+    def save_state(self):
+        """Save current view state to config."""
+        if not self._config:
+            return
+
+        # Save current keyword
+        self._config.set_online_music_keyword(self._current_keyword)
+
+        # Determine current page type
+        current_widget = self._stack.currentWidget()
+        if current_widget == self._top_list_page:
+            page_type = "top_list"
+        elif current_widget == self._results_page:
+            page_type = "search"
+        elif current_widget == self._detail_view:
+            page_type = "detail"
+            # Save detail view state
+            detail_state = self._detail_view.get_state()
+            if detail_state:
+                self._config.set_online_music_detail_type(detail_state.get("detail_type", ""))
+                self._config.set_online_music_detail_mid(detail_state.get("mid", ""))
+                self._config.set_online_music_detail_data(detail_state)
+        else:
+            page_type = "top_list"
+
+        # Check if we're viewing favorites or recommendations
+        # This is indicated by the back button being visible and favorites/recommendations hidden
+        if (hasattr(self, '_fav_back_btn') and self._fav_back_btn.isVisible() and
+            hasattr(self, '_favorites_section') and not self._favorites_section.isVisible()):
+            page_type = "detail"
+            # Determine which favorites view we're in
+            if current_widget == self._detail_view:
+                detail_state = self._detail_view.get_state()
+                if detail_state:
+                    # Check if it's a recommendation view (songs_directly)
+                    # These don't have a mid, but have detail_type set to the recommend_type
+                    recommend_type = detail_state.get("detail_type", "")
+                    if recommend_type in ["guess", "radar", "home_feed", "newsong", "songlist"]:
+                        # Save as recommendation type
+                        self._config.set_online_music_detail_type(f"recommend_{recommend_type}")
+                        self._config.set_online_music_detail_mid("")
+                        self._config.set_online_music_detail_data({
+                            "detail_type": f"recommend_{recommend_type}",
+                            "recommend_type": recommend_type
+                        })
+                    else:
+                        # Regular detail view (artist, album, playlist)
+                        self._config.set_online_music_detail_type(detail_state.get("detail_type", ""))
+                        self._config.set_online_music_detail_mid(detail_state.get("mid", ""))
+                        self._config.set_online_music_detail_data(detail_state)
+            elif current_widget == self._results_page:
+                # Check navigation stack to determine what we're viewing
+                if self._navigation_stack:
+                    last_nav = self._navigation_stack[-1] if self._navigation_stack else {}
+                    nav_page = last_nav.get('page', '')
+                    if nav_page in ['playlists', 'albums']:
+                        # Save as a special detail type - only save title, not full data
+                        # We'll restore by checking favorites data or recommendations
+                        self._config.set_online_music_detail_type(nav_page)
+                        self._config.set_online_music_detail_mid("")
+                        self._config.set_online_music_detail_data({
+                            "detail_type": nav_page,
+                            "title": last_nav.get('title', '')
+                        })
+
+        self._config.set_online_music_page_type(page_type)
+
+    def restore_state(self):
+        """Restore view state from config."""
+        if not self._config:
+            return
+
+        keyword = self._config.get_online_music_keyword()
+        page_type = self._config.get_online_music_page_type()
+
+        # Restore keyword to search box
+        if keyword and hasattr(self, '_search_input'):
+            self._search_input.setText(keyword)
+            self._current_keyword = keyword
+
+        # Restore page state
+        if page_type == "search" and keyword:
+            # Restore search results
+            self._do_search()
+        elif page_type == "detail":
+            # Set flag to prevent recommendations from loading
+            self._is_restoring_state = True
+
+            # Restore detail view
+            detail_type = self._config.get_online_music_detail_type()
+            detail_mid = self._config.get_online_music_detail_mid()
+            detail_data = self._config.get_online_music_detail_data()
+
+            if not detail_type:
+                return
+
+            # Hide favorites and recommendations when showing detail view
+            if hasattr(self, '_favorites_section'):
+                self._favorites_section.hide()
+            if hasattr(self, '_recommend_section'):
+                self._recommend_section.hide()
+            # Hide type tabs
+            if hasattr(self, '_tabs'):
+                self._tabs.hide()
+            # Show back button
+            if hasattr(self, '_fav_back_btn'):
+                self._fav_back_btn.show()
+
+            # Handle different detail types
+            if detail_type in ["artist", "album", "playlist"]:
+                if detail_mid:
+                    # Switch to detail view and restore state
+                    self._stack.setCurrentWidget(self._detail_view)
+                    self._detail_view.restore_state(detail_data)
+            elif detail_type == "fav_songs":
+                # Restore favorite songs view - need to load favorites first if not loaded
+                if not self._fav_loaded:
+                    # Load favorites (will be allowed since detail_type is fav_songs)
+                    self._load_favorites()
+                    # Wait for favorites to load
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(500, lambda: self._restore_fav_songs_view())
+                elif 'fav_songs' in self._fav_data:
+                    tracks = self._fav_data.get("fav_songs", [])
+                    self._show_fav_songs_in_table(tracks)
+            elif detail_type in ["playlists", "albums"]:
+                # Restore playlist or album list view
+                # Need to load favorites first if not loaded
+                if not self._fav_loaded:
+                    # Load favorites (will be allowed since we need the data)
+                    self._load_favorites()
+                    # Wait for favorites to load
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(500, lambda: self._restore_playlists_albums_view(detail_type, detail_data))
+                else:
+                    self._restore_playlists_albums_view(detail_type, detail_data)
+
+            elif detail_type.startswith("recommend_"):
+                # Restore recommendation view
+                recommend_type = detail_data.get("recommend_type", "") if detail_data else ""
+                if recommend_type:
+                    # Load recommendations first if not loaded
+                    if not self._recommendations_loaded:
+                        # Temporarily allow loading
+                        self._is_restoring_state = False
+                        self._load_recommendations()
+                        self._is_restoring_state = True
+                        # Wait longer for recommendations to load and be parsed
+                        from PySide6.QtCore import QTimer
+                        QTimer.singleShot(1500, lambda: self._restore_recommendation_view(recommend_type))
+                    elif recommend_type not in self._recommendations:
+                        # Recommendations loaded but this type not ready yet, wait more
+                        from PySide6.QtCore import QTimer
+                        QTimer.singleShot(500, lambda: self._restore_recommendation_view(recommend_type))
+                    else:
+                        self._restore_recommendation_view(recommend_type)
+        # For "top_list", do nothing (default view)
+
+    def _restore_fav_songs_view(self):
+        """Restore favorite songs view after favorites are loaded."""
+        # Reset the restoring state flag
+        self._is_restoring_state = False
+
+        if hasattr(self, '_fav_data') and 'fav_songs' in self._fav_data:
+            tracks = self._fav_data.get("fav_songs", [])
+            self._show_fav_songs_in_table(tracks)
+
+    def _restore_playlists_albums_view(self, detail_type: str, detail_data: dict):
+        """Restore playlists or albums view after favorites are loaded."""
+        # Reset the restoring state flag
+        self._is_restoring_state = False
+
+        if not detail_data:
+            return
+
+        title = detail_data.get("title", "")
+
+        # Get data from loaded favorites
+        if detail_type == "playlists":
+            # Determine if it's created_playlists or fav_playlists by title
+            if title == t("created_playlists"):
+                data = self._fav_data.get("created_playlists", [])
+            elif title == t("fav_playlists"):
+                data = self._fav_data.get("fav_playlists", [])
+            else:
+                # Default to all playlists
+                data = self._fav_data.get("created_playlists", []) + self._fav_data.get("fav_playlists", [])
+            self._show_playlist_list_in_detail(title, data)
+        elif detail_type == "albums":
+            data = self._fav_data.get("fav_albums", [])
+            self._show_album_list_in_detail(title, data)
+
+    def _restore_recommendation_view(self, recommend_type: str):
+        """Restore recommendation view after recommendations are loaded."""
+        # Reset the restoring state flag
+        self._is_restoring_state = False
+
+        # Get recommendation data from loaded recommendations
+        data = self._recommendations.get(recommend_type)
+        if not data:
+            logger.warning(f"No data found for recommendation type: {recommend_type}")
+            logger.debug(f"Available recommendation types: {list(self._recommendations.keys())}")
+            # Show favorites and recommendations since we couldn't restore
+            if self._fav_loaded and self._fav_data:
+                self._favorites_section.show()
+            if self._recommendations_loaded:
+                self._recommend_section.show()
+            return
+
+        logger.info(f"Restoring recommendation view for type: {recommend_type}, data length: {len(data) if isinstance(data, list) else 'not a list'}")
+
+        # Get title and cover for this recommend type
+        titles = {
+            "guess": t("guess_you_like"),
+            "radar": t("radar_recommend"),
+            "home_feed": t("home_recommend"),
+            "newsong": t("new_songs"),
+            "songlist": t("recommend_playlists")
+        }
+        title = titles.get(recommend_type, "")
+
+        # Handle different recommendation types
+        if recommend_type == "songlist":
+            # Parse playlist list from songlist data
+            if isinstance(data, list):
+                playlists = []
+                for item in data:
+                    if isinstance(item, dict):
+                        playlist_info = item.get('Playlist', item)
+                        if not isinstance(playlist_info, dict):
+                            continue
+
+                        # Extract playlist info
+                        playlist_id = None
+                        playlist_title = None
+                        cover_url = None
+                        song_count = 0
+
+                        # Try basic structure
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                playlist_id = basic.get('tid') or basic.get('id') or basic.get('disstid')
+                                playlist_title = basic.get('title') or basic.get('name')
+                                cover = basic.get('cover_url') or basic.get('cover') or basic.get('picurl')
+                                if cover:
+                                    if isinstance(cover, dict):
+                                        cover_url = cover.get('default_url') or cover.get('small_url')
+                                    else:
+                                        cover_url = cover
+
+                        if playlist_id:
+                            playlists.append({
+                                'id': str(playlist_id),
+                                'title': playlist_title or '',
+                                'cover_url': cover_url or '',
+                                'song_count': song_count
+                            })
+
+                if playlists:
+                    self._show_playlist_list_in_detail(title, playlists)
+        elif recommend_type in ["guess", "radar", "home_feed", "newsong"]:
+            # Parse songs from recommendation data
+            songs = []
+            if recommend_type == "radar":
+                # Radar format: [{'Track': {...}}, ...]
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            track = item.get('Track', item)
+                            if isinstance(track, dict):
+                                songs.append(track)
+            else:
+                # Other formats are direct song lists
+                if isinstance(data, list):
+                    songs = data
+
+            if songs:
+                # Get cover from first song
+                cover_url = ""
+                if songs and isinstance(songs[0], dict):
+                    album = songs[0].get('album', {})
+                    if isinstance(album, dict) and album.get('mid'):
+                        cover_url = f"https://y.qq.com/music/photo_new/T002R300x300M000{album.get('mid')}.jpg"
+
+                self._detail_view.load_songs_directly(songs, title, cover_url, detail_type=recommend_type)
+                self._stack.setCurrentWidget(self._detail_view)
 
 
 class DownloadWorker(QThread):

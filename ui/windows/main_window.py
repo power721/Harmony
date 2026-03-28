@@ -1327,6 +1327,10 @@ class MainWindow(QMainWindow):
                 view_data = {
                     "name": artist.name,
                 }
+        elif view_type == "online":
+            # Save online music view state
+            if hasattr(self._online_music_view, 'save_state'):
+                self._online_music_view.save_state()
 
         self._config.set_view_type(view_type)
         self._config.set_view_data(json.dumps(view_data))
@@ -1395,6 +1399,9 @@ class MainWindow(QMainWindow):
                 self._show_page(5)
             elif view_type == "online":
                 self._show_page(8)
+                # Restore online music view state
+                if hasattr(self._online_music_view, 'restore_state'):
+                    QTimer.singleShot(200, self._online_music_view.restore_state)
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":
