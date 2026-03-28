@@ -95,7 +95,7 @@ class OrganizeFilesDialog(QDialog):
         }
         QTableWidget::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
         }
         QHeaderView::section {
             background-color: #383838;

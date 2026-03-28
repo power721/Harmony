@@ -206,7 +206,7 @@ class PlaylistView(QWidget):
         }
         QTableWidget::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
             font-weight: 500;
         }
         QTableWidget::item:selected:!alternate {
@@ -256,6 +256,7 @@ class PlaylistView(QWidget):
         }
         QMenu::item:selected {
             background-color: %highlight%;
+            color: %background%;
         }
     """
     _EDIT_DIALOG_STYLE = """

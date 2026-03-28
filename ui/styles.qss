@@ -223,6 +223,7 @@ QMenu::item {
 
 QMenu::item:selected {
     background-color: %highlight%;
+    color: %background%;
 }
 
 QMenu::separator {
@@ -329,7 +330,7 @@ QFileDialog QListView, QFileDialog QTreeView {
 
 QFileDialog QListView::item:selected, QFileDialog QTreeView::item:selected {
     background-color: %highlight%;
-    color: %text%;
+    color: %background%;
 }
 
 QFileDialog QPushButton {

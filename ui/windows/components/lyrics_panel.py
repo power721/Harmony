@@ -66,6 +66,7 @@ class LyricsPanel(QWidget):
         }
         QMenu::item:selected {
             background-color: %highlight%;
+            color: %background%;
         }
     """
 
@@ -540,11 +541,30 @@ class LyricsController(QObject):
             return
 
         track_path = current_track.get("path", "")
+        source = current_track.get("source", "Local")
+
+        # Check if this is a cloud/network track
+        is_cloud_track = source in ("QQ", "QUARK", "BAIDU")
+
         if not track_path:
+            if is_cloud_track:
+                QMessageBox.information(
+                    None, t("info"), t("cloud_track_no_local_file")
+                )
+            else:
+                QMessageBox.information(
+                    None, t("info"), t("lyrics_file_not_found")
+                )
             return
 
         from pathlib import Path
         lyrics_path = Path(track_path).with_suffix('.lrc')
+
+        # Also check for .yrc and .qrc formats
+        if not lyrics_path.exists():
+            lyrics_path = Path(track_path).with_suffix('.yrc')
+        if not lyrics_path.exists():
+            lyrics_path = Path(track_path).with_suffix('.qrc')
 
         if lyrics_path.exists():
             if sys.platform == "win32":
@@ -554,9 +574,14 @@ class LyricsController(QObject):
             else:
                 subprocess.run(["xdg-open", str(lyrics_path.parent)])
         else:
-            QMessageBox.information(
-                None, t("info"), t("lyrics_file_not_found")
-            )
+            if is_cloud_track:
+                QMessageBox.information(
+                    None, t("info"), t("cloud_lyrics_file_not_found")
+                )
+            else:
+                QMessageBox.information(
+                    None, t("info"), t("lyrics_file_not_found")
+                )
 
     def refresh_lyrics(self):
         """Refresh lyrics for current track."""

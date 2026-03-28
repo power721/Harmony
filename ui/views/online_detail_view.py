@@ -515,7 +515,7 @@ class OnlineDetailView(QWidget):
         }
         QTableWidget#detailSongsTable::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
             font-weight: 500;
         }
         QTableWidget#detailSongsTable::item:selected:!alternate {
@@ -594,6 +594,7 @@ class OnlineDetailView(QWidget):
         }
         QMenu::item:selected {
             background: %highlight%;
+            color: %background%;
         }
     """
 

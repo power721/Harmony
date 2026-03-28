@@ -47,7 +47,7 @@ class CustomQCompleter(QCompleter):
             border-radius: 8px;
             color: %text%;
             selection-background-color: %highlight%;
-            selection-color: %text%;
+            selection-color: %background%;
             outline: none;
         }
         QListView::item {
@@ -56,7 +56,7 @@ class CustomQCompleter(QCompleter):
         }
         QListView::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
         }
         QListView::item:hover {
             background-color: %border%;
@@ -702,7 +702,7 @@ class OnlineMusicView(QWidget):
         }
         QTableWidget#songsTable::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
             font-weight: 500;
         }
         QTableWidget#songsTable::item:selected:!alternate {
@@ -799,7 +799,7 @@ class OnlineMusicView(QWidget):
         }
         QListWidget::item:selected {
             background: %highlight%;
-            color: %text%;
+            color: %background%;
         }
         QListWidget::item:hover {
             background: %background_hover%;
@@ -813,6 +813,7 @@ class OnlineMusicView(QWidget):
         }
         QMenu::item:selected {
             background: %highlight%;
+            color: %background%;
         }
     """
 

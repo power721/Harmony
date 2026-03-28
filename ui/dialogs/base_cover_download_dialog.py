@@ -225,7 +225,7 @@ class BaseCoverDownloadDialog(QDialog):
         }
         QListWidget::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
         }
     """
 

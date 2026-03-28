@@ -77,7 +77,7 @@ class EqualizerWidget(QWidget):
             color: %text%;
             border: 1px solid %border%;
             selection-background-color: %highlight%;
-            selection-color: %text%;
+            selection-color: %background%;
             padding: 4px;
         }
         QComboBox QAbstractItemView::item {

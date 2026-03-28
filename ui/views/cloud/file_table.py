@@ -57,7 +57,7 @@ class CloudFileTable(QWidget):
         /* Selected state with vibrant accent */
         QTableWidget#cloudFileTable::item:selected {
             background-color: %highlight%;
-            color: #ffffff;
+            color: %background%;
             font-weight: 500;
         }
         QTableWidget#cloudFileTable::item:selected:!alternate {

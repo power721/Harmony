@@ -195,6 +195,8 @@
     "cloud_lyrics_delete_not_supported": "Deleting lyrics for cloud files is not supported.",
     "cloud_lyrics_location_not_supported": "Opening lyrics location for cloud files is not supported.",
     "cloud_lyrics_download_not_supported": "Downloading lyrics for cloud files is not supported.",
+    "cloud_track_no_local_file": "Cloud track has no local file yet. Please download the track first.",
+    "cloud_lyrics_file_not_found": "No lyrics file found for this cloud track. You can download or edit lyrics first.",
     "searching": "Searching",
     "select_song": "Select Song",
     "search_results_for": "Search results for",

@@ -330,7 +330,7 @@ class ArtistView(QWidget):
                 }}
                 QTableWidget::item:selected {{
                     background-color: {theme.highlight};
-                    color: {theme.text};
+                    color: {theme.background};
                     font-weight: 500;
                 }}
                 QTableWidget::item:selected:!alternate {{
@@ -660,7 +660,7 @@ class ArtistView(QWidget):
             /* Selected state with vibrant accent */
             QTableWidget#tracksTable::item:selected {{
                 background-color: {theme.highlight};
-                color: {theme.text};
+                color: {theme.background};
                 font-weight: 500;
             }}
             QTableWidget#tracksTable::item:selected:!alternate {{
@@ -975,6 +975,7 @@ class ArtistView(QWidget):
             }}
             QMenu::item:selected {{
                 background-color: {theme.highlight};
+                color: {theme.background};
             }}
         """)
 

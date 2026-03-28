@@ -195,6 +195,8 @@
     "cloud_lyrics_delete_not_supported": "不支持删除网盘文件的歌词。",
     "cloud_lyrics_location_not_supported": "不支持打开网盘文件的歌词位置。",
     "cloud_lyrics_download_not_supported": "不支持下载网盘文件的歌词。",
+    "cloud_track_no_local_file": "网络歌曲尚未下载到本地,请先下载歌曲。",
+    "cloud_lyrics_file_not_found": "未找到该网络歌曲的歌词文件。您可以先下载或编辑歌词。",
     "searching": "搜索中",
     "select_song": "选择歌曲",
     "search_results_for": "搜索结果",

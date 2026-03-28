@@ -105,7 +105,7 @@ class LibraryView(QWidget):
         }
         QTableWidget#tracksTable::item:selected {
             background-color: %highlight%;
-            color: %text%;
+            color: %background%;
             font-weight: 500;
         }
         QTableWidget#tracksTable::item:selected:!alternate {
@@ -188,6 +188,7 @@ class LibraryView(QWidget):
         }
         QMenu::item:selected {
             background-color: %highlight%;
+            color: %background%;
         }
     """
 

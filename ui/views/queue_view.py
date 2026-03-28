@@ -437,6 +437,7 @@ class QueueView(QWidget):
         }
         QListWidget#queueList::item:selected {
             background-color: %highlight%;
+            color: %background%;
         }
         QListWidget QScrollBar:vertical {
             background-color: %background%;
@@ -463,6 +464,7 @@ class QueueView(QWidget):
         }
         QMenu::item:selected {
             background-color: %highlight%;
+            color: %background%;
         }
     """
     _EDIT_DIALOG_STYLE = """
