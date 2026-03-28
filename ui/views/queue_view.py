@@ -229,16 +229,19 @@ class QueueItemDelegate(QStyledItemDelegate):
         rect = option.rect
 
         # Background (semi-transparent to show blur through)
+        is_hovered = option.state & QStyle.StateFlag.State_MouseOver
         if is_selected:
             painter.fillRect(rect, QColor(theme.highlight))
-        elif option.state & QStyle.StateFlag.State_MouseOver:
-            hover_bg = QColor(theme.background_hover)
-            hover_bg.setAlpha(220)
-            painter.fillRect(rect, hover_bg)
+        elif is_hovered:
+            painter.fillRect(rect, QColor(theme.highlight))
         else:
             bg = QColor(theme.background)
             bg.setAlpha(220)
             painter.fillRect(rect, bg)
+
+        # Hand cursor on hover
+        if is_hovered and not is_selected:
+            self.parent().setCursor(Qt.CursorShape.PointingHandCursor) if self.parent() else None
 
         # Separator line
         if not is_selected:
