@@ -516,7 +516,7 @@
     "no_valid_tracks": "队列中没有有效的本地歌曲",
     "playlist_created_with_tracks": "已创建播放列表「{name}」，包含 {count} 首歌曲",
     "recommendations": "推荐",
-    "home_recommend": "主页推荐",
+    "home_recommend": "今日推荐",
     "guess_you_like": "猜你喜欢",
     "radar_recommend": "雷达推荐",
     "recommend_playlists": "推荐歌单",

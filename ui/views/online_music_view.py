@@ -1286,8 +1286,8 @@ class OnlineMusicView(QWidget):
             ("home_feed", t("home_recommend")),
             ("guess", t("guess_you_like")),
             ("radar", t("radar_recommend")),
-            ("songlist", t("recommend_playlists")),
             ("newsong", t("new_songs")),
+            ("songlist", t("recommend_playlists")),
         ]
 
         for recommend_type, title in recommend_types:
@@ -1298,7 +1298,6 @@ class OnlineMusicView(QWidget):
 
     def _on_recommend_ready(self, recommend_type: str, data: Any):
         """Handle recommendation data ready."""
-
         # Store raw data for parsing
         self._recommendations[recommend_type] = data
 
@@ -1319,8 +1318,8 @@ class OnlineMusicView(QWidget):
             ("home_feed", t("home_recommend")),
             ("guess", t("guess_you_like")),
             ("radar", t("radar_recommend")),
-            ("songlist", t("recommend_playlists")),
             ("newsong", t("new_songs")),
+            ("songlist", t("recommend_playlists")),
         ]
 
         for recommend_type, title in recommend_config:
@@ -1336,6 +1335,8 @@ class OnlineMusicView(QWidget):
 
         if cards:
             self._recommend_section.load_recommendations(cards)
+            # Show recommendations section after loading
+            self._recommend_section.show()
 
     def _load_favorites(self):
         """Load user's favorites counts and display 4 summary cards."""
@@ -1571,10 +1572,14 @@ class OnlineMusicView(QWidget):
                     # Cover is already extracted by _get_random_cover_from_items
                     pass
 
+                elif recommend_type == 'home_feed':
+                    # Home feed returns recommendation cards (playlists, rankings, songs)
+                    # Each card has type: 200=song, 500=playlist, 700=guess, 1000=ranking
+                    playlist_id = first_item.get('id')
+
                 else:
                     # Song structure: {'album': {...}, 'singer': [...], ...}
-                    # This handles guess, home_feed, newsong types
-                    logger.debug(f"{recommend_type} first_item keys: {list(first_item.keys())}")
+                    # This handles guess, newsong types
 
                     # Cover is already extracted by _get_random_cover_from_items
                     # Get playlist ID if available (for playlist-based recommendations)

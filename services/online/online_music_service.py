@@ -50,17 +50,17 @@ class OnlineMusicService:
 
     def _has_qqmusic_credential(self) -> bool:
         """Check if QQ Music credential is available."""
+        # Check if qqmusic_service has credential
+        if self._qqmusic and self._qqmusic.credential:
+            return True
+
+        # Check config if available
         if not self._config:
             return False
 
-        credential = self._config.get("qqmusic.credential")
-        if not credential:
-            # Fallback to individual fields
-            musicid = self._config.get("qqmusic.musicid")
-            musickey = self._config.get("qqmusic.musickey")
-            return bool(musicid and musickey)
-
-        return True
+        # Use get_qqmusic_credential() method which handles both formats
+        credential = self._config.get_qqmusic_credential()
+        return credential is not None
 
     def search(
         self,

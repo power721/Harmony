@@ -861,33 +861,60 @@ class QQMusicService:
 
     def get_home_feed(self) -> List[Dict[str, Any]]:
         """
-        获取主页推荐数据.
+        获取每日30首推荐歌曲.
 
         Returns:
-            推荐列表
+            歌曲列表
         """
         try:
             result = self.client.get_home_feed()
-            if not result:
+
+            if not isinstance(result, dict) or 'v_shelf' not in result:
                 return []
-            # Handle different response structures
-            if isinstance(result, list):
-                return result
-            if isinstance(result, dict):
-                # v_shelf is a list of shelves, each containing item_list
-                if 'v_shelf' in result and isinstance(result['v_shelf'], list):
-                    shelves = result['v_shelf']
-                    if shelves and isinstance(shelves[0], dict):
-                        # Get songs from first shelf's item_list
-                        for shelf in shelves:
-                            items = shelf.get('item_list', [])
-                            if items:
-                                return items
-                # Try other common locations
-                for key in ['songlist', 'songs', 'list', 'items', 'data']:
-                    if key in result and isinstance(result[key], list):
-                        return result[key]
-            return []
+
+            # 找到"每日30首"卡片或"猜你喜欢"卡片
+            target_id = None
+            shelves = result['v_shelf']
+
+            for shelf in shelves:
+                if not isinstance(shelf, dict):
+                    continue
+
+                for niche in shelf.get('v_niche', []):
+                    if not isinstance(niche, dict):
+                        continue
+
+                    for card in niche.get('v_card', []):
+                        if not isinstance(card, dict):
+                            continue
+
+                        # 优先找"每日30首"，其次"猜你喜欢"
+                        if card.get('title') == '每日30首' and card.get('id'):
+                            target_id = card.get('id')
+                            break
+                        elif card.get('title') == '猜你喜欢' and card.get('id') and not target_id:
+                            target_id = card.get('id')
+
+                    if target_id:
+                        break
+
+                if target_id:
+                    break
+
+            if not target_id:
+                return []
+
+            # 用 ID 获取歌单详情
+            playlist_result = self.client.get_playlist(str(target_id))
+
+            if not playlist_result:
+                return []
+
+            # 提取歌曲列表
+            songs = playlist_result.get('songlist', []) or playlist_result.get('songs', [])
+
+            return songs
+
         except Exception as e:
             logger.error(f"Get home feed failed: {e}", exc_info=True)
             return []
