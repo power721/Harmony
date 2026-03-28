@@ -910,8 +910,12 @@ class QueueView(QWidget):
 
         # Convert to base64 for stylesheet
         from PySide6.QtCore import QByteArray
+        from PySide6.QtCore import QBuffer
         buf = QByteArray()
-        blurred.save(buf, "PNG")
+        buffer = QBuffer(buf)
+        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+        blurred.save(buffer, "PNG")
+        buffer.close()
         b64 = bytes(buf.toBase64()).decode()
         viewport.setStyleSheet(
             f"background-image: url(data:image/png;base64,{b64});"
