@@ -499,6 +499,9 @@ class OnlineGridView(QWidget):
 
     def _setup_ui(self):
         """Set up the grid view UI."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+        self.setStyleSheet(f"background-color: {theme.background};")
         self.setMouseTracking(True)
 
         layout = QVBoxLayout(self)

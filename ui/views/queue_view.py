@@ -109,31 +109,31 @@ class QueueItemWidget(QWidget):
                     background-color: {self._highlight_color};
                 }}
             """)
-            self._index_label.setStyleSheet("""
-                QLabel {
-                    color: %background%;
+            self._index_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.background};
                     font-size: 12px;
                     font-weight: bold;
-                }
+                }}
             """)
-            self._title_label.setStyleSheet("""
-                QLabel {
-                    color: %background%;
+            self._title_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.background};
                     font-size: 13px;
                     font-weight: bold;
-                }
+                }}
             """)
-            self._artist_label.setStyleSheet("""
-                QLabel {
-                    color: %background%;
+            self._artist_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.background};
                     font-size: 11px;
-                }
+                }}
             """)
-            self._duration_label.setStyleSheet("""
-                QLabel {
-                    color: %background%;
+            self._duration_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {theme.background};
                     font-size: 12px;
-                }
+                }}
             """)
         elif self._is_current:
             # Current playing track - highlight text only
