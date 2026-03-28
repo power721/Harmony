@@ -28,6 +28,7 @@ from domain.playback import PlaybackState
 from services.playback import PlaybackService
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
+from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
 from services.library.playlist_service import PlaylistService
 from domain.playlist import Playlist
 from system.i18n import t
@@ -1449,9 +1450,14 @@ class QueueView(QWidget):
             QMessageBox.information(self, t("info"), t("no_valid_tracks"))
             return
 
-        # Get all playlists
-        playlists = self._playlist_service.get_all_playlists()
-        if not playlists:
+        # Use AddToPlaylistDialog
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        dialog = AddToPlaylistDialog(bootstrap.library_service, self)
+
+        # Check if there are playlists
+        if not dialog.has_playlists():
+            dialog.deleteLater()
             reply = QMessageBox.question(
                 self,
                 t("no_playlists"),
@@ -1462,144 +1468,44 @@ class QueueView(QWidget):
                 self._create_playlist_from_queue_with_tracks(track_ids)
             return
 
-        # Show playlist selection dialog
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("add_to_playlist"))
-        dialog.setMinimumWidth(350)
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #282828;
-                color: #ffffff;
-            }
-            QLabel {
-                color: #ffffff;
-            }
-            QListWidget {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 1px solid #404040;
-                border-radius: 4px;
-            }
-            QListWidget::item {
-                padding: 10px;
-            }
-            QListWidget::item:selected {
-                background-color: #1db954;
-                color: %background%;
-            }
-            QListWidget::item:hover {
-                background-color: #2d2d2d;
-            }
-            QPushButton {
-                background-color: #1db954;
-                color: %background%;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-weight: bold;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #1ed760;
-            }
-            QPushButton[role="cancel"] {
-                background-color: #404040;
-                color: #ffffff;
-            }
-            QPushButton[role="cancel"]:hover {
-                background-color: #505050;
-            }
-            QPushButton[role="secondary"] {
-                background-color: #3a3a3a;
-                color: #ffffff;
-            }
-            QPushButton[role="secondary"]:hover {
-                background-color: #4a4a4a;
-            }
-        """)
+        # Set track IDs
+        dialog.set_track_ids(track_ids)
 
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # Show dialog
+        if dialog.exec() == QDialog.Accepted:
+            playlist = dialog.get_selected_playlist()
+            if playlist:
+                # Add tracks to playlist
+                added_count = 0
+                duplicate_count = 0
+                for track_id in track_ids:
+                    if self._playlist_service.add_track_to_playlist(playlist.id, track_id):
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
 
-        # Label
-        label = QLabel(t("add_to_playlist_message").format(count=len(track_ids)))
-        layout.addWidget(label)
-
-        # Playlist list
-        playlist_list = QListWidget()
-        for playlist in playlists:
-            item = QListWidgetItem(playlist.name)
-            item.setData(Qt.UserRole, playlist.id)
-            playlist_list.addItem(item)
-        layout.addWidget(playlist_list)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-
-        new_playlist_btn = QPushButton(t("new_playlist"))
-        new_playlist_btn.setProperty("role", "secondary")
-        new_playlist_btn.clicked.connect(
-            lambda: self._create_playlist_from_queue_with_tracks(track_ids, dialog)
-        )
-        button_layout.addWidget(new_playlist_btn)
-
-        button_layout.addStretch()
-
-        cancel_button = QPushButton(t("cancel"))
-        cancel_button.setProperty("role", "cancel")
-        button_layout.addWidget(cancel_button)
-
-        add_button = QPushButton(t("ok"))
-        button_layout.addWidget(add_button)
-
-        layout.addLayout(button_layout)
-
-        def on_add():
-            current_item = playlist_list.currentItem()
-            if not current_item:
-                QMessageBox.warning(dialog, t("warning"), t("select_playlist_placeholder"))
-                return
-
-            playlist_id = current_item.data(Qt.UserRole)
-            playlist_name = current_item.text()
-
-            # Add tracks to playlist
-            added_count = 0
-            duplicate_count = 0
-            for track_id in track_ids:
-                if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
-                    added_count += 1
+                # Show result message
+                if duplicate_count == 0:
+                    message = t("added_tracks_to_playlist").format(
+                        count=added_count,
+                        name=playlist.name
+                    )
+                    QMessageBox.information(self, t("success"), message)
+                elif added_count == 0:
+                    message = t("all_tracks_duplicate").format(
+                        count=duplicate_count,
+                        name=playlist.name
+                    )
+                    QMessageBox.warning(self, t("duplicate"), message)
                 else:
-                    duplicate_count += 1
+                    message = t("added_skipped_duplicates").format(
+                        added=added_count,
+                        duplicates=duplicate_count
+                    )
+                    QMessageBox.information(self, t("partially_added"), message)
 
-            dialog.accept()
-
-            # Show result message
-            if duplicate_count > 0:
-                message = t("added_skipped_duplicates").format(
-                    added=added_count,
-                    duplicates=duplicate_count
-                )
-            else:
-                message = t("added_tracks_to_playlist").format(
-                    count=added_count,
-                    name=playlist_name
-                )
-            QMessageBox.information(self, t("success"), message)
-
-            # Emit event to notify playlist modified
-            EventBus.instance().playlist_modified.emit(playlist_id)
-
-        add_button.clicked.connect(on_add)
-        cancel_button.clicked.connect(dialog.reject)
-
-        # Double-click to add
-        playlist_list.itemDoubleClicked.connect(
-            lambda: on_add() if playlist_list.currentItem() else None
-        )
-
-        dialog.exec_()
+                # Emit event to notify playlist modified
+                EventBus.instance().playlist_modified.emit(playlist.id)
 
     def _create_playlist_from_queue_with_tracks(self, track_ids: list, parent_dialog=None):
         """Create a new playlist with specified track IDs."""
