@@ -6,7 +6,7 @@ from typing import List
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, QPoint
 from PySide6.QtGui import QColor, QBrush, QPixmap, QPainter, QFont
 from PySide6.QtWidgets import (
     QWidget,
@@ -39,6 +39,126 @@ from utils.dedup import deduplicate_playlist_items, get_version_summary
 from app.bootstrap import Bootstrap
 
 logger = logging.getLogger(__name__)
+
+
+class QueueTrackModel(QAbstractListModel):
+    """QAbstractListModel for queue track data."""
+
+    TrackRole = Qt.UserRole + 1
+    CoverRole = Qt.UserRole + 2
+    IsSelectedRole = Qt.UserRole + 3
+    IsCurrentRole = Qt.UserRole + 4
+    IsPlayingRole = Qt.UserRole + 5
+    IndexRole = Qt.UserRole + 6
+
+    cover_ready = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tracks: list = []
+        self._selection: set = set()
+        self._current_index: int = -1
+        self._is_playing: bool = False
+
+    @property
+    def current_index(self) -> int:
+        return self._current_index
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._tracks)
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._tracks):
+            return None
+        row = index.row()
+        track = self._tracks[row]
+        if role == self.TrackRole:
+            return track
+        elif role == self.CoverRole:
+            return None
+        elif role == self.IsSelectedRole:
+            return row in self._selection
+        elif role == self.IsCurrentRole:
+            return row == self._current_index
+        elif role == self.IsPlayingRole:
+            return row == self._current_index and self._is_playing
+        elif role == self.IndexRole:
+            return row
+        return None
+
+    def roleNames(self):
+        return {
+            Qt.DisplayRole: b"display",
+            self.TrackRole: b"track",
+            self.CoverRole: b"cover",
+            self.IsSelectedRole: b"selected",
+            self.IsCurrentRole: b"current",
+            self.IsPlayingRole: b"playing",
+            self.IndexRole: b"index",
+        }
+
+    def reset_tracks(self, tracks: list, selected_rows: set = None):
+        self.beginResetModel()
+        self._tracks = list(tracks)
+        self._selection = set(selected_rows) if selected_rows else set()
+        self.endResetModel()
+
+    def set_selection(self, rows: set):
+        old = self._selection.copy()
+        self._selection = set(rows)
+        changed = old.symmetric_difference(self._selection)
+        for row in changed:
+            idx = self.index(row)
+            if idx.isValid():
+                self.dataChanged.emit(idx, idx, [self.IsSelectedRole])
+
+    def set_current(self, index: int):
+        old = self._current_index
+        self._current_index = index
+        if old >= 0 and old < len(self._tracks):
+            idx = self.index(old)
+            self.dataChanged.emit(idx, idx, [self.IsCurrentRole, self.IsPlayingRole])
+        if index >= 0 and index < len(self._tracks):
+            idx = self.index(index)
+            self.dataChanged.emit(idx, idx, [self.IsCurrentRole, self.IsPlayingRole])
+
+    def set_playing(self, playing: bool):
+        self._is_playing = playing
+        if 0 <= self._current_index < len(self._tracks):
+            idx = self.index(self._current_index)
+            self.dataChanged.emit(idx, idx, [self.IsPlayingRole])
+
+    def insert_tracks(self, position: int, tracks: list):
+        self.beginInsertRows(QModelIndex(), position, position + len(tracks) - 1)
+        for i, t in enumerate(tracks):
+            self._tracks.insert(position + i, t)
+        self.endInsertRows()
+
+    def remove_tracks(self, rows: list):
+        for row in sorted(rows, reverse=True):
+            if 0 <= row < len(self._tracks):
+                self.beginRemoveRows(QModelIndex(), row, row)
+                self._tracks.pop(row)
+                self.endRemoveRows()
+                self._selection.discard(row)
+                self._selection = {r - 1 if r > row else r for r in self._selection}
+                if self._current_index == row:
+                    self._current_index = -1
+                elif self._current_index > row:
+                    self._current_index -= 1
+
+    def get_selected_rows(self) -> list:
+        return sorted(self._selection)
+
+    def get_track_at(self, row: int):
+        if 0 <= row < len(self._tracks):
+            return self._tracks[row]
+        return None
+
+    def notify_cover_loaded(self, row: int):
+        if 0 <= row < len(self._tracks):
+            idx = self.index(row)
+            self.dataChanged.emit(idx, idx, [self.CoverRole])
 
 
 class QueueItemWidget(QWidget):
