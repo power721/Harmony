@@ -277,7 +277,7 @@ class LibraryView(QWidget):
         self._tracks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._tracks_table.setAlternatingRowColors(True)
         self._tracks_table.verticalHeader().setVisible(False)
-        self._tracks_table.horizontalHeader().setStretchLastSection(True)
+        self._tracks_table.horizontalHeader().setStretchLastSection(False)
         self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
         # Disable editing
@@ -292,7 +292,9 @@ class LibraryView(QWidget):
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        # Favorites: fixed small width
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(5, 40)
 
         # Loading indicator
         self._loading_label = QLabel("⏳ " + t("loading"))
