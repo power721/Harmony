@@ -453,8 +453,6 @@ class HotkeyPopup(QWidget):
                 background: transparent;
             }
         """)
-        label.setCursor(Qt.PointingHandCursor)
-        label.mousePressEvent = lambda e: self._on_item_clicked(keyword)
         item_layout.addWidget(label)
 
         item_layout.addStretch()
@@ -487,6 +485,8 @@ class HotkeyPopup(QWidget):
                 background-color: #333;
             }
         """)
+        item_widget.setCursor(Qt.PointingHandCursor)
+        item_widget.mousePressEvent = lambda e: self._on_item_clicked(keyword)
 
         self._container_layout.addWidget(item_widget)
 
@@ -722,6 +722,10 @@ class OnlineMusicView(QWidget):
         self._detail_view.play_all.connect(self._on_play_all_from_detail)
         self._detail_view.insert_all_to_queue.connect(self._on_insert_all_to_queue_from_detail)
         self._detail_view.add_all_to_queue.connect(self._on_add_all_to_queue_from_detail)
+        # Connect all tracks signals (from all pages)
+        self._detail_view.play_all_tracks.connect(self._on_play_all_from_detail)
+        self._detail_view.insert_all_tracks_to_queue.connect(self._on_insert_all_to_queue_from_detail)
+        self._detail_view.add_all_tracks_to_queue.connect(self._on_add_all_to_queue_from_detail)
         # Connect album click from artist detail view
         self._detail_view.album_clicked.connect(self._on_album_clicked)
         self._stack.addWidget(self._detail_view)

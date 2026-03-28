@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
 from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
 
-from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist
+from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist, OnlineSinger, AlbumInfo
 from services.online import OnlineMusicService, OnlineDownloadService
 from system.i18n import t
 from system.event_bus import EventBus
@@ -126,6 +126,95 @@ class AlbumCoverLoader(QThread):
                 self.cover_loaded.emit(scaled)
         except Exception as e:
             logger.debug(f"Error loading album cover: {e}")
+
+
+class AllTracksWorker(QThread):
+    """Background worker for fetching all tracks from all pages."""
+
+    all_tracks_loaded = Signal(list)  # List of OnlineTrack
+
+    def __init__(self, service: OnlineMusicService, detail_type: str, mid: str,
+                 total_songs: int, page_size: int = 30):
+        super().__init__()
+        self._service = service
+        self._detail_type = detail_type
+        self._mid = mid
+        self._total_songs = total_songs
+        self._page_size = page_size
+
+    def run(self):
+        """Fetch all tracks from all pages."""
+        try:
+            all_tracks = []
+            total_pages = (self._total_songs + self._page_size - 1) // self._page_size
+
+            for page in range(1, total_pages + 1):
+                # Get detail for this page
+                if self._detail_type == "artist":
+                    data = self._service.get_artist_detail(self._mid, page=page, page_size=self._page_size)
+                elif self._detail_type == "album":
+                    data = self._service.get_album_detail(self._mid, page=page, page_size=self._page_size)
+                elif self._detail_type == "playlist":
+                    data = self._service.get_playlist_detail(self._mid, page=page, page_size=self._page_size)
+                else:
+                    break
+
+                if not data:
+                    break
+
+                # Parse songs
+                songs = data.get("songs", [])
+                if not songs:
+                    break
+
+                # Parse tracks
+                tracks = self._parse_songs(songs)
+                all_tracks.extend(tracks)
+
+            self.all_tracks_loaded.emit(all_tracks)
+        except Exception as e:
+            logger.error(f"Failed to fetch all tracks: {e}", exc_info=True)
+            self.all_tracks_loaded.emit([])
+
+    def _parse_songs(self, songs: List[Dict]) -> List[OnlineTrack]:
+        """Parse song data into OnlineTrack objects."""
+        tracks = []
+        for song in songs:
+            try:
+                # Parse singers
+                singers_data = song.get("singer", [])
+                singers = []
+                for s in singers_data:
+                    singers.append(OnlineSinger(
+                        mid=s.get("mid", ""),
+                        name=s.get("name", "")
+                    ))
+
+                # Parse album
+                album_data = song.get("album", {})
+                album = None
+                if album_data or song.get("albummid"):
+                    album = AlbumInfo(
+                        mid=album_data.get("mid", song.get("albummid", "")),
+                        name=album_data.get("name", song.get("albumname", "")),
+                    )
+
+                # Create track
+                track = OnlineTrack(
+                    mid=song.get("mid", ""),
+                    id=song.get("id"),
+                    title=song.get("name", song.get("title", "")),
+                    singer=singers,
+                    album=album,
+                    duration=song.get("duration", 0),
+                    pay_play=song.get("pay_play", 0)
+                )
+                tracks.append(track)
+            except Exception as e:
+                logger.debug(f"Failed to parse song: {e}")
+                continue
+
+        return tracks
 
 
 class OnlineAlbumCard(QWidget):
@@ -290,9 +379,12 @@ class OnlineDetailView(QWidget):
     """Detail view for artist, album, or playlist."""
 
     back_requested = Signal()
-    play_all = Signal(list)  # List of OnlineTrack
-    insert_all_to_queue = Signal(list)
-    add_all_to_queue = Signal(list)
+    play_all = Signal(list)  # List of OnlineTrack (current page)
+    insert_all_to_queue = Signal(list)  # List of OnlineTrack (current page)
+    add_all_to_queue = Signal(list)  # List of OnlineTrack (current page)
+    play_all_tracks = Signal(list)  # List of OnlineTrack (all tracks)
+    insert_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
+    add_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
     album_clicked = Signal(object)  # OnlineAlbum
 
     def __init__(
@@ -323,6 +415,7 @@ class OnlineDetailView(QWidget):
         self._tracks: List[OnlineTrack] = []
         self._detail_worker: Optional[DetailWorker] = None
         self._album_list_worker: Optional[AlbumListWorker] = None
+        self._all_tracks_worker: Optional[AllTracksWorker] = None
         self._album_cards: List[OnlineAlbumCard] = []
         self._albums_loaded = 0  # Track how many albums have been loaded
         self._albums_total = 0  # Total album count from API
@@ -438,21 +531,36 @@ class OnlineDetailView(QWidget):
         widget.setFixedHeight(32)
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        # Play all
+        # 立即播放 (current page)
+        self._play_btn = QPushButton(t("play_now"))
+        self._play_btn.setObjectName("primaryBtn")
+        self._play_btn.setCursor(Qt.PointingHandCursor)
+        self._play_btn.setFixedHeight(28)
+        self._play_btn.clicked.connect(self._on_play_current)
+        layout.addWidget(self._play_btn)
+
+        # 添加到队列 (current page)
+        self._add_queue_btn = QPushButton(t("add_to_queue"))
+        self._add_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._add_queue_btn.setFixedHeight(28)
+        self._add_queue_btn.clicked.connect(self._on_add_current_to_queue)
+        layout.addWidget(self._add_queue_btn)
+
+        # 播放全部 (all pages)
         self._play_all_btn = QPushButton(t("play_all"))
-        self._play_all_btn.setObjectName("primaryBtn")
         self._play_all_btn.setCursor(Qt.PointingHandCursor)
         self._play_all_btn.setFixedHeight(28)
         self._play_all_btn.clicked.connect(self._on_play_all)
         layout.addWidget(self._play_all_btn)
 
-        # Add to queue
-        self._add_queue_btn = QPushButton(t("add_all_to_queue"))
-        self._add_queue_btn.setCursor(Qt.PointingHandCursor)
-        self._add_queue_btn.setFixedHeight(28)
-        self._add_queue_btn.clicked.connect(self._on_add_all_to_queue)
-        layout.addWidget(self._add_queue_btn)
+        # 全部加到队列 (all pages)
+        self._add_all_queue_btn = QPushButton(t("add_all_to_queue"))
+        self._add_all_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._add_all_queue_btn.setFixedHeight(28)
+        self._add_all_queue_btn.clicked.connect(self._on_add_all_to_queue)
+        layout.addWidget(self._add_all_queue_btn)
 
         layout.addStretch()
 
@@ -1378,15 +1486,70 @@ class OnlineDetailView(QWidget):
         """Handle album card click."""
         self.album_clicked.emit(album)
 
-    def _on_play_all(self):
-        """Play all tracks."""
+    def _on_play_current(self):
+        """Play current page tracks."""
         if self._tracks:
             self.play_all.emit(self._tracks)
 
-    def _on_add_all_to_queue(self):
-        """Add all tracks to queue."""
+    def _on_add_current_to_queue(self):
+        """Add current page tracks to queue."""
         if self._tracks:
             self.add_all_to_queue.emit(self._tracks)
+
+    def _on_play_all(self):
+        """Play all tracks (from all pages)."""
+        if self._total_songs <= len(self._tracks):
+            # All tracks already loaded
+            self.play_all_tracks.emit(self._tracks)
+        else:
+            # Need to fetch all tracks
+            self._fetch_all_tracks(callback=lambda tracks: self.play_all_tracks.emit(tracks))
+
+    def _on_add_all_to_queue(self):
+        """Add all tracks to queue (from all pages)."""
+        if self._total_songs <= len(self._tracks):
+            # All tracks already loaded
+            self.add_all_tracks_to_queue.emit(self._tracks)
+        else:
+            # Need to fetch all tracks
+            self._fetch_all_tracks(callback=lambda tracks: self.add_all_tracks_to_queue.emit(tracks))
+
+    def _fetch_all_tracks(self, callback):
+        """
+        Fetch all tracks from all pages.
+
+        Args:
+            callback: Function to call with all tracks when complete
+        """
+        # Show loading state
+        self._play_all_btn.setEnabled(False)
+        self._add_all_queue_btn.setEnabled(False)
+        self._play_all_btn.setText(t("loading"))
+        self._add_all_queue_btn.setText(t("loading"))
+
+        # Start background worker to fetch all tracks
+        self._all_tracks_worker = AllTracksWorker(
+            service=self._service,
+            detail_type=self._detail_type,
+            mid=self._mid,
+            total_songs=self._total_songs,
+            page_size=self._page_size
+        )
+        self._all_tracks_worker.all_tracks_loaded.connect(
+            lambda tracks: self._on_all_tracks_loaded(tracks, callback)
+        )
+        self._all_tracks_worker.start()
+
+    def _on_all_tracks_loaded(self, tracks, callback):
+        """Handle all tracks loaded."""
+        # Restore button state
+        self._play_all_btn.setEnabled(True)
+        self._add_all_queue_btn.setEnabled(True)
+        self._play_all_btn.setText(t("play_all"))
+        self._add_all_queue_btn.setText(t("add_all_to_queue"))
+
+        # Call callback with all tracks
+        callback(tracks)
 
     def _on_track_double_clicked(self, index):
         """Handle track double click."""

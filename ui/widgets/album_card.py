@@ -146,12 +146,12 @@ class AlbumCard(QWidget):
         """)
 
         # Download cover action
-        download_action = QAction(t("download_cover_manual", "下载封面"), self)
+        download_action = QAction(t("download_cover_manual"), self)
         download_action.triggered.connect(lambda: self.download_cover_requested.emit(self._album))
         menu.addAction(download_action)
 
         # Play album action
-        play_action = QAction(t("play_album", "播放专辑"), self)
+        play_action = QAction(t("view_details"), self)
         play_action.triggered.connect(lambda: self.clicked.emit(self._album))
         menu.addAction(play_action)
 
