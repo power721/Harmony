@@ -197,6 +197,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._cover_loaded_signal.connect(self._on_cover_loaded)
         self._cover_versions: dict = {}
+        self._requested_covers: set = set()  # rows with pending cover requests
         CoverPixmapCache.initialize()
         self._cover_size = 64
         self._index_width = 30
@@ -324,17 +325,21 @@ class QueueItemDelegate(QStyledItemDelegate):
         painter.drawPixmap(rect, placeholder)
 
         # Request async load (debounced by version tracking)
-        version = self._cover_versions.get(row, 0) + 1
-        self._cover_versions[row] = version
-        worker = CoverLoadWorker(row, self._resolve_cover_path, self._cover_loaded_signal)
-        # Store version on worker for validation in callback
-        worker._version = version
-        QThreadPool.globalInstance().start(worker)
+        # Only request if not already pending to avoid duplicate workers
+        if row not in self._requested_covers:
+            self._requested_covers.add(row)
+            version = self._cover_versions.get(row, 0) + 1
+            self._cover_versions[row] = version
+            worker = CoverLoadWorker(row, self._resolve_cover_path, self._cover_loaded_signal)
+            # Store version on worker for validation in callback
+            worker._version = version
+            QThreadPool.globalInstance().start(worker)
 
     def _on_cover_loaded(self, row: int, cover_path: str, qimage):
-        """Handle cover loaded — will be wired up in Task 6."""
-        # Stub: full implementation in Task 6
-        pass
+        """Handle cover loaded from background — runs on UI thread."""
+        parent_view = self.parent()
+        if parent_view and hasattr(parent_view, '_on_cover_ready'):
+            parent_view._on_cover_ready(row, cover_path, qimage)
 
     def _get_cover_cache_key(self, track) -> str:
         """Generate cache key for a track."""
@@ -588,7 +593,7 @@ class QueueView(QWidget):
         self._list_view = QListView()
         self._list_view.setObjectName("queueList")
         self._model = QueueTrackModel(self)
-        self._delegate = QueueItemDelegate(self._list_view)
+        self._delegate = QueueItemDelegate(self)
         self._list_view.setModel(self._model)
         self._list_view.setItemDelegate(self._delegate)
         self._list_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -691,6 +696,23 @@ class QueueView(QWidget):
 
         # Scroll to current track after a delay
         QTimer.singleShot(100, self._scroll_to_current_track)
+
+    def _on_cover_ready(self, row: int, cover_path: str, qimage):
+        """Handle cover loaded — cache it and trigger repaint."""
+        # Clear pending flag in delegate
+        self._delegate._requested_covers.discard(row)
+
+        if qimage and not qimage.isNull():
+            pixmap = QPixmap.fromImage(qimage).scaled(
+                64, 64,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            track = self._model.get_track_at(row)
+            if track:
+                cache_key = self._delegate._get_cover_cache_key(track)
+                CoverPixmapCache.set(cache_key, pixmap)
+            self._model.notify_cover_loaded(row)
 
     def refresh_queue(self):
         """Refresh the queue display (can be called externally)."""
