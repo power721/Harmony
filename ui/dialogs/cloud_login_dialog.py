@@ -153,7 +153,7 @@ class CloudLoginDialog(QDialog):
         self._qr_label.setMaximumSize(250, 250)
         self._qr_label.setAlignment(Qt.AlignCenter)
         self._qr_label.setScaledContents(False)
-        self._qr_label.setStyleSheet("border: 2px solid %border%; border-radius: 8px; background: white;")
+        self._qr_label.setStyleSheet(f"border: 2px solid {ThemeManager.instance().current_theme.border}; border-radius: 8px; background: white;")
         layout.addWidget(self._qr_label, 0, Qt.AlignCenter)
 
         # Status label

@@ -198,6 +198,9 @@ class CloudDriveView(QWidget):
         self._setup_connections()
         self._setup_event_bus()
 
+        # Apply themed stylesheet
+        self.refresh_theme()
+
     def _setup_ui(self):
         """Setup the main UI layout."""
         layout = QHBoxLayout(self)
@@ -395,11 +398,10 @@ class CloudDriveView(QWidget):
             display_name = f"[{provider_label}] {account.account_name}"
             item = QListWidgetItem(display_name)
             item.setData(Qt.UserRole, account)
+            self._account_list.addItem(item)
 
             if self._current_account and account.id == self._current_account.id:
                 self._account_list.setCurrentItem(item)
-
-            self._account_list.addItem(item)
 
         if not accounts:
             self._stack.setCurrentIndex(0)
@@ -1008,8 +1010,101 @@ class CloudDriveView(QWidget):
 
     def _download_cover(self, file: CloudFile):
         """Download cover art for a cloud file."""
-        # This would need the cover service implementation
-        pass
+        if not file.local_path:
+            logger.warning(f"Cannot download cover: file not downloaded - {file.name}")
+            return
+
+        from services.metadata import MetadataService
+        from ui.dialogs import CoverDownloadDialog
+        from domain.track import Track
+
+        # Extract metadata from the downloaded file
+        metadata = MetadataService.extract_metadata(file.local_path)
+
+        # Create a temporary Track object for the dialog
+        track = Track(
+            id=0,
+            title=metadata.get("title") or file.name,
+            artist=metadata.get("artist") or "",
+            album=metadata.get("album") or "",
+            duration=file.duration or metadata.get("duration") or 0.0,
+            path=file.local_path
+        )
+
+        def save_cover_callback(track, cover_path, cover_data):
+            """Embed cover into the cloud file and save to cache."""
+            try:
+                import mutagen
+                from mutagen.id3 import ID3, APIC
+                from mutagen.mp3 import MP3
+                from mutagen.flac import FLAC
+                from mutagen.mp4 import MP4
+                from mutagen.oggvorbis import OggVorbis
+                import base64
+
+                path = Path(file.local_path)
+                if not path.exists():
+                    logger.error(f"File not found: {file.local_path}")
+                    return False
+
+                suffix = path.suffix.lower()
+                audio = mutagen.File(file_path=file.local_path)
+
+                if suffix == ".mp3" and isinstance(audio, MP3):
+                    if audio.tags is None:
+                        audio.add_tags()
+                    audio.tags.delall("APIC")
+                    audio.tags.add(APIC(
+                        encoding=3,
+                        mime="image/jpeg",
+                        type=3,
+                        desc="Cover",
+                        data=cover_data
+                    ))
+                    audio.save()
+                elif suffix == ".flac" and isinstance(audio, FLAC):
+                    audio["pictures"] = []
+                    from mutagen.flac import Picture
+                    pic = Picture()
+                    pic.type = 3
+                    pic.mime = "image/jpeg"
+                    pic.desc = "Cover"
+                    pic.data = cover_data
+                    audio.add_picture(pic)
+                    audio.save()
+                elif suffix in {".m4a", ".mp4"} and isinstance(audio, MP4):
+                    audio["covr"] = [cover_data]
+                    audio.save()
+                elif suffix in {".ogg", ".oga"} and isinstance(audio, OggVorbis):
+                    import base64
+                    audio["metadata_block_picture"] = [
+                        base64.b64encode(
+                            mutagen.flac.Picture(
+                                type=3, mime="image/jpeg",
+                                desc="Cover", data=cover_data
+                            ).write()
+                        ).decode("ascii")
+                    ]
+                    audio.save()
+                else:
+                    logger.warning(f"Unsupported format for cover embedding: {suffix}")
+                    # Cover is still saved to cache by the dialog, so just accept
+                    return True
+
+                logger.info(f"Cover embedded into {file.name}")
+                self._status_label.setText(f"✓ {t('metadata_saved')}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to embed cover into {file.name}: {e}")
+                return False
+
+        dialog = CoverDownloadDialog(
+            [track],
+            self._cover_service,
+            self,
+            save_callback=save_cover_callback
+        )
+        dialog.exec()
 
     def _open_file_location(self, file: CloudFile):
         """Open file location in file manager."""
@@ -1172,8 +1267,19 @@ class CloudDriveView(QWidget):
 
     def _update_account_cookie(self, account: CloudAccount):
         """Update cookie for an account."""
-        # Simplified implementation - full implementation would show a dialog
-        pass
+        dialog = CloudLoginDialog(provider=account.provider, parent=self)
+        dialog.login_success.connect(
+            lambda result: self._on_cookie_updated(account, result)
+        )
+        dialog.exec()
+
+    def _on_cookie_updated(self, account: CloudAccount, result: dict):
+        """Handle cookie update from login dialog."""
+        new_token = result.get("access_token", "")
+        if new_token:
+            self._cloud_account_service.update_token(account.id, new_token)
+            self._load_accounts()
+            self._status_label.setText(f"✓ {t('cookie_updated')}")
 
     def _delete_account(self, account: CloudAccount):
         """Delete a cloud account."""

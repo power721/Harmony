@@ -319,8 +319,6 @@ class QueueItemWidget(QWidget):
                                 logger.debug(f"QueueItem: No cover found from service for {title}")
                 except Exception as e:
                     logger.debug(f"QueueItem: Error loading cover: {e}")
-            else:
-                logger.debug(f"QueueItem: No valid path for track: {path}")
 
             return None
 
