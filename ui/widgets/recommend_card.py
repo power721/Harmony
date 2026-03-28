@@ -324,7 +324,6 @@ class RecommendSection(QWidget):
         """
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"load_recommendations called with {len(recommendations)} items")
 
         self._clear_cards()
         self.hide_loading()
@@ -335,7 +334,6 @@ class RecommendSection(QWidget):
             return
 
         for rec in recommendations:
-            logger.debug(f"Creating card: title={rec.get('title')}, cover_url={rec.get('cover_url')}")
             card = RecommendCard(rec)
             card.clicked.connect(self.recommendation_clicked.emit)
             self._cards.append(card)
@@ -346,7 +344,6 @@ class RecommendSection(QWidget):
         self._cards_container.setFixedWidth(max(total_width, self.width()))
         self._cards_container.adjustSize()
 
-        logger.info(f"Showing section with {len(self._cards)} cards, container width: {total_width}")
         self.show()
 
     def refresh_ui(self):

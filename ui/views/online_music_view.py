@@ -1298,15 +1298,6 @@ class OnlineMusicView(QWidget):
 
     def _on_recommend_ready(self, recommend_type: str, data: Any):
         """Handle recommendation data ready."""
-        logger.info(f"Recommendation {recommend_type} loaded: {type(data)}")
-
-        # Debug: Log the actual data structure
-        if isinstance(data, dict):
-            logger.debug(f"  Dict keys: {list(data.keys())[:10]}")
-        elif isinstance(data, list):
-            logger.debug(f"  List length: {len(data)}")
-            if data and isinstance(data[0], dict):
-                logger.debug(f"  First item keys: {list(data[0].keys())[:10]}")
 
         # Store raw data for parsing
         self._recommendations[recommend_type] = data
@@ -1342,9 +1333,7 @@ class OnlineMusicView(QWidget):
                 parsed['recommend_type'] = recommend_type
                 parsed['title'] = title
                 cards.append(parsed)
-                logger.info(f"Added card for {recommend_type}: cover_url={parsed.get('cover_url')}")
 
-        logger.info(f"Total cards to display: {len(cards)}")
         if cards:
             self._recommend_section.load_recommendations(cards)
 
@@ -1545,8 +1534,6 @@ class OnlineMusicView(QWidget):
                 if not isinstance(first_item, dict):
                     return None
 
-                logger.debug(f"Parsing {recommend_type} list item: keys={list(first_item.keys())[:15]}")
-
                 # Get a random cover from all items
                 cover_url = self._get_random_cover_from_items(data, recommend_type)
                 playlist_id = None
@@ -1555,11 +1542,9 @@ class OnlineMusicView(QWidget):
                 if recommend_type == 'songlist':
                     # Playlist structure: {'Playlist': {...}, 'WhereFrom': ..., 'ext': ...}
                     # or direct structure with tid/id/disstid
-                    logger.debug(f"songlist first_item keys: {list(first_item.keys())}")
 
                     playlist_info = first_item.get('Playlist', {})
                     if isinstance(playlist_info, dict) and playlist_info:
-                        logger.debug(f"songlist Playlist keys: {list(playlist_info.keys())}")
 
                         # Try nested structures first (basic/content)
                         if 'basic' in playlist_info:
@@ -1576,12 +1561,10 @@ class OnlineMusicView(QWidget):
                         if not playlist_id:
                             playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
 
-                        logger.debug(f"songlist from Playlist: id={playlist_id}")
                     else:
                         # Try direct structure - check for various ID fields
                         playlist_id = (first_item.get('tid') or first_item.get('id') or
                                       first_item.get('disstid') or first_item.get('dissid'))
-                        logger.debug(f"songlist direct: id={playlist_id}")
 
                 elif recommend_type == 'radar':
                     # Radar structure: {'Track': {...}, 'Abt': ..., 'Ext': ...}
@@ -1598,8 +1581,6 @@ class OnlineMusicView(QWidget):
                     playlist_id = (first_item.get('id') or first_item.get('disstid') or
                                   first_item.get('tid') or first_item.get('playlist_id'))
 
-                    logger.debug(f"{recommend_type}: cover_url={cover_url}, playlist_id={playlist_id}")
-
                 return {
                     'id': playlist_id,
                     'cover_url': cover_url,
@@ -1611,7 +1592,6 @@ class OnlineMusicView(QWidget):
             # Handle dict response (API returns dict with embedded list)
             if isinstance(data, dict):
                 # Log the structure for debugging
-                logger.debug(f"Parsing {recommend_type} dict: keys={list(data.keys())[:10]}")
 
                 # Try to find the main content
                 content = None
@@ -1623,7 +1603,6 @@ class OnlineMusicView(QWidget):
                 if content and isinstance(content, list) and content:
                     first_item = content[0]
                     if isinstance(first_item, dict):
-                        logger.debug(f"  First item keys: {list(first_item.keys())[:15]}")
 
                         # Get a random cover from all items
                         cover_url = self._get_random_cover_from_items(content, recommend_type)
@@ -1783,8 +1762,6 @@ class OnlineMusicView(QWidget):
         raw_data = data.get('raw_data')
         card_id = data.get('id')
         full_data = data.get('full_data')  # Full song list for song-based recommendations
-
-        logger.info(f"Recommendation clicked: {recommend_type}, id={card_id}")
 
         title = data.get('title', '')
         cover_url = data.get('cover_url', '')

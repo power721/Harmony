@@ -61,7 +61,6 @@ class ImageCache:
             cache_path = cls.CACHE_DIR / f"{cache_key}{ext}"
 
             cache_path.write_bytes(data)
-            logger.debug(f"Cached image: {cache_path}")
             return str(cache_path)
 
         except Exception as e:

@@ -116,16 +116,45 @@ logging.basicConfig(
     format='[%(levelname)s] %(name)s - %(message)s'
 )
 
+# Suppress verbose third-party library logging
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+logging.getLogger("urllib3.util.retry").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
+
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, qInstallMessageHandler, QtMsgType
 from PySide6.QtGui import QFont, QIcon
 
 from app import Application
 from ui import MainWindow
 
 
+def qt_message_handler(mode, context, message):
+    """Filter out verbose Qt debug messages."""
+    # Suppress specific Qt debug messages
+    suppressed_messages = [
+        "Using Qt multimedia with FFmpeg",
+        "Parent future has",
+        "AtSpiAdaptor::applicationInterface",
+    ]
+
+    # Only show warnings and above, or debug messages not in suppressed list
+    if mode == QtMsgType.QtDebugMsg:
+        if not any(suppressed in message for suppressed in suppressed_messages):
+            logging.debug(f"Qt: {message}")
+    elif mode == QtMsgType.QtWarningMsg:
+        logging.warning(f"Qt: {message}")
+    elif mode == QtMsgType.QtCriticalMsg:
+        logging.error(f"Qt: {message}")
+    elif mode == QtMsgType.QtFatalMsg:
+        logging.critical(f"Qt: {message}")
+
+
 def main():
     """Main entry point for the application."""
+    # Install Qt message handler to filter verbose messages
+    qInstallMessageHandler(qt_message_handler)
+
     # Enable high DPI scaling
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
