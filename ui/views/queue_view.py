@@ -6,14 +6,12 @@ from typing import List
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, QPoint, QItemSelectionModel
-from PySide6.QtGui import QColor, QBrush, QPixmap, QPainter, QFont, QImage
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, QItemSelectionModel
+from PySide6.QtGui import QColor, QPixmap, QPainter, QFont, QImage
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QLabel,
     QMenu,
@@ -27,7 +25,6 @@ from PySide6.QtWidgets import (
     QListView,
 )
 
-import hashlib
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 
 from domain.playback import PlaybackState
@@ -330,8 +327,7 @@ class QueueItemDelegate(QStyledItemDelegate):
             self._requested_covers.add(row)
             version = self._cover_versions.get(row, 0) + 1
             self._cover_versions[row] = version
-            worker = CoverLoadWorker(row, self._resolve_cover_path, self._cover_loaded_signal)
-            # Store version on worker for validation in callback
+            worker = CoverLoadWorker(row, lambda: self._resolve_cover_path(track), self._cover_loaded_signal)
             worker._version = version
             QThreadPool.globalInstance().start(worker)
 
