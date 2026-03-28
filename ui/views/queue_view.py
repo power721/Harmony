@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QListView,
+    QStyle,
 )
 
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
@@ -200,6 +201,14 @@ class QueueItemDelegate(QStyledItemDelegate):
         self._index_width = 30
         self._padding = 10
 
+        # Animation state
+        self._animation_frame = 0
+        self._animation_timer = QTimer(self)
+        self._animation_timer.timeout.connect(self._advance_animation)
+        self._animation_timer.setInterval(300)
+        self._animation_playing = False
+        self._current_anim_row = -1
+
     def sizeHint(self, option, index):
         return QSize(0, 72)
 
@@ -221,6 +230,8 @@ class QueueItemDelegate(QStyledItemDelegate):
         # Background
         if is_selected:
             painter.fillRect(rect, QColor(theme.highlight))
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(rect, QColor(theme.background_hover))
         else:
             painter.fillRect(rect, QColor(theme.background))
 
@@ -242,14 +253,17 @@ class QueueItemDelegate(QStyledItemDelegate):
 
         x = rect.left() + self._padding
 
-        # Index number
-        painter.setPen(secondary_color)
-        font = painter.font()
-        font.setPixelSize(12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(x, rect.top(), self._index_width, rect.height(),
-                         Qt.AlignVCenter | Qt.AlignHCenter, f"{row + 1}")
+        # Index number (or playing animation bars for current track)
+        if is_current and is_playing and row == self._current_anim_row:
+            self._paint_playing_bars(painter, x, rect, theme.highlight)
+        else:
+            painter.setPen(secondary_color)
+            font = painter.font()
+            font.setPixelSize(12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(x, rect.top(), self._index_width, rect.height(),
+                             Qt.AlignVCenter | Qt.AlignHCenter, f"{row + 1}")
         x += self._index_width
 
         # Cover art
@@ -259,9 +273,6 @@ class QueueItemDelegate(QStyledItemDelegate):
 
         # Title
         title = track.get("title", "Unknown") if isinstance(track, dict) else "Unknown"
-        if is_current:
-            icon = "\u25B6 " if is_playing else "\u23F8 "
-            title = f"{icon}{title}"
 
         painter.setPen(text_color)
         font.setPixelSize(13)
@@ -306,36 +317,109 @@ class QueueItemDelegate(QStyledItemDelegate):
         cached = CoverPixmapCache.get(cache_key)
         if cached and not cached.isNull():
             painter.drawPixmap(rect, cached)
-            return
+        else:
+            # Draw placeholder (music note icon)
+            placeholder = Pm(self._cover_size, self._cover_size)
+            placeholder.fill(QColor(theme.background_alt))
+            p = QPainter(placeholder)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(QColor(theme.border))
+            font = p.font()
+            font.setPixelSize(28)
+            p.setFont(font)
+            p.drawText(0, 0, self._cover_size, self._cover_size, Qt.AlignCenter, "\u266B")
+            p.end()
+            painter.drawPixmap(rect, placeholder)
 
-        # Draw placeholder (music note icon)
-        placeholder = Pm(self._cover_size, self._cover_size)
-        placeholder.fill(QColor(theme.background_alt))
-        p = QPainter(placeholder)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(QColor(theme.border))
-        font = p.font()
-        font.setPixelSize(28)
-        p.setFont(font)
-        p.drawText(0, 0, self._cover_size, self._cover_size, Qt.AlignCenter, "\u266B")
-        p.end()
-        painter.drawPixmap(rect, placeholder)
+            # Request async load (debounced by version tracking)
+            # Only request if not already pending to avoid duplicate workers
+            if row not in self._requested_covers:
+                self._requested_covers.add(row)
+                version = self._cover_versions.get(row, 0) + 1
+                self._cover_versions[row] = version
+                worker = CoverLoadWorker(row, lambda: self._resolve_cover_path(track), self._cover_loaded_signal)
+                worker._version = version
+                QThreadPool.globalInstance().start(worker)
 
-        # Request async load (debounced by version tracking)
-        # Only request if not already pending to avoid duplicate workers
-        if row not in self._requested_covers:
-            self._requested_covers.add(row)
-            version = self._cover_versions.get(row, 0) + 1
-            self._cover_versions[row] = version
-            worker = CoverLoadWorker(row, lambda: self._resolve_cover_path(track), self._cover_loaded_signal)
-            worker._version = version
-            QThreadPool.globalInstance().start(worker)
+        # Preload nearby covers (±5 rows)
+        parent_view = self.parent()
+        if parent_view and hasattr(parent_view, '_model'):
+            model = parent_view._model
+            for offset in [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]:
+                nearby_row = row + offset
+                if 0 <= nearby_row < model.rowCount() and nearby_row not in self._requested_covers:
+                    nearby_track = model.get_track_at(nearby_row)
+                    if nearby_track:
+                        cache_key_nearby = self._get_cover_cache_key(nearby_track)
+                        if not CoverPixmapCache.get(cache_key_nearby):
+                            self._requested_covers.add(nearby_row)
+                            worker = CoverLoadWorker(
+                                nearby_row,
+                                lambda t=nearby_track: self._resolve_cover_path(t),
+                                self._cover_loaded_signal
+                            )
+                            QThreadPool.globalInstance().start(worker)
 
     def _on_cover_loaded(self, row: int, cover_path: str, qimage):
         """Handle cover loaded from background — runs on UI thread."""
         parent_view = self.parent()
         if parent_view and hasattr(parent_view, '_on_cover_ready'):
             parent_view._on_cover_ready(row, cover_path, qimage)
+
+    def _advance_animation(self):
+        """Advance animation frame and repaint current row."""
+        self._animation_frame = (self._animation_frame + 1) % 4
+        parent = self.parent()
+        if parent and hasattr(parent, '_model'):
+            model = parent._model
+            if 0 <= model.current_index < model.rowCount():
+                idx = model.index(model.current_index)
+                parent._list_view.update(idx)
+
+    def _start_animation(self, row: int):
+        """Start playing animation for a row."""
+        if not self._animation_playing:
+            self._animation_playing = True
+            self._animation_frame = 0
+            self._animation_timer.start()
+        self._current_anim_row = row
+
+    def _stop_animation(self):
+        """Stop playing animation."""
+        self._animation_timer.stop()
+        self._animation_playing = False
+        self._current_anim_row = -1
+        self._animation_frame = 0
+
+    def _paint_playing_bars(self, painter, x, rect, color):
+        """Draw animated equalizer bars."""
+        painter.setPen(Qt.NoPen)
+        bar_color = QColor(color)
+        bar_color.setAlpha(200)
+        painter.setBrush(bar_color)
+
+        bar_width = 3
+        bar_gap = 2
+        num_bars = 3
+        total_width = num_bars * bar_width + (num_bars - 1) * bar_gap
+        start_x = x + (self._index_width - total_width) // 2
+        center_y = rect.top() + rect.height() // 2
+
+        # Different heights per frame
+        patterns = [
+            [0.4, 0.8, 0.6],  # frame 0
+            [0.6, 0.4, 0.8],  # frame 1
+            [0.8, 0.6, 0.4],  # frame 2
+            [0.5, 0.9, 0.5],  # frame 3
+        ]
+        heights = patterns[self._animation_frame % len(patterns)]
+
+        max_height = 20
+        for i, h_factor in enumerate(heights):
+            bar_height = int(max_height * h_factor)
+            bar_x = start_x + i * (bar_width + bar_gap)
+            bar_y = center_y - bar_height // 2
+            painter.drawRoundedRect(int(bar_x), int(bar_y), bar_width, bar_height, 1, 1)
 
     def _get_cover_cache_key(self, track) -> str:
         """Generate cache key for a track."""
@@ -588,6 +672,7 @@ class QueueView(QWidget):
         # Queue list
         self._list_view = QListView()
         self._list_view.setObjectName("queueList")
+        self._list_view.setMouseTracking(True)
         self._model = QueueTrackModel(self)
         self._delegate = QueueItemDelegate(self)
         self._list_view.setModel(self._model)
@@ -708,6 +793,12 @@ class QueueView(QWidget):
             if track:
                 cache_key = self._delegate._get_cover_cache_key(track)
                 CoverPixmapCache.set(cache_key, pixmap)
+                # Update blur background if this is the current track
+                if row == self._model.current_index:
+                    full_pixmap = QPixmap.fromImage(qimage)
+                    QTimer.singleShot(0, lambda pm=full_pixmap: self._update_bg_blur(pm))
+            self._model.notify_cover_loaded(row)
+        else:
             self._model.notify_cover_loaded(row)
 
     def refresh_queue(self):
@@ -778,6 +869,54 @@ class QueueView(QWidget):
         is_playing = self._player.engine.state == PlaybackState.PLAYING
         self._model.set_current(current_index)
         self._model.set_playing(is_playing)
+
+        # Control playing animation
+        if is_playing and current_index >= 0:
+            self._delegate._start_animation(current_index)
+            # Try to set blur background from cached cover
+            track = self._model.get_track_at(current_index)
+            if track:
+                cache_key = self._delegate._get_cover_cache_key(track)
+                cached = CoverPixmapCache.get(cache_key)
+                if cached:
+                    QTimer.singleShot(0, lambda pm=cached: self._update_bg_blur(pm))
+        else:
+            self._delegate._stop_animation()
+
+    def _update_bg_blur(self, cover_pixmap):
+        """Set blurred cover as list viewport background."""
+        viewport = self._list_view.viewport()
+        if viewport.width() < 10 or viewport.height() < 10:
+            return
+        if not cover_pixmap or cover_pixmap.isNull():
+            viewport.setStyleSheet("")
+            return
+
+        # Cheap blur: downscale then upscale
+        w, h = viewport.width(), viewport.height()
+        small = cover_pixmap.scaled(w // 10, h // 10,
+                                   Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                   Qt.TransformationMode.SmoothTransformation)
+        blurred = small.scaled(w, h,
+                               Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                               Qt.TransformationMode.SmoothTransformation)
+
+        # Darken the blur for readability
+        dark = QPixmap(blurred.size())
+        dark.fill(QColor(0, 0, 0, 180))
+        painter = QPainter(blurred)
+        painter.drawPixmap(0, 0, dark)
+        painter.end()
+
+        # Convert to base64 for stylesheet
+        from PySide6.QtCore import QByteArray
+        buf = QByteArray()
+        blurred.save(buf, "PNG")
+        b64 = bytes(buf.toBase64()).decode()
+        viewport.setStyleSheet(
+            f"background-image: url(data:image/png;base64,{b64});"
+            f"background-position: center; background-repeat: no-repeat;"
+        )
 
     def _on_current_track_changed(self, track_dict):
         """Handle current track change."""
