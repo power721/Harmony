@@ -685,7 +685,12 @@ class QueueView(QWidget):
         # Restore selection
         for row in selected_indices:
             if row < self._queue_list.count():
-                self._queue_list.item(row).setSelected(True)
+                item = self._queue_list.item(row)
+                item.setSelected(True)
+                # Manually update widget selection state since signals are blocked
+                widget = self._queue_list.itemWidget(item)
+                if widget and isinstance(widget, QueueItemWidget):
+                    widget.set_selected(True)
 
         self._queue_list.blockSignals(False)
 
@@ -741,7 +746,12 @@ class QueueView(QWidget):
         # Restore selection
         for row in selected_indices:
             if row < self._queue_list.count():
-                self._queue_list.item(row).setSelected(True)
+                item = self._queue_list.item(row)
+                item.setSelected(True)
+                # Manually update widget selection state since signals are blocked
+                widget = self._queue_list.itemWidget(item)
+                if widget and isinstance(widget, QueueItemWidget):
+                    widget.set_selected(True)
 
         self._queue_list.blockSignals(False)
 
