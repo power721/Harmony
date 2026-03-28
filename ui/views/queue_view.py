@@ -256,7 +256,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         # Index number (or playing animation bars for current track)
         font = painter.font()
         if is_current and is_playing and row == self._current_anim_row:
-            self._paint_playing_bars(painter, x, rect, theme.highlight)
+            self._paint_playing_bars(painter, x, rect, theme.background if is_selected else theme.highlight)
         else:
             painter.setPen(secondary_color)
             font.setPixelSize(12)
