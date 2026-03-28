@@ -185,6 +185,7 @@ class PlaylistView(QWidget):
         }
         QListWidget#playlistList::item:selected:hover {
             background-color: %highlight_hover%;
+            color: %background%;
         }
         QTableWidget {
             background-color: %background%;

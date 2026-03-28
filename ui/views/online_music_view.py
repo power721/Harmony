@@ -804,6 +804,10 @@ class OnlineMusicView(QWidget):
         QListWidget::item:hover {
             background: %background_hover%;
         }
+        QListWidget::item:selected:hover {
+            background-color: %highlight_hover%;
+            color: %background%;
+        }
     """
     _STYLE_MENU = """
         QMenu {

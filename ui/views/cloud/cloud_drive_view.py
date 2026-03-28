@@ -106,6 +106,7 @@ class CloudDriveView(QWidget):
         }
         QListWidget#accountList::item:selected:hover {
             background-color: %highlight_hover%;
+            color: %background%;
         }
         QLabel#accountTitle {
             color: %highlight%;
