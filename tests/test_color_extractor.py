@@ -1,11 +1,19 @@
 """Tests for ColorExtractor."""
 import sys
+import tempfile
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from unittest.mock import patch, MagicMock
 from PySide6.QtGui import QImage, QColor
 from PySide6.QtCore import QObject, Signal
+
+from services.metadata.color_extractor import (
+    extract_dominant_color,
+    extract_from_file,
+    ColorWorker,
+)
 
 
 def test_extract_dominant_color_red_image():
@@ -14,12 +22,8 @@ def test_extract_dominant_color_red_image():
     img = QImage(10, 10, QImage.Format_RGB32)
     img.fill(QColor(255, 0, 0))
 
-    from services.metadata.color_extractor import extract_dominant_color
     result = extract_dominant_color(img)
-    assert result is not None
-    assert result.red() == 255
-    assert result.green() < 100
-    assert result.blue() < 100
+    assert result == QColor(255, 0, 0)
 
 
 def test_extract_dominant_color_dark_image():
@@ -27,7 +31,6 @@ def test_extract_dominant_color_dark_image():
     img = QImage(10, 10, QImage.Format_RGB32)
     img.fill(QColor(18, 18, 18))
 
-    from services.metadata.color_extractor import extract_dominant_color
     result = extract_dominant_color(img)
     assert result is not None
 
@@ -36,26 +39,22 @@ def test_extract_dominant_color_null_image():
     """Should return None for null QImage."""
     img = QImage()
 
-    from services.metadata.color_extractor import extract_dominant_color
     result = extract_dominant_color(img)
     assert result is None
 
 
 def test_extract_from_file_nonexistent():
     """Should return None for nonexistent file."""
-    from services.metadata.color_extractor import extract_from_file
     result = extract_from_file("/nonexistent/path/image.jpg")
     assert result is None
 
 
 def test_color_worker_emits_result():
     """ColorWorker should emit color_extracted signal when done."""
-    from services.metadata.color_extractor import ColorWorker
-    import tempfile
-    from PIL import Image as PILImage
+    # Create a temp image using QImage (no Pillow dependency)
+    img = QImage(10, 10, QImage.Format_RGB32)
+    img.fill(QColor(255, 0, 0))
 
-    # Create a temp image
-    img = PILImage.new('RGB', (10, 10), (255, 0, 0))
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
         img.save(f.name)
         tmp_path = f.name

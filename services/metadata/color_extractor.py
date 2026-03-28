@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtGui import QImage, QColor
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QRunnable, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -92,15 +92,18 @@ def extract_from_file(path: str) -> Optional[QColor]:
     return extract_dominant_color(image)
 
 
-class ColorWorker:
+class ColorWorker(QRunnable):
     """Runnable that extracts color from an image file and emits via signal.
 
-    Designed to run in QThreadPool.
+    Designed to run in QThreadPool via QThreadPool.globalInstance().start(worker).
+    Auto-deletes when finished (default QRunnable behavior).
     """
 
     def __init__(self, image_path: str, result_signal: Signal):
+        super().__init__()
         self.image_path = image_path
         self.result_signal = result_signal
+        self.setAutoDelete(True)
 
     def run(self):
         """Extract color and emit result."""
