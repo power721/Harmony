@@ -776,15 +776,20 @@ class OnlineTrackHandler(QObject):
             title
         )
 
-        # Connect to cleanup handler
-        def on_finished(mid, path):
+        # Handle download result
+        def on_download_finished(mid, path):
             self.on_track_downloaded(mid, path)
+
+        # Clean up worker ONLY after thread has fully stopped
+        def on_thread_finished():
             with self._download_lock:
-                if mid in self._download_workers:
-                    worker_obj = self._download_workers.pop(mid)
+                if song_mid in self._download_workers:
+                    worker_obj = self._download_workers.pop(song_mid)
                     worker_obj.deleteLater()
 
-        worker.download_finished.connect(on_finished, Qt.DirectConnection)
+        # Connect signals - use AutoConnection (default) for thread safety
+        worker.download_finished.connect(on_download_finished)
+        worker.finished.connect(on_thread_finished)
         return worker
 
     def preload_track(self, item: PlaylistItem):

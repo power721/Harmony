@@ -135,7 +135,7 @@ class DownloadManager(QObject):
                 logger.info(f"[DownloadManager] Already downloading: {song_mid}")
                 return True
             else:
-                # Clean up finished worker
+                # Clean up finished worker - safe to delete since it's not running
                 del self._download_workers[song_mid]
                 worker.deleteLater()
 
@@ -150,7 +150,15 @@ class DownloadManager(QObject):
 
         # Create download worker
         worker = self._OnlineDownloadWorker(service, song_mid, item.title, item)
+
+        # Clean up worker ONLY after thread has fully stopped
+        def on_thread_finished():
+            if song_mid in self._download_workers:
+                worker_obj = self._download_workers.pop(song_mid)
+                worker_obj.deleteLater()
+
         worker.download_finished.connect(self._on_online_download_finished)
+        worker.finished.connect(on_thread_finished)
 
         # Start download
         self._download_workers[song_mid] = worker
@@ -209,12 +217,11 @@ class DownloadManager(QObject):
             song_mid: Song MID
             local_path: Local path of downloaded file (empty if failed)
         """
-        # Clean up worker
+        # Don't delete worker here - it will be deleted in on_thread_finished callback
+        # Just disconnect the signal
         if song_mid in self._download_workers:
             worker = self._download_workers[song_mid]
             worker.download_finished.disconnect(self._on_online_download_finished)
-            del self._download_workers[song_mid]
-            worker.deleteLater()
 
         if not local_path:
             logger.error(f"[DownloadManager] Online download failed: {song_mid}")

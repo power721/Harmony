@@ -1108,19 +1108,20 @@ class PlaybackService(QObject):
                 item.title
             )
 
-            # Clean up worker when finished
-            def on_finished(mid, path):
+            # Handle download result
+            def on_download_finished(mid, path):
                 self.on_online_track_downloaded(mid, path)
-                # Remove from dict after completion
+
+            # Clean up worker ONLY after thread has fully stopped
+            def on_thread_finished():
                 with self._online_download_lock:
-                    if mid in self._online_download_workers:
-                        worker_obj = self._online_download_workers.pop(mid)
-                        # Don't call wait() here - we're in the worker thread!
-                        # Just schedule deletion, Qt will handle it safely
+                    if song_mid in self._online_download_workers:
+                        worker_obj = self._online_download_workers.pop(song_mid)
                         worker_obj.deleteLater()
 
-            # Use DirectConnection to run handler in worker thread, avoiding Qt event loop deadlock
-            worker.download_finished.connect(on_finished, Qt.DirectConnection)
+            # Connect signals - use AutoConnection (default) for thread safety
+            worker.download_finished.connect(on_download_finished)
+            worker.finished.connect(on_thread_finished)
 
             # Store in dict before starting
             self._online_download_workers[song_mid] = worker

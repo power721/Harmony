@@ -277,6 +277,14 @@ class CloudDownloadService(QObject):
         worker.download_completed.connect(self._on_download_completed)
         worker.download_error.connect(self._on_download_error)
 
+        # Clean up worker ONLY after thread has fully stopped
+        def on_thread_finished():
+            with self._downloads_lock:
+                if file_id in self._active_downloads:
+                    del self._active_downloads[file_id]
+
+        worker.finished.connect(on_thread_finished)
+
         with self._downloads_lock:
             # Double-check: another thread might have started downloading
             if file_id in self._active_downloads:
@@ -380,19 +388,13 @@ class CloudDownloadService(QObject):
 
     def _on_download_completed(self, file_id: str, local_path: str):
         """Handle download completion."""
-        with self._downloads_lock:
-            if file_id in self._active_downloads:
-                del self._active_downloads[file_id]
-
+        # Don't remove from _active_downloads here - it will be removed in finished callback
         self._cached_paths[file_id] = local_path
         self.download_completed.emit(file_id, local_path)
 
     def _on_download_error(self, file_id: str, error: str):
         """Handle download error."""
-        with self._downloads_lock:
-            if file_id in self._active_downloads:
-                del self._active_downloads[file_id]
-
+        # Don't remove from _active_downloads here - it will be removed in finished callback
         self.download_error.emit(file_id, error)
 
     def clear_cache(self):
