@@ -232,8 +232,6 @@ class QueueItemDelegate(QStyledItemDelegate):
         is_hovered = option.state & QStyle.StateFlag.State_MouseOver
         if is_selected:
             painter.fillRect(rect, QColor(theme.highlight))
-        elif is_hovered:
-            painter.fillRect(rect, QColor(theme.highlight))
         else:
             bg = QColor(theme.background)
             bg.setAlpha(220)
