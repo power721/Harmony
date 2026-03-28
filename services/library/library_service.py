@@ -82,6 +82,9 @@ class LibraryService:
         # Rebuild
         self._artist_repo.rebuild_with_albums()
 
+        # Rebuild track_artists junction table
+        self._track_repo.rebuild_track_artists()
+
         # Notify UI to refresh
         self._event_bus.tracks_added.emit(0)
 
@@ -396,6 +399,10 @@ class LibraryService:
     def get_artist_by_name(self, artist_name: str) -> Optional[Artist]:
         """Get a specific artist by name."""
         return self._track_repo.get_artist_by_name(artist_name)
+
+    def rebuild_track_artists(self) -> int:
+        """Rebuild the track_artists junction table for all tracks."""
+        return self._track_repo.rebuild_track_artists()
 
     def get_album_by_name(self, album_name: str, artist: str = None) -> Optional[Album]:
         """

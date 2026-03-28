@@ -456,13 +456,16 @@ class SqliteTrackRepository(BaseRepository):
         """, (normalized,))
         rows = cursor.fetchall()
 
-        # If no results from junction table, fall back to direct match
+        # If no results from junction table, fall back to combined name match
         if not rows:
+            prefix = f"{artist_name}, %"
+            suffix = f"%, {artist_name}"
+            middle = f"%, {artist_name}, %"
             cursor.execute("""
                 SELECT * FROM tracks
-                WHERE artist = ?
+                WHERE artist = ? OR artist LIKE ? OR artist LIKE ? OR artist LIKE ?
                 ORDER BY album, id
-            """, (artist_name,))
+            """, (artist_name, prefix, suffix, middle))
             rows = cursor.fetchall()
 
         return [self._row_to_track(row) for row in rows]
@@ -482,13 +485,16 @@ class SqliteTrackRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Query from albums table for better performance
+        # Query from albums table, handling combined artist names (e.g. "A, B")
+        prefix = f"{artist_name}, %"
+        suffix = f"%, {artist_name}"
+        middle = f"%, {artist_name}, %"
         cursor.execute("""
             SELECT name, artist, cover_path, song_count, total_duration
             FROM albums
-            WHERE artist = ?
+            WHERE artist = ? OR artist LIKE ? OR artist LIKE ? OR artist LIKE ?
             ORDER BY song_count DESC
-        """, (artist_name,))
+        """, (artist_name, prefix, suffix, middle))
         rows = cursor.fetchall()
 
         return [
@@ -739,6 +745,58 @@ class SqliteTrackRepository(BaseRepository):
             return True
         except Exception:
             return False
+
+    def rebuild_track_artists(self) -> int:
+        """
+        Rebuild the track_artists junction table for all tracks.
+
+        This is needed when the artists table has been rebuilt (e.g. after a migration)
+        and the junction table's artist_id references are stale.
+
+        Returns:
+            Number of tracks processed
+        """
+        from services.metadata import split_artists_aware, normalize_artist_name
+        cursor = conn.cursor()
+
+        # Get all tracks with their artist strings
+        cursor.execute("SELECT id, artist FROM tracks WHERE artist IS NOT NULL AND artist != ''")
+        tracks = cursor.fetchall()
+
+        # Clear existing junction records
+        cursor.execute("DELETE FROM track_artists")
+
+        # Load known artists for space-separated name splitting
+        cursor.execute("SELECT normalized_name FROM artists")
+        known_artists = {row[0] for row in cursor.fetchall() if row[0]}
+
+        count = 0
+        for track in tracks:
+            track_id = track["id"]
+            artist_string = track["artist"]
+            if not artist_string:
+                continue
+
+            artist_names = split_artists_aware(artist_string, known_artists)
+            for position, artist_name in enumerate(artist_names):
+                normalized = normalize_artist_name(artist_name)
+                cursor.execute("""
+                    INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+                    ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+                """, (artist_name, normalized, normalized))
+                cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
+                artist_row = cursor.fetchone()
+                if artist_row:
+                    artist_id = artist_row[0]
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                        VALUES (?, ?, ?)
+                    """, (track_id, artist_id, position))
+            count += 1
+
+        conn.commit()
+        logger.info(f"Rebuilt track_artists junction table for {count} tracks")
+        return count
 
     def update_artist_stats(self) -> int:
         """

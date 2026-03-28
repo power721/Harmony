@@ -518,6 +518,65 @@ class GeneralSettingsDialog(QDialog):
         covers_layout.addStretch()
         tab_widget.addTab(covers_tab, t("covers_tab"))
 
+        # Repair Tab
+        repair_tab = QWidget()
+        repair_layout = QVBoxLayout(repair_tab)
+        repair_layout.setSpacing(10)
+
+        # Artist repair section
+        artist_repair_group = QGroupBox(t("artist_repair"))
+        artist_repair_section = QVBoxLayout()
+        artist_repair_section.setSpacing(8)
+
+        artist_repair_hint = QLabel(t("artist_repair_hint"))
+        artist_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        artist_repair_hint.setWordWrap(True)
+        artist_repair_section.addWidget(artist_repair_hint)
+
+        self._rebuild_artists_btn = QPushButton(t("rebuild_artists"))
+        self._rebuild_artists_btn.clicked.connect(self._rebuild_artists)
+        artist_repair_section.addWidget(self._rebuild_artists_btn)
+
+        artist_repair_group.setLayout(artist_repair_section)
+        repair_layout.addWidget(artist_repair_group)
+
+        # Album repair section
+        album_repair_group = QGroupBox(t("album_repair"))
+        album_repair_section = QVBoxLayout()
+        album_repair_section.setSpacing(8)
+
+        album_repair_hint = QLabel(t("album_repair_hint"))
+        album_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        album_repair_hint.setWordWrap(True)
+        album_repair_section.addWidget(album_repair_hint)
+
+        self._rebuild_albums_btn = QPushButton(t("rebuild_albums"))
+        self._rebuild_albums_btn.clicked.connect(self._rebuild_albums)
+        album_repair_section.addWidget(self._rebuild_albums_btn)
+
+        album_repair_group.setLayout(album_repair_section)
+        repair_layout.addWidget(album_repair_group)
+
+        # Junction table repair section
+        junction_repair_group = QGroupBox(t("junction_repair"))
+        junction_repair_section = QVBoxLayout()
+        junction_repair_section.setSpacing(8)
+
+        junction_repair_hint = QLabel(t("junction_repair_hint"))
+        junction_repair_hint.setStyleSheet("color: #a0a0a0; font-size: 11px;")
+        junction_repair_hint.setWordWrap(True)
+        junction_repair_section.addWidget(junction_repair_hint)
+
+        self._rebuild_junction_btn = QPushButton(t("rebuild_junction"))
+        self._rebuild_junction_btn.clicked.connect(self._rebuild_junction)
+        junction_repair_section.addWidget(self._rebuild_junction_btn)
+
+        junction_repair_group.setLayout(junction_repair_section)
+        repair_layout.addWidget(junction_repair_group)
+
+        repair_layout.addStretch()
+        tab_widget.addTab(repair_tab, t("repair_tab"))
+
         layout.addWidget(tab_widget)
 
         # Buttons
@@ -1153,6 +1212,117 @@ class GeneralSettingsDialog(QDialog):
 
         progress.show()
         worker.start()
+
+    def _rebuild_artists(self):
+        """Rebuild artists table from tracks."""
+        from app.bootstrap import Bootstrap
+
+        reply = QMessageBox.question(
+            self, t("artist_repair"),
+            t("rebuild_artists_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            bootstrap = Bootstrap.instance()
+            library_service = bootstrap.library_service
+
+            self._rebuild_artists_btn.setEnabled(False)
+            self._rebuild_artists_btn.setText(t("rebuilding"))
+
+            # Rebuild artists table
+            library_service.rebuild_albums_artists()
+
+            self._rebuild_artists_btn.setEnabled(True)
+            self._rebuild_artists_btn.setText(t("rebuild_artists"))
+
+            QMessageBox.information(self, t("success"), t("rebuild_artists_success"))
+
+            # Refresh covers status
+            self._update_covers_status()
+        except Exception as e:
+            logger.error(f"Failed to rebuild artists: {e}")
+            self._rebuild_artists_btn.setEnabled(True)
+            self._rebuild_artists_btn.setText(t("rebuild_artists"))
+            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
+
+    def _rebuild_albums(self):
+        """Rebuild albums table from tracks."""
+        from app.bootstrap import Bootstrap
+
+        reply = QMessageBox.question(
+            self, t("album_repair"),
+            t("rebuild_albums_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            bootstrap = Bootstrap.instance()
+            library_service = bootstrap.library_service
+
+            self._rebuild_albums_btn.setEnabled(False)
+            self._rebuild_albums_btn.setText(t("rebuilding"))
+
+            # Rebuild albums table
+            library_service.rebuild_albums_artists()
+
+            self._rebuild_albums_btn.setEnabled(True)
+            self._rebuild_albums_btn.setText(t("rebuild_albums"))
+
+            QMessageBox.information(self, t("success"), t("rebuild_albums_success"))
+
+            # Refresh covers status
+            self._update_covers_status()
+        except Exception as e:
+            logger.error(f"Failed to rebuild albums: {e}")
+            self._rebuild_albums_btn.setEnabled(True)
+            self._rebuild_albums_btn.setText(t("rebuild_albums"))
+            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
+
+    def _rebuild_junction(self):
+        """Rebuild track_artists junction table."""
+        from app.bootstrap import Bootstrap
+
+        reply = QMessageBox.question(
+            self, t("junction_repair"),
+            t("rebuild_junction_confirm"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            bootstrap = Bootstrap.instance()
+            library_service = bootstrap.library_service
+
+            self._rebuild_junction_btn.setEnabled(False)
+            self._rebuild_junction_btn.setText(t("rebuilding"))
+
+            # Rebuild junction table
+            count = library_service.rebuild_track_artists()
+
+            self._rebuild_junction_btn.setEnabled(True)
+            self._rebuild_junction_btn.setText(t("rebuild_junction"))
+
+            QMessageBox.information(
+                self, t("success"),
+                t("rebuild_junction_success").format(count=count)
+            )
+        except Exception as e:
+            logger.error(f"Failed to rebuild junction: {e}")
+            self._rebuild_junction_btn.setEnabled(True)
+            self._rebuild_junction_btn.setText(t("rebuild_junction"))
+            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
 
     def closeEvent(self, event):
         """Handle dialog close event."""
