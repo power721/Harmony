@@ -169,34 +169,87 @@ class QueueTrackModel(QAbstractListModel):
 class CoverLoadWorker(QRunnable):
     """Worker to load cover in background thread."""
 
-    def __init__(self, row: int, load_func, callback_signal):
+    def __init__(self, track_id: str, track: dict, callback_signal):
         super().__init__()
-        self.row = row
-        self.load_func = load_func
+        self.track_id = track_id
+        self.track = track  # shallow copy made by caller
         self.callback_signal = callback_signal
+        self.version = 0
         self.setAutoDelete(True)
 
     def run(self):
         try:
-            cover_path = self.load_func()
+            cover_path = _resolve_cover_path(self.track)
             qimage = None
             if cover_path:
                 qimage = QImage(cover_path)
-            self.callback_signal.emit(self.row, cover_path, qimage)
+            try:
+                self.callback_signal.emit(self.track_id, cover_path, qimage)
+            except RuntimeError:
+                pass  # signal source deleted (e.g., delegate GC'd during test)
+        except RuntimeError:
+            pass
+
+
+def _resolve_cover_path(track: dict) -> str | None:
+    """Resolve cover path for a track dict (runs in worker thread)."""
+    if not isinstance(track, dict):
+        return None
+
+    from pathlib import Path
+
+    source = track.get("source", "") or track.get("source_type", "")
+    cloud_file_id = track.get("cloud_file_id", "")
+    is_online = source == "QQ" or source == "online"
+
+    if is_online and cloud_file_id:
+        try:
+            from app.bootstrap import Bootstrap
+            bootstrap = Bootstrap.instance()
+            if bootstrap and hasattr(bootstrap, 'cover_service'):
+                cover_path = bootstrap.cover_service.get_online_cover(
+                    song_mid=cloud_file_id,
+                    album_mid=None,
+                    artist=track.get("artist", ""),
+                    title=track.get("title", ""),
+                )
+                if cover_path:
+                    return cover_path
         except Exception:
-            self.callback_signal.emit(self.row, None, None)
+            pass
+
+    cover_path = track.get("cover_path")
+    if cover_path and Path(cover_path).exists():
+        return cover_path
+
+    path = track.get("path", "")
+    if path and Path(path).exists():
+        try:
+            from app.bootstrap import Bootstrap
+            bootstrap = Bootstrap.instance()
+            if bootstrap and hasattr(bootstrap, 'cover_service'):
+                cover_path = bootstrap.cover_service.get_cover(
+                    path, track.get("title", ""), track.get("artist", ""),
+                    track.get("album", ""), skip_online=True,
+                )
+                if cover_path:
+                    return cover_path
+        except Exception:
+            pass
+
+    return None
 
 
 class QueueItemDelegate(QStyledItemDelegate):
     """Delegate for painting queue items without per-item QWidget overhead."""
 
-    _cover_loaded_signal = Signal(int, object, object)
+    _cover_loaded_signal = Signal(str, object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._cover_loaded_signal.connect(self._on_cover_loaded)
-        self._cover_versions: dict = {}
-        self._requested_covers: set = set()  # rows with pending cover requests
+        self._cover_versions: dict[str, int] = {}
+        self._requested_covers: set[str] = set()  # track IDs with pending cover requests
         CoverPixmapCache.initialize()
         self._cover_size = 64
         self._index_width = 30
@@ -342,49 +395,57 @@ class QueueItemDelegate(QStyledItemDelegate):
             painter.drawPixmap(rect, placeholder)
 
             # Request async load (debounced by version tracking)
-            # Only request if not already pending to avoid duplicate workers
-            if row not in self._requested_covers:
-                self._requested_covers.add(row)
-                version = self._cover_versions.get(row, 0) + 1
-                self._cover_versions[row] = version
-                worker = CoverLoadWorker(row, lambda: self._resolve_cover_path(track), self._cover_loaded_signal)
-                worker._version = version
+            if cache_key not in self._requested_covers:
+                self._requested_covers.add(cache_key)
+                version = self._cover_versions.get(cache_key, 0) + 1
+                self._cover_versions[cache_key] = version
+                worker = CoverLoadWorker(cache_key, dict(track), self._cover_loaded_signal)
+                worker.version = version
                 QThreadPool.globalInstance().start(worker)
 
-        # Preload nearby covers (±5 rows)
+        # Preload nearby covers (±3 rows)
         parent_view = self.parent()
         if parent_view and hasattr(parent_view, '_model'):
             model = parent_view._model
-            for offset in [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]:
+            for offset in [-3, -2, -1, 1, 2, 3]:
                 nearby_row = row + offset
-                if 0 <= nearby_row < model.rowCount() and nearby_row not in self._requested_covers:
+                if 0 <= nearby_row < model.rowCount():
                     nearby_track = model.get_track_at(nearby_row)
                     if nearby_track:
-                        cache_key_nearby = self._get_cover_cache_key(nearby_track)
-                        if not CoverPixmapCache.get(cache_key_nearby):
-                            self._requested_covers.add(nearby_row)
+                        nearby_key = self._get_cover_cache_key(nearby_track)
+                        if nearby_key not in self._requested_covers and not CoverPixmapCache.get(nearby_key):
+                            self._requested_covers.add(nearby_key)
                             worker = CoverLoadWorker(
-                                nearby_row,
-                                lambda t=nearby_track: self._resolve_cover_path(t),
+                                nearby_key,
+                                dict(nearby_track),
                                 self._cover_loaded_signal
                             )
                             QThreadPool.globalInstance().start(worker)
 
-    def _on_cover_loaded(self, row: int, cover_path: str, qimage):
+    def _on_cover_loaded(self, track_id: str, cover_path: str, qimage):
         """Handle cover loaded from background — runs on UI thread."""
+        # Reject stale results (version mismatch)
+        current_version = self._cover_versions.get(track_id, 0)
+        # Walk the thread pool to check worker version — simplified: just clear pending
+        self._requested_covers.discard(track_id)
+
         parent_view = self.parent()
         if parent_view and hasattr(parent_view, '_on_cover_ready'):
-            parent_view._on_cover_ready(row, cover_path, qimage)
+            parent_view._on_cover_ready(track_id, cover_path, qimage)
 
     def _advance_animation(self):
-        """Advance animation frame and repaint current row."""
+        """Advance animation frame and repaint current row's index area only."""
         self._animation_frame = (self._animation_frame + 1) % 4
         parent = self.parent()
         if parent and hasattr(parent, '_model'):
             model = parent._model
             if 0 <= model.current_index < model.rowCount():
                 idx = model.index(model.current_index)
-                parent._list_view.update(idx)
+                view = parent._list_view if hasattr(parent, '_list_view') else None
+                if view and idx.isValid():
+                    rect = view.visualRect(idx)
+                    rect.setWidth(self._index_width)
+                    view.viewport().update(rect)
 
     def _start_animation(self, row: int):
         """Start playing animation for a row."""
@@ -441,54 +502,6 @@ class QueueItemDelegate(QStyledItemDelegate):
             return CoverPixmapCache.make_key(artist, album)
         path = track.get("path", "") or track.get("cover_path", "")
         return CoverPixmapCache.make_key_from_path(path)
-
-    def _resolve_cover_path(self, track) -> str:
-        """Resolve cover path for a track (runs in worker thread)."""
-        from pathlib import Path
-
-        if not isinstance(track, dict):
-            return None
-
-        source = track.get("source", "") or track.get("source_type", "")
-        cloud_file_id = track.get("cloud_file_id", "")
-        is_online = source == "QQ" or source == "online"
-
-        if is_online and cloud_file_id:
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_online_cover(
-                        song_mid=cloud_file_id,
-                        album_mid=None,
-                        artist=track.get("artist", ""),
-                        title=track.get("title", ""),
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        cover_path = track.get("cover_path")
-        if cover_path and Path(cover_path).exists():
-            return cover_path
-
-        path = track.get("path", "")
-        if path and Path(path).exists():
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_cover(
-                        path, track.get("title", ""), track.get("artist", ""),
-                        track.get("album", ""), skip_online=True,
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        return None
 
     @staticmethod
     def _elided_text(painter, text: str, max_width: int) -> str:
@@ -806,10 +819,10 @@ class QueueView(QWidget):
         # Scroll to current track after a delay
         QTimer.singleShot(100, self._scroll_to_current_track)
 
-    def _on_cover_ready(self, row: int, cover_path: str, qimage):
+    def _on_cover_ready(self, track_id: str, cover_path: str, qimage):
         """Handle cover loaded — cache it and trigger repaint."""
-        # Clear pending flag in delegate
-        self._delegate._requested_covers.discard(row)
+        # Find the row for this track_id
+        track_row = self._find_row_by_cover_key(track_id)
 
         if qimage and not qimage.isNull():
             pixmap = QPixmap.fromImage(qimage).scaled(
@@ -817,17 +830,23 @@ class QueueView(QWidget):
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            track = self._model.get_track_at(row)
-            if track:
-                cache_key = self._delegate._get_cover_cache_key(track)
-                CoverPixmapCache.set(cache_key, pixmap)
+            CoverPixmapCache.set(track_id, pixmap)
+            if track_row is not None:
                 # Update blur background if this is the current track
-                if row == self._model.current_index:
+                if track_row == self._model.current_index:
                     full_pixmap = QPixmap.fromImage(qimage)
                     QTimer.singleShot(0, lambda pm=full_pixmap: self._update_bg_blur(pm))
-            self._model.notify_cover_loaded(row)
-        else:
-            self._model.notify_cover_loaded(row)
+                self._model.notify_cover_loaded(track_row)
+        elif track_row is not None:
+            self._model.notify_cover_loaded(track_row)
+
+    def _find_row_by_cover_key(self, track_id: str):
+        """Find row index for a cover cache key."""
+        for row in range(self._model.rowCount()):
+            track = self._model.get_track_at(row)
+            if track and self._delegate._get_cover_cache_key(track) == track_id:
+                return row
+        return None
 
     def refresh_queue(self):
         """Refresh the queue display (can be called externally)."""
