@@ -350,3 +350,16 @@ QDialog {
     background-color: %background_alt%;
     color: %text%;
 }
+
+/* Queue QListView */
+QListView#queueList {
+    background-color: %background%;
+    border: none;
+    outline: none;
+    border-radius: 8px;
+}
+QListView#queueList::item {
+    border: none;
+    margin: 0px;
+    background-color: transparent;
+}
