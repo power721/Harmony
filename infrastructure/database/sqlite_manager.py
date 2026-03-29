@@ -529,6 +529,10 @@ class DatabaseManager:
                            TEXT,
                            duration
                            REAL,
+                           download_failed
+                           INTEGER
+                           DEFAULT
+                           0,
                            created_at
                            TIMESTAMP
                            DEFAULT
@@ -791,6 +795,7 @@ class DatabaseManager:
                     artist TEXT,
                     album TEXT,
                     duration REAL,
+                    download_failed INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -829,6 +834,12 @@ class DatabaseManager:
             """)
 
             logger.info("[Database] play_queue migration completed")
+
+        # Migration 4: Add download_failed column to play_queue
+        cursor.execute("PRAGMA table_info(play_queue)")
+        pq_columns = {row[1] for row in cursor.fetchall()}
+        if "download_failed" not in pq_columns:
+            cursor.execute("ALTER TABLE play_queue ADD COLUMN download_failed INTEGER DEFAULT 0")
 
         # Migration 2: Initialize FTS5 index for existing tracks
         # Only validate/rebuild FTS when schema has changed (not on every startup)
@@ -2631,6 +2642,7 @@ class DatabaseManager:
                 'album': item.album,
                 'duration': item.duration,
                 'created_at': item.created_at or datetime.now(),
+                'download_failed': int(item.download_failed),
             }
             for i, item in enumerate(items)
         ]
@@ -2654,8 +2666,9 @@ class DatabaseManager:
                 """
                 INSERT INTO play_queue
                 (position, source, track_id, cloud_file_id, cloud_account_id,
-                 local_path, title, artist, album, duration, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 local_path, title, artist, album, duration, created_at,
+                 download_failed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -2670,6 +2683,7 @@ class DatabaseManager:
                         item['album'],
                         item['duration'],
                         item['created_at'],
+                        item['download_failed'],
                     )
                     for item in items_data
                 ],
@@ -2717,6 +2731,12 @@ class DatabaseManager:
                     return cloud_type.upper()
             return "Local"
 
+        def get_download_failed(row, columns):
+            """Get download_failed value, handling schema migration."""
+            if "download_failed" in columns:
+                return bool(row["download_failed"])
+            return False
+
         return [
             PlayQueueItem(
                 id=row["id"],
@@ -2730,6 +2750,7 @@ class DatabaseManager:
                 artist=row["artist"] or "",
                 album=row["album"] or "",
                 duration=row["duration"] or 0.0,
+                download_failed=get_download_failed(row, columns),
                 created_at=datetime.fromisoformat(row["created_at"])
                 if row["created_at"]
                 else None,

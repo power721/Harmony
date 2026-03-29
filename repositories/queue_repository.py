@@ -31,7 +31,7 @@ class SqliteQueueRepository(BaseRepository):
             return []
 
         # Get column names to handle both old and new schema
-        columns = rows[0].keys()
+        columns = rows[0].keys() if rows else []
 
         def get_source(row, columns):
             """Get source value, handling both old and new schema."""
@@ -49,6 +49,12 @@ class SqliteQueueRepository(BaseRepository):
                     return cloud_type.upper()
             return "Local"
 
+        def get_download_failed(row, columns):
+            """Get download_failed value, handling schema migration."""
+            if "download_failed" in columns:
+                return bool(row["download_failed"])
+            return False
+
         return [
             PlayQueueItem(
                 id=row["id"],
@@ -62,6 +68,7 @@ class SqliteQueueRepository(BaseRepository):
                 artist=row["artist"] or "",
                 album=row["album"] or "",
                 duration=row["duration"] or 0.0,
+                download_failed=get_download_failed(row, columns),
                 created_at=datetime.fromisoformat(row["created_at"])
                 if row["created_at"]
                 else None,
@@ -80,13 +87,15 @@ class SqliteQueueRepository(BaseRepository):
             if items:
                 cursor.executemany("""
                                    INSERT INTO play_queue (position, source, track_id, cloud_file_id,
-                                                           cloud_account_id, local_path, title, artist, album, duration, created_at)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                           cloud_account_id, local_path, title, artist, album, duration, created_at,
+                                                           download_failed)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    """, [
                                        (item.position, item.source, item.track_id,
                                         item.cloud_file_id, item.cloud_account_id, item.local_path,
                                         item.title, item.artist, item.album, item.duration,
-                                        item.created_at or datetime.now())
+                                        item.created_at or datetime.now(),
+                                        int(item.download_failed))
                                        for item in items
                                    ])
             conn.commit()

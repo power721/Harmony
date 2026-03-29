@@ -35,6 +35,7 @@ def temp_db():
             artist TEXT,
             album TEXT,
             duration REAL,
+            download_failed INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -206,3 +207,23 @@ class TestSqliteQueueRepository:
         assert loaded[0].artist == "Test Artist"
         assert loaded[0].album == "Test Album"
         assert loaded[0].duration == 200.0
+
+    def test_save_and_load_with_download_failed(self, queue_repo):
+        """Test saving and loading queue items with download_failed field."""
+        items = [
+            PlayQueueItem(
+                position=0, source="Local", track_id=1,
+                local_path="/music/song.mp3", title="Local Song",
+            ),
+            PlayQueueItem(
+                position=1, source="QUARK", cloud_file_id="quark_123",
+                cloud_account_id=1, local_path="", title="Cloud Song",
+                download_failed=True,
+            ),
+        ]
+        assert queue_repo.save(items) is True
+
+        loaded = queue_repo.load()
+        assert len(loaded) == 2
+        assert loaded[0].download_failed is False
+        assert loaded[1].download_failed is True
