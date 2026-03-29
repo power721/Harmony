@@ -36,7 +36,7 @@ class SleepTimerDialog(QDialog):
     def _setup_window(self):
         self.setWindowTitle(t("sleep_timer"))
         self.setModal(True)
-        self.setFixedSize(520, 450)  # 宽度加大
+        self.setFixedSize(520, 490)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
@@ -70,7 +70,7 @@ class SleepTimerDialog(QDialog):
 
         self._container = QWidget(self)
         self._container.setObjectName("dialogContainer")
-        self._container.setGeometry(0, 0, 400, 450)
+        self._container.setGeometry(0, 0, 520, 490)
         layout.addWidget(self._container)
 
         self._main_layout = QVBoxLayout(self._container)
@@ -115,39 +115,85 @@ class SleepTimerDialog(QDialog):
 
     def _add_time_inputs(self):
         widget = QWidget()
-        layout = QHBoxLayout(widget)
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(20, 0, 0, 0)
+        layout.setSpacing(8)
 
-        layout.addWidget(QLabel(t("countdown")))
+        # Time input row
+        time_row = QHBoxLayout()
+        label = QLabel(t("countdown"))
+        label.setFixedWidth(80)  # 固定标签宽度
+        time_row.addWidget(label)
+
         self._hours_spin = QSpinBox()
         self._hours_spin.setRange(0, 23)
         self._hours_spin.setSuffix(t("hours"))
-        layout.addWidget(self._hours_spin)
+        self._hours_spin.setFixedWidth(80)  # 固定输入框宽度
+        time_row.addWidget(self._hours_spin)
 
         self._minutes_spin = QSpinBox()
         self._minutes_spin.setRange(0, 59)
         self._minutes_spin.setValue(30)
         self._minutes_spin.setSuffix(t("minutes"))
-        layout.addWidget(self._minutes_spin)
+        self._minutes_spin.setFixedWidth(80)
+        time_row.addWidget(self._minutes_spin)
 
         self._seconds_spin = QSpinBox()
         self._seconds_spin.setRange(0, 59)
         self._seconds_spin.setSuffix(t("seconds"))
-        layout.addWidget(self._seconds_spin)
+        self._seconds_spin.setFixedWidth(80)
+        time_row.addWidget(self._seconds_spin)
 
-        layout.addStretch()
+        time_row.addStretch()
+        layout.addLayout(time_row)
+
+        # Preset buttons row
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(8)
+        preset_row.setContentsMargins(80, 0, 0, 0)  # 与上面的输入框对齐
+
+        presets = [
+            (15, "15 " + t("minutes")),
+            (30, "30 " + t("minutes")),
+            (45, "45 " + t("minutes")),
+            (60, "1 " + t("hours")),
+        ]
+
+        for minutes, label in presets:
+            btn = QPushButton(label)
+            btn.setObjectName("presetBtn")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedWidth(60)  # 与输入框相同宽度
+            btn.clicked.connect(lambda checked, m=minutes: self._set_preset_time(m))
+            preset_row.addWidget(btn)
+
+        preset_row.addStretch()
+        layout.addLayout(preset_row)
+
         self._main_layout.addWidget(widget)
+
+    def _set_preset_time(self, minutes: int):
+        """Set preset time values with proper hour conversion."""
+        hours = minutes // 60
+        remaining_minutes = minutes % 60
+        self._hours_spin.setValue(hours)
+        self._minutes_spin.setValue(remaining_minutes)
+        self._seconds_spin.setValue(0)
 
     def _add_track_inputs(self):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(20, 0, 0, 0)
 
-        layout.addWidget(QLabel(t("track_count")))
+        label = QLabel(t("track_count"))
+        label.setFixedWidth(80)  # 与时间输入标签相同宽度
+        layout.addWidget(label)
+
         self._track_spin = QSpinBox()
         self._track_spin.setRange(1, 999)
         self._track_spin.setValue(5)
         self._track_spin.setSuffix(t("tracks"))
+        self._track_spin.setFixedWidth(80)  # 与输入框相同宽度
         layout.addWidget(self._track_spin)
         layout.addStretch()
         self._main_layout.addWidget(widget)
@@ -155,12 +201,17 @@ class SleepTimerDialog(QDialog):
     def _add_action_selection(self):
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.addWidget(QLabel(t("action")))
+        layout.setContentsMargins(20, 0, 0, 0)
+
+        label = QLabel(t("action"))
+        label.setFixedWidth(80)  # 与其他标签相同宽度
+        layout.addWidget(label)
 
         self._action_combo = QComboBox()
         self._action_combo.addItem(t("stop_playback"), "stop")
         self._action_combo.addItem(t("quit_application"), "quit")
         self._action_combo.addItem(t("shutdown_computer"), "shutdown")
+        self._action_combo.setFixedWidth(300)  # 宽度 = 3个输入框 + 2个间距 = 100*3 + 8*2
         layout.addWidget(self._action_combo)
         layout.addStretch()
         self._main_layout.addWidget(widget)
@@ -182,8 +233,11 @@ class SleepTimerDialog(QDialog):
         layout.setSpacing(12)
 
         self._start_btn = QPushButton(t("start"))
+        self._start_btn.setCursor(Qt.PointingHandCursor)
         self._cancel_btn = QPushButton(t("cancel_timer"))
+        self._cancel_btn.setCursor(Qt.PointingHandCursor)
         self._close_btn = QPushButton(t("close"))
+        self._close_btn.setCursor(Qt.PointingHandCursor)
 
         self._cancel_btn.setVisible(False)
         layout.addStretch()
@@ -235,6 +289,8 @@ QComboBox QAbstractItemView { background-color: %background_alt%; border: 1px so
 QPushButton { background-color: %highlight%; color: %background%; border: none; border-radius: 6px; padding: 8px 24px; font-size: 14px; min-width: 80px; }
 QPushButton:hover { background-color: %highlight_hover%; }
 QPushButton:pressed { background-color: %selection%; }
+QPushButton#presetBtn { background-color: %background%; color: %text%; border: 1px solid %border%; padding: 6px 12px; font-size: 12px; min-width: 60px; }
+QPushButton#presetBtn:hover { background-color: %background_hover%; border-color: %highlight%; }
 #statusLabel { color: %highlight%; font-size: 14px; font-weight: bold; padding: 8px; background-color: %background_hover%; border-radius: 6px; }
 """
         self.setStyleSheet(ThemeManager.instance().get_qss(style_template))
@@ -269,7 +325,7 @@ QPushButton:pressed { background-color: %selection%; }
         self._sleep_timer.cancel()
 
     def _on_timer_started(self):
-        self._start_btn.setEnabled(False)
+        self._start_btn.setVisible(False)
         self._cancel_btn.setVisible(True)
         self._status_label.setVisible(True)
         if not self._display_timer.isActive():
@@ -277,7 +333,7 @@ QPushButton:pressed { background-color: %selection%; }
         self._update_display()
 
     def _on_timer_stopped(self):
-        self._start_btn.setEnabled(True)
+        self._start_btn.setVisible(True)
         self._cancel_btn.setVisible(False)
         self._status_label.setVisible(False)
         if self._display_timer.isActive():

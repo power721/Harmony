@@ -179,6 +179,12 @@ class SleepTimerService(QObject):
         """Execute the final action."""
         action = self._config.action
 
+        # Restore original volume before action (if fade out was enabled)
+        if self._original_volume is not None:
+            self._playback_service.set_volume(self._original_volume)
+            logger.info(f"Restored volume to {self._original_volume}")
+            self._original_volume = None
+
         # Stop playback for all actions
         self._playback_service.stop()
 

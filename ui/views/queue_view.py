@@ -246,6 +246,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         self._cover_loaded_signal.connect(self._on_cover_loaded)
         self._cover_versions: dict[str, int] = {}
         self._requested_covers: set[str] = set()  # track IDs with pending cover requests
+        self._failed_covers: set[str] = set()    # track IDs where cover loading returned nothing
         CoverPixmapCache.initialize()
         self._cover_size = 64
         self._index_width = 40
@@ -404,7 +405,7 @@ class QueueItemDelegate(QStyledItemDelegate):
             painter.drawPixmap(rect, placeholder)
 
             # Request async load (debounced by version tracking)
-            if cache_key not in self._requested_covers:
+            if cache_key not in self._requested_covers and cache_key not in self._failed_covers:
                 self._requested_covers.add(cache_key)
                 version = self._cover_versions.get(cache_key, 0) + 1
                 self._cover_versions[cache_key] = version
@@ -422,7 +423,7 @@ class QueueItemDelegate(QStyledItemDelegate):
                     nearby_track = model.get_track_at(nearby_row)
                     if nearby_track:
                         nearby_key = self._get_cover_cache_key(nearby_track)
-                        if nearby_key not in self._requested_covers and not CoverPixmapCache.get(nearby_key):
+                        if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(nearby_key):
                             self._requested_covers.add(nearby_key)
                             worker = CoverLoadWorker(
                                 nearby_key,
@@ -990,6 +991,7 @@ class QueueView(QWidget):
         selected_rows = self._model.get_selected_rows() if hasattr(self, '_model') else set()
 
         # Reset model (blocks signals internally)
+        self._delegate._failed_covers.clear()
         self._list_view.blockSignals(True)
         self._model.reset_tracks(list(playlist), selected_rows=set(selected_rows))
         self._model.set_current(current_index)
@@ -1030,7 +1032,9 @@ class QueueView(QWidget):
                     QTimer.singleShot(0, lambda pm=full_pixmap: self._update_bg_blur(pm))
                 self._model.notify_cover_loaded(track_row)
         elif track_row is not None:
-            self._model.notify_cover_loaded(track_row)
+            # No cover found — mark as failed to prevent infinite re-requests
+            self._delegate._failed_covers.add(track_id)
+            # Don't call notify_cover_loaded; it would trigger repaint → new worker → loop
 
     def _find_row_by_cover_key(self, track_id: str):
         """Find row index for a cover cache key."""
@@ -1058,6 +1062,7 @@ class QueueView(QWidget):
         selected_rows = self._model.get_selected_rows()
 
         # Reset model (blocks signals internally)
+        self._delegate._failed_covers.clear()
         self._list_view.blockSignals(True)
         self._model.reset_tracks(list(playlist), selected_rows=set(selected_rows))
         self._model.set_current(current_index)

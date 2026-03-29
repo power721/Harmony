@@ -37,13 +37,20 @@ The sleep timer feature allows users to automatically stop playback, quit the ap
    - Gradually reduces volume over 10 seconds before action
    - Smooth transition to avoid sudden silence
    - 20 fade steps at 500ms intervals
+   - **Volume Restoration**: Automatically restores original volume before executing action (important for quit/shutdown scenarios to prevent muted state on restart)
 
 2. **Real-time Status Display**
    - Shows remaining time in HH:MM:SS format
    - Shows remaining track count
    - Updates every second
+   - **PlayerControls Integration**: Displays timer status directly in player controls widget
 
-3. **Cancel Function**
+3. **Quick Preset Buttons**
+   - One-click preset timers: 15 min, 30 min, 45 min, 1 hour
+   - Automatic time conversion (e.g., 60 min → 1 hour 0 min)
+   - Fixed-width buttons for clean alignment
+
+4. **Cancel Function**
    - Cancel timer at any time
    - Restores original volume if fade out was in progress
 
@@ -61,6 +68,7 @@ The sleep timer feature allows users to automatically stop playback, quit the ap
 
 2. **Set Duration**
    - For Time Mode: Set hours, minutes, seconds
+   - Quick Presets: Click preset buttons (15/30/45 min or 1 hour)
    - For Track Mode: Set number of tracks
 
 3. **Choose Action**
@@ -73,8 +81,9 @@ The sleep timer feature allows users to automatically stop playback, quit the ap
    - Click "开始" (Start) button
 
 6. **Monitor Progress**
-   - Status label shows remaining time/tracks
-   - Updates in real-time
+   - Status label shows remaining time/tracks in dialog
+   - PlayerControls widget shows countdown in real-time
+   - Updates every second
 
 7. **Cancel Timer**
    - Click "取消定时" (Cancel) button
@@ -133,6 +142,7 @@ class SleepTimerConfig:
 - **UI Components**:
   - Radio buttons for mode selection
   - Spin boxes for time/track input
+  - **Preset buttons** for quick time selection (15/30/45/60 min)
   - Combo box for action selection
   - Checkbox for fade out option
   - Start/Cancel/Close buttons
@@ -180,6 +190,29 @@ def _show_sleep_timer(self):
     dialog = SleepTimerDialog(sleep_timer_service, self)
     dialog.exec_()
 ```
+
+#### PlayerControls (Real-time Display)
+**File**: `ui/widgets/player_controls.py`
+
+- **Features**:
+  - Shows sleep timer status directly in player controls
+  - Real-time countdown display (HH:MM:SS format)
+  - Track count display for track mode
+  - Automatically shows/hides based on timer state
+
+- **Integration**:
+  ```python
+  def _setup_sleep_timer_connections(self):
+      """Setup sleep timer signal connections."""
+      from app.bootstrap import Bootstrap
+      sleep_timer_service = Bootstrap.instance().sleep_timer_service
+
+      # Connect sleep timer signals
+      sleep_timer_service.timer_started.connect(self._on_sleep_timer_started)
+      sleep_timer_service.timer_stopped.connect(self._on_sleep_timer_stopped)
+      sleep_timer_service.remaining_changed.connect(self._on_sleep_timer_remaining_changed)
+      sleep_timer_service.timer_triggered.connect(self._on_sleep_timer_stopped)
+  ```
 
 ## Testing
 
@@ -239,7 +272,10 @@ Future enhancement: Save last used configuration to `ConfigManager`.
 2. Start fade timer (500ms interval, 20 steps = 10 seconds total)
 3. Calculate step size: `original_volume // 20`
 4. Each tick: `volume = max(0, current_volume - step_size)`
-5. After 20 steps: execute action
+5. After 20 steps: **restore original volume**
+6. Execute action
+
+**Important**: Volume is restored before executing the action (stop/quit/shutdown) to prevent the application from restarting in a muted state.
 
 ### Thread Safety
 
@@ -268,9 +304,9 @@ Future enhancement: Save last used configuration to `ConfigManager`.
    - Save last used settings to ConfigManager
    - Restore on dialog open
 
-2. **Preset Timers**
-   - Quick-select buttons (15 min, 30 min, 1 hour)
-   - User-configurable presets
+2. **Custom Presets**
+   - Allow users to define custom preset values
+   - Save presets to configuration
 
 3. **Multiple Actions**
    - Combine actions (e.g., fade out + stop + quit)

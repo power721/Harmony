@@ -133,7 +133,7 @@ class TestSleepTimerService:
         assert not sleep_timer_service.is_active
         mock_playback_service.stop.assert_called_once()
 
-    def test_fade_out_volume(self, sleep_timer_service, mock_playback_service):
+    def test_fade_out_volume(self, sleep_timer_service, mock_playback_service, qtbot):
         """Test volume fade out."""
         config = SleepTimerConfig(
             mode='time',
@@ -148,7 +148,8 @@ class TestSleepTimerService:
         # Trigger action
         sleep_timer_service._trigger_action()
 
-        # Should start fade out
+        # Should start fade out - wait a bit for timer to start
+        qtbot.wait(100)
         assert sleep_timer_service._fade_timer.isActive()
 
         # Clean up
