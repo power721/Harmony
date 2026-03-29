@@ -144,6 +144,27 @@ class GeneralSettingsDialog(QDialog):
             QTabBar::tab:hover:!selected {{
                 background-color: {theme.selection};
             }}
+            QComboBox {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+                padding: 6px 10px;
+            }}
+            QComboBox:hover {{
+                border: 1px solid {theme.highlight};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 24px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                selection-background-color: {theme.highlight};
+                selection-color: {theme.background};
+            }}
         """)
 
         layout = QVBoxLayout()
@@ -643,12 +664,12 @@ class GeneralSettingsDialog(QDialog):
             ('background', t("theme_background")),
             ('background_alt', t("theme_background_alt")),
             ('background_hover', t("theme_background_hover")),
+            ('border', t("theme_border")),
             ('text', t("theme_text")),
             ('text_secondary', t("theme_text_secondary")),
             ('highlight', t("theme_highlight")),
             ('highlight_hover', t("theme_highlight_hover")),
             ('selection', t("theme_selection")),
-            ('border', t("theme_border")),
         ]
 
         self._theme_color_inputs = {}

@@ -207,26 +207,31 @@ class SqliteArtistRepository(BaseRepository):
                 if name in artist_data:
                     artist_data[name]["albums"].add(row["album"])
 
-        # Clear and rebuild
-        cursor.execute("DELETE FROM artists")
+        # Upsert artists, preserving cover_path for existing ones
         for name, data in artist_data.items():
+            cover = existing_covers.get(name) or data["cover"]
             cursor.execute("""
                 INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
                 VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    cover_path = excluded.cover_path,
+                    song_count = excluded.song_count,
+                    album_count = excluded.album_count,
+                    updated_at = CURRENT_TIMESTAMP
             """, (
                 name,
-                data["cover"],
+                cover,
                 data["songs"],
                 len(data["albums"]),
                 name.lower(),
             ))
 
-        # Restore preserved cover_path values (user-set covers)
-        for name, cover_path in existing_covers.items():
-            if cover_path:
-                cursor.execute("""
-                    UPDATE artists SET cover_path = ? WHERE name = ? AND (cover_path IS NULL OR cover_path = '')
-                """, (cover_path, name))
+        # Delete artists that no longer have any tracks
+        if artist_data:
+            placeholders = ",".join("?" for _ in artist_data)
+            cursor.execute(f"""
+                DELETE FROM artists WHERE name NOT IN ({placeholders})
+            """, list(artist_data.keys()))
 
         conn.commit()
         return True

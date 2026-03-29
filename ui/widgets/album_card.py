@@ -36,6 +36,24 @@ class AlbumCard(QWidget):
     clicked = Signal(object)  # Emits Album object
     download_cover_requested = Signal(object)  # Emits Album object
 
+    _STYLE_TEMPLATE = """
+        QMenu {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            padding: 8px 24px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: %highlight%;
+            color: %background%;
+        }
+    """
+
     # Card size constants
     COVER_SIZE = 180
     CARD_WIDTH = 180
