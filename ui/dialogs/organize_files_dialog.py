@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import List, Dict
 
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFileDialog, QProgressBar
+    QHeaderView, QFileDialog, QProgressBar,
+    QWidget, QGraphicsDropShadowEffect,
 )
 
 from ui.dialogs.message_dialog import MessageDialog
@@ -55,9 +57,16 @@ class OrganizeFilesDialog(QDialog):
     """Dialog for organizing music files into structured directories."""
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
         }
         QLabel {
             color: %text%;
@@ -129,7 +138,16 @@ class OrganizeFilesDialog(QDialog):
         self.target_dir = self._config.get("organize_files_target_dir", "") if self._config else ""
         self.previews = []
         self.organize_thread = None
-        self._title_font = None  # Will be set in _setup_ui
+        self._drag_pos = None
+
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
+
         ThemeManager.instance().register_widget(self)
         self._setup_ui()
         self._load_tracks()
@@ -143,21 +161,31 @@ class OrganizeFilesDialog(QDialog):
     def _setup_ui(self):
         """Setup the dialog UI."""
         self.setWindowTitle(t("organize_files"))
-        self.setMinimumSize(900, 600)
-        self.resize(1000, 700)
+        self.setMinimumSize(900, 632)
+        self.resize(1000, 732)
 
         # Apply dark theme styling
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(30, 30, 30, 30)
+        # Root layout for frameless dialog
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Title and info
+        container = QWidget(self)
+        container.setObjectName("dialogContainer")
+        container.setGeometry(0, 0, self.width(), self.height())
+        root_layout.addWidget(container)
+
+        layout = QVBoxLayout(container)
+        layout.setSpacing(15)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
         title_label = QLabel(t("organize_files"))
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title_label.setObjectName("dialogTitle")
         layout.addWidget(title_label)
 
+        # Info
         info_label = QLabel(
             f"{t('selected_tracks')}: {len(self.tracks)}"
         )
@@ -242,7 +270,6 @@ class OrganizeFilesDialog(QDialog):
         button_layout.addWidget(close_btn)
 
         layout.addLayout(button_layout)
-        self.setLayout(layout)
 
     def _load_tracks(self):
         """Load tracks into preview table."""
@@ -443,6 +470,27 @@ class OrganizeFilesDialog(QDialog):
                 engine._load_track(engine.current_index)
         except Exception as e:
             logger.error(f"刷新播放引擎队列失败: {e}", exc_info=True)
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
 
     def closeEvent(self, event):
         """Clean up on close."""

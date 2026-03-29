@@ -9,12 +9,13 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QButtonGroup, QRadioButton, QProgressBar, QWidget
+    QButtonGroup, QRadioButton, QProgressBar, QWidget,
+    QGraphicsDropShadowEffect,
 )
 
 from ui.dialogs.message_dialog import MessageDialog
 from PySide6.QtCore import Qt, Signal, QThread, Slot
-from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtGui import QColor, QPainterPath, QRegion, QPixmap, QImage
 
 from services.cloud.qqmusic.qr_login import (
     QQMusicQRLogin, QRLoginType, QRCodeLoginEvents, QR, Credential
@@ -153,9 +154,16 @@ class QQMusicQRLoginDialog(QDialog):
     credentials_obtained = Signal(dict)
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
         }
         QLabel {
             color: %text%;
@@ -212,10 +220,17 @@ class QQMusicQRLoginDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._drag_pos = None
+
         self.setWindowTitle(t("qqmusic_login_title"))
         self.setMinimumWidth(450)
         self.setMinimumHeight(600)
         self.resize(460, 680)
+
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
 
         from app.bootstrap import Bootstrap
         self.config = Bootstrap.instance().config
@@ -227,18 +242,35 @@ class QQMusicQRLoginDialog(QDialog):
         self._start_login()
         ThemeManager.instance().register_widget(self)
 
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
+
     def _setup_ui(self):
         """Setup the UI."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout(self)
+        # Outer layout with 0 margins
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
         layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(24, 20, 24, 20)
 
         # Title
-        title = QLabel(f"<h3>{t('qqmusic_login_title')}</h3>")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        title_label = QLabel(t("qqmusic_login_title"))
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
 
         # Login type selection
         type_layout = QHBoxLayout()
@@ -384,6 +416,27 @@ class QQMusicQRLoginDialog(QDialog):
         if self._login_thread:
             self._login_thread.stop()
         self.reject()
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
 
     def closeEvent(self, event):
         """Handle dialog close event."""

@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMenu,
     QDialog,
-    QProgressDialog,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QColor, QBrush
@@ -39,6 +38,7 @@ from system.config import ConfigManager
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
+from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.ai_enhance_worker import AIEnhanceWorker
 from ui.workers.acoustid_worker import AcoustIDWorker
 
@@ -1701,12 +1701,9 @@ class LibraryView(QWidget):
         model = self._config.get_ai_model()
 
         # Create progress dialog
-        progress_dialog = QProgressDialog(t("ai_enhancing"), t("cancel"), 0, len(track_ids), self)
-        progress_dialog.setWindowTitle(t("ai_enhance_metadata"))
-        progress_dialog.setWindowModality(Qt.WindowModal)
-        progress_dialog.setMinimumDuration(0)
-        progress_dialog.setAutoClose(False)
-        progress_dialog.setAutoReset(False)
+        progress_dialog = ProgressDialog(
+            t("ai_enhance_metadata"), t("ai_enhancing"), t("cancel"), 0, len(track_ids), self
+        )
 
         # Create and start worker
         worker = AIEnhanceWorker(track_ids, self._library_service, base_url, api_key, model)
@@ -1834,12 +1831,9 @@ class LibraryView(QWidget):
             return
 
         # Create progress dialog
-        progress_dialog = QProgressDialog(t("acoustid_identifying"), t("cancel"), 0, len(track_ids), self)
-        progress_dialog.setWindowTitle(t("acoustid_identify"))
-        progress_dialog.setWindowModality(Qt.WindowModal)
-        progress_dialog.setMinimumDuration(0)
-        progress_dialog.setAutoClose(False)
-        progress_dialog.setAutoReset(False)
+        progress_dialog = ProgressDialog(
+            t("acoustid_identify"), t("acoustid_identifying"), t("cancel"), 0, len(track_ids), self
+        )
 
         # Create and start worker
         worker = AcoustIDWorker(track_ids, self._library_service, api_key)
@@ -1901,8 +1895,8 @@ class LibraryView(QWidget):
             return
 
         # Show cover download dialog
-        from ui.dialogs import CoverDownloadDialog
-        dialog = CoverDownloadDialog(tracks, self._cover_service, self)
+        from ui.dialogs import TrackCoverDownloadDialog
+        dialog = TrackCoverDownloadDialog(tracks, self._cover_service, self)
         dialog.exec()
 
     def _organize_selected_files(self):

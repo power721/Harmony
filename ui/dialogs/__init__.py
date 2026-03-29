@@ -15,7 +15,7 @@ from .organize_files_dialog import OrganizeFilesDialog
 from .provider_select_dialog import ProviderSelectDialog
 from .qqmusic_qr_login_dialog import QQMusicQRLoginDialog
 from .settings_dialog import GeneralSettingsDialog
-from .track_cover_download_dialog import TrackCoverDownloadDialog, CoverDownloadDialog
+from .track_cover_download_dialog import TrackCoverDownloadDialog
 
 __all__ = [
     'QQMusicQRLoginDialog',
@@ -29,7 +29,6 @@ __all__ = [
     'OrganizeFilesDialog',
     'LyricsDownloadDialog',
     'TrackCoverDownloadDialog',
-    'CoverDownloadDialog',
     'ArtistRenameDialog',
     'AlbumRenameDialog',
     'EditMediaInfoDialog',

@@ -62,6 +62,10 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
         self._tracks = tracks
         self._current_track_index = 0
         self._save_callback = save_callback  # Custom save callback for non-track items (e.g., cloud files)
+        # Remove transparent/frameless effects from base class
+        self.setWindowFlags(Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setGraphicsEffect(None)
         self._setup_ui()
         self._load_track_info()
 
@@ -527,6 +531,18 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
                 t("cover_save_failed")
             )
 
+    def resizeEvent(self, event):
+        """No rounded corner mask for non-transparent dialog."""
+        super().resizeEvent(event)
 
-# Backward compatibility alias
-CoverDownloadDialog = TrackCoverDownloadDialog
+    def mousePressEvent(self, event):
+        """No drag-to-move for framed dialog."""
+        pass
+
+    def mouseMoveEvent(self, event):
+        """No drag-to-move for framed dialog."""
+        pass
+
+    def mouseReleaseEvent(self, event):
+        """No drag-to-move for framed dialog."""
+        pass
