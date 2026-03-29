@@ -1061,6 +1061,20 @@ class QueueView(QWidget):
         # but we also call it here to ensure immediate update)
         self._refresh_queue()
 
+    def _retry_download_selected(self):
+        """Retry download for selected failed track."""
+        index = self._list_view.currentIndex()
+        if not index.isValid():
+            return
+
+        track = index.data(QueueTrackModel.TrackRole)
+        if not isinstance(track, dict) or not track.get("download_failed", False):
+            return
+
+        from system.event_bus import EventBus
+        bus = EventBus.instance()
+        bus.track_needs_download.emit(track)
+
     def _play_selected(self):
         """Play the selected track."""
         selected_rows = self._model.get_selected_rows()
@@ -1128,13 +1142,24 @@ class QueueView(QWidget):
         if not index.isValid():
             return
 
+        track = index.data(QueueTrackModel.TrackRole)
+        is_download_failed = isinstance(track, dict) and track.get("download_failed", False)
+
         menu = QMenu(self)
         from system.theme import ThemeManager
         menu.setStyleSheet(ThemeManager.instance().get_qss(self._CONTEXT_MENU_STYLE))
 
-        # Play action
+        if is_download_failed:
+            retry_action = menu.addAction(t("retry_download"))
+            retry_action.triggered.connect(self._retry_download_selected)
+            menu.addSeparator()
+
+        # Play action (disabled for failed items)
         play_action = menu.addAction(t("play_now"))
-        play_action.triggered.connect(self._play_selected)
+        if is_download_failed:
+            play_action.setEnabled(False)
+        else:
+            play_action.triggered.connect(self._play_selected)
 
         menu.addSeparator()
 

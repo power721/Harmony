@@ -133,6 +133,9 @@ class PlaybackService(QObject):
         self._engine.track_finished.connect(self._event_bus.track_finished.emit)
         self._engine.track_needs_download.connect(self._on_track_needs_download)
 
+        # Connect EventBus track_needs_download for retry functionality
+        self._event_bus.track_needs_download.connect(self._on_track_needs_download)
+
     def _connect_download_service_signals(self):
         """Connect CloudDownloadService signals to EventBus."""
         from services.cloud.download_service import CloudDownloadService
@@ -1051,14 +1054,33 @@ class PlaybackService(QObject):
         self._config.set_play_mode(mode.value)
         self._event_bus.play_mode_changed.emit(mode.value)
 
-    def _on_track_needs_download(self, item: PlaylistItem):
+    def _on_track_needs_download(self, item):
         """Handle track that needs download."""
-        if item.source == TrackSource.QQ:
-            # Handle online music download
-            self._download_online_track(item)
+        # Clear download_failed state when retrying
+        if isinstance(item, dict):
+            cloud_file_id = item.get("cloud_file_id")
+            if cloud_file_id:
+                self._engine.update_playlist_item(
+                    cloud_file_id=cloud_file_id,
+                    download_failed=False,
+                    needs_download=True,
+                )
+            source_str = item.get("source", "Local")
         else:
-            # Handle cloud file download
-            self._download_cloud_track(item)
+            item.download_failed = False
+            item.needs_download = True
+            source_str = item.source.value
+
+        from domain.track import TrackSource
+        try:
+            source = TrackSource(source_str)
+        except ValueError:
+            source = TrackSource.LOCAL
+
+        if source == TrackSource.QQ:
+            self._download_online_track(item if hasattr(item, 'source') else PlaylistItem.from_dict(item))
+        else:
+            self._download_cloud_track(item if hasattr(item, 'source') else PlaylistItem.from_dict(item))
 
     def _download_online_track(self, item: PlaylistItem):
         """Download an online track."""
