@@ -9,7 +9,7 @@ Provides static methods with the same API as QMessageBox:
 """
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel,
-    QPushButton, QGraphicsDropShadowEffect,
+    QPushButton, QGraphicsDropShadowEffect, QWidget,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRegion
@@ -32,9 +32,11 @@ class MessageDialog(QDialog):
     """Theme-aware frameless message dialog."""
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
         QLabel#msgTitle {
             color: %text%;

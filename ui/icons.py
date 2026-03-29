@@ -88,6 +88,10 @@ class IconName:
     MINIMIZE = "minimize.svg"
     MAXIMIZE = "maximize.svg"
 
+    # Dialog icons
+    WARNING = "warning.svg"
+    CRITICAL = "critical.svg"
+
 
 def _colorize_svg(svg_content: bytes, color: str) -> bytes:
     """
