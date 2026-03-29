@@ -143,6 +143,9 @@ class PlaybackService(QObject):
         service.download_completed.connect(self._event_bus.download_completed.emit)
         service.download_error.connect(self._event_bus.download_error.emit)
 
+        # Handle cloud download errors - mark item as failed
+        self._event_bus.download_error.connect(self._on_cloud_download_error)
+
         # Connect to metadata_updated to update play_queue
         self._event_bus.metadata_updated.connect(self._on_metadata_updated)
 
@@ -1161,6 +1164,24 @@ class PlaybackService(QObject):
         if cloud_file:
             service.download_file(cloud_file, self._cloud_account)
 
+    def _on_cloud_download_error(self, file_id: str, error_message: str):
+        """Handle cloud file download error - mark item as failed and skip."""
+        logger.warning(f"[PlaybackService] Cloud download failed: {file_id} - {error_message}")
+
+        # Mark as failed in engine
+        self._engine.update_playlist_item(
+            cloud_file_id=file_id,
+            needs_download=True,
+            download_failed=True,
+        )
+
+        # Skip if this is the current track
+        current_item = self._engine.current_playlist_item
+        if current_item and current_item.cloud_file_id == file_id:
+            self._engine.play_next()
+
+        self._schedule_save_queue()
+
     def on_online_track_downloaded(self, song_mid: str, local_path: str):
         """
         Called when an online track has been downloaded.
@@ -1172,16 +1193,18 @@ class PlaybackService(QObject):
         # Handle download failure
         if not local_path:
             logger.warning(f"[PlaybackService] Online track download failed: {song_mid}")
-            # Only skip if this was the current track (not a preloaded next track)
+            # Mark as failed instead of removing
+            self._engine.update_playlist_item(
+                cloud_file_id=song_mid,
+                needs_download=True,
+                download_failed=True,
+            )
+            # Skip to next track if this was the current track
             current_item = self._engine.current_playlist_item
             if current_item and current_item.cloud_file_id == song_mid:
                 logger.warning(f"[PlaybackService] Current track failed to download, skipping: {song_mid}")
-                self._engine.remove_playlist_item_by_cloud_id(song_mid)
                 self._engine.play_next()
-            else:
-                # Pre-download failed for a future track - just log, don't interrupt playback
-                logger.info(f"[PlaybackService] Pre-download failed for next track: {song_mid} (current track not affected)")
-                self._engine.remove_playlist_item_by_cloud_id(song_mid)
+            self._schedule_save_queue()
             return
 
         logger.info(f"[PlaybackService] Online track downloaded: {song_mid} -> {local_path}")

@@ -312,6 +312,7 @@ class PlayerEngine(QObject):
         cover_path: str = None,
         needs_download: bool = False,
         needs_metadata: bool = False,
+        download_failed: bool = False,
         expected_index: int = None
     ) -> Optional[int]:
         """
@@ -358,6 +359,7 @@ class PlayerEngine(QObject):
                         item.cover_path = cover_path
                     item.needs_download = needs_download
                     item.needs_metadata = needs_metadata
+                    item.download_failed = download_failed
                     return expected_index
 
             # O(1) lookup by cloud_file_id
@@ -381,6 +383,7 @@ class PlayerEngine(QObject):
                         item.cover_path = cover_path
                     item.needs_download = needs_download
                     item.needs_metadata = needs_metadata
+                    item.download_failed = download_failed
                     return i
             return None
 
@@ -436,6 +439,12 @@ class PlayerEngine(QObject):
             if 0 <= self._current_index < len(self._playlist):
                 item = self._playlist[self._current_index]
 
+                # Check if current track has failed download - auto-skip
+                if item.download_failed:
+                    logger.info(f"[Engine] Skipping failed track: {item.title}")
+                    self.track_finished.emit()
+                    return
+
                 # Check if current track needs download or file doesn't exist
                 if item.needs_download or not item.local_path or not Path(item.local_path).exists():
                     item.needs_download = True
@@ -473,6 +482,11 @@ class PlayerEngine(QObject):
             if 0 <= index < len(self._playlist):
                 self._current_index = index
                 item = self._playlist[index]
+
+                # Check if track has failed download - auto-skip
+                if item.download_failed:
+                    logger.info(f"[Engine] Skipping failed track at index {index}: {item.title}")
+                    return
 
                 # Check if track needs download or file doesn't exist
                 if item.needs_download or not item.local_path or not Path(item.local_path).exists():
