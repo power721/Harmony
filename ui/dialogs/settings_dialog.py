@@ -737,7 +737,7 @@ class GeneralSettingsDialog(QDialog):
 
         appearance_layout.addStretch()
 
-        tab_widget.addTab(appearance_tab, t("appearance_tab"))
+        tab_widget.addTab(appearance_tab, t("theme_tab"))
         tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
         tab_widget.addTab(cache_tab, t("cache_tab"))
         tab_widget.addTab(covers_tab, t("covers_tab"))

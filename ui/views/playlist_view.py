@@ -5,7 +5,7 @@ Playlist view widget for managing playlists.
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QColor, QPainter, QPainterPath, QRegion
+from PySide6.QtGui import QAction, QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -13,9 +13,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QLineEdit,
-    QDialog,
-    QDialogButtonBox,
     QSplitter,
     QLabel,
     QAbstractItemView,
@@ -23,158 +20,16 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QMenu,
-    QGraphicsDropShadowEffect,
 )
 
-from system.theme import ThemeManager
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from domain.track import Track
 from domain.playlist import Playlist
+from domain.track import Track
 from services.playback import PlaybackService
-from system.i18n import t
 from system.event_bus import EventBus
+from system.i18n import t
+from ui.dialogs.input_dialog import InputDialog
+from ui.dialogs.message_dialog import MessageDialog
 from utils import format_duration
-
-
-class DarkInputDialog(QDialog):
-    """Custom input dialog with dark theme styling and frameless window."""
-
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QPushButton {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %border%;
-        }
-        QPushButton#primaryBtn {
-            background-color: %highlight%;
-            color: %background%;
-            border: 1px solid %highlight%;
-        }
-        QPushButton#primaryBtn:hover {
-            background-color: %highlight_hover%;
-        }
-        QDialogButtonBox {
-            button-layout: 2;
-        }
-    """
-
-    def __init__(self, title: str, label: str, text: str = "", parent=None):
-        super().__init__(parent)
-        self._drag_pos = None
-
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(380, 180)
-        self.setWindowTitle(title)
-
-        self._setup_shadow()
-        self._setup_ui(title, label, text)
-        self._apply_style()
-        ThemeManager.instance().register_widget(self)
-
-    def _setup_shadow(self):
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setOffset(0, 8)
-        shadow.setColor(QColor(0, 0, 0, 80))
-        self.setGraphicsEffect(shadow)
-
-    def _setup_ui(self, title, label, text):
-        container = QWidget(self)
-        container.setObjectName("dialogContainer")
-        container.setGeometry(0, 0, 380, 180)
-
-        layout = QVBoxLayout(container)
-        layout.setSpacing(15)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        label_widget = QLabel(label)
-        layout.addWidget(label_widget)
-
-        self._input = QLineEdit()
-        self._input.setText(text)
-        self._input.selectAll()
-        layout.addWidget(self._input)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.clicked.connect(self.reject)
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_layout.addWidget(cancel_btn)
-
-        ok_btn = QPushButton(t("ok"))
-        ok_btn.setObjectName("primaryBtn")
-        ok_btn.clicked.connect(self.accept)
-        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_layout.addWidget(ok_btn)
-
-        layout.addLayout(btn_layout)
-
-    def _apply_style(self):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
-
-    def refresh_theme(self):
-        self._apply_style()
-
-    def resizeEvent(self, event):
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-
-    def get_text(self) -> str:
-        """Get the input text."""
-        return self._input.text().strip()
-
-    @staticmethod
-    def getText(parent, title: str, label: str, text: str = "") -> tuple:
-        """
-        Static method to get text from user.
-        Returns (text, accepted) tuple similar to QInputDialog.getText.
-        """
-        dialog = DarkInputDialog(title, label, text, parent)
-        result = dialog.exec_()
-        return dialog.get_text(), result == QDialog.Accepted
 
 
 class PlaylistView(QWidget):
@@ -575,7 +430,7 @@ class PlaylistView(QWidget):
 
     def _create_playlist(self):
         """Create a new playlist."""
-        name, ok = DarkInputDialog.getText(
+        name, ok = InputDialog.getText(
             self, t("create_playlist"), t("enter_playlist_name")
         )
 
@@ -619,7 +474,7 @@ class PlaylistView(QWidget):
         if not playlist:
             return
 
-        new_name, ok = DarkInputDialog.getText(
+        new_name, ok = InputDialog.getText(
             self,
             t("rename_playlist"),
             t("enter_playlist_name"),
@@ -702,7 +557,6 @@ class PlaylistView(QWidget):
 
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
-        from domain.track import TrackSource
         from system.theme import ThemeManager
 
         # Get theme colors

@@ -1359,7 +1359,6 @@ class QueueView(QWidget):
             self,
             t("smart_deduplicate"),
             t("deduplicate_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
         )
 
         if reply != MessageDialog.Yes:

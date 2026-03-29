@@ -5,6 +5,7 @@ Lyrics panel and controller for MainWindow.
 import logging
 from typing import Optional, TYPE_CHECKING
 
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -100,6 +101,7 @@ class LyricsPanel(QWidget):
         self._download_btn = QPushButton(t("download"))
         self._download_btn.setObjectName("downloadLyricsBtn")
         self._download_btn.setFixedHeight(28)
+        self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._download_btn.clicked.connect(self.download_requested)
         title_layout.addWidget(self._download_btn)
 

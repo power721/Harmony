@@ -5,6 +5,7 @@ import logging
 from typing import Optional, List
 
 from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -226,10 +227,12 @@ class LyricsDownloadDialog(QDialog):
         button_layout = QHBoxLayout()
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
+        cancel_btn.setCursor(QCursor(Qt.PointingHandCursor))
         cancel_btn.clicked.connect(self._on_cancel_clicked)
 
         self._download_btn = QPushButton(t("download"))
         self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
+        self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._download_btn.clicked.connect(self.accept)
 
         button_layout.addStretch()
