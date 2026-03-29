@@ -2,12 +2,12 @@
 Queue view for managing the current playback queue.
 """
 
-from typing import List
-from pathlib import Path
 import logging
+from typing import List
 
-from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, QItemSelectionModel
-from PySide6.QtGui import QColor, QPixmap, QPainter, QFont, QImage
+from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, \
+    QItemSelectionModel
+from PySide6.QtGui import QColor, QPixmap, QPainter, QImage
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QLineEdit,
-    QDialogButtonBox,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QListView,
@@ -26,23 +25,18 @@ from PySide6.QtWidgets import (
     QStyle,
 )
 
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-
-from infrastructure.cache.pixmap_cache import CoverPixmapCache
-
 from domain.playback import PlaybackState
-from services.playback import PlaybackService
+from domain.playlist import Playlist
+from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
-from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
 from services.library.playlist_service import PlaylistService
-from domain.playlist import Playlist
-from system.i18n import t
+from services.playback import PlaybackService
 from system.event_bus import EventBus
-from system.config import ConfigManager
-from utils.helpers import format_duration
-from utils.dedup import deduplicate_playlist_items, get_version_summary
-from app.bootstrap import Bootstrap
+from system.i18n import t
+from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
+from ui.dialogs.message_dialog import MessageDialog
+from utils.dedup import deduplicate_playlist_items
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +247,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         self._requested_covers: set[str] = set()  # track IDs with pending cover requests
         CoverPixmapCache.initialize()
         self._cover_size = 64
-        self._index_width = 30
+        self._index_width = 40
         self._padding = 10
 
         # Animation state
@@ -276,6 +270,11 @@ class QueueItemDelegate(QStyledItemDelegate):
         is_current = index.data(QueueTrackModel.IsCurrentRole)
         is_playing = index.data(QueueTrackModel.IsPlayingRole)
         row = index.data(QueueTrackModel.IndexRole)
+
+        # Check for download failure
+        is_download_failed = False
+        if isinstance(track, dict):
+            is_download_failed = track.get("download_failed", False)
 
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
@@ -305,7 +304,10 @@ class QueueItemDelegate(QStyledItemDelegate):
             painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
 
         # Text colors
-        if is_selected:
+        if is_download_failed:
+            text_color = QColor(128, 128, 128)
+            secondary_color = QColor(160, 160, 160)
+        elif is_selected:
             text_color = QColor(theme.background)
             secondary_color = QColor(theme.background)
         elif is_current:
@@ -359,11 +361,16 @@ class QueueItemDelegate(QStyledItemDelegate):
         painter.drawText(info_rect, Qt.AlignLeft | Qt.AlignVCenter,
                          self._elided_text(painter, artist_album, info_rect.width()))
 
-        # Duration
-        duration = track.get("duration", 0) if isinstance(track, dict) else 0
-        from utils.helpers import format_duration
-        duration_text = format_duration(duration)
-        font.setPixelSize(12)
+        # Duration / status label
+        from system.i18n import t as i18n_t
+        if is_download_failed:
+            duration_text = i18n_t("download_failed")
+            font.setPixelSize(10)
+        else:
+            duration = track.get("duration", 0) if isinstance(track, dict) else 0
+            from utils.helpers import format_duration
+            duration_text = format_duration(duration)
+            font.setPixelSize(12)
         font.setBold(False)
         painter.setFont(font)
         painter.drawText(rect.right() - self._padding - 50, rect.top(), 50, rect.height(),
@@ -520,6 +527,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         option.state = QStyle.StateFlag.State_Enabled
         return option
 
+
 class QueueView(QWidget):
     """View for managing the current playback queue."""
 
@@ -621,12 +629,12 @@ class QueueView(QWidget):
     queue_reordered = Signal()  # Emitted when queue order changes via drag-drop
 
     def __init__(
-        self,
-        player: PlaybackService,
-        library_service: LibraryService,
-        favorite_service: FavoritesService,
-        playlist_service: PlaylistService,
-        parent=None
+            self,
+            player: PlaybackService,
+            library_service: LibraryService,
+            favorite_service: FavoritesService,
+            playlist_service: PlaylistService,
+            parent=None
     ):
         """
         Initialize queue view.
@@ -944,8 +952,8 @@ class QueueView(QWidget):
             return
 
         small = cover_pixmap.scaled(w // 10, h // 10,
-                                   Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                                   Qt.TransformationMode.SmoothTransformation)
+                                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                    Qt.TransformationMode.SmoothTransformation)
         blurred = small.scaled(w, h,
                                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                Qt.TransformationMode.SmoothTransformation)
@@ -1360,7 +1368,9 @@ class QueueView(QWidget):
         new_current_index = -1
         if current_track:
             current_track_id = current_track.track_id if hasattr(current_track, 'track_id') else current_track.get("id")
-            current_cloud_file_id = current_track.cloud_file_id if hasattr(current_track, 'cloud_file_id') else current_track.get("cloud_file_id")
+            current_cloud_file_id = current_track.cloud_file_id if hasattr(current_track,
+                                                                           'cloud_file_id') else current_track.get(
+                "cloud_file_id")
             for i, item_dict in enumerate(new_playlist):
                 # Match by track_id for local tracks or cloud_file_id for cloud tracks
                 if current_track_id and item_dict.get("id") == current_track_id:
@@ -1694,4 +1704,3 @@ class QueueView(QWidget):
         cancel_button.clicked.connect(dialog.reject)
 
         dialog.exec_()
-
