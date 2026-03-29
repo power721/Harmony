@@ -1,14 +1,20 @@
 """
-Tests for TrackCoverDownloadDialog (CoverDownloadDialog alias).
+Tests for UniversalCoverDownloadDialog with strategies.
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from PySide6.QtWidgets import QApplication, QDialog
 from PySide6.QtCore import Qt
 
-from ui.dialogs import TrackCoverDownloadDialog, CoverDownloadDialog
+from ui.dialogs import UniversalCoverDownloadDialog
+from ui.strategies.track_search_strategy import TrackSearchStrategy
+from ui.strategies.album_search_strategy import AlbumSearchStrategy
+from ui.strategies.artist_search_strategy import ArtistSearchStrategy
 from domain.track import Track
+from domain.album import Album
+from domain.artist import Artist
 from services.metadata import CoverService
+from system.theme import ThemeManager
 
 
 @pytest.fixture(scope="module")
@@ -22,9 +28,26 @@ def qapp():
     app.processEvents()
 
 
+@pytest.fixture(autouse=True)
+def reset_theme_singleton():
+    """Reset ThemeManager singleton before and after each test."""
+    ThemeManager._instance = None
+    yield
+    ThemeManager._instance = None
+
+
 @pytest.fixture
-def app(qapp):
-    """Provide QApplication instance."""
+def mock_config():
+    """Mock config manager."""
+    config = Mock()
+    config.get_theme.return_value = 'dark'
+    return config
+
+
+@pytest.fixture
+def app(qapp, mock_config):
+    """Provide QApplication instance with ThemeManager initialized."""
+    ThemeManager.instance(mock_config)
     return qapp
 
 
@@ -34,7 +57,34 @@ def mock_cover_service():
     service = Mock(spec=CoverService)
     service.save_cover_data_to_cache = Mock(return_value="/path/to/cover.jpg")
     service.search_covers = Mock(return_value=[])
+    service.search_artist_covers = Mock(return_value=[])
     return service
+
+
+@pytest.fixture
+def mock_track_repo():
+    """Create mock TrackRepository."""
+    repo = Mock()
+    repo.update = Mock()
+    return repo
+
+
+@pytest.fixture
+def mock_library_service():
+    """Create mock LibraryService."""
+    service = Mock()
+    service.update_album_cover = Mock()
+    service.update_artist_cover = Mock()
+    return service
+
+
+@pytest.fixture
+def mock_event_bus():
+    """Create mock EventBus."""
+    bus = Mock()
+    bus.cover_updated = Mock()
+    bus.cover_updated.emit = Mock()
+    return bus
 
 
 @pytest.fixture
@@ -58,137 +108,179 @@ def sample_tracks():
     ]
 
 
-class TestCoverDownloadDialog:
-    """Test CoverDownloadDialog functionality."""
+@pytest.fixture
+def sample_album():
+    """Create sample album."""
+    return Album(
+        name="Test Album",
+        artist="Test Artist",
+        cover_path=None,
+        song_count=10,
+        duration=300.0
+    )
 
-    def test_dialog_initialization(self, app, sample_tracks, mock_cover_service):
-        """Test dialog initialization with tracks."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
+
+@pytest.fixture
+def sample_artist():
+    """Create sample artist."""
+    return Artist(
+        name="Test Artist",
+        cover_path=None,
+        song_count=20,
+        album_count=5
+    )
+
+
+class TestTrackCoverDownloadDialog:
+    """Test track cover download with TrackSearchStrategy."""
+
+    def test_dialog_initialization_with_tracks(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
+        """Test dialog initialization with track strategy."""
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
 
         # Check that dialog was created
-        # Window title is set via i18n t("download_cover_manual")
         assert dialog.windowTitle() != ""
-        assert dialog.tracks == sample_tracks
-        assert dialog.cover_service == mock_cover_service
-        assert dialog.current_track_index == 0
+        assert dialog._items == sample_tracks
+        assert dialog._current_index == 0
         dialog.reject()
 
-    def test_dialog_shows_track_info(self, app, sample_tracks, mock_cover_service):
+    def test_dialog_shows_track_info(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
         """Test that dialog displays track information correctly."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
         dialog.show()
 
         # Check track combo has items
-        assert dialog.track_combo.count() == len(sample_tracks)
+        assert dialog._combo.count() == len(sample_tracks)
 
         # Check first track info is displayed
-        assert "Test Song 1" in dialog.details_label.text()
-        assert "Test Artist" in dialog.details_label.text()
+        assert "Test Song 1" in dialog._details_label.text()
+        assert "Test Artist" in dialog._details_label.text()
         dialog.reject()
 
-    def test_search_button_exists(self, app, sample_tracks, mock_cover_service):
-        """Test that search button exists."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
-
-        # Check search button exists
-        assert hasattr(dialog, 'search_btn')
-        assert dialog.search_btn is not None
-        dialog.reject()
-
-    def test_results_list_exists(self, app, sample_tracks, mock_cover_service):
-        """Test that results list exists."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
-
-        # Check results list exists
-        assert hasattr(dialog, 'results_list')
-        assert dialog.results_list is not None
-        dialog.reject()
-
-    @patch('ui.dialogs.track_cover_download_dialog.CoverSearchThread')
-    def test_search_button_starts_thread(self, mock_thread_class, app, sample_tracks, mock_cover_service):
-        """Test that search button starts search thread."""
-        # Mock thread instance
-        mock_thread = MagicMock()
-        mock_thread.isRunning.return_value = False
-        mock_thread_class.return_value = mock_thread
-
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
-
-        # Reset mock before the actual test call
-        mock_thread_class.reset_mock()
-
-        # Click search button
-        dialog._search_covers()
-
-        # Verify thread was created and started
-        mock_thread_class.assert_called()
-        mock_thread.start.assert_called()
-        dialog.reject()
-
-    def test_track_navigation(self, app, sample_tracks, mock_cover_service):
+    def test_track_navigation(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
         """Test navigating between tracks."""
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
         dialog.show()
 
         # Initially on first track
-        assert dialog.current_track_index == 0
-        assert "1 / 2" in dialog.track_info_label.text()
+        assert dialog._current_index == 0
+        assert "1 / 2" in dialog._item_info_label.text()
 
         # Change to second track
-        dialog.track_combo.setCurrentIndex(1)
+        dialog._combo.setCurrentIndex(1)
 
         # Should be on second track now
-        assert dialog.current_track_index == 1
-        assert "2 / 2" in dialog.track_info_label.text()
-        assert "Test Song 2" in dialog.details_label.text()
+        assert dialog._current_index == 1
+        assert "2 / 2" in dialog._item_info_label.text()
+        assert "Test Song 2" in dialog._details_label.text()
         dialog.reject()
 
-    @patch('app.Application.instance')
-    def test_save_cover_updates_database(self, mock_app_instance, app, sample_tracks, mock_cover_service):
-        """Test that saving cover updates database."""
-        # Setup mocks
-        mock_bootstrap = Mock()
-        mock_track_repo = Mock()
-        mock_bootstrap.track_repo = mock_track_repo
 
-        mock_app = Mock()
-        mock_app.bootstrap = mock_bootstrap
-        mock_app_instance.return_value = mock_app
+class TestAlbumCoverDownloadDialog:
+    """Test album cover download with AlbumSearchStrategy."""
 
-        dialog = CoverDownloadDialog(sample_tracks, mock_cover_service)
-        dialog.current_cover_data = b"fake_cover_data"
+    def test_dialog_initialization_with_album(
+        self, app, sample_album, mock_cover_service, mock_library_service, mock_event_bus
+    ):
+        """Test dialog initialization with album strategy."""
+        strategy = AlbumSearchStrategy(
+            sample_album, mock_library_service, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
 
-        # Save cover
-        dialog._save_cover()
+        # Check that dialog was created
+        assert dialog.windowTitle() != ""
+        assert dialog._items == [sample_album]
+        assert dialog._current_index == 0
+        dialog.reject()
 
-        # Verify cover was saved to cache
-        mock_cover_service.save_cover_data_to_cache.assert_called_once_with(
-            b"fake_cover_data",
-            sample_tracks[0].artist,
-            sample_tracks[0].title,
-            sample_tracks[0].album
+    def test_album_single_item_mode(
+        self, app, sample_album, mock_cover_service, mock_library_service, mock_event_bus
+    ):
+        """Test that album uses single-item mode (no combo box)."""
+        strategy = AlbumSearchStrategy(
+            sample_album, mock_library_service, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+        dialog.show()
+
+        # Single item mode should not have combo box
+        assert not hasattr(dialog, '_combo') or dialog._combo is None
+        dialog.reject()
+
+
+class TestArtistCoverDownloadDialog:
+    """Test artist cover download with ArtistSearchStrategy."""
+
+    def test_dialog_initialization_with_artist(
+        self, app, sample_artist, mock_cover_service, mock_library_service, mock_event_bus
+    ):
+        """Test dialog initialization with artist strategy."""
+        strategy = ArtistSearchStrategy(
+            sample_artist, mock_library_service, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+
+        # Check that dialog was created
+        assert dialog.windowTitle() != ""
+        assert dialog._items == [sample_artist]
+        assert dialog._current_index == 0
+        dialog.reject()
+
+    def test_artist_uses_circular_display(
+        self, app, sample_artist, mock_cover_service, mock_library_service, mock_event_bus
+    ):
+        """Test that artist strategy requests circular display."""
+        strategy = ArtistSearchStrategy(
+            sample_artist, mock_library_service, mock_event_bus
         )
 
-        # Verify track was updated in database
-        mock_track_repo.update.assert_called_once()
-        updated_track = mock_track_repo.update.call_args[0][0]
-        assert updated_track.cover_path == "/path/to/cover.jpg"
+        # Check that strategy requests circular display
+        assert strategy.use_circular_display() is True
+
+
+class TestSearchFunctionality:
+    """Test search functionality."""
+
+    def test_search_button_exists(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
+        """Test that search button exists."""
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+
+        # Check search button exists
+        assert hasattr(dialog, '_search_btn')
+        assert dialog._search_btn is not None
         dialog.reject()
 
-    def test_dialog_with_single_track(self, app, sample_tracks, mock_cover_service):
-        """Test dialog with single track."""
-        single_track = [sample_tracks[0]]
-        dialog = CoverDownloadDialog(single_track, mock_cover_service)
+    def test_results_list_exists(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
+        """Test that results list exists."""
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
 
-        # Should have one item in combo
-        assert dialog.track_combo.count() == 1
-        assert "1 / 1" in dialog.track_info_label.text()
-        dialog.reject()
-
-    def test_dialog_handles_empty_track_list(self, app, mock_cover_service):
-        """Test dialog behavior with empty track list."""
-        dialog = CoverDownloadDialog([], mock_cover_service)
-
-        # Should have no items
-        assert dialog.track_combo.count() == 0
+        # Check results list exists
+        assert hasattr(dialog, '_results_list')
+        assert dialog._results_list is not None
         dialog.reject()

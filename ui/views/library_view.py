@@ -1895,8 +1895,17 @@ class LibraryView(QWidget):
             return
 
         # Show cover download dialog
-        from ui.dialogs import TrackCoverDownloadDialog
-        dialog = TrackCoverDownloadDialog(tracks, self._cover_service, self)
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
+            tracks,
+            bootstrap.track_repo,
+            bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, self._cover_service, self)
         dialog.exec()
 
     def _organize_selected_files(self):

@@ -652,12 +652,18 @@ class MainWindow(QMainWindow):
 
     def _on_download_album_cover(self, album):
         """Handle download album cover request."""
-        from ui.dialogs.album_cover_download_dialog import AlbumCoverDownloadDialog
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.album_search_strategy import AlbumSearchStrategy
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
-        dialog = AlbumCoverDownloadDialog(
+        strategy = AlbumSearchStrategy(
             album,
+            bootstrap.library_service,
+            bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(
+            strategy,
             bootstrap.cover_service,
             self
         )
@@ -725,12 +731,18 @@ class MainWindow(QMainWindow):
 
     def _on_download_artist_cover(self, artist):
         """Handle download artist cover request."""
-        from ui.dialogs.artist_cover_download_dialog import ArtistCoverDownloadDialog
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.artist_search_strategy import ArtistSearchStrategy
         from app.bootstrap import Bootstrap
 
         bootstrap = Bootstrap.instance()
-        dialog = ArtistCoverDownloadDialog(
+        strategy = ArtistSearchStrategy(
             artist,
+            bootstrap.library_service,
+            bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(
+            strategy,
             bootstrap.cover_service,
             self
         )

@@ -593,12 +593,13 @@ class CoverHoverPopup(QWidget):
         screen_rect = screen.availableGeometry()
 
         # Calculate position (offset from cursor - move further right)
-        x = pos.x() + 120
+        offset = 200
+        x = pos.x() + offset
         y = pos.y() - self._size // 2
 
         # Keep within screen bounds
         if x + self._size > screen_rect.right():
-            x = pos.x() - self._size - 120
+            x = pos.x() - self._size - offset
         if y < screen_rect.top():
             y = screen_rect.top()
         if y + self._size > screen_rect.bottom():
