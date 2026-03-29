@@ -174,6 +174,30 @@ class SqliteTrackRepository(BaseRepository):
         conn.commit()
         return cursor.rowcount > 0
 
+    def delete_batch(self, track_ids: List[TrackId]) -> int:
+        """
+        Delete multiple tracks by ID in a single transaction.
+
+        Args:
+            track_ids: List of track IDs to delete
+
+        Returns:
+            Number of tracks deleted
+        """
+        if not track_ids:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Use IN clause for batch deletion
+        placeholders = ','.join('?' * len(track_ids))
+        cursor.execute(f"DELETE FROM tracks WHERE id IN ({placeholders})", track_ids)
+        deleted_count = cursor.rowcount
+        conn.commit()
+
+        return deleted_count
+
     def get_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
         """Get a track by cloud file ID."""
         conn = self._get_connection()

@@ -1537,10 +1537,9 @@ class LibraryView(QWidget):
             return
 
         removed_count = 0
-        # Remove local tracks
-        for track_id in track_ids:
-            if self._library_service.delete_track(track_id):
-                removed_count += 1
+        # Remove local tracks in batch for better performance
+        if track_ids:
+            removed_count = self._library_service.delete_tracks(track_ids)
 
         # Remove cloud file favorites
         for cloud_file_id in cloud_file_ids:

@@ -273,6 +273,33 @@ class LibraryService:
 
         return result
 
+    def delete_tracks(self, track_ids: List[int]) -> int:
+        """
+        Delete multiple tracks from the library efficiently.
+
+        This is much faster than calling delete_track() in a loop for large batches,
+        as it performs a single database transaction and only refreshes albums/artists once.
+
+        Args:
+            track_ids: List of track IDs to delete
+
+        Returns:
+            Number of tracks deleted
+        """
+        if not track_ids:
+            return 0
+
+        # Batch delete from database
+        deleted_count = self._track_repo.delete_batch(track_ids)
+
+        if deleted_count > 0:
+            # Refresh albums and artists cache tables once
+            self._refresh_albums_artist_async()
+            # Emit batch event with all deleted track IDs
+            self._event_bus.tracks_deleted.emit(track_ids)
+
+        return deleted_count
+
     # ===== Playlist Operations =====
 
     def get_all_playlists(self) -> List[Playlist]:

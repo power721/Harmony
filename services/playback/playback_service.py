@@ -158,6 +158,9 @@ class PlaybackService(QObject):
         # Connect to track_deleted to remove from play queue
         self._event_bus.track_deleted.connect(self._on_track_deleted)
 
+        # Connect to tracks_deleted for batch removal from play queue
+        self._event_bus.tracks_deleted.connect(self._on_tracks_deleted)
+
     def _on_metadata_updated(self, track_id: int):
         """Handle metadata update from manual edit - update play_queue."""
         # Get updated track from database
@@ -223,6 +226,28 @@ class PlaybackService(QObject):
 
         # Remove all items with this track_id from the queue
         removed_indices = self._engine.remove_playlist_item_by_track_id(track_id)
+
+        if removed_indices:
+            logger.info(f"[PlaybackService] Removed {len(removed_indices)} item(s) from queue")
+            # Save the updated queue
+            self.save_queue()
+            # Emit playlist changed signal
+            self._engine.playlist_changed.emit()
+
+    def _on_tracks_deleted(self, track_ids: List[int]):
+        """
+        Handle batch track deletion - remove from play queue efficiently.
+
+        Args:
+            track_ids: List of deleted track IDs
+        """
+        if not track_ids:
+            return
+
+        logger.info(f"[PlaybackService] Batch track deletion: {len(track_ids)} tracks")
+
+        # Remove all items with matching track_ids from the queue
+        removed_indices = self._engine.remove_playlist_items_by_track_ids(track_ids)
 
         if removed_indices:
             logger.info(f"[PlaybackService] Removed {len(removed_indices)} item(s) from queue")

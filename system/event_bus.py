@@ -103,6 +103,9 @@ class EventBus(QObject):
     # Emitted when a track is deleted from the library (track_id)
     track_deleted = Signal(int)
 
+    # Emitted when multiple tracks are deleted from the library (list of track_ids)
+    tracks_deleted = Signal(list)
+
     # Emitted when a playlist is created (playlist_id)
     playlist_created = Signal(int)
 

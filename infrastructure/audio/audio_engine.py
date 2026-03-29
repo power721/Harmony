@@ -430,6 +430,34 @@ class PlayerEngine(QObject):
 
         return indices
 
+    def remove_playlist_items_by_track_ids(self, track_ids: List[int]) -> list[int]:
+        """
+        Remove all playlist items with the given track_ids efficiently.
+
+        Args:
+            track_ids: List of track IDs to find and remove
+
+        Returns:
+            List of removed indices (in descending order)
+        """
+        if not track_ids:
+            return []
+
+        # Convert to set for O(1) lookups
+        track_id_set = set(track_ids)
+
+        with self._playlist_lock:
+            indices = []
+            for i, item in enumerate(self._playlist):
+                if item.track_id in track_id_set:
+                    indices.append(i)
+
+        # Remove from highest index first to maintain valid indices
+        for i in sorted(indices, reverse=True):
+            self.remove_track(i)
+
+        return indices
+
     def play(self):
         """Start or resume playback."""
         with self._playlist_lock:
