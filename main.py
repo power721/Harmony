@@ -179,10 +179,10 @@ def main():
     qt_app.setFont(font)
     qt_app.setStyleSheet("""
         QWidget {
-            font-family: "Inter", "Noto Sans SC", "Noto Color Emoji";
+            font-family: "Noto Color Emoji", "Inter", "Noto Sans SC";
         }
         QMenu {
-            font-family: "Inter", "Noto Sans SC", "Noto Color Emoji";
+            font-family: "Noto Color Emoji", "Inter", "Noto Sans SC";
         }
     """)
 
