@@ -69,11 +69,19 @@ class FontLoader:
     def _get_font_dir(self) -> Path:
         """Get fonts directory path.
 
-        Handles both development mode and PyInstaller bundle.
+        Handles development mode, PyInstaller bundle, and AppImage.
         """
         if getattr(sys, "frozen", False):
-            # Running as PyInstaller bundle
-            return Path(sys._MEIPASS) / "fonts"
+            # Running as PyInstaller bundle or AppImage
+            # PyInstaller sets sys._MEIPASS to the temp extraction directory
+            # AppImage doesn't set _MEIPASS, uses _internal subdirectory
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                return Path(meipass) / "fonts"
+            else:
+                # AppImage case: fonts are in _internal/fonts relative to executable
+                executable_dir = Path(sys.executable).parent
+                return executable_dir / "_internal" / "fonts"
         # Running in development mode
         return Path(__file__).parent.parent.parent / "fonts"
 
