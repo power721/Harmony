@@ -4,7 +4,9 @@ Playlist utility functions for the music player.
 import logging
 from typing import List, TYPE_CHECKING
 
-from PySide6.QtWidgets import QMessageBox, QDialog
+from PySide6.QtWidgets import QDialog
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 from system.i18n import t
 
@@ -47,13 +49,13 @@ def add_tracks_to_playlist(
     # Check if there are playlists
     if not dialog.has_playlists():
         dialog.deleteLater()
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             parent,
             t("no_playlists"),
             t("no_playlists_message"),
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             if hasattr(parent, "window") and parent.window():
                 parent.window()._nav_playlists.click()
         return False
@@ -132,10 +134,10 @@ def _show_result_message(parent, added_count: int, duplicate_count: int, playlis
     """
     if duplicate_count == 0:
         msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist_name)
-        QMessageBox.information(parent, t("success"), msg)
+        MessageDialog.information(parent, t("success"), msg)
     elif added_count == 0:
         msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist_name)
-        QMessageBox.warning(parent, t("duplicate"), msg)
+        MessageDialog.warning(parent, t("duplicate"), msg)
     else:
         msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-        QMessageBox.information(parent, t("partially_added"), msg)
+        MessageDialog.information(parent, t("partially_added"), msg)

@@ -15,10 +15,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFormLayout,
     QWidget,
-    QMessageBox,
 )
 from PySide6.QtCore import Qt
 
+from ui.dialogs.message_dialog import MessageDialog
 from domain.cloud import CloudFile
 from services import MetadataService
 from system.i18n import t
@@ -268,7 +268,7 @@ class CloudMediaInfoDialog(QDialog):
 
             self.accept()
         else:
-            QMessageBox.warning(self, t("error"), t("failed_to_save_metadata"))
+            MessageDialog.warning(self, t("error"), t("failed_to_save_metadata"))
 
     def refresh_theme(self):
         """Apply themed styles using ThemeManager tokens."""
@@ -293,7 +293,7 @@ def show_media_info_dialog(
         True if changes were saved, False otherwise
     """
     if not file.local_path:
-        QMessageBox.warning(parent, t("error"), t("file_not_downloaded"))
+        MessageDialog.warning(parent, t("error"), t("file_not_downloaded"))
         return False
 
     dialog = CloudMediaInfoDialog(file, library_service, parent)

@@ -498,8 +498,8 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
                 if success:
                     self.accept()
                 else:
-                    from PySide6.QtWidgets import QMessageBox
-                    QMessageBox.warning(
+                    from ui.dialogs.message_dialog import MessageDialog
+                    MessageDialog.warning(
                         self,
                         t("error"),
                         t("cover_save_failed")
@@ -520,8 +520,8 @@ class TrackCoverDownloadDialog(BaseCoverDownloadDialog):
 
             self.accept()
         else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(
+            from ui.dialogs.message_dialog import MessageDialog
+            MessageDialog.warning(
                 self,
                 t("error"),
                 t("cover_save_failed")

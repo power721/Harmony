@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QAbstractItemView,
     QMenu,
-    QMessageBox,
     QProgressBar,
     QListWidget,
     QListWidgetItem,
@@ -33,6 +32,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
 from PySide6.QtGui import QCursor, QColor, QBrush, QAction
+
+from ui.dialogs.message_dialog import MessageDialog
 
 from ui.widgets.recommend_card import RecommendSection
 
@@ -1333,7 +1334,7 @@ class OnlineMusicView(QWidget):
             if self._config:
                 self._config.clear_qqmusic_credential()
             self._update_login_status()
-            QMessageBox.information(self, t("logout"), t("logout_success"))
+            MessageDialog.information(self, t("logout"), t("logout_success"))
         else:
             # Show login dialog
             self._show_login_dialog()
@@ -2306,7 +2307,7 @@ class OnlineMusicView(QWidget):
     def _on_search_failed(self, error: str):
         """Handle search failure."""
         logger.error(f"Search failed: {error}")
-        QMessageBox.warning(self, t("error"), t("search_failed") + f": {error}")
+        MessageDialog.warning(self, t("error"), t("search_failed") + f": {error}")
 
     def _display_tracks(self, tracks: List[OnlineTrack]):
         """Display tracks in table."""
@@ -2502,7 +2503,7 @@ class OnlineMusicView(QWidget):
         self._singers_page.hide_loading()
         self._albums_page.hide_loading()
         self._playlists_page.hide_loading()
-        QMessageBox.warning(self, t("error"), t("search_failed") + f": {error}")
+        MessageDialog.warning(self, t("error"), t("search_failed") + f": {error}")
 
     def _on_back_from_detail(self):
         """Handle back button clicked in detail view."""
@@ -2745,7 +2746,7 @@ class OnlineMusicView(QWidget):
             self.play_online_track.emit(song_mid, local_path, metadata)
         else:
             logger.warning(f"Download failed or mismatch: mid={song_mid}, track.mid={track.mid}, path={local_path}")
-            QMessageBox.warning(self, t("error"), t("download_failed"))
+            MessageDialog.warning(self, t("error"), t("download_failed"))
 
     def _cancel_download(self, song_mid: str):
         """Cancel ongoing download."""
@@ -2859,7 +2860,7 @@ class OnlineMusicView(QWidget):
 
         if added_count > 0:
             logger.info(f"[OnlineMusicView] Added {added_count} tracks to favorites")
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("success"),
                 t("added_x_tracks_to_favorites").format(count=added_count)

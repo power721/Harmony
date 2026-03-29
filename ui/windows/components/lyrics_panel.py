@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QMenu,
-    QMessageBox,
     QDialog,
     QTextEdit,
 )
@@ -20,6 +19,7 @@ from PySide6.QtCore import Qt, Signal, QThread, QObject
 
 from shiboken6 import isValid
 
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.widgets.lyrics_widget_pro import LyricsWidget
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsDownloadWorker
@@ -313,7 +313,7 @@ class LyricsController(QObject):
         track_duration = current_item.duration
 
         if not track_path:
-            QMessageBox.warning(
+            MessageDialog.warning(
                 None, t("error"), t("cloud_lyrics_download_not_supported")
             )
             return
@@ -404,7 +404,7 @@ class LyricsController(QObject):
 
         current_track = self._playback.engine.current_track
         if not current_track:
-            QMessageBox.information(None, t("info"), t("no_track_playing"))
+            MessageDialog.information(None, t("info"), t("no_track_playing"))
             return
 
         is_cloud_file = not current_track.get("id")
@@ -415,7 +415,7 @@ class LyricsController(QObject):
             track_artist = current_track.get("artist", "Unknown")
 
             if not track_path:
-                QMessageBox.warning(
+                MessageDialog.warning(
                     None, t("error"), t("cloud_lyrics_edit_not_supported")
                 )
                 return
@@ -519,15 +519,15 @@ class LyricsController(QObject):
         if not track_path:
             return
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             None,
             t("delete_lyrics"),
             t("confirm_delete_lyrics"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             LyricsService.delete_lyrics(track_path)
             self._panel.set_no_lyrics()
 
@@ -548,11 +548,11 @@ class LyricsController(QObject):
 
         if not track_path:
             if is_cloud_track:
-                QMessageBox.information(
+                MessageDialog.information(
                     None, t("info"), t("cloud_track_no_local_file")
                 )
             else:
-                QMessageBox.information(
+                MessageDialog.information(
                     None, t("info"), t("lyrics_file_not_found")
                 )
             return
@@ -575,11 +575,11 @@ class LyricsController(QObject):
                 subprocess.run(["xdg-open", str(lyrics_path.parent)])
         else:
             if is_cloud_track:
-                QMessageBox.information(
+                MessageDialog.information(
                     None, t("info"), t("cloud_lyrics_file_not_found")
                 )
             else:
-                QMessageBox.information(
+                MessageDialog.information(
                     None, t("info"), t("lyrics_file_not_found")
                 )
 

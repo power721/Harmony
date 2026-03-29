@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QMenu,
-    QMessageBox,
     QGridLayout,
     QGraphicsDropShadowEffect,
     QDialog,
@@ -27,6 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
 from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
 
+from ui.dialogs.message_dialog import MessageDialog
 from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist, OnlineSinger, AlbumInfo
 from services.online import OnlineMusicService, OnlineDownloadService
 from system.i18n import t
@@ -1829,7 +1829,7 @@ class OnlineDetailView(QWidget):
 
         if added_count > 0:
             logger.info(f"[OnlineDetailView] Added {added_count} tracks to favorites")
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("success"),
                 t("added_x_tracks_to_favorites").format(count=added_count)

@@ -8,8 +8,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QDialogButtonBox,
     QPushButton,
-    QMessageBox,
 )
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from PySide6.QtCore import Qt
 
 from system.i18n import t
@@ -157,13 +158,13 @@ class AddToPlaylistDialog(QDialog):
 
     def show_no_playlists_prompt(self):
         """Show prompt when no playlists exist."""
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("no_playlists"),
             t("no_playlists_message"),
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
-        return reply == QMessageBox.Yes
+        return reply == MessageDialog.Yes
 
     def refresh_theme(self):
         """Refresh theme when changed."""

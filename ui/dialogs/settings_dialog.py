@@ -9,10 +9,12 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QCheckBox, QGroupBox, QMessageBox, QTabWidget,
+    QPushButton, QCheckBox, QGroupBox, QTabWidget,
     QWidget, QComboBox, QFileDialog, QProgressDialog, QColorDialog,
     QGridLayout, QFrame
 )
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 from system.i18n import t
 
@@ -862,13 +864,13 @@ class GeneralSettingsDialog(QDialog):
         # Validate AI settings
         if enabled:
             if not base_url:
-                QMessageBox.warning(self, t("warning"), t("ai_base_url_required"))
+                MessageDialog.warning(self, t("warning"), t("ai_base_url_required"))
                 return
             if not api_key:
-                QMessageBox.warning(self, t("warning"), t("ai_api_key_required"))
+                MessageDialog.warning(self, t("warning"), t("ai_api_key_required"))
                 return
             if not model:
-                QMessageBox.warning(self, t("warning"), t("ai_model_required"))
+                MessageDialog.warning(self, t("warning"), t("ai_model_required"))
                 return
 
         # AcoustID settings
@@ -877,7 +879,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Validate AcoustID settings
         if acoustid_enabled and not acoustid_api_key:
-            QMessageBox.warning(self, t("warning"), t("acoustid_api_key_required"))
+            MessageDialog.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
         # Save AI settings
@@ -930,7 +932,7 @@ class GeneralSettingsDialog(QDialog):
             self._config.set_cache_cleanup_interval_hours(interval)
 
         except ValueError as e:
-            QMessageBox.warning(self, t("warning"), f"Invalid cache cleanup settings: {e}")
+            MessageDialog.warning(self, t("warning"), f"Invalid cache cleanup settings: {e}")
             return
 
         # Save theme (if changed from preset)
@@ -945,7 +947,7 @@ class GeneralSettingsDialog(QDialog):
             except Exception as e:
                 logger.warning(f"Failed to apply theme: {e}")
 
-        QMessageBox.information(self, t("success"), t("ai_settings_saved"))
+        MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
 
     def _test_connection(self):
@@ -955,7 +957,7 @@ class GeneralSettingsDialog(QDialog):
         model = self._model_input.text().strip()
 
         if not base_url or not api_key or not model:
-            QMessageBox.warning(self, t("warning"), t("ai_fill_all_fields"))
+            MessageDialog.warning(self, t("warning"), t("ai_fill_all_fields"))
             return
 
         # Test connection
@@ -974,20 +976,20 @@ class GeneralSettingsDialog(QDialog):
             )
 
             if response.choices:
-                QMessageBox.information(self, t("success"), t("ai_connection_success"))
+                MessageDialog.information(self, t("success"), t("ai_connection_success"))
             else:
-                QMessageBox.warning(self, t("warning"), t("ai_connection_failed"))
+                MessageDialog.warning(self, t("warning"), t("ai_connection_failed"))
 
         except Exception as e:
             logger.error(f"AI connection test failed: {e}", exc_info=True)
-            QMessageBox.critical(self, t("error"), f"{t('ai_connection_failed')}: {str(e)}")
+            MessageDialog.critical(self, t("error"), f"{t('ai_connection_failed')}: {str(e)}")
 
     def _test_acoustid(self):
         """Test the AcoustID API key by checking if pyacoustid is installed."""
         acoustid_api_key = self._acoustid_api_key_input.text().strip()
 
         if not acoustid_api_key:
-            QMessageBox.warning(self, t("warning"), t("acoustid_api_key_required"))
+            MessageDialog.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
         # Check if pyacoustid is installed
@@ -995,12 +997,12 @@ class GeneralSettingsDialog(QDialog):
             import acoustid
             # The API key can't be tested without an actual file,
             # but we can verify the format and that pyacoustid is installed
-            QMessageBox.information(
+            MessageDialog.information(
                 self, t("success"),
                 t("acoustid_ready")
             )
         except ImportError:
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self, t("warning"),
                 t("acoustid_not_installed")
             )
@@ -1061,19 +1063,19 @@ class GeneralSettingsDialog(QDialog):
         """Clear QQ Music credentials (logout)."""
         from app.bootstrap import Bootstrap
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("qqmusic_clear"),
             t("qqmusic_clear_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             self._config.clear_qqmusic_credential()
             Bootstrap.instance().refresh_qqmusic_client()
             self._update_qqmusic_status()
-            QMessageBox.information(self, t("success"), t("qqmusic_cleared"))
+            MessageDialog.information(self, t("success"), t("qqmusic_cleared"))
 
     def _open_qqmusic_qr_login(self):
         """Open QQ Music QR code login dialog."""
@@ -1116,7 +1118,7 @@ class GeneralSettingsDialog(QDialog):
 
             download_service = Bootstrap.instance().online_download_service
             if not download_service:
-                QMessageBox.warning(self, t("warning"), "Download service not available")
+                MessageDialog.warning(self, t("warning"), "Download service not available")
                 return
 
             cache_dir = download_service._download_dir
@@ -1137,7 +1139,7 @@ class GeneralSettingsDialog(QDialog):
 
         except Exception as e:
             logger.error(f"Failed to open cache directory: {e}")
-            QMessageBox.critical(self, t("error"), f"Failed to open directory: {e}")
+            MessageDialog.critical(self, t("error"), f"Failed to open directory: {e}")
 
     def _update_cache_info(self):
         """Update cache information display."""
@@ -1176,7 +1178,7 @@ class GeneralSettingsDialog(QDialog):
 
             cache_cleaner = Bootstrap.instance().cache_cleaner_service
             if not cache_cleaner:
-                QMessageBox.warning(self, t("warning"), "Cache cleaner service not available")
+                MessageDialog.warning(self, t("warning"), "Cache cleaner service not available")
                 return
 
             # Get current strategy (use manual to override auto cleanup)
@@ -1196,9 +1198,9 @@ class GeneralSettingsDialog(QDialog):
                 space_str = f"{space_freed / (1024 * 1024 * 1024):.1f} GB"
 
             if files_deleted == 0:
-                QMessageBox.information(self, t("success"), t("cache_no_cleanup_needed"))
+                MessageDialog.information(self, t("success"), t("cache_no_cleanup_needed"))
             else:
-                QMessageBox.information(
+                MessageDialog.information(
                     self, t("success"),
                     t("cache_cleanup_result").format(files=files_deleted, space=space_str)
                 )
@@ -1208,7 +1210,7 @@ class GeneralSettingsDialog(QDialog):
 
         except Exception as e:
             logger.error(f"Manual cleanup failed: {e}")
-            QMessageBox.critical(self, t("error"), f"Cleanup failed: {e}")
+            MessageDialog.critical(self, t("error"), f"Cleanup failed: {e}")
 
     def _update_covers_status(self):
         """Update cover counts."""
@@ -1263,7 +1265,7 @@ class GeneralSettingsDialog(QDialog):
             ]
 
         if not artists:
-            QMessageBox.information(self, t("artist_cover"), t("batch_no_missing_covers"))
+            MessageDialog.information(self, t("artist_cover"), t("batch_no_missing_covers"))
             return
 
         self._download_artist_covers_btn.setEnabled(False)
@@ -1292,7 +1294,7 @@ class GeneralSettingsDialog(QDialog):
             self._download_artist_covers_btn.setEnabled(True)
             self._batch_worker = None
             message = t("batch_cover_result").format(success=success, failed=failed)
-            QMessageBox.information(self, t("batch_download_artist_covers"), message)
+            MessageDialog.information(self, t("batch_download_artist_covers"), message)
             self._update_covers_status()
             # Notify UI to refresh covers
             from system.event_bus import EventBus
@@ -1328,7 +1330,7 @@ class GeneralSettingsDialog(QDialog):
             ]
 
         if not albums:
-            QMessageBox.information(self, t("album_art"), t("batch_no_missing_covers"))
+            MessageDialog.information(self, t("album_art"), t("batch_no_missing_covers"))
             return
 
         self._download_album_covers_btn.setEnabled(False)
@@ -1357,7 +1359,7 @@ class GeneralSettingsDialog(QDialog):
             self._download_album_covers_btn.setEnabled(True)
             self._batch_worker = None
             message = t("batch_cover_result").format(success=success, failed=failed)
-            QMessageBox.information(self, t("batch_download_album_covers"), message)
+            MessageDialog.information(self, t("batch_download_album_covers"), message)
             self._update_covers_status()
             from system.event_bus import EventBus
             EventBus.instance().cover_updated.emit(None, True)
@@ -1377,14 +1379,14 @@ class GeneralSettingsDialog(QDialog):
         """Rebuild artists table from tracks."""
         from app.bootstrap import Bootstrap
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self, t("artist_repair"),
             t("rebuild_artists_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         try:
@@ -1400,7 +1402,7 @@ class GeneralSettingsDialog(QDialog):
             self._rebuild_artists_btn.setEnabled(True)
             self._rebuild_artists_btn.setText(t("rebuild_artists"))
 
-            QMessageBox.information(self, t("success"), t("rebuild_artists_success"))
+            MessageDialog.information(self, t("success"), t("rebuild_artists_success"))
 
             # Refresh covers status
             self._update_covers_status()
@@ -1408,20 +1410,20 @@ class GeneralSettingsDialog(QDialog):
             logger.error(f"Failed to rebuild artists: {e}")
             self._rebuild_artists_btn.setEnabled(True)
             self._rebuild_artists_btn.setText(t("rebuild_artists"))
-            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
+            MessageDialog.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
 
     def _rebuild_albums(self):
         """Rebuild albums table from tracks."""
         from app.bootstrap import Bootstrap
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self, t("album_repair"),
             t("rebuild_albums_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         try:
@@ -1437,7 +1439,7 @@ class GeneralSettingsDialog(QDialog):
             self._rebuild_albums_btn.setEnabled(True)
             self._rebuild_albums_btn.setText(t("rebuild_albums"))
 
-            QMessageBox.information(self, t("success"), t("rebuild_albums_success"))
+            MessageDialog.information(self, t("success"), t("rebuild_albums_success"))
 
             # Refresh covers status
             self._update_covers_status()
@@ -1445,20 +1447,20 @@ class GeneralSettingsDialog(QDialog):
             logger.error(f"Failed to rebuild albums: {e}")
             self._rebuild_albums_btn.setEnabled(True)
             self._rebuild_albums_btn.setText(t("rebuild_albums"))
-            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
+            MessageDialog.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
 
     def _rebuild_junction(self):
         """Rebuild track_artists junction table."""
         from app.bootstrap import Bootstrap
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self, t("junction_repair"),
             t("rebuild_junction_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         try:
@@ -1474,7 +1476,7 @@ class GeneralSettingsDialog(QDialog):
             self._rebuild_junction_btn.setEnabled(True)
             self._rebuild_junction_btn.setText(t("rebuild_junction"))
 
-            QMessageBox.information(
+            MessageDialog.information(
                 self, t("success"),
                 t("rebuild_junction_success").format(count=count)
             )
@@ -1482,7 +1484,7 @@ class GeneralSettingsDialog(QDialog):
             logger.error(f"Failed to rebuild junction: {e}")
             self._rebuild_junction_btn.setEnabled(True)
             self._rebuild_junction_btn.setText(t("rebuild_junction"))
-            QMessageBox.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
+            MessageDialog.critical(self, t("error"), f"{t('rebuild_failed')}: {e}")
 
     def closeEvent(self, event):
         """Handle dialog close event."""
@@ -1659,7 +1661,7 @@ class GeneralSettingsDialog(QDialog):
             # No custom edits - apply preset theme
             try:
                 ThemeManager.instance().set_theme(self._selected_preset_key)
-                QMessageBox.information(self, t("success"), t("theme_saved"))
+                MessageDialog.information(self, t("success"), t("theme_saved"))
             except Exception as e:
                 logger.warning(f"Failed to apply theme: {e}")
         else:
@@ -1671,7 +1673,7 @@ class GeneralSettingsDialog(QDialog):
             )
             try:
                 ThemeManager.instance().set_custom_theme(custom_theme)
-                QMessageBox.information(self, t("success"), t("theme_saved"))
+                MessageDialog.information(self, t("success"), t("theme_saved"))
             except Exception as e:
                 logger.warning(f"Failed to apply custom theme: {e}")
 

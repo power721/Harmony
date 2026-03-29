@@ -8,9 +8,11 @@ from typing import List, Dict
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QMessageBox, QTableWidget, QTableWidgetItem,
+    QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QFileDialog, QProgressBar
 )
+
+from ui.dialogs.message_dialog import MessageDialog
 
 from domain import PlaylistItem
 from domain.track import Track
@@ -325,7 +327,7 @@ class OrganizeFilesDialog(QDialog):
     def _organize_files(self):
         """Start file organization."""
         if not self.target_dir:
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self,
                 t("error"),
                 t("select_directory_first")
@@ -370,7 +372,7 @@ class OrganizeFilesDialog(QDialog):
 
         # Show result
         if failed == 0:
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("organize_complete"),
                 f"{success} {t('files_organized')}"
@@ -384,7 +386,7 @@ class OrganizeFilesDialog(QDialog):
                 if len(errors) > 5:
                     error_text += f"\n... {len(errors) - 5} {t('more')}"
 
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self,
                 t("organize_failed"),
                 error_text

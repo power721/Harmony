@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
-    QMessageBox,
     QAbstractItemView,
     QListWidget,
     QListWidgetItem,
@@ -27,6 +26,8 @@ from PySide6.QtWidgets import (
     QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.quark_service import QuarkDriveService
@@ -126,13 +127,6 @@ class CloudDriveView(QWidget):
             color: %text_secondary%;
             font-size: 12px;
             padding: 5px;
-        }
-        QMessageBox {
-            background-color: %background%;
-        }
-        QMessageBox QLabel {
-            color: %text%;
-            font-size: 13px;
         }
     """
 
@@ -1159,13 +1153,10 @@ class CloudDriveView(QWidget):
             self._status_label.setText("")
         else:
             self._status_label.setText(t("failed_to_get_account_info"))
-            QMessageBox.warning(self, t("error"), t("failed_to_get_account_info"))
+            MessageDialog.warning(self, t("error"), t("failed_to_get_account_info"))
 
     def _show_account_info_dialog(self, account: CloudAccount, account_info: dict):
         """Show account information dialog."""
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle(t("account_info"))
-
         member_type = account_info.get("member_type", "unknown")
         is_vip = account_info.get("is_vip", False)
         if member_type in ("vip", "VIP"):
@@ -1201,22 +1192,7 @@ class CloudDriveView(QWidget):
 {t("storage_used")}: {used_capacity_str} / {total_capacity_str} ({usage_str})
 """
 
-        dialog.setText(info_text)
-        dialog.setIcon(QMessageBox.Information)
-        dialog.setStandardButtons(QMessageBox.Ok)
-
-        from system.theme import ThemeManager
-        dialog.setStyleSheet(ThemeManager.instance().get_qss("""
-            QMessageBox {
-                background-color: %background%;
-            }
-            QMessageBox QLabel {
-                color: %text%;
-                font-size: 13px;
-            }
-        """))
-
-        dialog.exec()
+        MessageDialog.information(self, t("account_info"), info_text.strip())
 
     def _format_timestamp(self, timestamp_ms: int) -> str:
         """Format millisecond timestamp to readable date string."""
@@ -1284,15 +1260,15 @@ class CloudDriveView(QWidget):
 
     def _delete_account(self, account: CloudAccount):
         """Delete a cloud account."""
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("delete_account"),
             t("confirm_delete_account").format(name=account.account_name),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             self._cloud_account_service.delete_account(account.id)
             self._load_accounts()
             self._status_label.setText(f"✓ {t('account_deleted')}")

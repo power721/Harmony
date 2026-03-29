@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QAbstractItemView,
-    QMessageBox,
     QDialog,
     QLineEdit,
     QDialogButtonBox,
@@ -26,6 +25,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QStyle,
 )
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 
@@ -1019,14 +1020,14 @@ class QueueView(QWidget):
 
     def _clear_queue(self):
         """Clear the queue."""
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("clear_queue"),
             t("clear_queue_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             self._player.engine.clear_playlist()
 
     def _remove_selected(self):
@@ -1092,7 +1093,7 @@ class QueueView(QWidget):
         if added_count > 0 and removed_count == 0:
             from utils import format_count_message
             message = format_count_message("added_x_tracks_to_favorites", added_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("added_to_favorites"),
                 message,
@@ -1100,14 +1101,14 @@ class QueueView(QWidget):
         elif removed_count > 0 and added_count == 0:
             from utils import format_count_message
             message = format_count_message("removed_x_tracks_from_favorites", removed_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("removed_from_favorites"),
                 message,
             )
         else:
             message = t("added_x_removed_y").format(added=added_count, removed=removed_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("updated_favorites"),
                 message,
@@ -1295,10 +1296,10 @@ class QueueView(QWidget):
                 self._library_service.update_track(track)
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)
-                QMessageBox.information(self, t("success"), t("media_saved"))
+                MessageDialog.information(self, t("success"), t("media_saved"))
                 self.refresh()
             else:
-                QMessageBox.warning(self, "Error", t("media_save_failed"))
+                MessageDialog.warning(self, "Error", t("media_save_failed"))
 
             dialog.accept()
 
@@ -1321,14 +1322,14 @@ class QueueView(QWidget):
             return
 
         # Show confirmation dialog
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("smart_deduplicate"),
             t("deduplicate_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         # Perform deduplication
@@ -1338,7 +1339,7 @@ class QueueView(QWidget):
 
         if new_count == original_count:
             # No duplicates removed
-            QMessageBox.information(self, t("info"), t("deduplicate_nothing"))
+            MessageDialog.information(self, t("info"), t("deduplicate_nothing"))
             return
 
         # Get currently playing track info before changing playlist
@@ -1380,7 +1381,7 @@ class QueueView(QWidget):
         # Show success message
         removed_count = original_count - new_count
         message = t("deduplicate_success").format(removed=removed_count, kept=new_count)
-        QMessageBox.information(self, t("success"), message)
+        MessageDialog.information(self, t("success"), message)
 
         # Notify that queue was reordered (for saving)
         self.queue_reordered.emit()
@@ -1390,7 +1391,7 @@ class QueueView(QWidget):
         # Get current playlist items
         playlist_items = self._player.engine.playlist_items
         if not playlist_items:
-            QMessageBox.information(self, t("info"), t("queue_is_empty"))
+            MessageDialog.information(self, t("info"), t("queue_is_empty"))
             return
 
         # Collect track IDs (only local tracks with track_id)
@@ -1406,7 +1407,7 @@ class QueueView(QWidget):
                 track_ids.append(track_id)
 
         if not track_ids:
-            QMessageBox.information(self, t("info"), t("no_valid_tracks"))
+            MessageDialog.information(self, t("info"), t("no_valid_tracks"))
             return
 
         # Show input dialog for playlist name
@@ -1478,7 +1479,7 @@ class QueueView(QWidget):
         def on_accept():
             name = input_field.text().strip()
             if not name:
-                QMessageBox.warning(dialog, t("warning"), t("enter_playlist_name"))
+                MessageDialog.warning(dialog, t("warning"), t("enter_playlist_name"))
                 return
 
             # Create playlist
@@ -1498,7 +1499,7 @@ class QueueView(QWidget):
                 name=name,
                 count=added_count
             )
-            QMessageBox.information(self, t("success"), message)
+            MessageDialog.information(self, t("success"), message)
 
             # Emit event to notify playlist view to refresh
             EventBus.instance().playlist_created.emit(playlist_id)
@@ -1531,7 +1532,7 @@ class QueueView(QWidget):
                     track_ids.append(track_id)
 
         if not track_ids:
-            QMessageBox.information(self, t("info"), t("no_valid_tracks"))
+            MessageDialog.information(self, t("info"), t("no_valid_tracks"))
             return
 
         # Use AddToPlaylistDialog
@@ -1542,13 +1543,13 @@ class QueueView(QWidget):
         # Check if there are playlists
         if not dialog.has_playlists():
             dialog.deleteLater()
-            reply = QMessageBox.question(
+            reply = MessageDialog.question(
                 self,
                 t("no_playlists"),
                 t("no_playlists_message"),
-                QMessageBox.Yes | QMessageBox.No,
+                MessageDialog.Yes | MessageDialog.No,
             )
-            if reply == QMessageBox.Yes:
+            if reply == MessageDialog.Yes:
                 self._create_playlist_from_queue_with_tracks(track_ids)
             return
 
@@ -1574,19 +1575,19 @@ class QueueView(QWidget):
                         count=added_count,
                         name=playlist.name
                     )
-                    QMessageBox.information(self, t("success"), message)
+                    MessageDialog.information(self, t("success"), message)
                 elif added_count == 0:
                     message = t("all_tracks_duplicate").format(
                         count=duplicate_count,
                         name=playlist.name
                     )
-                    QMessageBox.warning(self, t("duplicate"), message)
+                    MessageDialog.warning(self, t("duplicate"), message)
                 else:
                     message = t("added_skipped_duplicates").format(
                         added=added_count,
                         duplicates=duplicate_count
                     )
-                    QMessageBox.information(self, t("partially_added"), message)
+                    MessageDialog.information(self, t("partially_added"), message)
 
                 # Emit event to notify playlist modified
                 EventBus.instance().playlist_modified.emit(playlist.id)
@@ -1662,7 +1663,7 @@ class QueueView(QWidget):
         def on_accept():
             name = input_field.text().strip()
             if not name:
-                QMessageBox.warning(dialog, t("warning"), t("enter_playlist_name"))
+                MessageDialog.warning(dialog, t("warning"), t("enter_playlist_name"))
                 return
 
             # Create playlist
@@ -1684,7 +1685,7 @@ class QueueView(QWidget):
                 name=name,
                 count=added_count
             )
-            QMessageBox.information(self, t("success"), message)
+            MessageDialog.information(self, t("success"), message)
 
             # Emit event to notify playlist view to refresh
             EventBus.instance().playlist_created.emit(playlist_id)

@@ -12,8 +12,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QProgressBar,
-    QMessageBox,
 )
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from PySide6.QtCore import Qt, Signal, QThread
 
 from system.i18n import t
@@ -192,34 +193,34 @@ class BaseRenameDialog(QDialog):
         new_name = self._name_input.text().strip()
 
         if not new_name:
-            QMessageBox.warning(self, t("warning"), self._get_empty_warning())
+            MessageDialog.warning(self, t("warning"), self._get_empty_warning())
             return
 
         if new_name == self._get_original_name():
-            QMessageBox.warning(self, t("warning"), t("name_unchanged"))
+            MessageDialog.warning(self, t("warning"), t("name_unchanged"))
             return
 
         # Check for merge scenario
         if self._warning_label.isVisible():
-            confirm = QMessageBox.question(
+            confirm = MessageDialog.question(
                 self,
                 t("confirm_merge"),
                 self._get_merge_confirm_message(),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                MessageDialog.Yes | MessageDialog.No,
+                MessageDialog.No
             )
-            if confirm != QMessageBox.Yes:
+            if confirm != MessageDialog.Yes:
                 return
         else:
             # Normal rename confirmation
-            confirm = QMessageBox.question(
+            confirm = MessageDialog.question(
                 self,
                 t("confirm_rename"),
                 self._get_rename_confirm_message(new_name),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                MessageDialog.Yes | MessageDialog.No,
+                MessageDialog.No
             )
-            if confirm != QMessageBox.Yes:
+            if confirm != MessageDialog.Yes:
                 return
 
         # Start the rename operation
@@ -252,7 +253,7 @@ class BaseRenameDialog(QDialog):
             error_msg = "\n".join(errors[:5])  # Show first 5 errors
             if len(errors) > 5:
                 error_msg += f"\n... {len(errors) - 5} more errors"
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self,
                 t("partial_success") if updated > 0 else t("error"),
                 f"{t('updated_count')}: {updated}\n\n{error_msg}"
@@ -260,7 +261,7 @@ class BaseRenameDialog(QDialog):
 
         if updated > 0:
             msg = self._get_success_message(merged)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("success"),
                 f"{msg}: {updated} {t('tracks_updated')}"

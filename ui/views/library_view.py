@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QMenu,
-    QMessageBox,
     QDialog,
     QProgressDialog,
 )
@@ -28,6 +27,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from app import Bootstrap
 from domain.track import Track
 from services.playback import PlaybackService
@@ -1287,7 +1287,7 @@ class LibraryView(QWidget):
 
         if added_count > 0 and removed_count == 0:
             message = format_count_message("added_x_tracks_to_favorites", added_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("added_to_favorites"),
                 message,
@@ -1296,7 +1296,7 @@ class LibraryView(QWidget):
             message = format_count_message(
                 "removed_x_tracks_from_favorites", removed_count
             )
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("removed_from_favorites"),
                 message,
@@ -1305,7 +1305,7 @@ class LibraryView(QWidget):
             message = t("added_x_removed_y").format(
                 added=added_count, removed=removed_count
             )
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("updated_favorites"),
                 message,
@@ -1391,7 +1391,6 @@ class LibraryView(QWidget):
         import platform
         import subprocess
         from pathlib import Path
-        from PySide6.QtWidgets import QMessageBox
 
         selected_items = self._tracks_table.selectedItems()
         if not selected_items:
@@ -1413,7 +1412,7 @@ class LibraryView(QWidget):
         if isinstance(track_data, dict):
             is_cloud = track_data.get("type") == "cloud"
             if is_cloud:
-                QMessageBox.information(self, t("info"), t("cloud_lyrics_location_not_supported"))
+                MessageDialog.information(self, t("info"), t("cloud_lyrics_location_not_supported"))
                 return
             track_id = track_data.get("id")
         else:
@@ -1428,16 +1427,12 @@ class LibraryView(QWidget):
 
         # Check if track has a local path (skip online/cloud tracks)
         if not track.path or not track.path.strip():
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.warning(self, "Error", t("no_local_file"))
+            MessageDialog.warning(self, "Error", t("no_local_file"))
             return
 
         file_path = Path(track.path)
         if not file_path.exists():
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.warning(self, "Error", t("file_not_found"))
+            MessageDialog.warning(self, "Error", t("file_not_found"))
             return
 
         try:
@@ -1469,7 +1464,7 @@ class LibraryView(QWidget):
 
         except Exception as e:
             logger.error(f"Failed to open file location: {e}", exc_info=True)
-            QMessageBox.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+            MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
 
     def _remove_from_library(self):
         """Remove selected tracks from library (does not delete files)."""
@@ -1501,14 +1496,14 @@ class LibraryView(QWidget):
         total_count = len(track_ids) + len(cloud_file_ids)
         confirm_message = format_count_message("remove_from_library_confirm", total_count)
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("remove_from_library"),
             confirm_message,
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         removed_count = 0
@@ -1527,7 +1522,7 @@ class LibraryView(QWidget):
             success_message = format_count_message(
                 "remove_from_library_success", removed_count
             )
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("remove_from_library"),
                 success_message,
@@ -1571,14 +1566,14 @@ class LibraryView(QWidget):
         total_count = len(track_info_list)
         confirm_message = format_count_message("delete_file_confirm", total_count)
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("delete_file"),
             confirm_message,
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         # Delete files
@@ -1622,7 +1617,7 @@ class LibraryView(QWidget):
         # Show result message
         if deleted_count > 0:
             if failed_count > 0:
-                QMessageBox.warning(
+                MessageDialog.warning(
                     self,
                     t("warning"),
                     f"{t('delete_file_success')} ({deleted_count})\n{t('delete_file_failed')} ({failed_count})",
@@ -1631,7 +1626,7 @@ class LibraryView(QWidget):
                 success_message = format_count_message(
                     "delete_file_success", deleted_count
                 )
-                QMessageBox.information(
+                MessageDialog.information(
                     self,
                     t("success"),
                     success_message,
@@ -1641,11 +1636,11 @@ class LibraryView(QWidget):
     def _ai_enhance_selected(self):
         """Enhance metadata for selected tracks using AI (batch mode)."""
         if not self._config:
-            QMessageBox.warning(self, t("warning"), t("ai_config_not_found"))
+            MessageDialog.warning(self, t("warning"), t("ai_config_not_found"))
             return
 
         if not self._config.get_ai_enabled():
-            QMessageBox.warning(self, t("warning"), t("ai_enable_first"))
+            MessageDialog.warning(self, t("warning"), t("ai_enable_first"))
             return
 
         selected_items = self._tracks_table.selectedItems()
@@ -1667,7 +1662,7 @@ class LibraryView(QWidget):
                         track_ids.append(track_data)
 
         if not track_ids:
-            QMessageBox.information(self, t("info"), t("ai_no_tracks_selected"))
+            MessageDialog.information(self, t("info"), t("ai_no_tracks_selected"))
             return
 
         # Get AI config
@@ -1693,7 +1688,7 @@ class LibraryView(QWidget):
         def on_finished(enhanced_ids, enhanced_count, failed_count):
             progress_dialog.close()
             message = t("ai_enhance_result").format(enhanced=enhanced_count, failed=failed_count)
-            QMessageBox.information(self, t("ai_enhance_metadata"), message)
+            MessageDialog.information(self, t("ai_enhance_metadata"), message)
             if enhanced_ids:
                 self._refresh_tracks_in_table(enhanced_ids)
 
@@ -1773,11 +1768,11 @@ class LibraryView(QWidget):
     def _acoustid_identify_selected(self):
         """Identify selected tracks using AcoustID fingerprinting."""
         if not self._config:
-            QMessageBox.warning(self, t("warning"), t("ai_config_not_found"))
+            MessageDialog.warning(self, t("warning"), t("ai_config_not_found"))
             return
 
         if not self._config.get_acoustid_enabled():
-            QMessageBox.warning(self, t("warning"), t("acoustid_enable_first"))
+            MessageDialog.warning(self, t("warning"), t("acoustid_enable_first"))
             return
 
         selected_items = self._tracks_table.selectedItems()
@@ -1799,13 +1794,13 @@ class LibraryView(QWidget):
                         track_ids.append(track_data)
 
         if not track_ids:
-            QMessageBox.information(self, t("info"), t("ai_no_tracks_selected"))
+            MessageDialog.information(self, t("info"), t("ai_no_tracks_selected"))
             return
 
         # Get AcoustID API key
         api_key = self._config.get_acoustid_api_key()
         if not api_key:
-            QMessageBox.warning(self, t("warning"), t("acoustid_api_key_required"))
+            MessageDialog.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
         # Create progress dialog
@@ -1826,7 +1821,7 @@ class LibraryView(QWidget):
         def on_finished(identified_ids, success_count, failed_count):
             progress_dialog.close()
             message = t("acoustid_result").format(identified=success_count, failed=failed_count)
-            QMessageBox.information(self, t("acoustid_identify"), message)
+            MessageDialog.information(self, t("acoustid_identify"), message)
             if identified_ids:
                 self._refresh_tracks_in_table(identified_ids)
 
@@ -1917,7 +1912,7 @@ class LibraryView(QWidget):
         from app import Application
         app = Application.instance()
         if not app or not app.bootstrap or not hasattr(app.bootstrap, 'file_org_service'):
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self,
                 t("error"),
                 t("file_org_service_not_available")

@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QDialog,
     QDialogButtonBox,
-    QMessageBox,
     QSplitter,
     QLabel,
     QAbstractItemView,
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from domain.track import Track
 from domain.playlist import Playlist
 from services.playback import PlaybackService
@@ -543,14 +543,14 @@ class PlaylistView(QWidget):
         if self._current_playlist_id is None:
             return
 
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("delete_playlist"),
             t("delete_playlist_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
+            MessageDialog.Yes | MessageDialog.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == MessageDialog.Yes:
             self._playlist_service.delete_playlist(self._current_playlist_id)
             self._current_playlist_id = None
             self._refresh_playlists()
@@ -775,7 +775,7 @@ class PlaylistView(QWidget):
         if added_count > 0 and removed_count == 0:
             from utils import format_count_message
             message = format_count_message("added_x_tracks_to_favorites", added_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("added_to_favorites"),
                 message,
@@ -783,14 +783,14 @@ class PlaylistView(QWidget):
         elif removed_count > 0 and added_count == 0:
             from utils import format_count_message
             message = format_count_message("removed_x_tracks_from_favorites", removed_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("removed_from_favorites"),
                 message,
             )
         else:
             message = t("added_x_removed_y").format(added=added_count, removed=removed_count)
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("updated_favorites"),
                 message,
@@ -802,7 +802,7 @@ class PlaylistView(QWidget):
     def add_track_to_playlist(self, track_id: int):
         """Add a track to the current playlist."""
         if self._current_playlist_id is None:
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self, t("no_playlist_selected"), t("select_playlist_first")
             )
             return
@@ -813,11 +813,11 @@ class PlaylistView(QWidget):
             # Get playlist name for message
             playlist = self._playlist_service.get_playlist(self._current_playlist_id)
             playlist_name = playlist.name if playlist else ""
-            QMessageBox.information(
+            MessageDialog.information(
                 self, t("success"), t("added_tracks_to_playlist").format(count=1, name=playlist_name)
             )
         else:
-            QMessageBox.warning(self, "Error", t("track_already_in_playlist"))
+            MessageDialog.warning(self, "Error", t("track_already_in_playlist"))
 
     def _edit_media_info(self):
         """Edit media information for selected track."""
@@ -905,11 +905,11 @@ class PlaylistView(QWidget):
                 self._library_service.update_track(track)
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)
-                QMessageBox.information(self, t("success"), t("media_saved"))
+                MessageDialog.information(self, t("success"), t("media_saved"))
                 if self._current_playlist_id:
                     self._load_playlist(self._current_playlist_id)
             else:
-                QMessageBox.warning(self, "Error", t("media_save_failed"))
+                MessageDialog.warning(self, "Error", t("media_save_failed"))
 
             dialog.accept()
 

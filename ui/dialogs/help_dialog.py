@@ -11,8 +11,9 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QScrollArea,
     QWidget,
-    QMessageBox,
 )
+
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
@@ -199,22 +200,22 @@ class HelpDialog(QDialog):
             return
 
         # Confirm with user
-        reply = QMessageBox.question(
+        reply = MessageDialog.question(
             self,
             t("rebuild_db"),
             t("rebuild_db_confirm"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            MessageDialog.Yes | MessageDialog.No,
+            MessageDialog.No
         )
 
-        if reply != QMessageBox.Yes:
+        if reply != MessageDialog.Yes:
             return
 
         # Rebuild
         result = bootstrap.library_service.rebuild_albums_artists()
 
         # Show result
-        QMessageBox.information(
+        MessageDialog.information(
             self,
             t("success"),
             t("rebuild_db_success").format(

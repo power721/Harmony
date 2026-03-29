@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QProgressBar,
     QPushButton,
-    QMessageBox,
     QWidget,
 )
+
+from ui.dialogs.message_dialog import MessageDialog
 
 from services import MetadataService
 from system.i18n import t
@@ -310,13 +311,13 @@ class EditMediaInfoDialog(QDialog):
         new_album = self._album_input.text().strip()
 
         if not self._update_artist_cb.isChecked() and not self._update_album_cb.isChecked():
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self, t("warning"), t("select_fields_to_update")
             )
             return
 
         if not new_artist and not new_album:
-            QMessageBox.warning(self, t("warning"), t("enter_artist_or_album"))
+            MessageDialog.warning(self, t("warning"), t("enter_artist_or_album"))
             return
 
         # Show progress
@@ -368,7 +369,7 @@ class EditMediaInfoDialog(QDialog):
                 self._progress_bar.setValue(i + 1)
 
         if success_count > 0:
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("success"),
                 f"{t('batch_save_success')}: {success_count}/{len(self._track_ids)}",
@@ -376,7 +377,7 @@ class EditMediaInfoDialog(QDialog):
             self.tracks_updated.emit(self._track_ids)
             self.accept()
         else:
-            QMessageBox.warning(self, "Error", t("media_save_failed"))
+            MessageDialog.warning(self, "Error", t("media_save_failed"))
 
     def _save_single_edit(self):
         """Save changes for single track edit mode."""
@@ -400,11 +401,11 @@ class EditMediaInfoDialog(QDialog):
             )
             # Emit metadata_updated signal to update play_queue
             EventBus.instance().metadata_updated.emit(self._track_ids[0])
-            QMessageBox.information(self, t("success"), t("media_saved"))
+            MessageDialog.information(self, t("success"), t("media_saved"))
             self.tracks_updated.emit(self._track_ids)
             self.accept()
         else:
-            QMessageBox.warning(self, "Error", t("media_save_failed"))
+            MessageDialog.warning(self, "Error", t("media_save_failed"))
 
     def get_updated_track_ids(self) -> List[int]:
         """Get the list of track IDs that were updated."""

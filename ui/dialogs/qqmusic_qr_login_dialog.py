@@ -9,8 +9,10 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QMessageBox, QButtonGroup, QRadioButton, QProgressBar, QWidget
+    QButtonGroup, QRadioButton, QProgressBar, QWidget
 )
+
+from ui.dialogs.message_dialog import MessageDialog
 from PySide6.QtCore import Qt, Signal, QThread, Slot
 from PySide6.QtGui import QPixmap, QImage
 
@@ -443,7 +445,7 @@ class QQMusicQRLoginDialog(QDialog):
             from app.bootstrap import Bootstrap
             Bootstrap.instance().refresh_qqmusic_client()
 
-            QMessageBox.information(
+            MessageDialog.information(
                 self,
                 t("success"),
                 t("qqmusic_login_success")
@@ -454,7 +456,7 @@ class QQMusicQRLoginDialog(QDialog):
 
         except Exception as e:
             logger.error(f"Failed to save credentials: {e}")
-            QMessageBox.warning(
+            MessageDialog.warning(
                 self,
                 t("error"),
                 f"{t('error')}:\n{str(e)}"
@@ -465,14 +467,14 @@ class QQMusicQRLoginDialog(QDialog):
         """Handle login failed event."""
         self._progress_bar.hide()
         self._status_label.setText(t("qqmusic_login_failed"))
-        QMessageBox.warning(self, t("qqmusic_login_failed"), error)
+        MessageDialog.warning(self, t("qqmusic_login_failed"), error)
 
     @Slot()
     def _on_login_refused(self):
         """Handle login refused event."""
         self._progress_bar.hide()
         self._status_label.setText(t("qqmusic_user_cancelled"))
-        QMessageBox.information(self, t("cancel"), t("qqmusic_you_cancelled"))
+        MessageDialog.information(self, t("cancel"), t("qqmusic_you_cancelled"))
 
     @Slot()
     def _on_login_timeout(self):
@@ -480,7 +482,7 @@ class QQMusicQRLoginDialog(QDialog):
         self._progress_bar.hide()
         self._status_label.setText(t("qqmusic_qr_expired"))
         self._refresh_button.setEnabled(True)
-        QMessageBox.information(
+        MessageDialog.information(
             self,
             t("qqmusic_qr_expired"),
             t("qqmusic_qr_timeout_refresh")

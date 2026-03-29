@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMenu,
-    QMessageBox,
     QSystemTrayIcon,
     QStyle,
     QDialog,
@@ -38,6 +37,7 @@ from typing import Optional
 
 from shiboken6 import isValid
 
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
 from system.config import ConfigManager
@@ -1245,13 +1245,13 @@ class MainWindow(QMainWindow):
         # Check if there are playlists
         if not dialog.has_playlists():
             dialog.deleteLater()
-            reply = QMessageBox.question(
+            reply = MessageDialog.question(
                 self,
                 t("no_playlists"),
                 t("no_playlists_message"),
-                QMessageBox.Yes | QMessageBox.No,
+                MessageDialog.Yes | MessageDialog.No,
             )
-            if reply == QMessageBox.Yes:
+            if reply == MessageDialog.Yes:
                 self._show_page(2)  # Show playlists page
             return
 
@@ -1270,13 +1270,13 @@ class MainWindow(QMainWindow):
 
                 if duplicate_count == 0:
                     msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
-                    QMessageBox.information(self, t("success"), msg)
+                    MessageDialog.information(self, t("success"), msg)
                 elif added_count == 0:
                     msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
-                    QMessageBox.warning(self, t("duplicate"), msg)
+                    MessageDialog.warning(self, t("duplicate"), msg)
                 else:
                     msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-                    QMessageBox.information(self, t("partially_added"), msg)
+                    MessageDialog.information(self, t("partially_added"), msg)
             return
 
         dialog.set_track_ids(track_ids)
@@ -1294,13 +1294,13 @@ class MainWindow(QMainWindow):
 
                 if duplicate_count == 0:
                     msg = t("added_tracks_to_playlist").format(count=added_count, name=playlist.name)
-                    QMessageBox.information(self, t("success"), msg)
+                    MessageDialog.information(self, t("success"), msg)
                 elif added_count == 0:
                     msg = t("all_tracks_duplicate").format(count=duplicate_count, name=playlist.name)
-                    QMessageBox.warning(self, t("duplicate"), msg)
+                    MessageDialog.warning(self, t("duplicate"), msg)
                 else:
                     msg = t("added_skipped_duplicates").format(added=added_count, duplicates=duplicate_count)
-                    QMessageBox.information(self, t("partially_added"), msg)
+                    MessageDialog.information(self, t("partially_added"), msg)
 
     def _on_position_changed(self, position_ms):
         """Handle playback position change."""

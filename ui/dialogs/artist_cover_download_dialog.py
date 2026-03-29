@@ -181,8 +181,8 @@ class ArtistCoverDownloadDialog(BaseCoverDownloadDialog):
             # Close dialog after successful save
             self.accept()
         else:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(
+            from ui.dialogs.message_dialog import MessageDialog
+            MessageDialog.warning(
                 self,
                 t("error"),
                 t("cover_save_failed")
