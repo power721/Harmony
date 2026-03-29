@@ -63,6 +63,10 @@ class EditMediaInfoDialog(QDialog):
         QLineEdit:focus {
             border: 1px solid %highlight%;
         }
+        QLineEdit:read-only {
+            background-color: %background_hover%;
+            color: %text_secondary%;
+        }
         QCheckBox {
             color: %text%;
             font-size: 13px;
@@ -150,6 +154,30 @@ class EditMediaInfoDialog(QDialog):
         shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(shadow)
 
+    def _check_can_save(self, track) -> bool:
+        """
+        Check if the track can be saved (has a local file).
+
+        Args:
+            track: Track object to check
+
+        Returns:
+            True if the track has an editable local file, False otherwise
+        """
+        if not track.path:
+            return False
+
+        # Check for online streaming URLs
+        if track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+            return False
+
+        # Check if file exists locally
+        try:
+            from pathlib import Path
+            return Path(track.path).exists()
+        except Exception:
+            return False
+
     def _setup_ui(self):
         """Setup the user interface."""
         # Set window title
@@ -185,6 +213,20 @@ class EditMediaInfoDialog(QDialog):
             self.reject()
             return
 
+        # Check if track has editable local file
+        self._can_save = self._check_can_save(first_track)
+
+        # Show warning for non-local tracks
+        if not self._can_save and not self._is_batch_edit:
+            warning_label = QLabel(t("online_track_cannot_edit"))
+            warning_label.setStyleSheet(
+                f"color: {ThemeManager.instance().current_theme.highlight}; "
+                f"font-size: 13px; padding: 10px; "
+                f"background-color: {ThemeManager.instance().current_theme.background}; "
+                f"border-radius: 4px;"
+            )
+            layout.addWidget(warning_label)
+
         # Info label for batch edit
         if self._is_batch_edit:
             info_label = QLabel(
@@ -204,19 +246,24 @@ class EditMediaInfoDialog(QDialog):
         if not self._is_batch_edit:
             self._title_input = QLineEdit(first_track.title or "")
             self._title_input.setPlaceholderText(t("enter_title"))
+            self._title_input.setReadOnly(not self._can_save)
             form_layout.addRow(t("title") + ":", self._title_input)
 
         self._artist_input = QLineEdit(first_track.artist or "")
         self._artist_input.setPlaceholderText(t("enter_artist"))
+        self._artist_input.setReadOnly(not self._can_save)
         self._album_input = QLineEdit(first_track.album or "")
         self._album_input.setPlaceholderText(t("enter_album"))
+        self._album_input.setReadOnly(not self._can_save)
 
         # For batch edit, add checkboxes to control which fields to update
         if self._is_batch_edit:
             self._update_artist_cb = QCheckBox(t("update_artist"))
             self._update_artist_cb.setChecked(True)
+            self._update_artist_cb.setEnabled(self._can_save)
             self._update_album_cb = QCheckBox(t("update_album"))
             self._update_album_cb.setChecked(True)
+            self._update_album_cb.setEnabled(self._can_save)
 
             form_layout.addRow(t("artist") + ":", self._artist_input)
             form_layout.addRow("", self._update_artist_cb)
@@ -243,6 +290,7 @@ class EditMediaInfoDialog(QDialog):
         buttons = QDialogButtonBox()
         self._ok_button = QPushButton(t("save"))
         self._ok_button.setObjectName("saveBtn")
+        self._ok_button.setEnabled(self._can_save)
         cancel_button = QPushButton(t("cancel"))
         cancel_button.setProperty("role", "cancel")
 
