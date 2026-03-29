@@ -37,13 +37,13 @@ class FontLoader:
 
         font_dir = self._get_font_dir()
         fonts_to_load = [
-            ("Inter/Inter-Regular.ttf", "Inter"),
-            ("Inter/Inter-Medium.ttf", "Inter"),
-            ("Inter/Inter-Bold.ttf", "Inter"),
-            ("NotoSansSC/NotoSansSC-Regular.ttf", "Noto Sans SC"),
-            ("NotoSansSC/NotoSansSC-Medium.ttf", "Noto Sans SC"),
-            ("NotoSansSC/NotoSansSC-Bold.ttf", "Noto Sans SC"),
-            ("NotoColorEmoji/NotoColorEmoji.ttf", "Noto Color Emoji"),
+            ("Inter-Regular.ttf", "Inter"),
+            ("Inter-Medium.ttf", "Inter"),
+            ("Inter-Bold.ttf", "Inter"),
+            ("NotoSansSC-Regular.ttf", "Noto Sans SC"),
+            ("NotoSansSC-Medium.ttf", "Noto Sans SC"),
+            ("NotoSansSC-Bold.ttf", "Noto Sans SC"),
+            ("NotoColorEmoji.ttf", "Noto Color Emoji"),
         ]
 
         loaded_count = 0
