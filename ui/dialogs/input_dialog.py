@@ -25,8 +25,13 @@ class InputDialog(QDialog):
             border: 1px solid %border%;
             border-radius: 12px;
         }
-        QLabel {
+        QLabel#dialogTitle {
             color: %text%;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        QLabel#dialogLabel {
+            color: %text_secondary%;
             font-size: 13px;
         }
         QLineEdit {
@@ -70,7 +75,7 @@ class InputDialog(QDialog):
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(380, 180)
+        self.setFixedSize(380, 200)
         self.setWindowTitle(title)
 
         self._setup_shadow()
@@ -88,20 +93,29 @@ class InputDialog(QDialog):
     def _setup_ui(self, title, label, text):
         container = QWidget(self)
         container.setObjectName("dialogContainer")
-        container.setGeometry(0, 0, 380, 180)
+        container.setGeometry(0, 0, 380, 200)
 
         layout = QVBoxLayout(container)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         layout.setContentsMargins(24, 20, 24, 20)
 
+        # Title
+        title_label = QLabel(title)
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
+
+        # Label
         label_widget = QLabel(label)
+        label_widget.setObjectName("dialogLabel")
         layout.addWidget(label_widget)
 
+        # Input
         self._input = QLineEdit()
         self._input.setText(text)
         self._input.selectAll()
         layout.addWidget(self._input)
 
+        # Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 

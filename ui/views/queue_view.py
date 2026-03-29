@@ -1606,6 +1606,8 @@ class QueueView(QWidget):
 
     def _create_playlist_from_queue(self):
         """Create a new playlist from the current queue."""
+        from ui.dialogs.input_dialog import InputDialog
+
         # Get current playlist items
         playlist_items = self._player.engine.playlist_items
         if not playlist_items:
@@ -1628,104 +1630,35 @@ class QueueView(QWidget):
             MessageDialog.information(self, t("info"), t("no_valid_tracks"))
             return
 
-        # Show input dialog for playlist name
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
+        # Use InputDialog for playlist name
+        name, accepted = InputDialog.getText(
+            self,
+            t("create_playlist"),
+            t("enter_playlist_name")
+        )
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("create_playlist"))
-        dialog.setMinimumWidth(350)
-        dialog.setStyleSheet(f"""
-            QDialog {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-            }}
-            QLabel {{
-                color: {theme.text};
-            }}
-            QLineEdit {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 4px;
-                padding: 8px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid {theme.highlight};
-            }}
-            QPushButton {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-weight: bold;
-                min-width: 80px;
-            }}
-            QPushButton:hover {{
-                background-color: {theme.highlight_hover};
-            }}
-            QPushButton[role="cancel"] {{
-                background-color: {theme.border};
-                color: {theme.text};
-            }}
-            QPushButton[role="cancel"]:hover {{
-                background-color: {theme.background_hover};
-            }}
-        """)
+        if not accepted or not name:
+            return
 
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        # Create playlist
+        playlist = Playlist(name=name)
+        playlist_id = self._playlist_service.create_playlist(playlist)
 
-        label = QLabel(t("enter_playlist_name"))
-        layout.addWidget(label)
+        # Add tracks to playlist
+        added_count = 0
+        for track_id in track_ids:
+            if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
+                added_count += 1
 
-        input_field = QLineEdit()
-        layout.addWidget(input_field)
+        # Show success message
+        message = t("playlist_created_with_tracks").format(
+            name=name,
+            count=added_count
+        )
+        MessageDialog.information(self, t("success"), message)
 
-        # Buttons
-        button_layout = QHBoxLayout()
-        ok_button = QPushButton(t("ok"))
-        cancel_button = QPushButton(t("cancel"))
-        cancel_button.setProperty("role", "cancel")
-        button_layout.addStretch()
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(ok_button)
-        layout.addLayout(button_layout)
-
-        def on_accept():
-            name = input_field.text().strip()
-            if not name:
-                MessageDialog.warning(dialog, t("warning"), t("enter_playlist_name"))
-                return
-
-            # Create playlist
-            playlist = Playlist(name=name)
-            playlist_id = self._playlist_service.create_playlist(playlist)
-
-            # Add tracks to playlist
-            added_count = 0
-            for track_id in track_ids:
-                if self._playlist_service.add_track_to_playlist(playlist_id, track_id):
-                    added_count += 1
-
-            dialog.accept()
-
-            # Show success message
-            message = t("playlist_created_with_tracks").format(
-                name=name,
-                count=added_count
-            )
-            MessageDialog.information(self, t("success"), message)
-
-            # Emit event to notify playlist view to refresh
-            EventBus.instance().playlist_created.emit(playlist_id)
-
-        ok_button.clicked.connect(on_accept)
-        cancel_button.clicked.connect(dialog.reject)
-
-        dialog.exec_()
+        # Emit event to notify playlist view to refresh
+        EventBus.instance().playlist_created.emit(playlist_id)
 
     def _add_selected_to_playlist(self):
         """Add selected tracks to an existing playlist."""

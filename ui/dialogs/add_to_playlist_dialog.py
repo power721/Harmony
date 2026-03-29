@@ -6,13 +6,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QListWidget,
-    QDialogButtonBox,
     QPushButton,
+    QGraphicsDropShadowEffect,
+    QWidget,
+    QHBoxLayout,
 )
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from PySide6.QtCore import Qt
-
 from system.i18n import t
 from system.theme import ThemeManager
 
@@ -21,35 +23,61 @@ class AddToPlaylistDialog(QDialog):
     """Dialog for selecting a playlist to add tracks to."""
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
-        QLabel {
+        QLabel#dialogTitle {
             color: %text%;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        QLabel#dialogLabel {
+            color: %text_secondary%;
             font-size: 13px;
         }
         QListWidget {
             background-color: %background%;
             border: 1px solid %border%;
-            border-radius: 4px;
+            border-radius: 6px;
+            padding: 4px;
         }
         QListWidget::item {
             color: %text%;
+            padding: 8px;
+            border-radius: 4px;
         }
         QListWidget::item:selected {
             background-color: %highlight%;
             color: %background%;
         }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+        QListWidget::item:hover {
+            background-color: %background_hover%;
+        }
+        QPushButton#cancelBtn {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            padding: 8px 20px;
+            min-width: 80px;
             font-weight: bold;
         }
-        QPushButton:hover {
+        QPushButton#cancelBtn:hover {
+            background-color: %border%;
+        }
+        QPushButton#okBtn {
+            background-color: %highlight%;
+            color: %background%;
+            border: 1px solid %highlight%;
+            border-radius: 6px;
+            padding: 8px 20px;
+            min-width: 80px;
+            font-weight: bold;
+        }
+        QPushButton#okBtn:hover {
             background-color: %highlight_hover%;
         }
     """
@@ -65,20 +93,49 @@ class AddToPlaylistDialog(QDialog):
         super().__init__(parent)
         self._library_service = library_service
         self._track_ids = []
+        self._drag_pos = None
 
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setMinimumSize(420, 320)
+        self.setMaximumWidth(520)
+        self.setWindowTitle(t("select_playlist"))
+
+        self._setup_shadow()
         self._setup_ui()
+        self._apply_style()
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the user interface."""
-        self.setWindowTitle(t("select_playlist"))
-        self.setMinimumWidth(400)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        layout = QVBoxLayout(self)
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
+        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
+        title_label = QLabel(t("select_playlist"))
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
 
         # Message label
         self._label = QLabel(t("select_playlist"))
+        self._label.setObjectName("dialogLabel")
         layout.addWidget(self._label)
 
         # Playlist list
@@ -88,10 +145,22 @@ class AddToPlaylistDialog(QDialog):
         layout.addWidget(self._playlist_list)
 
         # Buttons
-        self._buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self._buttons.accepted.connect(self.accept)
-        self._buttons.rejected.connect(self.reject)
-        layout.addWidget(self._buttons)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setObjectName("cancelBtn")
+        cancel_btn.clicked.connect(self.reject)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_layout.addWidget(cancel_btn)
+
+        ok_btn = QPushButton(t("ok"))
+        ok_btn.setObjectName("okBtn")
+        ok_btn.clicked.connect(self.accept)
+        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_layout.addWidget(ok_btn)
+
+        layout.addLayout(btn_layout)
 
         # Load playlists
         self._load_playlists()
@@ -166,6 +235,31 @@ class AddToPlaylistDialog(QDialog):
         )
         return reply == Yes
 
+    def _apply_style(self):
+        """Apply themed stylesheet."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._apply_style()
+
+    def resizeEvent(self, event):
+        """Handle resize to apply rounded mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for dragging."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None

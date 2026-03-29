@@ -43,6 +43,11 @@ class EditMediaInfoDialog(QDialog):
             border: 1px solid %border%;
             border-radius: 12px;
         }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
+        }
         QLabel {
             color: %text%;
             font-size: 13px;
@@ -147,12 +152,12 @@ class EditMediaInfoDialog(QDialog):
 
     def _setup_ui(self):
         """Setup the user interface."""
+        # Set window title
         if self._is_batch_edit:
-            self.setWindowTitle(
-                f"{t('edit_media_info_title')} ({len(self._track_ids)} {t('tracks')})"
-            )
+            title_text = f"{t('edit_media_info_title')} ({len(self._track_ids)} {t('tracks')})"
         else:
-            self.setWindowTitle(t("edit_media_info_title"))
+            title_text = t("edit_media_info_title")
+        self.setWindowTitle(title_text)
         self.setMinimumWidth(450)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
@@ -166,6 +171,13 @@ class EditMediaInfoDialog(QDialog):
         outer.addWidget(container)
 
         layout = QVBoxLayout(container)
+        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
+        title_label = QLabel(title_text)
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
 
         # Get first track for initial values
         first_track = self._library_service.get_track(self._track_ids[0])
@@ -248,7 +260,60 @@ class EditMediaInfoDialog(QDialog):
     def _add_file_info(self, form_layout: QFormLayout, track):
         """Add file information to the form for single track edit."""
         try:
+            # Check if this is a local file
+            if not track.path or track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+                # Online track - show online info
+                from domain.track import TrackSource
+                source_text = t("online_track")
+                if hasattr(track, 'source'):
+                    if track.source == TrackSource.QQ:
+                        source_text = "QQ音乐"
+                    elif track.source == TrackSource.QUARK:
+                        source_text = "夸克网盘"
+                    elif track.source == TrackSource.BAIDU:
+                        source_text = "百度网盘"
+
+                info_label = QLabel(source_text)
+                theme = ThemeManager.instance().current_theme
+                info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 13px;")
+
+                path_label = QLabel(track.path or t("online_streaming"))
+                path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+                path_label.setWordWrap(True)
+
+                # Add both labels in a vertical layout
+                info_container = QWidget()
+                info_layout = QVBoxLayout(info_container)
+                info_layout.setContentsMargins(0, 0, 0, 0)
+                info_layout.setSpacing(2)
+                info_layout.addWidget(info_label)
+                info_layout.addWidget(path_label)
+
+                form_layout.addRow(t("source") + ":", info_container)
+                return
+
             track_file = Path(track.path)
+            if not track_file.exists():
+                # File not found locally
+                info_label = QLabel(t("file_not_found"))
+                theme = ThemeManager.instance().current_theme
+                info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 13px;")
+
+                path_label = QLabel(track.path)
+                path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+                path_label.setWordWrap(True)
+
+                # Add both labels in a vertical layout
+                info_container = QWidget()
+                info_layout = QVBoxLayout(info_container)
+                info_layout.setContentsMargins(0, 0, 0, 0)
+                info_layout.setSpacing(2)
+                info_layout.addWidget(info_label)
+                info_layout.addWidget(path_label)
+
+                form_layout.addRow(t("file") + ":", info_container)
+                return
+
             file_size = track_file.stat().st_size
             file_size_str = self._format_file_size(file_size)
 
@@ -292,11 +357,11 @@ class EditMediaInfoDialog(QDialog):
 
             info_label = QLabel(file_info_text)
             theme = ThemeManager.instance().current_theme
-            info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+            info_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 13px;")
 
             # File path
             path_label = QLabel(track.path)
-            path_label.setStyleSheet(f"color: {theme.border}; font-size: 10px;")
+            path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
             path_label.setWordWrap(True)
 
             # Add both labels in a vertical layout
