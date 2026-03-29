@@ -1143,8 +1143,6 @@ class MainWindow(QMainWindow):
             self._title_bar.clear_accent_color()
             if self._original_title:
                 self.setWindowTitle(self._original_title)
-        # Note: "stopped" state is typically a transient state during track changes
-        # Don't restore title on stopped to avoid title flickering
 
     def _extract_cover_color(self, title: str, artist: str, path: str, track_dict: dict):
         """Extract dominant color from album cover and apply to title bar."""
