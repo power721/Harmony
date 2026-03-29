@@ -28,6 +28,8 @@ class CoverPixmapCache:
     @classmethod
     def make_key_from_path(cls, path: str) -> str:
         """Generate cache key from file path."""
+        if path is None:
+            path = ""
         return hashlib.md5(path.encode()).hexdigest()
 
     @classmethod

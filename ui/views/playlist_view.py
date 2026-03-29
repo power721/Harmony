@@ -28,7 +28,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.input_dialog import InputDialog
-from ui.dialogs.message_dialog import MessageDialog
+from ui.dialogs.message_dialog import MessageDialog, Yes
 from utils import format_duration
 
 
@@ -456,10 +456,10 @@ class PlaylistView(QWidget):
             self,
             t("delete_playlist"),
             t("delete_playlist_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
 
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             self._playlist_service.delete_playlist(self._current_playlist_id)
             self._current_playlist_id = None
             self._refresh_playlists()

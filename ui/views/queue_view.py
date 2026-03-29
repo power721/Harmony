@@ -35,7 +35,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
-from ui.dialogs.message_dialog import MessageDialog
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from utils.dedup import deduplicate_playlist_items
 
 logger = logging.getLogger(__name__)
@@ -508,7 +508,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         album = track.get("album", "")
         if artist and album:
             return CoverPixmapCache.make_key(artist, album)
-        path = track.get("path", "") or track.get("cover_path", "")
+        path = track.get("path") or track.get("cover_path") or ""
         return CoverPixmapCache.make_key_from_path(path)
 
     @staticmethod
@@ -1032,10 +1032,10 @@ class QueueView(QWidget):
             self,
             t("clear_queue"),
             t("clear_queue_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
 
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             self._player.engine.clear_playlist()
 
     def _remove_selected(self):
@@ -1361,7 +1361,7 @@ class QueueView(QWidget):
             t("deduplicate_confirm"),
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         # Perform deduplication
@@ -1581,9 +1581,9 @@ class QueueView(QWidget):
                 self,
                 t("no_playlists"),
                 t("no_playlists_message"),
-                MessageDialog.Yes | MessageDialog.No,
+                Yes | No,
             )
-            if reply == MessageDialog.Yes:
+            if reply == Yes:
                 self._create_playlist_from_queue_with_tracks(track_ids)
             return
 

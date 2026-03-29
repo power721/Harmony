@@ -204,11 +204,11 @@ class HelpDialog(QDialog):
             self,
             t("rebuild_db"),
             t("rebuild_db_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         # Rebuild

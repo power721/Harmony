@@ -206,10 +206,10 @@ class BaseRenameDialog(QDialog):
                 self,
                 t("confirm_merge"),
                 self._get_merge_confirm_message(),
-                MessageDialog.Yes | MessageDialog.No,
-                MessageDialog.No
+                Yes | No,
+                No
             )
-            if confirm != MessageDialog.Yes:
+            if confirm != Yes:
                 return
         else:
             # Normal rename confirmation
@@ -217,10 +217,10 @@ class BaseRenameDialog(QDialog):
                 self,
                 t("confirm_rename"),
                 self._get_rename_confirm_message(new_name),
-                MessageDialog.Yes | MessageDialog.No,
-                MessageDialog.No
+                Yes | No,
+                No
             )
-            if confirm != MessageDialog.Yes:
+            if confirm != Yes:
                 return
 
         # Start the rename operation

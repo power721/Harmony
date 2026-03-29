@@ -68,3 +68,15 @@ def test_set_returns_insert_result():
 
     with patch('infrastructure.cache.pixmap_cache.QPixmapCache.insert', return_value=False):
         assert CoverPixmapCache.set("key", valid_pixmap) is False
+
+
+def test_cache_key_from_none_path():
+    """Cache key from None path should not crash (bug fix for cloud tracks)."""
+    # This was causing AttributeError: 'NoneType' object has no attribute 'encode'
+    k1 = CoverPixmapCache.make_key_from_path(None)
+    k2 = CoverPixmapCache.make_key_from_path("")
+    assert isinstance(k1, str)
+    assert len(k1) == 32  # MD5 hex
+    # Both None and empty string should produce the same key
+    assert k1 == k2
+

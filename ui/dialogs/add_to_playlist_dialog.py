@@ -162,9 +162,9 @@ class AddToPlaylistDialog(QDialog):
             self,
             t("no_playlists"),
             t("no_playlists_message"),
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
-        return reply == MessageDialog.Yes
+        return reply == Yes
 
     def refresh_theme(self):
         """Refresh theme when changed."""

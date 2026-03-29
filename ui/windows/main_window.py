@@ -1249,9 +1249,9 @@ class MainWindow(QMainWindow):
                 self,
                 t("no_playlists"),
                 t("no_playlists_message"),
-                MessageDialog.Yes | MessageDialog.No,
+                Yes | No,
             )
-            if reply == MessageDialog.Yes:
+            if reply == Yes:
                 self._show_page(2)  # Show playlists page
             return
 

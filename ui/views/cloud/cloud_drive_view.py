@@ -1264,11 +1264,11 @@ class CloudDriveView(QWidget):
             self,
             t("delete_account"),
             t("confirm_delete_account").format(name=account.account_name),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             self._cloud_account_service.delete_account(account.id)
             self._load_accounts()
             self._status_label.setText(f"✓ {t('account_deleted')}")

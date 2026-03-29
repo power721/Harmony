@@ -1500,10 +1500,10 @@ class LibraryView(QWidget):
             self,
             t("remove_from_library"),
             confirm_message,
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         removed_count = 0
@@ -1570,10 +1570,10 @@ class LibraryView(QWidget):
             self,
             t("delete_file"),
             confirm_message,
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         # Delete files

@@ -1089,11 +1089,11 @@ class GeneralSettingsDialog(QDialog):
             self,
             t("qqmusic_clear"),
             t("qqmusic_clear_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             self._config.clear_qqmusic_credential()
             Bootstrap.instance().refresh_qqmusic_client()
             self._update_qqmusic_status()
@@ -1404,11 +1404,11 @@ class GeneralSettingsDialog(QDialog):
         reply = MessageDialog.question(
             self, t("artist_repair"),
             t("rebuild_artists_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         try:
@@ -1441,11 +1441,11 @@ class GeneralSettingsDialog(QDialog):
         reply = MessageDialog.question(
             self, t("album_repair"),
             t("rebuild_albums_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         try:
@@ -1478,11 +1478,11 @@ class GeneralSettingsDialog(QDialog):
         reply = MessageDialog.question(
             self, t("junction_repair"),
             t("rebuild_junction_confirm"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply != MessageDialog.Yes:
+        if reply != Yes:
             return
 
         try:

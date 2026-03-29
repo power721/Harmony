@@ -525,11 +525,11 @@ class LyricsController(QObject):
             None,
             t("delete_lyrics"),
             t("confirm_delete_lyrics"),
-            MessageDialog.Yes | MessageDialog.No,
-            MessageDialog.No
+            Yes | No,
+            No
         )
 
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             LyricsService.delete_lyrics(track_path)
             self._panel.set_no_lyrics()
 

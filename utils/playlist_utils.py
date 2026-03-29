@@ -53,9 +53,9 @@ def add_tracks_to_playlist(
             parent,
             t("no_playlists"),
             t("no_playlists_message"),
-            MessageDialog.Yes | MessageDialog.No,
+            Yes | No,
         )
-        if reply == MessageDialog.Yes:
+        if reply == Yes:
             if hasattr(parent, "window") and parent.window():
                 parent.window()._nav_playlists.click()
         return False
