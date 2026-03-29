@@ -313,7 +313,16 @@ jobs:
         run: |
           $env:PATH = "C:\Windows\System32;" + $env:PATH
           uv run python build.py windows
+
+      - name: Create portable zip
+        env:
+          APP_VERSION: ${{ github.ref_name || 'nightly' }}
+        run: |
+          # Create versioned exe
           Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}-windows.exe"
+
+          # Create portable version
+          Compress-Archive -Path "dist/Harmony.exe" -DestinationPath "dist/Harmony-${env:APP_VERSION}-windows.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -321,6 +330,7 @@ jobs:
           name: harmony-windows
           path: |
             dist/Harmony-*.exe
+            dist/Harmony-*.zip
           retention-days: 30
 
   release:
