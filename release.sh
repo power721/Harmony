@@ -129,6 +129,7 @@ build_app() {
       --hidden-import=PySide6.QtMultimedia \
       --add-data "ui:ui" \
       --add-data "translations:translations" \
+      --add-data "fonts:fonts" \
       --add-data "icons:icons" \
       --add-data "icon.png:." \
       "$ENTRY"

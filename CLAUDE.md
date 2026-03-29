@@ -36,6 +36,8 @@ Run tests:
 uv run pytest tests/
 ```
 
+GitHub Actions use [release.sh](release.sh) to build packages.
+
 ---
 
 # Key Paths
