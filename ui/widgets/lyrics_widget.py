@@ -51,8 +51,14 @@ class LyricsWidget(QWidget):
 
         self.margin_x = 20
 
-        self.font_normal = QFont("Microsoft YaHei", 15)
-        self.font_current = QFont("Microsoft YaHei", 18, QFont.Bold)
+        self.font_normal = QFont()
+        self.font_normal.setFamilies(["Noto Sans SC", "Inter"])
+        self.font_normal.setPointSize(15)
+
+        self.font_current = QFont()
+        self.font_current.setFamilies(["Noto Sans SC", "Inter"])
+        self.font_current.setPointSize(18)
+        self.font_current.setBold(True)
 
         self.color_normal = QColor(150, 150, 150)
         self.color_current = QColor(255, 255, 255)

@@ -275,7 +275,7 @@ def collect_data_files() -> list:
         print(f"[INFO] Found icon: {icon_file}")
 
     # Add more data directories as needed
-    data_dirs = ["assets", "resources", "icons", "themes"]
+    data_dirs = ["assets", "resources", "icons", "themes", "fonts"]
     for data_dir in data_dirs:
         dir_path = PROJECT_ROOT / data_dir
         if dir_path.exists():

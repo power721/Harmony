@@ -165,14 +165,17 @@ def main():
     qt_app.setApplicationName('Harmony')
     qt_app.setOrganizationName('HarmonyPlayer')
 
-    # Set default font
+    # Load bundled fonts
+    from infrastructure.fonts import FontLoader
+    FontLoader.instance().load_fonts()
+
+    # Set application font
     font = QFont()
     font.setFamilies([
         "Inter",
-        "Source Han Sans SC",
+        "Noto Sans SC",
         "Noto Color Emoji"
     ])
-
     qt_app.setFont(font)
 
     # Create application with dependency injection

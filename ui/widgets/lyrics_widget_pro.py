@@ -70,8 +70,14 @@ class LyricsWidget(QWidget):
         self.is_qrc = False
 
         # 字体
-        self.font_normal = QFont("Microsoft YaHei", 18)
-        self.font_current = QFont("Microsoft YaHei", 26, QFont.Bold)
+        self.font_normal = QFont()
+        self.font_normal.setFamilies(["Noto Sans SC", "Inter"])
+        self.font_normal.setPointSize(18)
+
+        self.font_current = QFont()
+        self.font_current.setFamilies(["Noto Sans SC", "Inter"])
+        self.font_current.setPointSize(26)
+        self.font_current.setBold(True)
 
         # 动画
         self.timer = QTimer(self)

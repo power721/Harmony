@@ -16,7 +16,8 @@ class MiniLyricsWidget(QWidget):
         self.current_index = 0
 
         # 字体（固定像素，避免DPI坑）
-        self.font = QFont("Noto Sans CJK JP")
+        self.font = QFont()
+        self.font.setFamilies(["Noto Sans SC", "Inter"])
         self.font.setPixelSize(12)
 
         # 滚动系统（高级版）

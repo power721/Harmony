@@ -98,9 +98,23 @@ cd music-player
 # Install dependencies
 uv sync
 
+# Download bundled fonts (optional, for development)
+./download_fonts.sh
+
 # Run application
 uv run python main.py
 ```
+
+### Font Bundling
+
+Harmony bundles fonts for consistent cross-platform display:
+- **Inter** - Western UI font
+- **Noto Sans SC** - Simplified Chinese font
+- **Noto Color Emoji** - Emoji support
+
+For development, run `./download_fonts.sh` to download fonts. For production builds, fonts are automatically bundled by PyInstaller.
+
+See `docs/font-bundling.md` for detailed documentation.
 
 ### Dependencies
 
