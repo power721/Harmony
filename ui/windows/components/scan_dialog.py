@@ -19,12 +19,18 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Callable
 
-from PySide6.QtWidgets import QProgressDialog
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QProgressBar, QPushButton, QWidget, QGraphicsDropShadowEffect,
+)
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
+from PySide6.QtGui import QColor
 
 from services import MetadataService
 from domain.track import Track
 from system.i18n import t
+from system.theme import ThemeManager
+from ui.widgets.title_bar import TitleBar
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -434,6 +440,126 @@ class ScanWorker(QObject):
 # Controller / Dialog
 # =========================================================
 
+class _ScanProgressDialog(QDialog):
+    """Themed frameless scan progress dialog."""
+
+    _STYLE = """
+    #scanContainer {
+        background-color: %background_alt%;
+        border-radius: 12px;
+    }
+    #scanTitle {
+        font-size: 16px;
+        font-weight: bold;
+        color: %text%;
+    }
+    #scanMessage {
+        font-size: 13px;
+        color: %text_secondary%;
+    }
+    QProgressBar {
+        background-color: %background%;
+        border: none;
+        border-radius: 4px;
+        height: 6px;
+        text-align: center;
+    }
+    QProgressBar::chunk {
+        background-color: %highlight%;
+        border-radius: 4px;
+    }
+    QPushButton#scanCancelBtn {
+        background-color: %background%;
+        color: %text%;
+        border: 1px solid %border%;
+        border-radius: 6px;
+        padding: 6px 24px;
+        font-size: 13px;
+    }
+    QPushButton#scanCancelBtn:hover {
+        background-color: %background_hover%;
+        border-color: %highlight%;
+    }
+    QPushButton#scanCancelBtn:disabled {
+        color: %text_secondary%;
+        border-color: %background_hover%;
+    }
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(420, 200)
+        self.setModal(True)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        container = QWidget(self)
+        container.setObjectName("scanContainer")
+        container.setGeometry(0, 0, 420, 200)
+        layout.addWidget(container)
+
+        main_layout = QVBoxLayout(container)
+        main_layout.setContentsMargins(20, 12, 20, 20)
+        main_layout.setSpacing(12)
+
+        self._title_bar = TitleBar(container)
+        self._title_bar.setFixedHeight(32)
+        self._title_bar.set_track_title(t("scanning"), "")
+        main_layout.addWidget(self._title_bar)
+
+        self._message_label = QLabel(t("discovering_files"))
+        self._message_label.setObjectName("scanMessage")
+        self._message_label.setWordWrap(True)
+        main_layout.addWidget(self._message_label)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 0)  # indeterminate
+        self._progress_bar.setTextVisible(False)
+        main_layout.addWidget(self._progress_bar)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self._cancel_btn = QPushButton(t("cancel"))
+        self._cancel_btn.setObjectName("scanCancelBtn")
+        self._cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self._cancel_btn)
+        main_layout.addLayout(btn_layout)
+
+        self._apply_style()
+        ThemeManager.instance().register_widget(self)
+
+    def _apply_style(self):
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE))
+
+    def set_indeterminate(self):
+        self._progress_bar.setRange(0, 0)
+
+    def set_progress(self, percent: int):
+        if self._progress_bar.maximum() == 0:
+            self._progress_bar.setRange(0, 100)
+        self._progress_bar.setValue(percent)
+
+    def set_message(self, message: str):
+        self._message_label.setText(message)
+
+    def disable_cancel(self):
+        self._cancel_btn.setEnabled(False)
+
+    def closeEvent(self, event):
+        """Treat close button as cancel."""
+        self.reject()
+
+
 class ScanController(QObject):
     """
     A controller that owns the worker thread and progress dialog.
@@ -463,22 +589,12 @@ class ScanController(QObject):
 
         self.thread: Optional[QThread] = None
         self.worker: Optional[ScanWorker] = None
-        self.progress: Optional[QProgressDialog] = None
+        self.dialog: Optional[_ScanProgressDialog] = None
 
     def start(self):
         logger.info(f"[ScanController] Start scan: {self.folder}")
 
-        self.progress = QProgressDialog(t("scanning"), t("cancel"), 0, 100, self.parent())
-        self.progress.setWindowTitle(t("scanning"))
-        self.progress.setMinimumDuration(0)
-        self.progress.setValue(0)
-        self.progress.setAutoClose(False)
-        self.progress.setAutoReset(False)
-        self.progress.setWindowModality(Qt.WindowModal)
-
-        # Start with indeterminate mode during file discovery
-        self.progress.setRange(0, 0)
-        self.progress.setLabelText(t("discovering_files"))
+        self.dialog = _ScanProgressDialog(self.parent())
 
         self.thread = QThread(self)
         self.worker = ScanWorker(
@@ -494,13 +610,13 @@ class ScanController(QObject):
         self.thread.started.connect(self.worker.run)
         self.worker.status.connect(self._on_status, Qt.QueuedConnection)
         self.worker.finished.connect(self._on_finished, Qt.QueuedConnection)
-        self.progress.canceled.connect(self._on_cancel)
+        self.dialog.rejected.connect(self._on_cancel)
 
         # Clean lifecycle
         self.thread.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
 
-        self.progress.show()
+        self.dialog.show()
 
         # Delay thread start until dialog paints
         QTimer.singleShot(0, self.thread.start)
@@ -512,37 +628,36 @@ class ScanController(QObject):
     # -------------------------
 
     def _on_status(self, phase: str, percent: int, message: str):
-        if not self.progress:
+        if not self.dialog:
             return
 
         if phase == "discover":
-            # indeterminate
-            if self.progress.maximum() != 0:
-                self.progress.setRange(0, 0)
-            self.progress.setLabelText(message)
+            self.dialog.set_indeterminate()
+            self.dialog.set_message(message)
 
         elif phase in ("import", "finalize"):
-            # determinate
-            if self.progress.maximum() == 0:
-                self.progress.setRange(0, 100)
-            self.progress.setValue(percent)
-            self.progress.setLabelText(message)
+            self.dialog.set_progress(percent)
+            self.dialog.set_message(message)
 
     def _on_cancel(self):
         logger.info("[ScanController] User requested cancel")
         if self.worker:
             self.worker.cancel()
-        if self.progress:
-            self.progress.setCancelButton(None)
-            self.progress.setLabelText(t("cancelling"))
+        if self.dialog:
+            self.dialog.disable_cancel()
+            self.dialog.set_message(t("cancelling"))
 
     def _on_finished(self, payload: dict):
         logger.info(f"[ScanController] Scan finished: {payload}")
 
-        if self.progress:
-            self.progress.setRange(0, 100)
-            self.progress.setValue(100)
-            self.progress.close()
+        if self.dialog:
+            # Disconnect cancel to avoid double-fire
+            try:
+                self.dialog.rejected.disconnect(self._on_cancel)
+            except RuntimeError:
+                pass
+            self.dialog.set_progress(100)
+            self.dialog.close()
 
         # Stop thread cleanly
         self._cleanup_thread()
@@ -570,7 +685,7 @@ class ScanController(QObject):
 
         self.thread = None
         self.worker = None
-        self.progress = None
+        self.dialog = None
 
 
 # =========================================================
