@@ -280,6 +280,9 @@ def collect_data_files() -> list:
         dir_path = PROJECT_ROOT / data_dir
         if dir_path.exists():
             datas.append((str(dir_path), data_dir))
+            print(f"[INFO] Found {data_dir}: {dir_path}")
+        else:
+            print(f"[WARN] {data_dir} directory not found: {dir_path}")
 
     return datas
 
