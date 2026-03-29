@@ -933,6 +933,9 @@ class CloudDriveView(QWidget):
                         break
                 self._status_label.setText(f"✓ {file.name} {t('file_already_exists')}")
                 self._file_table.update_file_local_path(file.file_id, str(local_file_path))
+
+                # Emit download_completed signal to create track in library
+                EventBus.instance().download_completed.emit(file.file_id, str(local_file_path))
                 return
 
         size_info = ""
