@@ -136,19 +136,21 @@ class GeneralSettingsDialog(QDialog):
             background-color: %selection%;
         }
         QComboBox {
-            background-color: %background_hover%;
+            background-color: %background%;
             color: %text%;
             border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 6px 10px;
+            border-radius: 6px;
+            padding: 0px 12px;
+            min-height: 32px;
             font-size: 13px;
         }
         QComboBox:hover {
+            background-color: %background_hover%;
             border: 1px solid %highlight%;
         }
         QComboBox::drop-down {
             border: none;
-            width: 24px;
+            width: 30px;
         }
         QComboBox QAbstractItemView {
             background-color: %background_alt%;
@@ -348,6 +350,7 @@ class GeneralSettingsDialog(QDialog):
         quality_layout = QHBoxLayout()
         quality_label = QLabel(t("qqmusic_quality"))
         self._quality_combo = QComboBox()
+        self._quality_combo.setFixedWidth(300)
         # Add items
         self._quality_combo.addItem(t("qqmusic_quality_master"))
         self._quality_combo.setItemData(0, "master", Qt.UserRole)
@@ -446,31 +449,8 @@ class GeneralSettingsDialog(QDialog):
         strategy_label = QLabel(t("cache_cleanup_strategy"))
         strategy_label.setMinimumWidth(120)
         self._strategy_combo = QComboBox()
-        # Set a styled list view for the dropdown first
-        from PySide6.QtWidgets import QListView
-        list_view = QListView(self._strategy_combo)
-        list_view.setStyleSheet(f"""
-            QListView {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                outline: none;
-            }}
-            QListView::item {{
-                padding: 6px 10px;
-                background-color: {theme.background_alt};
-            }}
-            QListView::item:hover {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-            QListView::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-        """)
-        self._strategy_combo.setView(list_view)
-        # Add items after setting view
+        self._strategy_combo.setFixedWidth(300)
+        # Add items
         self._strategy_combo.addItem(t("cache_cleanup_manual"))
         self._strategy_combo.setItemData(0, "manual", Qt.UserRole)
         self._strategy_combo.addItem(t("cache_cleanup_time"))
