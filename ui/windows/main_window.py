@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
     # Signals
     play_track = Signal(int)  # Signal to play a track by ID
     lyricsHtmlReady = Signal(str)
+    _cover_color_extracted = Signal(object)  # QColor from ColorWorker
 
     _STYLE_TEMPLATE = """
         QMainWindow {
@@ -474,6 +475,9 @@ class MainWindow(QMainWindow):
 
     def _setup_connections(self):
         """Setup signal connections."""
+        # Cover color extraction → title bar
+        self._cover_color_extracted.connect(self._on_cover_color_extracted)
+
         # Navigation - sidebar signals are connected in _create_sidebar
         # These connections are kept for backward compatibility with _show_page calls
         # from various parts of the code that call these methods directly
@@ -1144,6 +1148,13 @@ class MainWindow(QMainWindow):
             if self._original_title:
                 self.setWindowTitle(self._original_title)
 
+    def _on_cover_color_extracted(self, color):
+        """Handle cover color extraction result."""
+        if color:
+            self._title_bar.set_accent_color(color)
+        else:
+            self._title_bar.clear_accent_color()
+
     def _extract_cover_color(self, title: str, artist: str, path: str, track_dict: dict):
         """Extract dominant color from album cover and apply to title bar."""
         cover_path = None
@@ -1163,7 +1174,7 @@ class MainWindow(QMainWindow):
         if cover_path:
             from PySide6.QtCore import QThreadPool
             from services.metadata.color_extractor import ColorWorker
-            worker = ColorWorker(cover_path, self._title_bar.set_accent_color)
+            worker = ColorWorker(cover_path, self._cover_color_extracted)
             QThreadPool.globalInstance().start(worker)
         else:
             self._title_bar.clear_accent_color()
