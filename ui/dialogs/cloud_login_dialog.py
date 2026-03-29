@@ -140,11 +140,13 @@ class CloudLoginDialog(QDialog):
         mode_layout.setSpacing(10)
 
         self._qr_mode_btn = QPushButton(t("scan_qr_code"))
+        self._qr_mode_btn.setCursor(Qt.PointingHandCursor)
         self._qr_mode_btn.setCheckable(True)
         self._qr_mode_btn.setChecked(True)
         self._qr_mode_btn.clicked.connect(self._switch_to_qr_mode)
 
         self._cookie_mode_btn = QPushButton(t("input_cookie"))
+        self._cookie_mode_btn.setCursor(Qt.PointingHandCursor)
         self._cookie_mode_btn.setCheckable(True)
         self._cookie_mode_btn.clicked.connect(self._switch_to_cookie_mode)
 
@@ -169,10 +171,12 @@ class CloudLoginDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._refresh_btn = QPushButton(t("refresh_qr"))
+        self._refresh_btn.setCursor(Qt.PointingHandCursor)
         self._refresh_btn.clicked.connect(self._refresh_qr)
         button_layout.addWidget(self._refresh_btn)
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setCursor(Qt.PointingHandCursor)
         cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
@@ -238,6 +242,7 @@ class CloudLoginDialog(QDialog):
 
         # Validate button
         self._validate_btn = QPushButton(t("validate_cookie"))
+        self._validate_btn.setCursor(Qt.PointingHandCursor)
         self._validate_btn.clicked.connect(self._validate_cookie)
         layout.addWidget(self._validate_btn)
 

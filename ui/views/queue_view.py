@@ -1495,7 +1495,9 @@ class QueueView(QWidget):
 
         buttons = QDialogButtonBox()
         ok_button = QPushButton(t("save"))
+        ok_button.setCursor(Qt.PointingHandCursor)
         cancel_button = QPushButton(t("cancel"))
+        cancel_button.setCursor(Qt.PointingHandCursor)
         cancel_button.setProperty("role", "cancel")
 
         buttons.addButton(ok_button, QDialogButtonBox.AcceptRole)

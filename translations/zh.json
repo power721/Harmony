@@ -167,6 +167,7 @@
     "warning": "警告",
     "open_file_location": "📂 打开文件位置",
     "file_not_found": "文件未找到",
+    "track_not_found": "曲目未找到",
     "open_file_location_failed": "打开文件位置失败",
     "lyrics_file_not_found": "歌词文件未找到",
     "no_account": "未登录",

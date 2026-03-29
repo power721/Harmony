@@ -1437,8 +1437,6 @@ class LibraryView(QWidget):
             return
 
         # Extract track ID and check if cloud file
-        track_id = None
-        is_cloud = False
         if isinstance(track_data, dict):
             is_cloud = track_data.get("type") == "cloud"
             if is_cloud:

@@ -28,13 +28,16 @@ class HelpDialog(QDialog):
     """Dialog showing help information and keyboard shortcuts."""
 
     _STYLE_TEMPLATE = """
+        HelpDialog {
+            background-color: transparent;
+        }
         QWidget#dialogContainer {
             background-color: %background%;
             color: %text%;
             border: 1px solid %border%;
             border-radius: 12px;
         }
-        QLabel {
+        QWidget#dialogContainer QLabel {
             color: %text%;
         }
         QGroupBox {
@@ -74,6 +77,9 @@ class HelpDialog(QDialog):
             border: none;
             background-color: transparent;
         }
+        QScrollArea > QWidget > QWidget {
+            background-color: transparent;
+        }
     """
 
     def __init__(self, parent=None):
@@ -85,7 +91,7 @@ class HelpDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.setWindowTitle(t("help"))
-        self.setMinimumSize(500, 670)
+        self.setMinimumSize(500, 550)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         self._setup_shadow()
@@ -135,12 +141,12 @@ class HelpDialog(QDialog):
         info_layout.addWidget(app_name)
 
         version_label = QLabel("v1.0")
-        version_label.setStyleSheet("font-size: 14px; color: #101010;")
+        version_label.setStyleSheet(f"font-size: 14px; color: {ThemeManager.instance().current_theme.text_secondary};")
         version_label.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(version_label)
 
         desc = QLabel(t("app_description"))
-        desc.setStyleSheet("font-size: 13px; color: #101010;")
+        desc.setStyleSheet(f"font-size: 13px; color: {ThemeManager.instance().current_theme.text_secondary};")
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(desc)
@@ -178,31 +184,13 @@ class HelpDialog(QDialog):
             row.addWidget(key_label)
 
             action_label = QLabel(action)
-            action_label.setStyleSheet("font-size: 13px; color: #101010;")
+            action_label.setStyleSheet(f"font-size: 13px; color: {ThemeManager.instance().current_theme.text_secondary};")
             row.addWidget(action_label)
             row.addStretch()
 
             shortcuts_layout.addLayout(row)
 
         content_layout.addWidget(shortcuts_group)
-
-        # Tools section
-        tools_group = QGroupBox(t("tools"))
-        tools_layout = QVBoxLayout(tools_group)
-
-        # Rebuild database button
-        rebuild_btn = QPushButton(t("rebuild_db"))
-        rebuild_btn.setObjectName("rebuildBtn")
-        rebuild_btn.setCursor(Qt.PointingHandCursor)
-        rebuild_btn.clicked.connect(self._rebuild_database)
-        tools_layout.addWidget(rebuild_btn)
-
-        rebuild_desc = QLabel(t("rebuild_db_desc"))
-        rebuild_desc.setStyleSheet("font-size: 12px; color: #101010;")
-        rebuild_desc.setWordWrap(True)
-        tools_layout.addWidget(rebuild_desc)
-
-        content_layout.addWidget(tools_group)
 
         content_layout.addStretch()
 
@@ -213,54 +201,44 @@ class HelpDialog(QDialog):
         close_btn = QPushButton(t("ok"))
         close_btn.clicked.connect(self.accept)
         close_btn.setFixedWidth(100)
+        close_btn.setCursor(Qt.PointingHandCursor)
         close_layout = QHBoxLayout()
         close_layout.addStretch()
         close_layout.addWidget(close_btn)
         close_layout.addStretch()
         layout.addLayout(close_layout)
 
-    def _rebuild_database(self):
-        """Rebuild albums and artists tables from tracks."""
-        from app.bootstrap import Bootstrap
-        from PySide6.QtCore import QTimer
-
-        bootstrap = Bootstrap.instance()
-        if not bootstrap.library_service:
-            return
-
-        # Confirm with user
-        reply = MessageDialog.question(
-            self,
-            t("rebuild_db"),
-            t("rebuild_db_confirm"),
-            Yes | No,
-            No
-        )
-
-        if reply != Yes:
-            return
-
-        # Rebuild
-        result = bootstrap.library_service.rebuild_albums_artists()
-
-        # Show result
-        MessageDialog.information(
-            self,
-            t("success"),
-            t("rebuild_db_success").format(
-                albums=result['albums'],
-                artists=result['artists']
-            )
-        )
-
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         # Re-apply inline styles that use theme colors
         theme = ThemeManager.instance().current_theme
-        for child in self.findChildren(QLabel):
-            if child.text() == "Harmony":
-                child.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {theme.highlight};")
+
+        # Find labels by iterating through the widget tree
+        for label in self.findChildren(QLabel):
+            text = label.text()
+            if text == "Harmony":
+                label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {theme.highlight};")
+            elif text == "v1.0":
+                label.setStyleSheet(f"font-size: 14px; color: {theme.text_secondary};")
+            elif label.objectName() != "keyLabel" and text not in ["Harmony", "v1.0"]:
+                # Update shortcut action labels (not key labels which have their own style)
+                # Check if this is in the shortcuts section
+                parent = label.parentWidget()
+                if parent and isinstance(parent.findChild(QGroupBox), QGroupBox):
+                    # This is likely a shortcut action label
+                    label.setStyleSheet(f"font-size: 13px; color: {theme.text_secondary};")
+
+        # Update key labels background
+        for label in self.findChildren(QLabel):
+            if "font-family: monospace" in label.styleSheet():
+                label.setStyleSheet(f"""
+                    background-color: {theme.background_hover};
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    font-family: monospace;
+                    font-size: 12px;
+                """)
 
     def resizeEvent(self, event):
         """Apply rounded corner mask."""

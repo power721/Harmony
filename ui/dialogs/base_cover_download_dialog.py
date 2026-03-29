@@ -336,6 +336,7 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Search button
         self._search_btn = QPushButton(t("search"))
+        self._search_btn.setCursor(Qt.PointingHandCursor)
         self._search_btn.clicked.connect(self._search_covers)
         left_layout.addWidget(self._search_btn)
 
@@ -415,11 +416,13 @@ class BaseCoverDownloadDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._save_btn = QPushButton(t("save"))
+        self._save_btn.setCursor(Qt.PointingHandCursor)
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._save_cover)
         button_layout.addWidget(self._save_btn)
 
         close_btn = QPushButton(t("cancel"))
+        close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)
 

@@ -167,6 +167,7 @@
     "warning": "Warning",
     "open_file_location": "📂 Open File Location",
     "file_not_found": "File not found",
+    "track_not_found": "Track not found",
     "open_file_location_failed": "Failed to open file location",
     "lyrics_file_not_found": "Lyrics file not found",
     "no_account": "No account",

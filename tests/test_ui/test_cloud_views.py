@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QApplication
 from domain.cloud import CloudFile, CloudAccount
 from ui.views.cloud.file_table import CloudFileTable
 from ui.views.cloud.context_menu import CloudFileContextMenu, CloudAccountContextMenu
-from ui.views.cloud.dialogs import CloudMediaInfoDialog
 
 
 # Ensure QApplication exists for widget tests
@@ -206,30 +205,6 @@ class TestCloudAccountContextMenu:
         assert hasattr(menu, 'change_download_dir_requested')
         assert hasattr(menu, 'update_cookie_requested')
         assert hasattr(menu, 'delete_requested')
-
-
-class TestCloudMediaInfoDialog:
-    """Tests for CloudMediaInfoDialog."""
-
-    def test_init_requires_local_path(self, qapp):
-        """Test that dialog requires file with local_path."""
-        mock_library_service = Mock()
-
-        file = CloudFile(
-            id=1,
-            account_id=1,
-            file_id="file1",
-            parent_id="0",
-            name="Test.mp3",
-            file_type="audio",
-        )
-
-        # Dialog should handle missing local_path gracefully
-        # (show_media_info_dialog will show warning instead)
-        from ui.views.cloud.dialogs import show_media_info_dialog
-
-        result = show_media_info_dialog(file, mock_library_service, None)
-        assert result is False  # Should return False when no local_path
 
 
 class TestCloudFile:

@@ -491,10 +491,12 @@ class LyricsController(QObject):
         btn_layout = QHBoxLayout()
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setCursor(Qt.PointingHandCursor)
         cancel_btn.clicked.connect(dialog.reject)
         btn_layout.addWidget(cancel_btn)
 
         save_btn = QPushButton(t("save"))
+        save_btn.setCursor(Qt.PointingHandCursor)
         save_btn.clicked.connect(dialog.accept)
         btn_layout.addWidget(save_btn)
 

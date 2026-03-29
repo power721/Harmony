@@ -9,9 +9,11 @@ This is a refactored version that uses modular components:
 """
 
 import logging
+import shutil
 from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -25,22 +27,18 @@ from PySide6.QtWidgets import (
     QSplitter,
     QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 from domain.cloud import CloudAccount, CloudFile
-from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
-from ui.dialogs.cloud_login_dialog import CloudLoginDialog
-from ui.dialogs.provider_select_dialog import ProviderSelectDialog
-from system.i18n import t
+from services.cloud.quark_service import QuarkDriveService
 from system.event_bus import EventBus
-
-from .file_table import CloudFileTable
-from .download_thread import CloudFileDownloadThread
-from .dialogs import show_media_info_dialog
+from system.i18n import t
+from ui.dialogs.cloud_login_dialog import CloudLoginDialog
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.provider_select_dialog import ProviderSelectDialog
 from .context_menu import CloudFileContextMenu, CloudAccountContextMenu
+from .download_thread import CloudFileDownloadThread
+from .file_table import CloudFileTable
 
 if TYPE_CHECKING:
     from services.cloud import CloudAccountService, CloudFileService
@@ -134,14 +132,14 @@ class CloudDriveView(QWidget):
     play_cloud_files = Signal(str, int, list, float)
 
     def __init__(
-        self,
-        cloud_account_service: "CloudAccountService",
-        cloud_file_service: "CloudFileService",
-        library_service: "LibraryService",
-        player: "PlaybackService",
-        config_manager: "ConfigManager" = None,
-        cover_service: "CoverService" = None,
-        parent=None
+            self,
+            cloud_account_service: "CloudAccountService",
+            cloud_file_service: "CloudFileService",
+            library_service: "LibraryService",
+            player: "PlaybackService",
+            config_manager: "ConfigManager" = None,
+            cover_service: "CoverService" = None,
+            parent=None
     ):
         """
         Initialize the cloud drive view.
@@ -995,110 +993,58 @@ class CloudDriveView(QWidget):
                         break
 
                 self._file_table.update_file_local_path(file.file_id, local_path)
+
+                # Emit download_completed signal to create track in library
+                EventBus.instance().download_completed.emit(file.file_id, local_path)
         else:
             self._status_label.setText(f"{t('download_failed')}: {file.name}")
 
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for a cloud file."""
-        if show_media_info_dialog(file, self._library_service, self):
+        # Get track by cloud file ID
+        track = self._library_service.get_track_by_cloud_file_id(file.file_id)
+        if not track:
+            # Try to find by path
+            if file.local_path:
+                track = self._library_service.get_track_by_path(file.local_path)
+
+        if not track:
+            from ui.dialogs.message_dialog import MessageDialog
+            MessageDialog.warning(self, t("error"), t("track_not_found"))
+            return
+
+        # Use EditMediaInfoDialog
+        from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
+        dialog = EditMediaInfoDialog([track.id], self._library_service, self)
+        if dialog.exec():
             self._status_label.setText(f"✓ {t('metadata_saved')}")
 
     def _download_cover(self, file: CloudFile):
         """Download cover art for a cloud file."""
-        if not file.local_path:
-            logger.warning(f"Cannot download cover: file not downloaded - {file.name}")
+        # Get track by cloud file ID
+        track = self._library_service.get_track_by_cloud_file_id(file.file_id)
+        if not track:
+            # Try to find by path
+            if file.local_path:
+                track = self._library_service.get_track_by_path(file.local_path)
+
+        if not track:
+            from ui.dialogs.message_dialog import MessageDialog
+            MessageDialog.warning(self, t("error"), t("track_not_found"))
             return
 
-        from services.metadata import MetadataService
-        from ui.dialogs import CoverDownloadDialog
-        from domain.track import Track
+        # Show cover download dialog
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
 
-        # Extract metadata from the downloaded file
-        metadata = MetadataService.extract_metadata(file.local_path)
-
-        # Create a temporary Track object for the dialog
-        track = Track(
-            id=0,
-            title=metadata.get("title") or file.name,
-            artist=metadata.get("artist") or "",
-            album=metadata.get("album") or "",
-            duration=file.duration or metadata.get("duration") or 0.0,
-            path=file.local_path
-        )
-
-        def save_cover_callback(track, cover_path, cover_data):
-            """Embed cover into the cloud file and save to cache."""
-            try:
-                import mutagen
-                from mutagen.id3 import ID3, APIC
-                from mutagen.mp3 import MP3
-                from mutagen.flac import FLAC
-                from mutagen.mp4 import MP4
-                from mutagen.oggvorbis import OggVorbis
-                import base64
-
-                path = Path(file.local_path)
-                if not path.exists():
-                    logger.error(f"File not found: {file.local_path}")
-                    return False
-
-                suffix = path.suffix.lower()
-                audio = mutagen.File(file_path=file.local_path)
-
-                if suffix == ".mp3" and isinstance(audio, MP3):
-                    if audio.tags is None:
-                        audio.add_tags()
-                    audio.tags.delall("APIC")
-                    audio.tags.add(APIC(
-                        encoding=3,
-                        mime="image/jpeg",
-                        type=3,
-                        desc="Cover",
-                        data=cover_data
-                    ))
-                    audio.save()
-                elif suffix == ".flac" and isinstance(audio, FLAC):
-                    audio["pictures"] = []
-                    from mutagen.flac import Picture
-                    pic = Picture()
-                    pic.type = 3
-                    pic.mime = "image/jpeg"
-                    pic.desc = "Cover"
-                    pic.data = cover_data
-                    audio.add_picture(pic)
-                    audio.save()
-                elif suffix in {".m4a", ".mp4"} and isinstance(audio, MP4):
-                    audio["covr"] = [cover_data]
-                    audio.save()
-                elif suffix in {".ogg", ".oga"} and isinstance(audio, OggVorbis):
-                    import base64
-                    audio["metadata_block_picture"] = [
-                        base64.b64encode(
-                            mutagen.flac.Picture(
-                                type=3, mime="image/jpeg",
-                                desc="Cover", data=cover_data
-                            ).write()
-                        ).decode("ascii")
-                    ]
-                    audio.save()
-                else:
-                    logger.warning(f"Unsupported format for cover embedding: {suffix}")
-                    # Cover is still saved to cache by the dialog, so just accept
-                    return True
-
-                logger.info(f"Cover embedded into {file.name}")
-                self._status_label.setText(f"✓ {t('metadata_saved')}")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to embed cover into {file.name}: {e}")
-                return False
-
-        dialog = CoverDownloadDialog(
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
             [track],
-            self._cover_service,
-            self,
-            save_callback=save_cover_callback
+            bootstrap.track_repo,
+            bootstrap.event_bus
         )
+        dialog = UniversalCoverDownloadDialog(strategy, self._cover_service, self)
         dialog.exec()
 
     def _open_file_location(self, file: CloudFile):
@@ -1108,13 +1054,32 @@ class CloudDriveView(QWidget):
             import sys
 
             path = Path(file.local_path)
+            if not path.exists():
+                MessageDialog.warning(self, "Error", t("file_not_found"))
+                return
+
             if path.exists():
                 if sys.platform == "win32":
                     subprocess.run(["explorer", "/select,", str(path)])
                 elif sys.platform == "darwin":
                     subprocess.run(["open", "-R", str(path)])
                 else:
-                    subprocess.run(["xdg-open", str(path.parent)])
+                    # Linux
+                    # Try to select file in supported file managers
+                    file_managers = {
+                        "nautilus": ["nautilus", "--select", str(path)],
+                        "dolphin": ["dolphin", "--select", str(path)],
+                        "caja": ["caja", "--select", str(path)],
+                        "nemo": ["nemo", str(path)],
+                    }
+
+                    for fm, cmd in file_managers.items():
+                        if shutil.which(fm):
+                            subprocess.Popen(cmd)
+                            return
+
+                    # fallback
+                    subprocess.Popen(["xdg-open", str(path.parent)])
 
     def _open_in_cloud_drive(self, file: CloudFile):
         """Open file in cloud drive web interface."""
@@ -1349,12 +1314,12 @@ class CloudDriveView(QWidget):
             self._load_accounts()
 
     def restore_playback_state(
-        self,
-        account_id: int,
-        file_path: str,
-        file_fid: str,
-        auto_play: bool = False,
-        position: float = 0.0
+            self,
+            account_id: int,
+            file_path: str,
+            file_fid: str,
+            auto_play: bool = False,
+            position: float = 0.0
     ):
         """Restore playback state for a specific file."""
         # Find and select the account
@@ -1373,11 +1338,11 @@ class CloudDriveView(QWidget):
         self._fast_restore_playback(account_id, file_fid, file_path, position)
 
     def _fast_restore_playback(
-        self,
-        account_id: int,
-        file_fid: str,
-        local_path: str,
-        start_position: float
+            self,
+            account_id: int,
+            file_fid: str,
+            local_path: str,
+            start_position: float
     ):
         """Fast restore playback using local path if available."""
         if local_path and Path(local_path).exists():
