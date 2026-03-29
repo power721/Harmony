@@ -749,6 +749,13 @@ class OnlineDetailView(QWidget):
         self._play_btn.clicked.connect(self._on_play_current)
         layout.addWidget(self._play_btn)
 
+        # 插入到队列 (current page)
+        self._insert_queue_btn = QPushButton(t("insert_to_queue"))
+        self._insert_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._insert_queue_btn.setFixedHeight(28)
+        self._insert_queue_btn.clicked.connect(self._on_insert_current_to_queue)
+        layout.addWidget(self._insert_queue_btn)
+
         # 添加到队列 (current page)
         self._add_queue_btn = QPushButton(t("add_to_queue"))
         self._add_queue_btn.setCursor(Qt.PointingHandCursor)
@@ -762,6 +769,13 @@ class OnlineDetailView(QWidget):
         self._play_all_btn.setFixedHeight(28)
         self._play_all_btn.clicked.connect(self._on_play_all)
         layout.addWidget(self._play_all_btn)
+
+        # 全部插入队列 (all pages)
+        self._insert_all_queue_btn = QPushButton(t("insert_all_to_queue"))
+        self._insert_all_queue_btn.setCursor(Qt.PointingHandCursor)
+        self._insert_all_queue_btn.setFixedHeight(28)
+        self._insert_all_queue_btn.clicked.connect(self._on_insert_all_to_queue)
+        layout.addWidget(self._insert_all_queue_btn)
 
         # 全部加到队列 (all pages)
         self._add_all_queue_btn = QPushButton(t("add_all_to_queue"))
@@ -1603,6 +1617,11 @@ class OnlineDetailView(QWidget):
         if self._tracks:
             self.play_all.emit(self._tracks)
 
+    def _on_insert_current_to_queue(self):
+        """Insert current page tracks to queue."""
+        if self._tracks:
+            self.insert_all_to_queue.emit(self._tracks)
+
     def _on_add_current_to_queue(self):
         """Add current page tracks to queue."""
         if self._tracks:
@@ -1616,6 +1635,15 @@ class OnlineDetailView(QWidget):
         else:
             # Need to fetch all tracks
             self._fetch_all_tracks(callback=lambda tracks: self.play_all_tracks.emit(tracks))
+
+    def _on_insert_all_to_queue(self):
+        """Insert all tracks to queue (from all pages)."""
+        if self._total_songs <= len(self._tracks):
+            # All tracks already loaded
+            self.insert_all_tracks_to_queue.emit(self._tracks)
+        else:
+            # Need to fetch all tracks
+            self._fetch_all_tracks(callback=lambda tracks: self.insert_all_tracks_to_queue.emit(tracks))
 
     def _on_add_all_to_queue(self):
         """Add all tracks to queue (from all pages)."""
@@ -1635,8 +1663,10 @@ class OnlineDetailView(QWidget):
         """
         # Show loading state
         self._play_all_btn.setEnabled(False)
+        self._insert_all_queue_btn.setEnabled(False)
         self._add_all_queue_btn.setEnabled(False)
         self._play_all_btn.setText(t("loading"))
+        self._insert_all_queue_btn.setText(t("loading"))
         self._add_all_queue_btn.setText(t("loading"))
 
         # Clean up old worker if exists
@@ -1671,8 +1701,10 @@ class OnlineDetailView(QWidget):
         """Handle all tracks loaded."""
         # Restore button state
         self._play_all_btn.setEnabled(True)
+        self._insert_all_queue_btn.setEnabled(True)
         self._add_all_queue_btn.setEnabled(True)
         self._play_all_btn.setText(t("play_all"))
+        self._insert_all_queue_btn.setText(t("insert_all_to_queue"))
         self._add_all_queue_btn.setText(t("add_all_to_queue"))
 
         # Call callback with all tracks
@@ -1898,8 +1930,14 @@ class OnlineDetailView(QWidget):
         # Update action buttons
         if hasattr(self, '_play_all_btn'):
             self._play_all_btn.setText(t("play_all"))
+        if hasattr(self, '_insert_queue_btn'):
+            self._insert_queue_btn.setText(t("insert_to_queue"))
         if hasattr(self, '_add_queue_btn'):
-            self._add_queue_btn.setText(t("add_all_to_queue"))
+            self._add_queue_btn.setText(t("add_to_queue"))
+        if hasattr(self, '_insert_all_queue_btn'):
+            self._insert_all_queue_btn.setText(t("insert_all_to_queue"))
+        if hasattr(self, '_add_all_queue_btn'):
+            self._add_all_queue_btn.setText(t("add_all_to_queue"))
 
         # Update pagination buttons
         if hasattr(self, '_prev_page_btn'):
