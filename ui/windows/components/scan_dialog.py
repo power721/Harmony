@@ -24,13 +24,12 @@ from PySide6.QtWidgets import (
     QProgressBar, QPushButton, QWidget, QGraphicsDropShadowEffect,
 )
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from services import MetadataService
 from domain.track import Track
 from system.i18n import t
 from system.theme import ThemeManager
-from ui.widgets.title_bar import TitleBar
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -446,12 +445,13 @@ class _ScanProgressDialog(QDialog):
     _STYLE = """
     #scanContainer {
         background-color: %background_alt%;
+        border: 1px solid %border%;
         border-radius: 12px;
     }
     #scanTitle {
-        font-size: 16px;
-        font-weight: bold;
         color: %text%;
+        font-size: 15px;
+        font-weight: bold;
     }
     #scanMessage {
         font-size: 13px;
@@ -459,39 +459,43 @@ class _ScanProgressDialog(QDialog):
     }
     QProgressBar {
         background-color: %background%;
-        border: none;
-        border-radius: 4px;
+        border: 2px solid %border%;
+        border-radius: 5px;
         height: 6px;
         text-align: center;
+        color: %text%;
     }
     QProgressBar::chunk {
         background-color: %highlight%;
-        border-radius: 4px;
+        border-radius: 3px;
     }
     QPushButton#scanCancelBtn {
-        background-color: %background%;
-        color: %text%;
-        border: 1px solid %border%;
-        border-radius: 6px;
-        padding: 6px 24px;
+        background-color: %highlight%;
+        color: %background%;
+        border: none;
+        border-radius: 4px;
+        padding: 8px 20px;
         font-size: 13px;
+        font-weight: bold;
     }
     QPushButton#scanCancelBtn:hover {
-        background-color: %background_hover%;
-        border-color: %highlight%;
+        background-color: %highlight_hover%;
     }
     QPushButton#scanCancelBtn:disabled {
+        background-color: %border%;
         color: %text_secondary%;
-        border-color: %background_hover%;
     }
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._drag_pos = None
+
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(420, 200)
         self.setModal(True)
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE))
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
@@ -508,13 +512,13 @@ class _ScanProgressDialog(QDialog):
         layout.addWidget(container)
 
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(20, 12, 20, 20)
+        main_layout.setContentsMargins(24, 20, 24, 20)
         main_layout.setSpacing(12)
 
-        self._title_bar = TitleBar(container)
-        self._title_bar.setFixedHeight(32)
-        self._title_bar.set_track_title(t("scanning"), "")
-        main_layout.addWidget(self._title_bar)
+        # Title label
+        title_label = QLabel(t("scanning"))
+        title_label.setObjectName("scanTitle")
+        main_layout.addWidget(title_label)
 
         self._message_label = QLabel(t("discovering_files"))
         self._message_label.setObjectName("scanMessage")
@@ -535,11 +539,7 @@ class _ScanProgressDialog(QDialog):
         btn_layout.addWidget(self._cancel_btn)
         main_layout.addLayout(btn_layout)
 
-        self._apply_style()
         ThemeManager.instance().register_widget(self)
-
-    def _apply_style(self):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE))
 
     def set_indeterminate(self):
         self._progress_bar.setRange(0, 0)
@@ -554,6 +554,31 @@ class _ScanProgressDialog(QDialog):
 
     def disable_cancel(self):
         self._cancel_btn.setEnabled(False)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE))
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
 
     def closeEvent(self, event):
         """Treat close button as cancel."""

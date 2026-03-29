@@ -6,18 +6,19 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGroupBox, QTabWidget,
     QWidget, QComboBox, QFileDialog, QColorDialog,
-    QGridLayout, QFrame
+    QGridLayout, QFrame, QGraphicsDropShadowEffect
 )
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.progress_dialog import ProgressDialog
 
 from system.i18n import t
+from system.theme import ThemeManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -48,6 +49,129 @@ class VerifyLoginThread(QThread):
 class GeneralSettingsDialog(QDialog):
     """Dialog for configuring AI, AcoustID, and QQ Music settings."""
 
+    _STYLE_TEMPLATE = """
+        QWidget#settingsContainer {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        QLabel {
+            color: %text%;
+            font-size: 13px;
+        }
+        QLineEdit {
+            background-color: %background%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px;
+            font-size: 13px;
+        }
+        QLineEdit:focus {
+            border: 1px solid %highlight%;
+        }
+        QLineEdit:disabled {
+            background-color: %background_hover%;
+            color: %text_secondary%;
+        }
+        QPushButton {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+        QPushButton:hover {
+            background-color: %selection%;
+        }
+        QPushButton:pressed {
+            background-color: %background%;
+        }
+        QCheckBox {
+            color: %text%;
+            font-size: 13px;
+        }
+        QCheckBox::indicator {
+            width: 18px;
+            height: 18px;
+        }
+        QGroupBox {
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 6px;
+            margin-top: 10px;
+            padding-top: 10px;
+            font-size: 13px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            padding: 0 8px;
+            color: %text%;
+        }
+        QTabWidget::pane {
+            border: 1px solid %border%;
+            background-color: %background_alt%;
+        }
+        QTabBar::tab {
+            background-color: %background%;
+            color: %text_secondary%;
+            padding: 8px 16px;
+            border: 1px solid %border%;
+            font-size: 13px;
+        }
+        QTabBar::tab:selected {
+            background-color: %background_hover%;
+            color: %text%;
+            border-bottom-color: %background_hover%;
+        }
+        QTabBar::tab:hover:!selected {
+            background-color: %selection%;
+        }
+        QComboBox {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 1px solid %border%;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+        QComboBox:hover {
+            border: 1px solid %highlight%;
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 24px;
+        }
+        QComboBox QAbstractItemView {
+            background-color: %background_alt%;
+            color: %text%;
+            border: 1px solid %border%;
+            selection-background-color: %highlight%;
+            selection-color: %background%;
+            outline: none;
+        }
+        QComboBox QAbstractItemView::item {
+            padding: 6px 10px;
+            min-height: 20px;
+        }
+        QComboBox QAbstractItemView::item:hover {
+            background-color: %highlight%;
+            color: %background%;
+        }
+        QComboBox QAbstractItemView::item:selected {
+            background-color: %highlight%;
+            color: %background%;
+        }
+    """
+
     def __init__(self, config_manager, parent=None):
         """
         Initialize the AI settings dialog.
@@ -60,130 +184,50 @@ class GeneralSettingsDialog(QDialog):
         self._config = config_manager
         self._verify_thread: Optional[VerifyLoginThread] = None
         self._batch_worker = None
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         self._setup_ui()
         self._load_settings()
+        ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the dialog UI."""
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
-
         self.setWindowTitle(t("settings"))
         self.setMinimumWidth(550)
+        theme = ThemeManager.instance().current_theme
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        # Apply themed styling
-        self.setStyleSheet(f"""
-            QDialog {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-            }}
-            QLabel {{
-                color: {theme.text};
-            }}
-            QLineEdit {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 4px;
-                padding: 6px;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid {theme.highlight};
-            }}
-            QLineEdit:disabled {{
-                background-color: {theme.background};
-                color: {theme.text_secondary};
-            }}
-            QPushButton {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 4px;
-                padding: 8px 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {theme.selection};
-            }}
-            QPushButton:pressed {{
-                background-color: {theme.background};
-            }}
-            QCheckBox {{
-                color: {theme.text};
-            }}
-            QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-            }}
-            QGroupBox {{
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 8px;
-                color: {theme.text};
-            }}
-            QTabWidget::pane {{
-                border: 1px solid {theme.border};
-                background-color: {theme.background_alt};
-            }}
-            QTabBar::tab {{
-                background-color: {theme.background};
-                color: {theme.text_secondary};
-                padding: 8px 16px;
-                border: 1px solid {theme.border};
-            }}
-            QTabBar::tab:selected {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border-bottom-color: {theme.background_hover};
-            }}
-            QTabBar::tab:hover:!selected {{
-                background-color: {theme.selection};
-            }}
-            QComboBox {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 4px;
-                padding: 6px 10px;
-            }}
-            QComboBox:hover {{
-                border: 1px solid {theme.highlight};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 24px;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                selection-background-color: {theme.highlight};
-                selection-color: {theme.background};
-                outline: none;
-            }}
-            QComboBox QAbstractItemView::item {{
-                padding: 6px 10px;
-                min-height: 20px;
-            }}
-            QComboBox QAbstractItemView::item:hover {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-            QComboBox QAbstractItemView::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-        """)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        layout = QVBoxLayout()
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("settingsContainer")
+        outer.addWidget(container)
+
+        # Content layout
+        layout = QVBoxLayout(container)
         layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
+        title_label = QLabel(t("settings"))
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
 
         # Tab widget for AI and AcoustID settings
         tab_widget = QTabWidget()
@@ -194,10 +238,8 @@ class GeneralSettingsDialog(QDialog):
         ai_layout.setSpacing(10)
 
         # Enable AI checkbox
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
         self._enable_checkbox = QCheckBox(t("ai_enable"))
-        self._enable_checkbox.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {theme.text};")
+        self._enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px;")
         self._enable_checkbox.stateChanged.connect(self._on_enable_changed)
         ai_layout.addWidget(self._enable_checkbox)
 
@@ -238,10 +280,8 @@ class GeneralSettingsDialog(QDialog):
         settings_layout.addLayout(model_layout)
 
         # Hint label
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
         hint_label = QLabel(t("ai_settings_hint"))
-        hint_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        hint_label.setStyleSheet("font-size: 11px;")
         hint_label.setWordWrap(True)
         settings_layout.addWidget(hint_label)
 
@@ -261,10 +301,8 @@ class GeneralSettingsDialog(QDialog):
         acoustid_layout.setSpacing(10)
 
         # Enable AcoustID checkbox
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
         self._acoustid_enable_checkbox = QCheckBox(t("acoustid_enable"))
-        self._acoustid_enable_checkbox.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {theme.text};")
+        self._acoustid_enable_checkbox.setStyleSheet("font-weight: bold; font-size: 14px;")
         self._acoustid_enable_checkbox.stateChanged.connect(self._on_acoustid_enable_changed)
         acoustid_layout.addWidget(self._acoustid_enable_checkbox)
 
@@ -286,7 +324,7 @@ class GeneralSettingsDialog(QDialog):
 
         # AcoustID hint label
         acoustid_hint_label = QLabel(t("acoustid_settings_hint"))
-        acoustid_hint_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        acoustid_hint_label.setStyleSheet("font-size: 11px;")
         acoustid_hint_label.setWordWrap(True)
         acoustid_settings_layout.addWidget(acoustid_hint_label)
 
@@ -310,31 +348,7 @@ class GeneralSettingsDialog(QDialog):
         quality_layout = QHBoxLayout()
         quality_label = QLabel(t("qqmusic_quality"))
         self._quality_combo = QComboBox()
-        # Set a styled list view for the dropdown first
-        from PySide6.QtWidgets import QListView
-        list_view = QListView(self._quality_combo)
-        list_view.setStyleSheet(f"""
-            QListView {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                outline: none;
-            }}
-            QListView::item {{
-                padding: 6px 10px;
-                background-color: {theme.background_alt};
-            }}
-            QListView::item:hover {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-            QListView::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-        """)
-        self._quality_combo.setView(list_view)
-        # Add items after setting view
+        # Add items
         self._quality_combo.addItem(t("qqmusic_quality_master"))
         self._quality_combo.setItemData(0, "master", Qt.UserRole)
         self._quality_combo.addItem(t("qqmusic_quality_atmos"))
@@ -367,7 +381,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Hint label for download directory
         download_dir_hint = QLabel(t("online_music_download_dir_hint"))
-        download_dir_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        download_dir_hint.setStyleSheet("font-size: 11px;")
         download_dir_hint.setWordWrap(True)
         qqmusic_layout.addWidget(download_dir_hint)
 
@@ -696,7 +710,7 @@ class GeneralSettingsDialog(QDialog):
         preset_btn_layout = QHBoxLayout()
         preset_btn_layout.setSpacing(8)
 
-        from system.theme import PRESET_THEMES, ThemeManager
+        from system.theme import PRESET_THEMES
         self._theme_preset_buttons = {}
         for theme_key in PRESET_THEMES:
             theme_preset = PRESET_THEMES[theme_key]
@@ -1771,6 +1785,31 @@ class GeneralSettingsDialog(QDialog):
         """Reset custom color edits back to the selected preset."""
         self._theme_edit_colors = {}
         self._select_theme_preset(self._selected_preset_key)
+
+    def refresh_theme(self):
+        """Refresh theme when changed."""
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
 
 # Backward compatibility alias
 AISettingsDialog = GeneralSettingsDialog
