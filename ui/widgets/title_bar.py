@@ -12,7 +12,7 @@ Features:
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QLinearGradient
+from PySide6.QtGui import QColor, QPainter, QLinearGradient, QCursor
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -140,6 +140,7 @@ class TitleBar(QWidget):
 
         for btn in (self._btn_min, self._btn_max, self._btn_close):
             btn.setFixedSize(36, 28)
+            btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             layout.addWidget(btn)
 
     def _toggle_maximize(self):

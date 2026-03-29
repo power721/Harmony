@@ -426,6 +426,8 @@ class OnlineDetailView(QWidget):
         }
         QPushButton#primaryBtn {
             background: %highlight%;
+            color: %background%;
+            font-weight: bold;
         }
         QPushButton#primaryBtn:hover {
             background: %highlight_hover%;
