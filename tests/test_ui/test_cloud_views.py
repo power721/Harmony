@@ -102,7 +102,7 @@ class TestCloudFileTable:
 
         # Check that the file has playing indicator
         name_item = table._table.item(0, 0)
-        assert "▶" in name_item.text() or "⏸" in name_item.text()
+        assert "▶️" in name_item.text() or "⏸️" in name_item.text()
 
     def test_update_file_local_path(self, qapp):
         """Test updating local path."""

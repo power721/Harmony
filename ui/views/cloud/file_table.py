@@ -283,11 +283,11 @@ class CloudFileTable(QWidget):
 
         if self._player and hasattr(self._player, 'engine'):
             if self._player.engine.state == PlaybackState.PLAYING:
-                item.setText(f"▶ {name}")
+                item.setText(f"▶️ {name}")
             else:
-                item.setText(f"⏸ {name}")
+                item.setText(f"⏸️ {name}")
         else:
-            item.setText(f"▶ {name}")
+            item.setText(f"▶️ {name}")
 
         # Set bold and green color
         font = item.font()
