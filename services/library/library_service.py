@@ -167,7 +167,6 @@ class LibraryService:
         # Check if already exists by cloud_file_id
         existing = self._track_repo.get_by_cloud_file_id(song_mid)
         if existing:
-            logger.debug(f"[LibraryService] Online track already exists: {song_mid}")
             return existing.id
 
         # Use virtual path for online tracks (required for UNIQUE constraint on path)
@@ -187,7 +186,7 @@ class LibraryService:
 
         track_id = self._track_repo.add(track)
         if track_id:
-            logger.info(f"[LibraryService] Added online track: {title} - {artist}")
+            # logger.info(f"[LibraryService] Added online track: {title} - {artist}")
             # Refresh albums and artists cache tables
             self._refresh_albums_artist_async()
 

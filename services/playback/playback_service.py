@@ -683,6 +683,15 @@ class PlaybackService(QObject):
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
         """
+        # Check if this is an online track (QQ Music) by looking up the playlist item
+        # QQ Music downloads are handled by on_online_track_downloaded
+        for item in self._engine.playlist_items:
+            if item.cloud_file_id == cloud_file_id:
+                if item.source == TrackSource.QQ:
+                    logger.debug(f"[PlaybackService] Skipping on_cloud_file_downloaded for QQ Music track: {cloud_file_id}")
+                    return
+                break
+
         self._downloaded_files[cloud_file_id] = local_path
 
         # Update cloud_files table with local_path (fast DB operation)

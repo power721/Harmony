@@ -890,16 +890,16 @@ class OnlineTrackHandler(QObject):
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0)
 
-        # Fetch cover
+        # Fetch cover from QQ Music API directly
         cover_path = None
         if self._cover_service:
             try:
-                cover_path = self._cover_service.get_cover(
-                    track_path=local_path,
-                    title=title,
+                # Use get_online_cover for QQ Music tracks instead of searching
+                cover_path = self._cover_service.get_online_cover(
+                    song_mid=song_mid,
+                    album_mid=None,  # We don't have album_mid yet
                     artist=artist,
-                    album=album,
-                    duration=duration,
+                    title=title
                 )
             except Exception as e:
                 logger.error(f"[OnlineTrackHandler] Error fetching cover: {e}")
