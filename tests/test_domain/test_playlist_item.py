@@ -360,3 +360,52 @@ class TestPlaylistItem:
         # Unchanged fields should remain
         assert updated.track_id == 1
         assert updated.source == TrackSource.LOCAL
+
+    # --- download_failed tests ---
+
+    def test_default_download_failed_is_false(self):
+        """Test download_failed defaults to False."""
+        item = PlaylistItem()
+        assert item.download_failed is False
+
+    def test_is_ready_false_when_download_failed(self):
+        """Test is_ready returns False when download_failed is True."""
+        item = PlaylistItem(local_path="/music/song.mp3", needs_download=False, download_failed=True)
+        assert item.is_ready is False
+
+    def test_is_ready_true_when_not_failed(self):
+        """Test is_ready returns True when download_failed is False."""
+        item = PlaylistItem(local_path="/music/song.mp3", needs_download=False, download_failed=False)
+        assert item.is_ready is True
+
+    def test_to_dict_includes_download_failed(self):
+        """Test to_dict includes download_failed."""
+        item = PlaylistItem(download_failed=True)
+        data = item.to_dict()
+        assert data.get("download_failed") is True
+
+    def test_from_dict_reads_download_failed(self):
+        """Test from_dict reads download_failed."""
+        data = {"path": "/music/song.mp3", "download_failed": True}
+        item = PlaylistItem.from_dict(data)
+        assert item.download_failed is True
+
+    def test_with_metadata_download_failed(self):
+        """Test with_metadata can update download_failed."""
+        item = PlaylistItem(download_failed=False)
+        updated = item.with_metadata(download_failed=True)
+        assert updated.download_failed is True
+        assert item.download_failed is False
+
+    def test_to_play_queue_item_includes_download_failed(self):
+        """Test to_play_queue_item includes download_failed."""
+        item = PlaylistItem(download_failed=True)
+        queue_item = item.to_play_queue_item(position=0)
+        assert queue_item.download_failed is True
+
+    def test_from_play_queue_item_reads_download_failed(self):
+        """Test from_play_queue_item reads download_failed."""
+        from domain.playback import PlayQueueItem
+        queue_item = PlayQueueItem(position=0, source="QUARK", download_failed=True)
+        playlist_item = PlaylistItem.from_play_queue_item(queue_item)
+        assert playlist_item.download_failed is True

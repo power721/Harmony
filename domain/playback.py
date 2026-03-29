@@ -40,6 +40,7 @@ class PlayQueueItem:
     artist: str = ""
     album: str = ""
     duration: float = 0.0
+    download_failed: bool = False
     created_at: Optional[datetime] = None
 
     def __post_init__(self):

@@ -49,6 +49,9 @@ class PlaylistItem:
     # Additional metadata (for cloud files)
     cloud_file_size: Optional[int] = None
 
+    # Download state
+    download_failed: bool = False  # Whether download has failed
+
     @classmethod
     def from_track(cls, track: "Track") -> "PlaylistItem":
         """
@@ -170,6 +173,7 @@ class PlaylistItem:
             cover_path=data.get("cover_path"),
             needs_download=data.get("needs_download", False),
             needs_metadata=data.get("needs_metadata", True),
+            download_failed=data.get("download_failed", False),
         )
 
     def to_dict(self) -> dict:
@@ -192,6 +196,7 @@ class PlaylistItem:
             "cloud_account_id": self.cloud_account_id,
             "needs_download": self.needs_download,
             "needs_metadata": self.needs_metadata,
+            "download_failed": self.download_failed,
             "is_cloud": self.is_cloud,
         }
 
@@ -208,7 +213,7 @@ class PlaylistItem:
     @property
     def is_ready(self) -> bool:
         """Check if the item is ready for playback (has valid local path)."""
-        return bool(self.local_path) and not self.needs_download
+        return bool(self.local_path) and not self.needs_download and not self.download_failed
 
     @property
     def display_title(self) -> str:
@@ -261,6 +266,7 @@ class PlaylistItem:
             artist=self.artist,
             album=self.album,
             duration=self.duration,
+            download_failed=self.download_failed,
         )
 
     @classmethod
@@ -314,6 +320,7 @@ class PlaylistItem:
             cover_path=None,  # Service layer should enrich this
             needs_download=needs_download,
             needs_metadata=False,
+            download_failed=item.download_failed,
         )
 
     def with_metadata(
@@ -327,6 +334,7 @@ class PlaylistItem:
         track_id: Optional[int] = None,
         needs_download: Optional[bool] = None,
         needs_metadata: Optional[bool] = None,
+        download_failed: Optional[bool] = None,
     ) -> "PlaylistItem":
         """
         Return a new PlaylistItem with updated metadata (immutable update).
@@ -344,6 +352,7 @@ class PlaylistItem:
             track_id: New track ID
             needs_download: New needs_download flag
             needs_metadata: New needs_metadata flag
+            download_failed: New download_failed flag
 
         Returns:
             New PlaylistItem instance with updated fields
@@ -361,5 +370,6 @@ class PlaylistItem:
             cover_path=cover_path if cover_path is not None else self.cover_path,
             needs_download=needs_download if needs_download is not None else self.needs_download,
             needs_metadata=needs_metadata if needs_metadata is not None else self.needs_metadata,
+            download_failed=download_failed if download_failed is not None else self.download_failed,
             cloud_file_size=self.cloud_file_size,
         )
