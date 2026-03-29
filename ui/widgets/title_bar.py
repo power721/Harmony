@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from system.theme import ThemeManager
+from ui.icons import IconName, get_icon
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,6 @@ class TitleBar(QWidget):
             width: 36px;
             height: 28px;
             border-radius: 6px;
-            font-size: 14px;
         }
         QPushButton#winBtn:hover {
             background-color: %background_hover%;
@@ -51,7 +51,6 @@ class TitleBar(QWidget):
             width: 36px;
             height: 28px;
             border-radius: 6px;
-            font-size: 14px;
         }
         QPushButton#closeBtn:hover {
             background-color: #e81123;
@@ -120,18 +119,21 @@ class TitleBar(QWidget):
         layout.addStretch()
 
         # === Windows-style controls (right) ===
-        self._btn_min = QPushButton("\u2014")  # em-dash
+        self._btn_min = QPushButton()
         self._btn_min.setObjectName("winBtn")
+        self._btn_min.setIcon(get_icon(IconName.MINIMIZE, None, 14))
         self._btn_min.clicked.connect(
             lambda: self.window().showMinimized() if self.window() else None
         )
 
-        self._btn_max = QPushButton("\u25a1")  # white square
+        self._btn_max = QPushButton()
         self._btn_max.setObjectName("winBtn")
+        self._btn_max.setIcon(get_icon(IconName.MAXIMIZE, None, 14))
         self._btn_max.clicked.connect(self._toggle_maximize)
 
-        self._btn_close = QPushButton("\u2715")  # multiplication x
+        self._btn_close = QPushButton()
         self._btn_close.setObjectName("closeBtn")
+        self._btn_close.setIcon(get_icon(IconName.TIMES, None, 14))
         self._btn_close.clicked.connect(
             lambda: self.window().close() if self.window() else None
         )
@@ -158,6 +160,9 @@ class TitleBar(QWidget):
     def refresh_theme(self):
         """Called by ThemeManager on theme change."""
         self._apply_style()
+        self._btn_min.setIcon(get_icon(IconName.MINIMIZE, None, 14))
+        self._btn_max.setIcon(get_icon(IconName.MAXIMIZE, None, 14))
+        self._btn_close.setIcon(get_icon(IconName.TIMES, None, 14))
         self.update()
 
     # === Track title display ===

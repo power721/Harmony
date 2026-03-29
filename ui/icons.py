@@ -84,6 +84,10 @@ class IconName:
     USER = "user.svg"
     LIGHTBULB = "lightbulb.svg"
 
+    # Window controls
+    MINIMIZE = "minimize.svg"
+    MAXIMIZE = "maximize.svg"
+
 
 def _colorize_svg(svg_content: bytes, color: str) -> bytes:
     """
