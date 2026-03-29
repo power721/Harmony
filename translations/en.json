@@ -23,6 +23,7 @@
     "quit_application": "Quit Application",
     "shutdown_computer": "Shutdown Computer",
     "fade_out_volume": "Fade Out Volume",
+    "fade_out_time_mode_only": "Only available in countdown mode",
     "start": "Start",
     "cancel_timer": "Cancel Timer",
     "close": "Close",

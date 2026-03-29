@@ -323,8 +323,10 @@ class PlaybackService(QObject):
         self._engine.pause()
 
     def stop(self):
-        """Stop playback."""
+        """Stop playback and cleanup download tasks."""
         self._engine.stop()
+        # Cleanup any ongoing download tasks
+        self.cleanup_download_workers()
 
     def cleanup_download_workers(self):
         """Clean up all online download workers."""
@@ -1355,6 +1357,10 @@ class PlaybackService(QObject):
     def _preload_next_cloud_track(self):
         """Preload the next track in the queue (cloud or online)."""
         from services.cloud.download_service import CloudDownloadService
+
+        # Don't preload if stopped
+        if self._engine.state == PlaybackState.STOPPED:
+            return
 
         # Single track loop modes - don't preload
         if self._engine.play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):

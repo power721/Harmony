@@ -58,6 +58,7 @@ class PlayerEngine(QObject):
         self._pending_seek: int = 0  # Position to seek before playing (in ms)
         self._pending_play: bool = False  # Whether to play after seek
         self._cloud_file_id_to_index: dict = {}  # Dict for O(1) lookup by cloud_file_id
+        self._prevent_auto_next: bool = False  # Flag to prevent auto-play next track
 
         # Connect signals
         self._player.positionChanged.connect(self._on_position_changed)
@@ -498,6 +499,10 @@ class PlayerEngine(QObject):
     def stop(self):
         """Stop playback."""
         self._player.stop()
+
+    def set_prevent_auto_next(self, prevent: bool):
+        """Set whether to prevent auto-playing next track."""
+        self._prevent_auto_next = prevent
 
     def play_at(self, index: int):
         """
@@ -1030,6 +1035,12 @@ class PlayerEngine(QObject):
                     self._player.play()
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
             self.track_finished.emit()
+
+            # Check if auto-next is prevented
+            if self._prevent_auto_next:
+                logger.info("[PlayerEngine] Auto-next prevented by sleep timer")
+                self._prevent_auto_next = False  # Reset flag
+                return
 
             # Auto-play next based on mode
             if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):

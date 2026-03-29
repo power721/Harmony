@@ -23,6 +23,7 @@
     "quit_application": "退出应用",
     "shutdown_computer": "关闭电脑",
     "fade_out_volume": "渐弱音量",
+    "fade_out_time_mode_only": "仅倒计时模式可用",
     "start": "开始",
     "cancel_timer": "取消定时",
     "close": "关闭",

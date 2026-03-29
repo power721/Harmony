@@ -132,13 +132,22 @@ class SleepTimerService(QObject):
         """Track finished handler for track count mode."""
         self._remaining -= 1
         self.remaining_changed.emit(self._remaining)
+        logger.info(f"Track finished, remaining: {self._remaining}")
 
         if self._remaining <= 0:
             try:
                 self._event_bus.track_finished.disconnect(self._on_track_finished)
             except RuntimeError:
                 pass
-            self._trigger_action()
+
+            # In track mode without fade out, prevent auto-next and trigger action immediately
+            if not self._config.fade_out:
+                logger.info("Track countdown finished, preventing auto-next and stopping playback")
+                # Prevent AudioEngine from auto-playing next track
+                self._playback_service._engine.set_prevent_auto_next(True)
+                self._trigger_action()
+            else:
+                self._trigger_action()
 
     def _trigger_action(self):
         """Trigger the configured action."""
@@ -184,6 +193,20 @@ class SleepTimerService(QObject):
             self._playback_service.set_volume(self._original_volume)
             logger.info(f"Restored volume to {self._original_volume}")
             self._original_volume = None
+
+        # For track mode, advance to next track before stopping
+        # So that when restarted, it will play the next song
+        if self._config.mode == 'track':
+            current_index = self._playback_service._engine.current_index
+            playlist_length = len(self._playback_service._engine.playlist_items)
+            if current_index >= 0 and current_index < playlist_length - 1:
+                # Move to next track
+                self._playback_service._engine._current_index = current_index + 1
+                logger.info(f"Advanced queue index to next track: {current_index + 1}")
+            elif current_index == playlist_length - 1:
+                # At the last track, set index to -1 (no track)
+                self._playback_service._engine._current_index = -1
+                logger.info("At last track, queue index reset to -1")
 
         # Stop playback for all actions
         self._playback_service.stop()

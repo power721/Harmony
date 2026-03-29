@@ -380,7 +380,7 @@ class AlbumView(QWidget):
         btn_layout.setSpacing(12)
 
         self._play_btn = QPushButton(t("play_all"))
-        self._play_btn.setFixedSize(120, 36)
+        self._play_btn.setFixedSize(130, 36)
         self._play_btn.setCursor(Qt.PointingHandCursor)
         self._play_btn.setStyleSheet(
             ThemeManager.instance().get_qss(self._PLAY_BTN_TEMPLATE)

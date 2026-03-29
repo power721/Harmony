@@ -32,6 +32,9 @@ class SleepTimerDialog(QDialog):
         if self._sleep_timer.is_active:
             self._on_timer_started()
 
+        # 初始状态：时间模式选中，启用渐弱选项
+        self._on_mode_changed()
+
     # ----------------------- 窗口 & 阴影 -----------------------
     def _setup_window(self):
         self.setWindowTitle(t("sleep_timer"))
@@ -222,6 +225,8 @@ class SleepTimerDialog(QDialog):
     def _add_fade_option(self):
         self._fade_checkbox = QCheckBox(t("fade_out_volume"))
         self._fade_checkbox.setChecked(True)
+        # Only applicable in time mode, disabled in track mode
+        self._fade_checkbox.setToolTip(t("fade_out_time_mode_only"))
         self._main_layout.addWidget(self._fade_checkbox)
 
     def _add_status_label(self):
@@ -319,6 +324,11 @@ QPushButton#presetBtn:hover { background-color: %background_hover%; border-color
         self._minutes_spin.setEnabled(time_mode)
         self._seconds_spin.setEnabled(time_mode)
         self._track_spin.setEnabled(not time_mode)
+
+        # Fade out only makes sense in time mode
+        self._fade_checkbox.setEnabled(time_mode)
+        if not time_mode:
+            self._fade_checkbox.setChecked(False)
 
     def _on_start(self):
         if self._sleep_timer.is_active:

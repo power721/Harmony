@@ -123,6 +123,10 @@ class TestSleepTimerService:
             fade_out=False
         )
 
+        # Mock playlist for queue advancement
+        mock_playback_service._engine.current_index = 0
+        mock_playback_service._engine.playlist_items = [Mock(), Mock(), Mock()]  # 3 tracks
+
         sleep_timer_service.start(config)
 
         # Simulate track finished events
@@ -130,8 +134,13 @@ class TestSleepTimerService:
         assert sleep_timer_service.remaining == 1
 
         sleep_timer_service._on_track_finished()
+        # Should have triggered action and stopped
         assert not sleep_timer_service.is_active
         mock_playback_service.stop.assert_called_once()
+        # Should have set prevent_auto_next flag
+        mock_playback_service._engine.set_prevent_auto_next.assert_called_once_with(True)
+        # Should have advanced queue index to next track
+        assert mock_playback_service._engine._current_index == 1
 
     def test_fade_out_volume(self, sleep_timer_service, mock_playback_service, qtbot):
         """Test volume fade out."""

@@ -292,6 +292,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Test button for AI
         test_btn = QPushButton(t("ai_test_connection"))
+        test_btn.setCursor(Qt.PointingHandCursor)
         test_btn.clicked.connect(self._test_connection)
         ai_layout.addWidget(test_btn)
 
@@ -335,6 +336,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Test button for AcoustID
         acoustid_test_btn = QPushButton(t("acoustid_test"))
+        acoustid_test_btn.setCursor(Qt.PointingHandCursor)
         acoustid_test_btn.clicked.connect(self._test_acoustid)
         acoustid_layout.addWidget(acoustid_test_btn)
 
@@ -375,6 +377,7 @@ class GeneralSettingsDialog(QDialog):
         self._download_dir_input = QLineEdit()
         self._download_dir_input.setPlaceholderText("data/online_cache")
         browse_btn = QPushButton(t("online_music_browse"))
+        browse_btn.setCursor(Qt.PointingHandCursor)
         browse_btn.clicked.connect(self._browse_download_dir)
         download_dir_layout.addWidget(download_dir_label)
         download_dir_layout.addWidget(self._download_dir_input)
@@ -405,10 +408,12 @@ class GeneralSettingsDialog(QDialog):
         qqmusic_button_layout = QHBoxLayout()
 
         self._qqmusic_qr_btn = QPushButton(t("qqmusic_qr_login"))
+        self._qqmusic_qr_btn.setCursor(Qt.PointingHandCursor)
         self._qqmusic_qr_btn.clicked.connect(self._open_qqmusic_qr_login)
         qqmusic_button_layout.addWidget(self._qqmusic_qr_btn)
 
         self._qqmusic_logout_btn = QPushButton(t("qqmusic_clear"))
+        self._qqmusic_logout_btn.setCursor(Qt.PointingHandCursor)
         self._qqmusic_logout_btn.clicked.connect(self._qqmusic_logout)
         qqmusic_button_layout.addWidget(self._qqmusic_logout_btn)
 
@@ -433,6 +438,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Add button to open cache directory
         open_cache_btn = QPushButton(t("cache_open_directory"))
+        open_cache_btn.setCursor(Qt.PointingHandCursor)
         open_cache_btn.clicked.connect(self._open_cache_directory)
         cache_info_layout.addWidget(open_cache_btn)
 
@@ -554,6 +560,7 @@ class GeneralSettingsDialog(QDialog):
         # Manual cleanup button
         manual_cleanup_layout = QHBoxLayout()
         self._cleanup_now_btn = QPushButton(t("cache_cleanup_now"))
+        self._cleanup_now_btn.setCursor(Qt.PointingHandCursor)
         self._cleanup_now_btn.clicked.connect(self._cleanup_now)
         manual_cleanup_layout.addWidget(self._cleanup_now_btn)
         manual_cleanup_layout.addStretch()
@@ -586,6 +593,7 @@ class GeneralSettingsDialog(QDialog):
         artist_covers_section.addWidget(artist_covers_hint)
 
         self._download_artist_covers_btn = QPushButton(t("batch_download_artist_covers"))
+        self._download_artist_covers_btn.setCursor(Qt.PointingHandCursor)
         self._download_artist_covers_btn.clicked.connect(self._batch_download_artist_covers)
         artist_covers_section.addWidget(self._download_artist_covers_btn)
 
@@ -607,6 +615,7 @@ class GeneralSettingsDialog(QDialog):
         album_covers_section.addWidget(album_covers_hint)
 
         self._download_album_covers_btn = QPushButton(t("batch_download_album_covers"))
+        self._download_album_covers_btn.setCursor(Qt.PointingHandCursor)
         self._download_album_covers_btn.clicked.connect(self._batch_download_album_covers)
         album_covers_section.addWidget(self._download_album_covers_btn)
 
@@ -631,6 +640,7 @@ class GeneralSettingsDialog(QDialog):
         artist_repair_section.addWidget(artist_repair_hint)
 
         self._rebuild_artists_btn = QPushButton(t("rebuild_artists"))
+        self._rebuild_artists_btn.setCursor(Qt.PointingHandCursor)
         self._rebuild_artists_btn.clicked.connect(self._rebuild_artists)
         artist_repair_section.addWidget(self._rebuild_artists_btn)
 
@@ -648,6 +658,7 @@ class GeneralSettingsDialog(QDialog):
         album_repair_section.addWidget(album_repair_hint)
 
         self._rebuild_albums_btn = QPushButton(t("rebuild_albums"))
+        self._rebuild_albums_btn.setCursor(Qt.PointingHandCursor)
         self._rebuild_albums_btn.clicked.connect(self._rebuild_albums)
         album_repair_section.addWidget(self._rebuild_albums_btn)
 
@@ -665,6 +676,7 @@ class GeneralSettingsDialog(QDialog):
         junction_repair_section.addWidget(junction_repair_hint)
 
         self._rebuild_junction_btn = QPushButton(t("rebuild_junction"))
+        self._rebuild_junction_btn.setCursor(Qt.PointingHandCursor)
         self._rebuild_junction_btn.clicked.connect(self._rebuild_junction)
         junction_repair_section.addWidget(self._rebuild_junction_btn)
 
@@ -696,6 +708,7 @@ class GeneralSettingsDialog(QDialog):
             theme_preset = PRESET_THEMES[theme_key]
             btn = QPushButton(t(theme_preset.display_name))
             btn.setFixedHeight(35)
+            btn.setCursor(Qt.PointingHandCursor)
             btn.setProperty("_skip_theme", True)
             btn.setStyleSheet(f"""
                 QPushButton {{
@@ -751,6 +764,7 @@ class GeneralSettingsDialog(QDialog):
             # Color preview button
             color_btn = QPushButton()
             color_btn.setFixedSize(60, 28)
+            color_btn.setCursor(Qt.PointingHandCursor)
             color_btn.setProperty("_skip_theme", True)
             colors_layout.addWidget(color_btn, row, grid_col + 1)
 
@@ -787,10 +801,12 @@ class GeneralSettingsDialog(QDialog):
         # Apply / Reset buttons
         theme_btn_layout = QHBoxLayout()
         self._theme_apply_btn = QPushButton(t("theme_apply"))
+        self._theme_apply_btn.setCursor(Qt.PointingHandCursor)
         self._theme_apply_btn.clicked.connect(self._apply_custom_theme)
         theme_btn_layout.addWidget(self._theme_apply_btn)
 
         self._theme_reset_btn = QPushButton(t("theme_reset"))
+        self._theme_reset_btn.setCursor(Qt.PointingHandCursor)
         self._theme_reset_btn.clicked.connect(self._reset_theme_colors)
         theme_btn_layout.addWidget(self._theme_reset_btn)
 
@@ -820,10 +836,12 @@ class GeneralSettingsDialog(QDialog):
         button_layout.addStretch()
 
         save_btn = QPushButton(t("save"))
+        save_btn.setCursor(Qt.PointingHandCursor)
         save_btn.clicked.connect(self._save_settings)
         button_layout.addWidget(save_btn)
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setCursor(Qt.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
