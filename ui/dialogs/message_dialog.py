@@ -87,7 +87,8 @@ class MessageDialog(QDialog):
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(420, 180)
+        self.setMinimumSize(420, 160)
+        self.setMaximumWidth(520)
 
         self._setup_shadow()
         self._setup_ui()
@@ -102,9 +103,13 @@ class MessageDialog(QDialog):
         self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
-        container = QWidget(self)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        container = QWidget()
         container.setObjectName("dialogContainer")
-        container.setGeometry(0, 0, 420, 180)
+        outer.addWidget(container)
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(24, 20, 24, 20)
