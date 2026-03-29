@@ -10,11 +10,12 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGroupBox, QTabWidget,
-    QWidget, QComboBox, QFileDialog, QProgressDialog, QColorDialog,
+    QWidget, QComboBox, QFileDialog, QColorDialog,
     QGridLayout, QFrame
 )
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.progress_dialog import ProgressDialog
 
 from system.i18n import t
 
@@ -164,6 +165,19 @@ class GeneralSettingsDialog(QDialog):
                 border: 1px solid {theme.border};
                 selection-background-color: {theme.highlight};
                 selection-color: {theme.background};
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding: 6px 10px;
+                min-height: 20px;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: {theme.highlight};
+                color: {theme.background};
             }}
         """)
 
@@ -296,11 +310,41 @@ class GeneralSettingsDialog(QDialog):
         quality_layout = QHBoxLayout()
         quality_label = QLabel(t("qqmusic_quality"))
         self._quality_combo = QComboBox()
-        self._quality_combo.addItem(t("qqmusic_quality_master"), "master")
-        self._quality_combo.addItem(t("qqmusic_quality_atmos"), "atmos")
-        self._quality_combo.addItem(t("qqmusic_quality_flac"), "flac")
-        self._quality_combo.addItem(t("qqmusic_quality_320"), "320")
-        self._quality_combo.addItem(t("qqmusic_quality_128"), "128")
+        # Set a styled list view for the dropdown first
+        from PySide6.QtWidgets import QListView
+        list_view = QListView(self._quality_combo)
+        list_view.setStyleSheet(f"""
+            QListView {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                outline: none;
+            }}
+            QListView::item {{
+                padding: 6px 10px;
+                background-color: {theme.background_alt};
+            }}
+            QListView::item:hover {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
+            QListView::item:selected {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
+        """)
+        self._quality_combo.setView(list_view)
+        # Add items after setting view
+        self._quality_combo.addItem(t("qqmusic_quality_master"))
+        self._quality_combo.setItemData(0, "master", Qt.UserRole)
+        self._quality_combo.addItem(t("qqmusic_quality_atmos"))
+        self._quality_combo.setItemData(1, "atmos", Qt.UserRole)
+        self._quality_combo.addItem(t("qqmusic_quality_flac"))
+        self._quality_combo.setItemData(2, "flac", Qt.UserRole)
+        self._quality_combo.addItem(t("qqmusic_quality_320"))
+        self._quality_combo.setItemData(3, "320", Qt.UserRole)
+        self._quality_combo.addItem(t("qqmusic_quality_128"))
+        self._quality_combo.setItemData(4, "128", Qt.UserRole)
         quality_layout.addWidget(quality_label)
         quality_layout.addWidget(self._quality_combo)
         quality_layout.addStretch()
@@ -388,11 +432,41 @@ class GeneralSettingsDialog(QDialog):
         strategy_label = QLabel(t("cache_cleanup_strategy"))
         strategy_label.setMinimumWidth(120)
         self._strategy_combo = QComboBox()
-        self._strategy_combo.addItem(t("cache_cleanup_manual"), "manual")
-        self._strategy_combo.addItem(t("cache_cleanup_time"), "time")
-        self._strategy_combo.addItem(t("cache_cleanup_size"), "size")
-        self._strategy_combo.addItem(t("cache_cleanup_count"), "count")
-        self._strategy_combo.addItem(t("cache_cleanup_disabled"), "disabled")
+        # Set a styled list view for the dropdown first
+        from PySide6.QtWidgets import QListView
+        list_view = QListView(self._strategy_combo)
+        list_view.setStyleSheet(f"""
+            QListView {{
+                background-color: {theme.background_alt};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                outline: none;
+            }}
+            QListView::item {{
+                padding: 6px 10px;
+                background-color: {theme.background_alt};
+            }}
+            QListView::item:hover {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
+            QListView::item:selected {{
+                background-color: {theme.highlight};
+                color: {theme.background};
+            }}
+        """)
+        self._strategy_combo.setView(list_view)
+        # Add items after setting view
+        self._strategy_combo.addItem(t("cache_cleanup_manual"))
+        self._strategy_combo.setItemData(0, "manual", Qt.UserRole)
+        self._strategy_combo.addItem(t("cache_cleanup_time"))
+        self._strategy_combo.setItemData(1, "time", Qt.UserRole)
+        self._strategy_combo.addItem(t("cache_cleanup_size"))
+        self._strategy_combo.setItemData(2, "size", Qt.UserRole)
+        self._strategy_combo.addItem(t("cache_cleanup_count"))
+        self._strategy_combo.setItemData(3, "count", Qt.UserRole)
+        self._strategy_combo.addItem(t("cache_cleanup_disabled"))
+        self._strategy_combo.setItemData(4, "disabled", Qt.UserRole)
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
         strategy_selector_layout.addWidget(strategy_label)
         strategy_selector_layout.addWidget(self._strategy_combo)
@@ -834,7 +908,7 @@ class GeneralSettingsDialog(QDialog):
         self._acoustid_api_key_input.setEnabled(acoustid_enabled)
 
         # QQ Music quality setting
-        qqmusic_quality = self._config.get_qqmusic_quality()
+        qqmusic_quality = str(self._config.get_qqmusic_quality())
         for i in range(self._quality_combo.count()):
             if self._quality_combo.itemData(i) == qqmusic_quality:
                 self._quality_combo.setCurrentIndex(i)
@@ -845,7 +919,7 @@ class GeneralSettingsDialog(QDialog):
         self._download_dir_input.setText(download_dir)
 
         # Cache cleanup settings
-        strategy = self._config.get_cache_cleanup_strategy()
+        strategy = str(self._config.get_cache_cleanup_strategy())
         for i in range(self._strategy_combo.count()):
             if self._strategy_combo.itemData(i) == strategy:
                 self._strategy_combo.setCurrentIndex(i)
@@ -1292,15 +1366,12 @@ class GeneralSettingsDialog(QDialog):
 
         self._download_artist_covers_btn.setEnabled(False)
 
-        progress = QProgressDialog(
-            t("batch_downloading_artist_cover"), t("cancel"),
+        progress = ProgressDialog(
+            t("batch_download_artist_covers"),
+            t("batch_downloading_artist_cover"),
+            t("cancel"),
             0, len(artists), self
         )
-        progress.setWindowTitle(t("batch_download_artist_covers"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
 
         worker = BatchArtistCoverWorker(cover_service, library_service, artists)
         self._batch_worker = worker
@@ -1357,15 +1428,12 @@ class GeneralSettingsDialog(QDialog):
 
         self._download_album_covers_btn.setEnabled(False)
 
-        progress = QProgressDialog(
-            t("batch_downloading_album_cover"), t("cancel"),
+        progress = ProgressDialog(
+            t("batch_download_album_covers"),
+            t("batch_downloading_album_cover"),
+            t("cancel"),
             0, len(albums), self
         )
-        progress.setWindowTitle(t("batch_download_album_covers"))
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
 
         worker = BatchAlbumCoverWorker(cover_service, library_service, albums)
         self._batch_worker = worker

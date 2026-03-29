@@ -2,7 +2,7 @@ import logging
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QRadioButton, QButtonGroup, QSpinBox, QComboBox,
-    QCheckBox, QPushButton, QWidget, QGraphicsDropShadowEffect
+    QCheckBox, QPushButton, QWidget, QGraphicsDropShadowEffect, QListView
 )
 from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtGui import QColor, QPainterPath, QRegion, QKeySequence
@@ -208,9 +208,12 @@ class SleepTimerDialog(QDialog):
         layout.addWidget(label)
 
         self._action_combo = QComboBox()
-        self._action_combo.addItem(t("stop_playback"), "stop")
-        self._action_combo.addItem(t("quit_application"), "quit")
-        self._action_combo.addItem(t("shutdown_computer"), "shutdown")
+        self._action_combo.addItem(t("stop_playback"))
+        self._action_combo.setItemData(0, "stop", Qt.UserRole)
+        self._action_combo.addItem(t("quit_application"))
+        self._action_combo.setItemData(1, "quit", Qt.UserRole)
+        self._action_combo.addItem(t("shutdown_computer"))
+        self._action_combo.setItemData(2, "shutdown", Qt.UserRole)
         self._action_combo.setFixedWidth(300)  # 宽度 = 3个输入框 + 2个间距 = 100*3 + 8*2
         layout.addWidget(self._action_combo)
         layout.addStretch()
@@ -283,9 +286,23 @@ QSpinBox {
 QSpinBox::up-button, QSpinBox::down-button {
     width: 20px;
 }
-QComboBox { background-color: %background%; border: 1px solid %border%; border-radius: 6px; padding: 6px 12px; color: %text%; min-width: 120px; }
 QComboBox::drop-down { border: none; width: 30px; }
-QComboBox QAbstractItemView { background-color: %background_alt%; border: 1px solid %border%; selection-background-color: %highlight%; color: %text%; }
+QComboBox {
+    background-color: %background%;
+    border: 1px solid %border%;
+    border-radius: 6px;
+    padding: 0px 12px;
+    min-height: 32px;
+    color: %text%;
+    min-width: 120px;
+}
+QComboBox QAbstractItemView {
+    background-color: %background_alt%;
+    border: 1px solid %border%;
+    color: %text%;
+    selection-background-color: %highlight%;
+    selection-color: %background%;
+}
 QPushButton { background-color: %highlight%; color: %background%; border: none; border-radius: 6px; padding: 8px 24px; font-size: 14px; min-width: 80px; }
 QPushButton:hover { background-color: %highlight_hover%; }
 QPushButton:pressed { background-color: %selection%; }

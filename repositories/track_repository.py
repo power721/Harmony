@@ -2,11 +2,14 @@
 SQLite implementation of TrackRepository.
 """
 
+import logging
 import sqlite3
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.track import Track, TrackId
 from repositories.base_repository import BaseRepository
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -757,6 +760,7 @@ class SqliteTrackRepository(BaseRepository):
             Number of tracks processed
         """
         from services.metadata import split_artists_aware, normalize_artist_name
+        conn = self._get_connection()
         cursor = conn.cursor()
 
         # Get all tracks with their artist strings
