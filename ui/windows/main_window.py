@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QStyle,
     QDialog,
+    QSizeGrip,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from typing import Optional
@@ -60,6 +61,7 @@ from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
 from ui.views.online_music_view import OnlineMusicView
 from ui.widgets.player_controls import PlayerControls
+from ui.widgets.title_bar import TitleBar
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
 
 
@@ -297,6 +299,9 @@ class MainWindow(QMainWindow):
         # Current track title for window title
         self._current_track_title: str = ""
 
+        # Frameless window with custom title bar
+        self.setWindowFlags(Qt.FramelessWindowHint)
+
         # Setup UI
         self._setup_ui()
         self._setup_connections()
@@ -323,6 +328,10 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        # Custom title bar
+        self._title_bar = TitleBar(self)
+        main_layout.addWidget(self._title_bar)
 
         # Create content area
         content_widget = QWidget()
@@ -417,6 +426,11 @@ class MainWindow(QMainWindow):
         # Player controls
         self._player_controls = PlayerControls(self._player)
         main_layout.addWidget(self._player_controls)
+
+        # Resize grip for frameless window
+        self._resize_grip = QSizeGrip(self)
+        self._resize_grip.setFixedSize(16, 16)
+        self._resize_grip.setStyleSheet("background: transparent;")
 
         # Apply themed styling
         self.refresh_theme()
@@ -847,6 +861,7 @@ class MainWindow(QMainWindow):
         """Refresh UI texts after language change."""
         # Update window title
         self.setWindowTitle(t("app_title"))
+        self._title_bar.clear_track_title()
 
         # Update sidebar navigation buttons (text only, icons stay the same)
         self._sidebar.refresh_texts()
@@ -1098,7 +1113,15 @@ class MainWindow(QMainWindow):
         if not track_dict:
             return
 
-        # Save current track title for window title update
+        # Update title bar with track info
+        if title:
+            self._title_bar.set_track_title(title, artist)
+            self._extract_cover_color(title, artist, path, track_dict)
+        else:
+            self._title_bar.clear_track_title()
+            self._title_bar.clear_accent_color()
+
+        # Save current track title for backward compat
         self._current_track_title = f"{title} - {artist}" if artist else title
 
     def _on_playback_state_changed(self, state: str):
@@ -1114,12 +1137,50 @@ class MainWindow(QMainWindow):
             # Update window title to show current track
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
-        elif state == "paused":
-            # Paused - restore original title
+        elif state in ("paused", "stopped"):
+            # Paused/stopped - restore original title
+            self._title_bar.clear_track_title()
+            self._title_bar.clear_accent_color()
             if self._original_title:
                 self.setWindowTitle(self._original_title)
         # Note: "stopped" state is typically a transient state during track changes
         # Don't restore title on stopped to avoid title flickering
+
+    def _extract_cover_color(self, title: str, artist: str, path: str, track_dict: dict):
+        """Extract dominant color from album cover and apply to title bar."""
+        cover_path = None
+        try:
+            cover_path = self._player.get_track_cover(
+                path, title, artist,
+                track_dict.get("album", ""),
+                skip_online=track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
+            )
+            if not cover_path:
+                album = track_dict.get("album", "")
+                if album and artist:
+                    cover_path = self._get_album_cover(album, artist)
+        except Exception as e:
+            logger.debug(f"[MainWindow] Error getting cover for color extraction: {e}")
+
+        if cover_path:
+            from PySide6.QtCore import QThreadPool
+            from services.metadata.color_extractor import ColorWorker
+            worker = ColorWorker(cover_path, self._title_bar.set_accent_color)
+            QThreadPool.globalInstance().start(worker)
+        else:
+            self._title_bar.clear_accent_color()
+
+    def _get_album_cover(self, album: str, artist: str) -> str | None:
+        """Get cover from albums table via LibraryService."""
+        from pathlib import Path
+        try:
+            album_obj = self._library_service.get_album_by_name(album, artist)
+            if album_obj and album_obj.cover_path:
+                if Path(album_obj.cover_path).exists():
+                    return album_obj.cover_path
+        except Exception as e:
+            logger.debug(f"[MainWindow] Error getting album cover: {e}")
+        return None
 
     def _insert_to_queue(self, track_ids: list):
         """Insert tracks after current playing track."""
@@ -1518,6 +1579,12 @@ class MainWindow(QMainWindow):
                         logger.error(f"Could not restore playback: {e}", exc_info=True)
 
             QTimer.singleShot(100, restore_later)
+
+    def resizeEvent(self, event):
+        """Position resize grip at bottom-right corner."""
+        super().resizeEvent(event)
+        if hasattr(self, '_resize_grip') and self._resize_grip:
+            self._resize_grip.move(self.width() - 16, self.height() - 16)
 
     def closeEvent(self, event):
         """Handle window close."""
