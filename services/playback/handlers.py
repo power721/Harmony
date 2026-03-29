@@ -814,9 +814,16 @@ class OnlineTrackHandler(QObject):
             local_path: Local path of downloaded file (empty if failed)
         """
         if not local_path:
-            logger.warning(f"[OnlineTrackHandler] Download failed, skipping: {song_mid}")
-            self._engine.remove_playlist_item_by_cloud_id(song_mid)
-            self._engine.play_next()
+            logger.warning(f"[OnlineTrackHandler] Download failed: {song_mid}")
+            # Only skip if this was the current track (not a preloaded next track)
+            current_item = self._engine.current_playlist_item
+            if current_item and current_item.cloud_file_id == song_mid:
+                logger.warning(f"[OnlineTrackHandler] Current track failed to download, skipping: {song_mid}")
+                self._engine.remove_playlist_item_by_cloud_id(song_mid)
+                self._engine.play_next()
+            else:
+                logger.info(f"[OnlineTrackHandler] Pre-download failed for next track: {song_mid} (current track not affected)")
+                self._engine.remove_playlist_item_by_cloud_id(song_mid)
             return
 
         logger.info(f"[OnlineTrackHandler] Track downloaded: {song_mid} -> {local_path}")

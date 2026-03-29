@@ -1169,13 +1169,19 @@ class PlaybackService(QObject):
             song_mid: Song MID
             local_path: Local path of downloaded file (empty if failed)
         """
-        # Handle download failure - skip to next track
+        # Handle download failure
         if not local_path:
-            logger.warning(f"[PlaybackService] Online track download failed, skipping: {song_mid}")
-            # Remove the failed item from queue
-            self._engine.remove_playlist_item_by_cloud_id(song_mid)
-            # Skip to next track
-            self._engine.play_next()
+            logger.warning(f"[PlaybackService] Online track download failed: {song_mid}")
+            # Only skip if this was the current track (not a preloaded next track)
+            current_item = self._engine.current_playlist_item
+            if current_item and current_item.cloud_file_id == song_mid:
+                logger.warning(f"[PlaybackService] Current track failed to download, skipping: {song_mid}")
+                self._engine.remove_playlist_item_by_cloud_id(song_mid)
+                self._engine.play_next()
+            else:
+                # Pre-download failed for a future track - just log, don't interrupt playback
+                logger.info(f"[PlaybackService] Pre-download failed for next track: {song_mid} (current track not affected)")
+                self._engine.remove_playlist_item_by_cloud_id(song_mid)
             return
 
         logger.info(f"[PlaybackService] Online track downloaded: {song_mid} -> {local_path}")

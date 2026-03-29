@@ -240,7 +240,6 @@ class GeneralSettingsDialog(QDialog):
         ai_layout.addWidget(test_btn)
 
         ai_layout.addStretch()
-        tab_widget.addTab(ai_tab, t("ai_tab"))
 
         # AcoustID Settings Tab
         acoustid_tab = QWidget()
@@ -286,7 +285,6 @@ class GeneralSettingsDialog(QDialog):
         acoustid_layout.addWidget(acoustid_test_btn)
 
         acoustid_layout.addStretch()
-        tab_widget.addTab(acoustid_tab, t("acoustid_tab"))
 
         # QQ Music Settings Tab
         qqmusic_tab = QWidget()
@@ -359,7 +357,6 @@ class GeneralSettingsDialog(QDialog):
         self._update_qqmusic_status()
 
         qqmusic_layout.addStretch()
-        tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
 
         # Cache Cleanup Settings Tab
         cache_tab = QWidget()
@@ -495,7 +492,6 @@ class GeneralSettingsDialog(QDialog):
         cache_layout.addLayout(manual_cleanup_layout)
 
         cache_layout.addStretch()
-        tab_widget.addTab(cache_tab, t("cache_tab"))
 
         # Covers Tab
         covers_tab = QWidget()
@@ -550,7 +546,6 @@ class GeneralSettingsDialog(QDialog):
         covers_layout.addWidget(album_covers_group)
 
         covers_layout.addStretch()
-        tab_widget.addTab(covers_tab, t("covers_tab"))
 
         # Repair Tab
         repair_tab = QWidget()
@@ -609,7 +604,6 @@ class GeneralSettingsDialog(QDialog):
         repair_layout.addWidget(junction_repair_group)
 
         repair_layout.addStretch()
-        tab_widget.addTab(repair_tab, t("repair_tab"))
 
         # Appearance Tab
         appearance_tab = QWidget()
@@ -742,7 +736,14 @@ class GeneralSettingsDialog(QDialog):
         self._selected_preset_key = 'dark'
 
         appearance_layout.addStretch()
+
         tab_widget.addTab(appearance_tab, t("appearance_tab"))
+        tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
+        tab_widget.addTab(cache_tab, t("cache_tab"))
+        tab_widget.addTab(covers_tab, t("covers_tab"))
+        tab_widget.addTab(repair_tab, t("repair_tab"))
+        tab_widget.addTab(ai_tab, t("ai_tab"))
+        tab_widget.addTab(acoustid_tab, t("acoustid_tab"))
 
         layout.addWidget(tab_widget)
 
