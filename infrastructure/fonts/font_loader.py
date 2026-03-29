@@ -1,10 +1,13 @@
 """Font loader for bundled fonts."""
 
 import sys
+import logging
 from pathlib import Path
 from typing import List
 
 from PySide6.QtGui import QFontDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class FontLoader:
@@ -22,7 +25,12 @@ class FontLoader:
         return cls._instance
 
     def load_fonts(self) -> None:
-        """Load bundled fonts into application font database."""
+        """Load bundled fonts into application font database.
+
+        If font files are not found, the application will fall back to
+        system fonts. This allows the app to work in development without
+        downloading fonts, though the appearance may vary across platforms.
+        """
         if self._loaded:
             return
 
@@ -37,16 +45,24 @@ class FontLoader:
             ("NotoColorEmoji/NotoColorEmoji.ttf", "Noto Color Emoji"),
         ]
 
+        loaded_count = 0
         for font_path, family in fonts_to_load:
             full_path = font_dir / font_path
             if full_path.exists():
                 font_id = QFontDatabase.addApplicationFont(str(full_path))
                 if font_id != -1:
                     self._font_ids.append(font_id)
+                    loaded_count += 1
+                    logger.debug(f"Loaded font: {family} from {full_path}")
                 else:
-                    print(f"Warning: Failed to load font: {full_path}")
+                    logger.warning(f"Failed to load font: {full_path}")
             else:
-                print(f"Warning: Font file not found: {full_path}")
+                logger.debug(f"Font file not found: {full_path}")
+
+        if loaded_count > 0:
+            logger.info(f"Loaded {loaded_count}/{len(fonts_to_load)} bundled fonts")
+        else:
+            logger.info("No bundled fonts found, using system fonts")
 
         self._loaded = True
 
