@@ -6,8 +6,8 @@ import logging
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, \
-    QItemSelectionModel
-from PySide6.QtGui import QColor, QPixmap, QPainter, QImage
+    QItemSelectionModel, QPoint
+from PySide6.QtGui import QColor, QPixmap, QPainter, QImage, QCursor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QListView,
     QFrame,
     QStyle,
+    QApplication,
 )
 
 from domain.playback import PlaybackState
@@ -528,6 +529,115 @@ class QueueItemDelegate(QStyledItemDelegate):
         return option
 
 
+class CoverHoverPopup(QWidget):
+    """Popup widget to display large cover art on hover."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+
+        # Size for the popup
+        self._size = 300
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Cover label
+        self._cover_label = QLabel()
+        self._cover_label.setFixedSize(self._size, self._size)
+        self._cover_label.setAlignment(Qt.AlignCenter)
+        self._cover_label.setStyleSheet("border-radius: 8px;")
+        layout.addWidget(self._cover_label)
+
+        self._current_track_id = None
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self.hide)
+
+    def show_cover(self, cover_path: str, track_id: str, pos: QPoint):
+        """Show cover at specified position.
+
+        Args:
+            cover_path: Path to the cover image
+            track_id: Track identifier to prevent flickering
+            pos: Global position to show popup near
+        """
+        # Skip if already showing this track
+        if self._current_track_id == track_id and self.isVisible():
+            return
+
+        self._current_track_id = track_id
+
+        # Load cover
+        if cover_path:
+            pixmap = QPixmap(cover_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(
+                    self._size, self._size,
+                    Qt.KeepAspectRatioByExpanding,
+                    Qt.SmoothTransformation
+                )
+                self._cover_label.setPixmap(scaled)
+            else:
+                self._show_placeholder()
+        else:
+            self._show_placeholder()
+
+        # Position popup near cursor but not covering it
+        screen = QApplication.screenAt(pos)
+        if not screen:
+            screen = QApplication.primaryScreen()
+        screen_rect = screen.availableGeometry()
+
+        # Calculate position (offset from cursor - move further right)
+        x = pos.x() + 120
+        y = pos.y() - self._size // 2
+
+        # Keep within screen bounds
+        if x + self._size > screen_rect.right():
+            x = pos.x() - self._size - 120
+        if y < screen_rect.top():
+            y = screen_rect.top()
+        if y + self._size > screen_rect.bottom():
+            y = screen_rect.bottom() - self._size
+
+        self.move(x, y)
+        self.show()
+        self._hide_timer.stop()  # Cancel any pending hide
+
+    def _show_placeholder(self):
+        """Show placeholder when no cover available."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        pixmap = QPixmap(self._size, self._size)
+        pixmap.fill(QColor(theme.background_alt))
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QColor(theme.border))
+        font = painter.font()
+        font.setPixelSize(120)
+        painter.setFont(font)
+        painter.drawText(
+            QRect(0, 0, self._size, self._size),
+            Qt.AlignCenter, "\u266B"
+        )
+        painter.end()
+
+        self._cover_label.setPixmap(pixmap)
+
+    def schedule_hide(self, delay_ms: int = 100):
+        """Schedule hide after delay."""
+        self._hide_timer.start(delay_ms)
+
+    def cancel_hide(self):
+        """Cancel scheduled hide."""
+        self._hide_timer.stop()
+
+
 class QueueView(QWidget):
     """View for managing the current playback queue."""
 
@@ -656,12 +766,18 @@ class QueueView(QWidget):
         ThemeManager.instance().register_widget(self)
         self._highlight_color = ThemeManager.instance().current_theme.highlight
 
+        # Cover hover popup
+        self._cover_popup = CoverHoverPopup()
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.timeout.connect(self._show_cover_popup)
+        self._hovered_row = -1
+        self._last_cover_pos = QPoint()
+
         self._setup_ui()
         self._setup_connections()
 
         # Load initial queue content and update indicators
-        from PySide6.QtCore import QTimer
-
         QTimer.singleShot(0, self._initialize_view)
 
     def _setup_ui(self):
@@ -721,6 +837,7 @@ class QueueView(QWidget):
         self._list_view = QListView(list_container)
         self._list_view.setObjectName("queueList")
         self._list_view.setMouseTracking(True)
+        self._list_view.viewport().installEventFilter(self)
         self._model = QueueTrackModel(self)
         self._delegate = QueueItemDelegate(self)
         self._list_view.setModel(self._model)
@@ -785,6 +902,72 @@ class QueueView(QWidget):
 
         # Track playlist size to detect playlist changes
         self._last_playlist_size = 0
+
+    def eventFilter(self, obj, event):
+        """Filter events for the list view viewport to handle cover hover."""
+        if obj == self._list_view.viewport():
+            if event.type() == event.Type.MouseMove:
+                self._handle_mouse_move(event)
+            elif event.type() == event.Type.Leave:
+                self._handle_mouse_leave()
+        return super().eventFilter(obj, event)
+
+    def _handle_mouse_move(self, event):
+        """Handle mouse move to detect cover hover."""
+        pos = event.pos()
+        index = self._list_view.indexAt(pos)
+
+        if not index.isValid():
+            self._handle_mouse_leave()
+            return
+
+        row = index.row()
+        rect = self._list_view.visualRect(index)
+
+        # Calculate cover rect (matches delegate logic)
+        padding = 10
+        index_width = 40
+        x = rect.left() + padding + index_width + 2
+        cover_rect = QRect(x, rect.top() + 4, 64, 64)
+
+        # Check if mouse is over cover area
+        if cover_rect.contains(pos):
+            if self._hovered_row != row:
+                # New row - start timer
+                self._hovered_row = row
+                self._last_cover_pos = QCursor.pos()
+                self._hover_timer.start(500)  # 500ms delay like tooltip
+            else:
+                # Same row - cancel hide if showing
+                self._cover_popup.cancel_hide()
+        else:
+            # Not over cover - hide popup
+            self._handle_mouse_leave()
+
+    def _handle_mouse_leave(self):
+        """Handle mouse leaving cover area."""
+        self._hover_timer.stop()
+        self._hovered_row = -1
+        self._cover_popup.schedule_hide()
+
+    def _show_cover_popup(self):
+        """Show cover popup for the currently hovered row."""
+        if self._hovered_row < 0 or self._hovered_row >= self._model.rowCount():
+            return
+
+        track = self._model.get_track_at(self._hovered_row)
+        if not track:
+            return
+
+        # Get cover path using the same logic as delegate
+        track_dict = dict(track) if isinstance(track, dict) else {}
+        cover_path = _resolve_cover_path(track_dict)
+
+        # Get track ID for deduplication
+        track_id = self._delegate._get_cover_cache_key(track)
+
+        # Show popup
+        self._cover_popup.show_cover(cover_path, track_id, self._last_cover_pos)
 
     def _on_selection_changed(self, selected, deselected):
         """Handle selection changes to update model."""
@@ -894,8 +1077,6 @@ class QueueView(QWidget):
         self._status_label.setText(f"{len(playlist)} {t('tracks_in_queue')}")
 
         # Scroll to current track after a short delay
-        from PySide6.QtCore import QTimer
-
         QTimer.singleShot(100, self._scroll_to_current_track)
 
     def _update_ui_texts(self):
@@ -978,8 +1159,6 @@ class QueueView(QWidget):
             self._update_current_track_indicator()
 
         # Scroll to current track with delay to ensure UI is updated
-        from PySide6.QtCore import QTimer
-
         QTimer.singleShot(100, self._scroll_to_current_track)
 
     def _scroll_to_current_track(self):
@@ -1233,14 +1412,19 @@ class QueueView(QWidget):
 
     def closeEvent(self, event):
         """Handle close event."""
+        self._cover_popup.hide()
         event.accept()
+
+    def hideEvent(self, event):
+        """Handle hide event."""
+        super().hideEvent(event)
+        self._cover_popup.hide()
+        self._hover_timer.stop()
 
     def showEvent(self, event):
         """Handle show event - refresh queue when view becomes visible."""
         super().showEvent(event)
         # Refresh queue content and update indicators when the view becomes visible
-        from PySide6.QtCore import QTimer
-
         QTimer.singleShot(50, self._initialize_view)
 
     def _edit_media_info(self):
