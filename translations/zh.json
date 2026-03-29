@@ -596,5 +596,16 @@
     "theme_custom_colors": "自定义颜色",
     "theme_saved": "主题保存成功",
     "theme_preview_text": "预览 - 歌曲标题",
-    "theme_preview_secondary": "歌手名 • 专辑"
+    "theme_preview_secondary": "歌手名 • 专辑",
+    "account_deleted": "账号已删除",
+    "cancelling": "正在取消",
+    "confirm_delete_account": "确认删除账号？",
+    "discovering_files": "正在发现文件",
+    "download_dir_changed": "下载目录已更改",
+    "enter_name": "请输入名称",
+    "importing_music": "正在导入音乐",
+    "metadata_saved": "元数据已保存",
+    "no_audio_files_found": "未找到音频文件",
+    "no_local_file": "无本地文件",
+    "updating_library": "正在更新音乐库"
 }

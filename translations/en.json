@@ -596,5 +596,16 @@
     "theme_custom_colors": "Custom Colors",
     "theme_saved": "Theme saved successfully",
     "theme_preview_text": "Preview - Song Title",
-    "theme_preview_secondary": "Artist Name • Album"
+    "theme_preview_secondary": "Artist Name • Album",
+    "account_deleted": "Account Deleted",
+    "cancelling": "Cancelling",
+    "confirm_delete_account": "Confirm Delete Account?",
+    "discovering_files": "Discovering Files",
+    "download_dir_changed": "Download Directory Changed",
+    "enter_name": "Enter Name",
+    "importing_music": "Importing Music",
+    "metadata_saved": "Metadata Saved",
+    "no_audio_files_found": "No Audio Files Found",
+    "no_local_file": "No Local File",
+    "updating_library": "Updating Library"
 }
