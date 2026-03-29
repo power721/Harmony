@@ -727,6 +727,7 @@ class OnlineTrackHandler(QObject):
     def download_track(self, item: PlaylistItem):
         """Download an online track."""
         song_mid = item.cloud_file_id
+        worker = None
 
         # Check if already downloading this song
         with self._download_lock:
@@ -752,8 +753,8 @@ class OnlineTrackHandler(QObject):
             # Store in dict before starting
             self._download_workers[song_mid] = worker
 
-            # Start worker outside lock
-            worker.start()
+        # Start worker outside lock
+        worker.start()
 
     def _create_download_worker(self, song_mid: str, title: str) -> QThread:
         """Create a download worker thread."""

@@ -1087,6 +1087,7 @@ class PlaybackService(QObject):
         from services.online import OnlineDownloadService
 
         song_mid = item.cloud_file_id
+        worker = None
 
         # Check if already downloading this song - atomically check and reserve slot
         with self._online_download_lock:
@@ -1151,8 +1152,8 @@ class PlaybackService(QObject):
             # Store in dict before starting
             self._online_download_workers[song_mid] = worker
 
-            # Start worker outside lock to avoid blocking
-            worker.start()
+        # Start worker outside lock to avoid blocking
+        worker.start()
 
     def _download_cloud_track(self, item: PlaylistItem):
         """Download a cloud track."""
