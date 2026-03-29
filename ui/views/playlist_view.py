@@ -29,6 +29,7 @@ from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
+from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from utils import format_duration
 
 
@@ -168,30 +169,6 @@ class PlaylistView(QWidget):
             background-color: %highlight%;
             color: %background%;
         }
-    """
-    _EDIT_DIALOG_STYLE = """
-        QDialog { background-color: %background_alt%; color: %text%; }
-        QLabel { color: %text%; font-size: 13px; }
-        QLineEdit {
-            background-color: #181818;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-        }
-        QLineEdit:focus { border: 1px solid %highlight%; }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover { background-color: %highlight_hover%; }
-        QPushButton[role="cancel"] { background-color: %border%; color: %text%; }
-        QPushButton[role="cancel"]:hover { background-color: %background_hover%; }
     """
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)
@@ -728,99 +705,25 @@ class PlaylistView(QWidget):
 
     def _edit_media_info(self):
         """Edit media information for selected track."""
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QFormLayout,
-            QLabel,
-            QLineEdit,
-            QDialogButtonBox,
-        )
-        from services import MetadataService
-
         selected_items = self._tracks_table.selectedItems()
         if not selected_items:
             return
 
-        track_id = None
+        track_ids = []
         for item in selected_items:
             if item.column() == 0:
                 track_id = item.data(Qt.UserRole)
-                break
+                if track_id:
+                    track_ids.append(track_id)
 
-        if not track_id:
+        if not track_ids:
             return
 
-        track = self._library_service.get_track(track_id)
-        if not track:
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("edit_media_info_title"))
-        dialog.setMinimumWidth(450)
-        from system.theme import ThemeManager
-        dialog.setStyleSheet(ThemeManager.instance().get_qss(self._EDIT_DIALOG_STYLE))
-
-        layout = QVBoxLayout(dialog)
-
-        form_layout = QFormLayout()
-        form_layout.setSpacing(10)
-        form_layout.setLabelAlignment(Qt.AlignRight)
-
-        title_input = QLineEdit(track.title or "")
-        title_input.setPlaceholderText(t("enter_title"))
-        artist_input = QLineEdit(track.artist or "")
-        artist_input.setPlaceholderText(t("enter_artist"))
-        album_input = QLineEdit(track.album or "")
-        album_input.setPlaceholderText(t("enter_album"))
-
-        path_label = QLabel(track.path)
-        theme = ThemeManager.instance().current_theme
-        path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
-        path_label.setWordWrap(True)
-
-        form_layout.addRow(t("title") + ":", title_input)
-        form_layout.addRow(t("artist") + ":", artist_input)
-        form_layout.addRow(t("album") + ":", album_input)
-        form_layout.addRow(t("file") + ":", path_label)
-
-        layout.addLayout(form_layout)
-
-        buttons = QDialogButtonBox()
-        ok_button = QPushButton(t("save"))
-        cancel_button = QPushButton(t("cancel"))
-        cancel_button.setProperty("role", "cancel")
-
-        buttons.addButton(ok_button, QDialogButtonBox.AcceptRole)
-        buttons.addButton(cancel_button, QDialogButtonBox.RejectRole)
-
-        layout.addWidget(buttons)
-
-        def save_changes():
-            new_title = title_input.text().strip() or track.title
-            new_artist = artist_input.text().strip() or track.artist
-            new_album = album_input.text().strip() or track.album
-
-            success = MetadataService.save_metadata(
-                track.path, title=new_title, artist=new_artist, album=new_album
-            )
-
-            if success:
-                track.title = new_title
-                track.artist = new_artist
-                track.album = new_album
-                self._library_service.update_track(track)
-                # Emit metadata_updated signal to update play_queue
-                EventBus.instance().metadata_updated.emit(track_id)
-                MessageDialog.information(self, t("success"), t("media_saved"))
-                if self._current_playlist_id:
-                    self._load_playlist(self._current_playlist_id)
-            else:
-                MessageDialog.warning(self, "Error", t("media_save_failed"))
-
-            dialog.accept()
-
-        ok_button.clicked.connect(save_changes)
-        cancel_button.clicked.connect(dialog.reject)
-
+        dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
+        dialog.tracks_updated.connect(self._on_tracks_updated)
         dialog.exec_()
+
+    def _on_tracks_updated(self, track_ids: List[int]):
+        """Handle tracks updated event from EditMediaInfoDialog."""
+        if self._current_playlist_id:
+            self._load_playlist(self._current_playlist_id)

@@ -3,7 +3,8 @@ Provider selection dialog for cloud services.
 """
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QWidget)
+                               QPushButton, QWidget, QGraphicsDropShadowEffect)
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from system.i18n import t
 from system.theme import ThemeManager
@@ -13,9 +14,16 @@ class ProviderSelectDialog(QDialog):
     """Dialog for selecting cloud provider"""
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
         }
         QLabel {
             color: %text%;
@@ -35,27 +43,60 @@ class ProviderSelectDialog(QDialog):
         QPushButton:pressed {
             background-color: %background_alt%;
         }
+        QPushButton[role="cancel"] {
+            background-color: %border%;
+            color: %text%;
+            padding: 8px 24px;
+            font-size: 14px;
+        }
+        QPushButton[role="cancel"]:hover {
+            background-color: %background_hover%;
+        }
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._selected_provider = None
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         ThemeManager.instance().register_widget(self)
         self._setup_ui()
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the dialog UI"""
         self.setWindowTitle(t("select_provider"))
         self.setMinimumSize(400, 250)
 
-        main_layout = QVBoxLayout()
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        main_layout = QVBoxLayout(container)
         main_layout.setSpacing(20)
-        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setContentsMargins(24, 20, 24, 20)
 
         # Title
         title = QLabel(t("select_cloud_provider"))
-        title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
+        title.setObjectName("dialogTitle")
         title.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title)
 
@@ -82,18 +123,12 @@ class ProviderSelectDialog(QDialog):
         cancel_layout.addStretch()
 
         cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                padding: 8px 24px;
-                font-size: 14px;
-            }
-        """)
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
         cancel_layout.addWidget(cancel_btn)
         cancel_layout.addStretch()
 
         main_layout.addLayout(cancel_layout)
-        self.setLayout(main_layout)
 
     def _select_provider(self, provider: str):
         """Select provider and accept dialog"""
@@ -107,8 +142,24 @@ class ProviderSelectDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
-        theme = ThemeManager.instance().current_theme
-        # Update title style
-        for child in self.findChildren(QLabel):
-            if child.text() == t("select_cloud_provider"):
-                child.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {theme.highlight};")
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None

@@ -6,10 +6,10 @@ from io import BytesIO
 
 import qrcode
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QStackedWidget,
-                               QTextEdit, QLineEdit, QWidget)
+                               QTextEdit, QLineEdit, QWidget, QGraphicsDropShadowEffect)
 
 from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
@@ -26,9 +26,16 @@ class CloudLoginDialog(QDialog):
     login_success = Signal(dict)  # Emits account info on success
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
         }
         QLabel {
             color: %text%;
@@ -45,6 +52,13 @@ class CloudLoginDialog(QDialog):
         }
         QPushButton:pressed {
             background-color: %background_alt%;
+        }
+        QPushButton[role="cancel"] {
+            background-color: %border%;
+            color: %text%;
+        }
+        QPushButton[role="cancel"]:hover {
+            background-color: %background_hover%;
         }
         QProgressBar {
             background-color: %border%;
@@ -77,9 +91,25 @@ class CloudLoginDialog(QDialog):
         self._qr_url = None  # Store QR URL for redisplay
         self._poll_timer = QTimer(self)
         self._poll_attempts = 0
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         self._setup_ui()
         self._start_login_flow()
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the dialog UI"""
@@ -87,12 +117,23 @@ class CloudLoginDialog(QDialog):
         self.setWindowTitle(provider_name + " " + t("login"))
         self.setMinimumSize(450, 520)
 
-        # Apply dark theme styling
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        main_layout = QVBoxLayout()
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        main_layout = QVBoxLayout(container)
         main_layout.setSpacing(15)
-        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
+        title_label = QLabel(provider_name + " " + t("login"))
+        title_label.setObjectName("dialogTitle")
+        main_layout.addWidget(title_label)
 
         # Mode toggle buttons
         mode_layout = QHBoxLayout()
@@ -132,11 +173,11 @@ class CloudLoginDialog(QDialog):
         button_layout.addWidget(self._refresh_btn)
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
         main_layout.addLayout(button_layout)
-        self.setLayout(main_layout)
 
         # Setup polling timer
         self._poll_timer.timeout.connect(self._poll_login_status)
@@ -389,3 +430,24 @@ class CloudLoginDialog(QDialog):
             self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
         if self._qr_label:
             self._qr_label.setStyleSheet(f"border: 2px solid {theme.border}; border-radius: 8px; background: white;")
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
