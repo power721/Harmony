@@ -1,10 +1,11 @@
 """Font loader for bundled fonts."""
 
-import sys
+import os
 import logging
 from pathlib import Path
 from typing import List
 
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QFontDatabase
 
 logger = logging.getLogger(__name__)
@@ -69,21 +70,23 @@ class FontLoader:
     def _get_font_dir(self) -> Path:
         """Get fonts directory path.
 
-        Handles development mode, PyInstaller bundle, and AppImage.
+        Uses Qt's applicationDirPath() which works correctly for:
+        - PyInstaller onefile/onedir
+        - AppImage
+        - All platforms (Linux, macOS, Windows)
+
+        For development mode, falls back to project root fonts directory.
         """
-        if getattr(sys, "frozen", False):
-            # Running as PyInstaller bundle or AppImage
-            # PyInstaller sets sys._MEIPASS to the temp extraction directory
-            # AppImage doesn't set _MEIPASS, uses _internal subdirectory
-            meipass = getattr(sys, "_MEIPASS", None)
-            if meipass:
-                return Path(meipass) / "fonts"
-            else:
-                # AppImage case: fonts are in _internal/fonts relative to executable
-                executable_dir = Path(sys.executable).parent
-                return executable_dir / "_internal" / "fonts"
-        # Running in development mode
-        return Path(__file__).parent.parent.parent / "fonts"
+        base_path = QCoreApplication.applicationDirPath()
+        font_dir = Path(base_path) / "fonts"
+
+        # In development mode, applicationDirPath() returns Python interpreter dir
+        # Check if fonts directory exists, if not, use project root
+        if not font_dir.exists():
+            # Development mode: fonts are in project root
+            font_dir = Path(__file__).parent.parent.parent / "fonts"
+
+        return font_dir
 
     def is_loaded(self) -> bool:
         """Check if fonts have been loaded."""
