@@ -1720,6 +1720,13 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error cleaning up PlaybackService workers: {e}")
 
+        # Clean up lyrics controller threads
+        if hasattr(self, '_lyrics_controller') and self._lyrics_controller:
+            try:
+                self._lyrics_controller.cleanup()
+            except Exception as e:
+                logger.error(f"Error cleaning up lyrics controller: {e}")
+
         # Disconnect EventBus signals to prevent memory leaks and callbacks to destroyed objects
         try:
             self._event_bus.track_changed.disconnect(self._on_track_changed)

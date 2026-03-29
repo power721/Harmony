@@ -435,7 +435,7 @@ class AlbumView(QWidget):
         self._tracks_table.setObjectName("tracksTable")
         self._tracks_table.setColumnCount(4)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), "#", t("title"), t("duration")]
+            ["#", t("source"), t("title"), t("duration")]
         )
 
         # Configure table
@@ -451,9 +451,9 @@ class AlbumView(QWidget):
         # Set column widths
         header = self._tracks_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 80)
+        self._tracks_table.setColumnWidth(0, 50)
         header.setSectionResizeMode(1, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(1, 50)
+        self._tracks_table.setColumnWidth(1, 80)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
 
@@ -589,6 +589,11 @@ class AlbumView(QWidget):
         self._tracks_table.setRowCount(len(self._tracks))
 
         for i, track in enumerate(self._tracks):
+            # Number
+            num_item = QTableWidgetItem(str(i + 1))
+            num_item.setTextAlignment(Qt.AlignCenter)
+            self._tracks_table.setItem(i, 0, num_item)
+
             # Source
             from domain.track import TrackSource
             source_map = {
@@ -599,12 +604,7 @@ class AlbumView(QWidget):
             }
             source_text = source_map.get(track.source, t("source_local"))
             source_item = QTableWidgetItem(source_text)
-            self._tracks_table.setItem(i, 0, source_item)
-
-            # Number
-            num_item = QTableWidgetItem(str(i + 1))
-            num_item.setTextAlignment(Qt.AlignCenter)
-            self._tracks_table.setItem(i, 1, num_item)
+            self._tracks_table.setItem(i, 1, source_item)
 
             # Title
             title_item = QTableWidgetItem(track.title or track.display_name)
@@ -633,7 +633,7 @@ class AlbumView(QWidget):
 
     def _on_track_double_clicked(self, index):
         """Handle track double click - play from this track."""
-        item = self._tracks_table.item(index.row(), 1)
+        item = self._tracks_table.item(index.row(), 2)
         if item and self._tracks:
             track_id = item.data(Qt.UserRole)
             # Find the index of the clicked track
@@ -661,7 +661,7 @@ class AlbumView(QWidget):
 
         selected_tracks = []
         for row in selected_rows:
-            title_item = self._tracks_table.item(row, 1)
+            title_item = self._tracks_table.item(row, 2)
             if title_item:
                 track_id = title_item.data(Qt.UserRole)
                 for track in self._tracks:

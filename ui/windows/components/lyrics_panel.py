@@ -624,3 +624,42 @@ class LyricsController(QObject):
                 self.load_lyrics_async(path, title, artist)
             else:
                 self._panel.set_no_lyrics()
+
+    def cleanup(self):
+        """Clean up worker threads before destruction."""
+        # Clean up lyrics loader thread
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                logger.debug("[LyricsController] Stopping lyrics thread")
+                self._lyrics_thread.requestInterruption()
+                self._lyrics_thread.quit()
+                if not self._lyrics_thread.wait(1000):
+                    logger.warning("[LyricsController] Lyrics thread did not stop gracefully, terminating")
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait()
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
+
+        # Clean up lyrics download thread
+        if self._lyrics_download_thread and isValid(self._lyrics_download_thread):
+            if self._lyrics_download_thread.isRunning():
+                logger.debug("[LyricsController] Stopping lyrics download thread")
+                self._lyrics_download_thread.quit()
+                if not self._lyrics_download_thread.wait(1000):
+                    logger.warning("[LyricsController] Lyrics download thread did not stop gracefully, terminating")
+                    self._lyrics_download_thread.terminate()
+                    self._lyrics_download_thread.wait()
+            try:
+                self._lyrics_download_thread.finished.disconnect()
+                self._lyrics_download_thread.lyrics_downloaded.disconnect()
+                self._lyrics_download_thread.download_failed.disconnect()
+                self._lyrics_download_thread.cover_downloaded.disconnect()
+            except RuntimeError:
+                pass
+            self._lyrics_download_thread.deleteLater()
+            self._lyrics_download_thread = None
