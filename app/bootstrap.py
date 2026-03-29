@@ -81,6 +81,7 @@ class Bootstrap:
 
         # Services
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
+        self._sleep_timer_service: Optional["SleepTimerService"] = None
 
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
@@ -388,4 +389,15 @@ class Bootstrap:
                 queue_service=self.queue_service
             )
         return self._cache_cleaner_service
+
+    @property
+    def sleep_timer_service(self) -> "SleepTimerService":
+        """Get sleep timer service."""
+        if self._sleep_timer_service is None:
+            from services.playback.sleep_timer_service import SleepTimerService
+            self._sleep_timer_service = SleepTimerService(
+                playback_service=self.playback_service,
+                event_bus=self.event_bus
+            )
+        return self._sleep_timer_service
 

@@ -49,6 +49,7 @@ class IconName:
     QUEUE = "queue.svg"
     STAR = "star.svg"
     CLOCK = "clock.svg"
+    ALARM = "alarm.svg"
 
     # Actions
     PLAY = "play.svg"
@@ -130,7 +131,7 @@ def _colorize_svg(svg_content: bytes, color: str) -> bytes:
     return svg_str.encode('utf-8')
 
 
-def get_icon(icon_name: str, color: str = IconColor.DEFAULT, size: int = 24) -> QIcon:
+def get_icon(icon_name: str, color: str | None = IconColor.DEFAULT, size: int = 24) -> QIcon:
     """
     Get QIcon from SVG file with specified color.
 

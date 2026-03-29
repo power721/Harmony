@@ -60,6 +60,14 @@ class PlayerControls(QWidget):
 
     _STYLE_TIME = "color: %text_secondary%; font-size: 11px;"
 
+    _STYLE_SLEEP_TIMER = """
+        QLabel#sleepTimerLabel {
+            color: %highlight%;
+            font-size: 11px;
+            font-weight: bold;
+        }
+    """
+
     _STYLE_MAIN = """
         QWidget#playerControls {
             background-color: %background%;
@@ -180,6 +188,7 @@ class PlayerControls(QWidget):
 
         self._setup_ui()
         self._setup_connections()
+        self._setup_sleep_timer_connections()
 
         # Register with theme system
         from system.theme import ThemeManager
@@ -218,6 +227,9 @@ class PlayerControls(QWidget):
         # Playback controls (center)
         controls_widget = self._create_playback_controls()
         layout.addWidget(controls_widget, 3)
+
+        sleep_timer_widget = self.create_sleep_timer_widget()
+        layout.addWidget(sleep_timer_widget)
 
         # Volume and extra controls (right side)
         volume_widget = self._create_volume_widget()
@@ -355,6 +367,32 @@ class PlayerControls(QWidget):
 
         return widget
 
+    def create_sleep_timer_widget(self) -> QWidget:
+        widget = QWidget()
+        sleep_timer = QVBoxLayout(widget)
+        sleep_timer.setContentsMargins(0, 0, 0, 0)
+        sleep_timer.setSpacing(5)
+
+        # Sleep timer button
+        self._sleep_timer_btn = QPushButton()
+        self._sleep_timer_btn.setIcon(get_icon(IconName.ALARM, None))
+        self._sleep_timer_btn.setIconSize(QSize(20, 20))
+        self._sleep_timer_btn.setObjectName("controlBtn")
+        self._sleep_timer_btn.setFixedSize(35, 35)
+        self._sleep_timer_btn.setCursor(Qt.PointingHandCursor)
+        self._sleep_timer_btn.setToolTip(t("sleep_timer"))
+        self._sleep_timer_btn.clicked.connect(self._show_sleep_timer)
+        sleep_timer.addWidget(self._sleep_timer_btn)
+
+        # Sleep timer status label
+        self._sleep_timer_label = QLabel()
+        self._sleep_timer_label.setObjectName("sleepTimerLabel")
+        self._sleep_timer_label.setAlignment(Qt.AlignCenter)
+        self._sleep_timer_label.setVisible(False)
+        sleep_timer.addWidget(self._sleep_timer_label)
+
+        return widget
+
     def _create_volume_widget(self) -> QWidget:
         """Create volume control widget."""
         widget = QWidget()
@@ -413,6 +451,7 @@ class PlayerControls(QWidget):
         self._album_label.setStyleSheet(tm.get_qss(self._STYLE_ALBUM))
         self._current_time_label.setStyleSheet(tm.get_qss(self._STYLE_TIME))
         self._total_time_label.setStyleSheet(tm.get_qss(self._STYLE_TIME))
+        self._sleep_timer_label.setStyleSheet(tm.get_qss(self._STYLE_SLEEP_TIMER))
 
         # Refresh favorite button style based on current state
         current_track = self._player.engine.current_track
@@ -484,6 +523,55 @@ class PlayerControls(QWidget):
 
         # Sync button states with current player mode
         self._sync_button_states()
+
+    def _setup_sleep_timer_connections(self):
+        """Setup sleep timer signal connections."""
+        from app.bootstrap import Bootstrap
+        sleep_timer_service = Bootstrap.instance().sleep_timer_service
+
+        # Connect sleep timer signals
+        sleep_timer_service.timer_started.connect(self._on_sleep_timer_started)
+        sleep_timer_service.timer_stopped.connect(self._on_sleep_timer_stopped)
+        sleep_timer_service.remaining_changed.connect(self._on_sleep_timer_remaining_changed)
+        sleep_timer_service.timer_triggered.connect(self._on_sleep_timer_stopped)
+
+        # Initialize display if timer is already active
+        if sleep_timer_service.is_active:
+            self._on_sleep_timer_started()
+
+    def _on_sleep_timer_started(self):
+        """Handle sleep timer started."""
+        self._sleep_timer_label.setVisible(True)
+        self._update_sleep_timer_display()
+
+    def _on_sleep_timer_stopped(self):
+        """Handle sleep timer stopped."""
+        self._sleep_timer_label.setVisible(False)
+
+    def _on_sleep_timer_remaining_changed(self, remaining: int):
+        """Handle sleep timer remaining value changed."""
+        self._update_sleep_timer_display()
+
+    def _update_sleep_timer_display(self):
+        """Update sleep timer display label."""
+        from app.bootstrap import Bootstrap
+        sleep_timer_service = Bootstrap.instance().sleep_timer_service
+
+        if not sleep_timer_service.is_active:
+            return
+
+        config = sleep_timer_service.config
+        remaining = sleep_timer_service.remaining
+
+        if config.mode == 'time':
+            # Format as hh:mm:ss
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+            seconds = remaining % 60
+            self._sleep_timer_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+        else:
+            # Track count mode
+            self._sleep_timer_label.setText(f"{remaining} {t('tracks')}")
 
     def _sync_button_states(self):
         """Sync button states with current player mode."""
@@ -595,6 +683,23 @@ class PlayerControls(QWidget):
         else:
             volume = getattr(self, "_previous_volume", 70)
             self._volume_slider.setValue(volume)
+
+    def _show_sleep_timer(self):
+        """Show sleep timer dialog."""
+        try:
+            from ui.dialogs.sleep_timer_dialog import SleepTimerDialog
+            from app.bootstrap import Bootstrap
+
+            sleep_timer_service = Bootstrap.instance().sleep_timer_service
+
+            parent = self if self.isVisible() else None
+            dialog = SleepTimerDialog(sleep_timer_service, parent)
+            dialog.setWindowModality(Qt.ApplicationModal)
+            dialog.setWindowFlags(dialog.windowFlags() | Qt.Dialog)
+
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"Failed to open sleep timer dialog: {e}", exc_info=True)
 
     def _toggle_favorite(self):
         """Toggle favorite status."""
