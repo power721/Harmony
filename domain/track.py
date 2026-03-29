@@ -37,6 +37,8 @@ class Track:
     created_at: Optional[datetime] = None
     cloud_file_id: Optional[str] = None  # Cloud file ID if downloaded from cloud
     source: TrackSource = TrackSource.LOCAL  # Track source: Local, QUARK, BAIDU, QQ
+    file_size: Optional[int] = None
+    file_mtime: Optional[float] = None
 
     def __post_init__(self):
         if self.created_at is None:

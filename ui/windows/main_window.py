@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from typing import Optional
 
-from shiboken6 import isValid
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
@@ -285,9 +284,8 @@ class MainWindow(QMainWindow):
         # Online music handler (will be initialized in _setup_ui)
         self._online_music_handler: Optional[OnlineMusicHandler] = None
 
-        # Scan thread for music library scanning
-        self._scan_thread: Optional[QThread] = None
-        self._scan_worker = None
+        # Scan controller reference (prevent GC)
+        self._scan_controller = None
 
         self._current_index = -1
 
@@ -827,21 +825,34 @@ class MainWindow(QMainWindow):
         # Get cover service
         cover_service = Bootstrap.instance().cover_service
 
-        def on_scan_complete(added, skipped):
+        def on_scan_complete(payload: dict):
             """Callback when scan completes."""
-            logger.info(f"[MainWindow] Scan complete: {added} added, {skipped} skipped")
+            error = payload.get("error")
+            if error:
+                logger.error(f"[MainWindow] Scan failed: {error}")
+                return
+
+            stats = payload.get("stats", {})
+            added = stats.get("added", 0)
+            unchanged = stats.get("unchanged", 0)
+            failed = stats.get("failed", 0)
+            logger.info(
+                f"[MainWindow] Scan complete: added={added}, unchanged={unchanged}, failed={failed}"
+            )
             # Refresh views
             self._library_view.refresh()
             self._albums_view.refresh()
             self._artists_view.refresh()
 
-        # Use ScanDialog component
-        self._scan_worker, self._scan_thread = ScanDialog.scan_folder(
+        # Keep reference to prevent GC
+        self._scan_controller = ScanDialog.scan_folder(
             folder=folder,
             db_manager=self._db,
             cover_service=cover_service,
             parent=self,
-            on_complete=on_scan_complete
+            batch_size=100,
+            enable_cover_extraction=False,
+            on_complete=on_scan_complete,
         )
 
     def _toggle_language(self):
@@ -1672,14 +1683,10 @@ class MainWindow(QMainWindow):
         # Stop playback AFTER saving state
         self._player.engine.stop()
 
-        # Clean up scan thread
-        if self._scan_thread and isValid(self._scan_thread) and self._scan_thread.isRunning():
-            if self._scan_worker:
-                self._scan_worker.cancel()
-            self._scan_thread.quit()
-            if not self._scan_thread.wait(2000):
-                self._scan_thread.terminate()
-                self._scan_thread.wait()
+        # Clean up scan controller
+        if hasattr(self, '_scan_controller') and self._scan_controller:
+            # ScanController handles its own cleanup via deleteLater
+            self._scan_controller = None
 
         # Clean up CloudDownloadService
         from services.cloud.download_service import CloudDownloadService

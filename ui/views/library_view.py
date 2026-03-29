@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QProgressDialog,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
@@ -41,6 +41,24 @@ from ui.icons import IconName, get_icon
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.workers.ai_enhance_worker import AIEnhanceWorker
 from ui.workers.acoustid_worker import AcoustIDWorker
+
+
+class LoadTracksWorker(QThread):
+    """Background worker to load tracks from database."""
+
+    finished = Signal(list)
+
+    def __init__(self, library_service, search_text="", parent=None):
+        super().__init__(parent)
+        self._library = library_service
+        self._search_text = search_text
+
+    def run(self):
+        if self._search_text:
+            tracks = self._library.search_tracks(self._search_text)
+        else:
+            tracks = self._library.get_all_tracks()
+        self.finished.emit(tracks)
 
 
 class LibraryView(QWidget):
@@ -227,6 +245,7 @@ class LibraryView(QWidget):
         self._current_playing_track_id = None  # Track currently playing
         self._current_playing_row = -1  # Row of currently playing track
         self._track_id_to_row = {}  # Dict for O(1) row lookup by track_id
+        self._load_worker = None
         self._view_search_texts = {
             "all": "",
             "favorites": "",
@@ -439,15 +458,26 @@ class LibraryView(QWidget):
             self._load_history()
 
     def _load_all_tracks(self):
-        """Load all tracks into the table."""
+        """Load all tracks into the table (async via background thread)."""
         self._loading_label.setVisible(True)
         self._tracks_table.setVisible(False)
 
-        text = self._search_input.text()
-        if text:
-            tracks = self._library_service.search_tracks(text)
-        else:
-            tracks = self._library_service.get_all_tracks()
+        # Clean up previous worker if still running
+        if self._load_worker and self._load_worker.isRunning():
+            self._load_worker.quit()
+            if not self._load_worker.wait(1000):
+                self._load_worker.terminate()
+                self._load_worker.wait()
+
+        search_text = self._search_input.text()
+        self._load_worker = LoadTracksWorker(
+            self._library_service, search_text=search_text, parent=self
+        )
+        self._load_worker.finished.connect(self._on_tracks_loaded)
+        self._load_worker.start()
+
+    def _on_tracks_loaded(self, tracks):
+        """Handle tracks loaded from background thread."""
         self._populate_table(tracks)
         self._status_label.setText(f"{len(tracks)} {t('tracks')}")
 

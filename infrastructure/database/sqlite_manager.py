@@ -675,7 +675,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 1
+        CURRENT_SCHEMA_VERSION = 2
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -932,6 +932,16 @@ class DatabaseManager:
             cursor.execute("UPDATE artists SET normalized_name = LOWER(name) WHERE normalized_name IS NULL")
             logger.info(f"[Database] Fixed {null_count} artists with NULL normalized_name")
 
+        # Migration 6: Add file_size and file_mtime to tracks table (incremental scan)
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = [col[1] for col in cursor.fetchall()]
+        if 'file_size' not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN file_size BIGINT")
+            logger.info("[Database] Added 'file_size' column to tracks table")
+        if 'file_mtime' not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN file_mtime DOUBLE")
+            logger.info("[Database] Added 'file_mtime' column to tracks table")
+
         # Update schema version after all migrations complete
         if schema_changed:
             cursor.execute(
@@ -955,6 +965,8 @@ class DatabaseManager:
             'created_at': track.created_at or datetime.now(),
             'cloud_file_id': track.cloud_file_id,
             'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
+            'file_size': getattr(track, 'file_size', None),
+            'file_mtime': getattr(track, 'file_mtime', None),
         }
 
         # Check if we're in the write worker thread - execute directly
@@ -983,6 +995,8 @@ class DatabaseManager:
             'created_at': track.created_at or datetime.now(),
             'cloud_file_id': track.cloud_file_id,
             'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
+            'file_size': getattr(track, 'file_size', None),
+            'file_mtime': getattr(track, 'file_mtime', None),
         }
 
         if callback:
@@ -1000,8 +1014,8 @@ class DatabaseManager:
         cursor.execute(
             """
             INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 track_data['path'],
@@ -1013,11 +1027,30 @@ class DatabaseManager:
                 track_data['created_at'],
                 track_data['cloud_file_id'],
                 track_data['source'],
+                track_data['file_size'],
+                track_data['file_mtime'],
             ),
         )
 
         conn.commit()
         return cursor.lastrowid
+
+    def _row_to_track(self, row) -> Track:
+        """Convert a database row to a Track domain model."""
+        return Track(
+            id=row["id"],
+            path=row["path"],
+            title=row["title"],
+            artist=row["artist"],
+            album=row["album"],
+            duration=row["duration"],
+            cover_path=row["cover_path"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            cloud_file_id=row["cloud_file_id"],
+            source=self._get_track_source_from_row(row),
+            file_size=row["file_size"] if "file_size" in row.keys() else None,
+            file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
+        )
 
     def get_track(self, track_id: int) -> Optional[Track]:
         """Get a track by ID."""
@@ -1028,18 +1061,7 @@ class DatabaseManager:
         row = cursor.fetchone()
 
         if row:
-            return Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
+            return self._row_to_track(row)
         return None
 
     def get_track_by_path(self, path: str) -> Optional[Track]:
@@ -1051,18 +1073,7 @@ class DatabaseManager:
         row = cursor.fetchone()
 
         if row:
-            return Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
+            return self._row_to_track(row)
         return None
 
     def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
@@ -1074,19 +1085,127 @@ class DatabaseManager:
         row = cursor.fetchone()
 
         if row:
-            return Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
+            return self._row_to_track(row)
         return None
+
+    def get_track_index_for_paths(self, paths: list[str]) -> dict[str, dict]:
+        """
+        Bulk lookup of track metadata by file paths for incremental scan.
+
+        Args:
+            paths: List of file paths to look up
+
+        Returns:
+            Dict mapping path -> {"size": int|None, "mtime": float|None}
+        """
+        if not paths:
+            return {}
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # SQLite has a limit on bind params; chunk if needed
+        chunk_size = 500
+        result = {}
+
+        for i in range(0, len(paths), chunk_size):
+            chunk = paths[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(
+                f"SELECT path, file_size, file_mtime FROM tracks WHERE path IN ({placeholders})",
+                chunk,
+            )
+            for row in cursor.fetchall():
+                result[row[0]] = {
+                    "size": row[1],
+                    "mtime": row[2],
+                }
+
+        return result
+
+    def add_tracks_bulk(self, tracks: list[Track]) -> tuple[int, int]:
+        """
+        Bulk insert/update tracks in a single transaction.
+
+        Args:
+            tracks: List of Track objects to add
+
+        Returns:
+            (added_count, skipped_count)
+        """
+        def _bulk_insert(conn: sqlite3.Connection):
+            added = 0
+            skipped = 0
+            cursor = conn.cursor()
+
+            for track in tracks:
+                track_data = {
+                    'path': track.path,
+                    'title': track.title,
+                    'artist': track.artist,
+                    'album': track.album,
+                    'duration': track.duration,
+                    'cover_path': track.cover_path,
+                    'created_at': track.created_at or datetime.now(),
+                    'cloud_file_id': track.cloud_file_id,
+                    'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                    'file_size': getattr(track, 'file_size', None),
+                    'file_mtime': getattr(track, 'file_mtime', None),
+                }
+
+                # Check if path already exists
+                cursor.execute("SELECT id FROM tracks WHERE path = ?", (track_data['path'],))
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Update metadata for changed files
+                    cursor.execute(
+                        """
+                        UPDATE tracks
+                        SET title=?, artist=?, album=?, duration=?, cover_path=?,
+                            file_size=?, file_mtime=?
+                        WHERE path=?
+                        """,
+                        (
+                            track_data['title'],
+                            track_data['artist'],
+                            track_data['album'],
+                            track_data['duration'],
+                            track_data['cover_path'],
+                            track_data['file_size'],
+                            track_data['file_mtime'],
+                            track_data['path'],
+                        ),
+                    )
+                    skipped += 1
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO tracks
+                        (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            track_data['path'],
+                            track_data['title'],
+                            track_data['artist'],
+                            track_data['album'],
+                            track_data['duration'],
+                            track_data['cover_path'],
+                            track_data['created_at'],
+                            track_data['cloud_file_id'],
+                            track_data['source'],
+                            track_data['file_size'],
+                            track_data['file_mtime'],
+                        ),
+                    )
+                    added += 1
+
+            conn.commit()
+            return added, skipped
+
+        future = self._submit_write(_bulk_insert)
+        return future.result(timeout=60.0)
 
     def get_all_tracks(self) -> List[Track]:
         """Get all tracks from the database, including downloaded cloud files."""
@@ -1098,18 +1217,7 @@ class DatabaseManager:
         rows = cursor.fetchall()
 
         tracks = [
-            Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
+            self._row_to_track(row)
             for row in rows
         ]
 
@@ -1177,18 +1285,7 @@ class DatabaseManager:
                 rows = cursor.fetchall()
 
             return [
-                Track(
-                    id=row["id"],
-                    path=row["path"],
-                    title=row["title"],
-                    artist=row["artist"],
-                    album=row["album"],
-                    duration=row["duration"],
-                    cover_path=row["cover_path"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                    cloud_file_id=row["cloud_file_id"],
-                    source=self._get_track_source_from_row(row),
-                )
+                self._row_to_track(row)
                 for row in rows
             ]
 
@@ -1225,18 +1322,7 @@ class DatabaseManager:
         rows = cursor.fetchall()
 
         return [
-            Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
+            self._row_to_track(row)
             for row in rows
         ]
 
