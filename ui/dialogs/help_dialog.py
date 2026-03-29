@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QScrollArea,
     QWidget,
+    QGraphicsDropShadowEffect,
 )
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from PySide6.QtCore import Qt
@@ -26,9 +28,11 @@ class HelpDialog(QDialog):
     """Dialog showing help information and keyboard shortcuts."""
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
         QLabel {
             color: %text%;
@@ -74,16 +78,41 @@ class HelpDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
         self.setWindowTitle(t("help"))
         self.setMinimumSize(500, 670)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+
+        self._setup_shadow()
         ThemeManager.instance().register_widget(self)
 
         self._setup_ui()
 
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
+
     def _setup_ui(self):
         """Set up the dialog UI."""
-        layout = QVBoxLayout(self)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
@@ -232,3 +261,24 @@ class HelpDialog(QDialog):
         for child in self.findChildren(QLabel):
             if child.text() == "Harmony":
                 child.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {theme.highlight};")
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None

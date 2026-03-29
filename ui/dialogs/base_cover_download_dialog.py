@@ -6,11 +6,11 @@ from abc import abstractmethod
 from typing import List
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
+from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QColor, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QScrollArea, QWidget,
-    QListWidget, QListWidgetItem, QSplitter
+    QListWidget, QListWidgetItem, QSplitter, QGraphicsDropShadowEffect
 )
 
 from services.metadata import CoverService
@@ -173,9 +173,11 @@ class BaseCoverDownloadDialog(QDialog):
 
     # Common stylesheet template for all dialogs
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
         QLabel {
             color: %text%;
@@ -237,7 +239,22 @@ class BaseCoverDownloadDialog(QDialog):
         self._current_cover_data = None
         self._current_cover_url = None
         self._search_results = []
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     # ========================================================================
     # Properties
@@ -280,7 +297,16 @@ class BaseCoverDownloadDialog(QDialog):
         self.resize(900, 650)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout()
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
         layout.setSpacing(15)
         layout.setContentsMargins(30, 30, 30, 30)
 
@@ -398,7 +424,7 @@ class BaseCoverDownloadDialog(QDialog):
         button_layout.addWidget(close_btn)
 
         layout.addLayout(button_layout)
-        self.setLayout(layout)
+        self.setLayout(outer)
 
     # ========================================================================
     # Common Event Handlers
@@ -651,3 +677,24 @@ class BaseCoverDownloadDialog(QDialog):
             self._score_label.setStyleSheet(f"color: {theme.highlight}; font-weight: bold;")
         if self._status_label:
             self._status_label.setStyleSheet(f"color: {theme.text_secondary};")
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None

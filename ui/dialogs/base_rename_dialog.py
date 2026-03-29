@@ -12,7 +12,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QProgressBar,
+    QWidget,
+    QGraphicsDropShadowEffect,
 )
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from PySide6.QtCore import Qt, Signal, QThread
@@ -38,9 +41,11 @@ class BaseRenameDialog(QDialog):
 
     # Common stylesheet template for all rename dialogs
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
         QLabel {
             color: %text%;
@@ -105,7 +110,22 @@ class BaseRenameDialog(QDialog):
         self._progress_bar = None
         self._rename_btn = None
         self._cancel_btn = None
+        self._drag_pos = None
+
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_common_ui(self, title: str, min_width: int = 450):
         """Setup common UI elements.
@@ -118,7 +138,16 @@ class BaseRenameDialog(QDialog):
         self.setMinimumWidth(min_width)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout(self)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
         layout.setSpacing(16)
         layout.setContentsMargins(24, 24, 24, 24)
 
@@ -333,3 +362,24 @@ class BaseRenameDialog(QDialog):
                 f"color: #f59e0b; font-size: 13px; padding: 10px; "
                 f"background-color: #2a2a1a; border-radius: 4px;"
             )
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None

@@ -456,7 +456,6 @@ class PlaylistView(QWidget):
             self,
             t("delete_playlist"),
             t("delete_playlist_confirm"),
-            Yes | No,
         )
 
         if reply == Yes:

@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QWidget,
+    QGraphicsDropShadowEffect,
 )
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from ui.dialogs.message_dialog import MessageDialog
 
@@ -35,9 +37,11 @@ class EditMediaInfoDialog(QDialog):
     tracks_updated = Signal(list)  # Emitted when tracks are updated with list of track IDs
 
     _STYLE_TEMPLATE = """
-        QDialog {
+        QWidget#dialogContainer {
             background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
         }
         QLabel {
             color: %text%;
@@ -123,9 +127,23 @@ class EditMediaInfoDialog(QDialog):
         self._track_ids = track_ids
         self._library_service = library_service
         self._is_batch_edit = len(track_ids) > 1
+        self._drag_pos = None
 
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         self._setup_ui()
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the user interface."""
@@ -138,7 +156,16 @@ class EditMediaInfoDialog(QDialog):
         self.setMinimumWidth(450)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout(self)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
 
         # Get first track for initial values
         first_track = self._library_service.get_track(self._track_ids[0])
@@ -416,3 +443,24 @@ class EditMediaInfoDialog(QDialog):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         if self._progress_bar:
             self._progress_bar.setStyleSheet(ThemeManager.instance().get_qss(self._PROGRESS_STYLE_TEMPLATE))
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
