@@ -605,9 +605,9 @@ class ArtistView(QWidget):
         # Tracks table - same style as LibraryView
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(5)
+        self._tracks_table.setColumnCount(6)
         self._tracks_table.setHorizontalHeaderLabels(
-            ["#", t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), "#", t("title"), t("artist"), t("album"), t("duration")]
         )
 
         # Configure table - same as LibraryView
@@ -622,19 +622,22 @@ class ArtistView(QWidget):
 
         # Set column widths - same as LibraryView
         header = self._tracks_table.horizontalHeader()
-        # #: fixed small width
+        # Source: fixed small width
         header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 50)
+        self._tracks_table.setColumnWidth(0, 80)
+        #: fixed small width
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(1, 50)
         # Title: stretch to fill all remaining space
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
         # Artist: fixed width
-        header.setSectionResizeMode(2, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(2, 120)
-        # Album: fixed width
         header.setSectionResizeMode(3, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(3, 150)
+        self._tracks_table.setColumnWidth(3, 120)
+        # Album: fixed width
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(4, 150)
         # Duration: fit content
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
         # Styling - same as LibraryView
         self._tracks_table.setStyleSheet(f"""
@@ -883,27 +886,39 @@ class ArtistView(QWidget):
         self._tracks_table.setRowCount(len(self._tracks))
 
         for i, track in enumerate(self._tracks):
+            # Source
+            from domain.track import TrackSource
+            source_map = {
+                TrackSource.LOCAL: t("source_local"),
+                TrackSource.QUARK: t("source_quark"),
+                TrackSource.BAIDU: t("source_baidu"),
+                TrackSource.QQ: t("source_qq"),
+            }
+            source_text = source_map.get(track.source, t("source_local"))
+            source_item = QTableWidgetItem(source_text)
+            self._tracks_table.setItem(i, 0, source_item)
+
             # Number
             num_item = QTableWidgetItem(str(i + 1))
             num_item.setTextAlignment(Qt.AlignCenter)
-            self._tracks_table.setItem(i, 0, num_item)
+            self._tracks_table.setItem(i, 1, num_item)
 
             # Title
             title_item = QTableWidgetItem(track.title or track.display_name)
-            self._tracks_table.setItem(i, 1, title_item)
+            self._tracks_table.setItem(i, 2, title_item)
 
             # Artist
             artist_item = QTableWidgetItem(track.artist or "")
-            self._tracks_table.setItem(i, 2, artist_item)
+            self._tracks_table.setItem(i, 3, artist_item)
 
             # Album
             album_item = QTableWidgetItem(track.album or "")
-            self._tracks_table.setItem(i, 3, album_item)
+            self._tracks_table.setItem(i, 4, album_item)
 
             # Duration
             duration_item = QTableWidgetItem(format_duration(track.duration))
             duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self._tracks_table.setItem(i, 4, duration_item)
+            self._tracks_table.setItem(i, 5, duration_item)
 
             # Store track ID in item data
             title_item.setData(Qt.UserRole, track.id)
@@ -1058,7 +1073,7 @@ class ArtistView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            ["#", t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), "#", t("title"), t("artist"), t("album"), t("duration")]
         )
 
         # Update loading indicator label

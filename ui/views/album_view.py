@@ -433,9 +433,9 @@ class AlbumView(QWidget):
         # Tracks table
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(3)
+        self._tracks_table.setColumnCount(4)
         self._tracks_table.setHorizontalHeaderLabels(
-            ["#", t("title"), t("duration")]
+            [t("source"), "#", t("title"), t("duration")]
         )
 
         # Configure table
@@ -451,9 +451,11 @@ class AlbumView(QWidget):
         # Set column widths
         header = self._tracks_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 50)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self._tracks_table.setColumnWidth(0, 80)
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(1, 50)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
 
         # Styling
         self._tracks_table.setStyleSheet(
@@ -587,19 +589,31 @@ class AlbumView(QWidget):
         self._tracks_table.setRowCount(len(self._tracks))
 
         for i, track in enumerate(self._tracks):
+            # Source
+            from domain.track import TrackSource
+            source_map = {
+                TrackSource.LOCAL: t("source_local"),
+                TrackSource.QUARK: t("source_quark"),
+                TrackSource.BAIDU: t("source_baidu"),
+                TrackSource.QQ: t("source_qq"),
+            }
+            source_text = source_map.get(track.source, t("source_local"))
+            source_item = QTableWidgetItem(source_text)
+            self._tracks_table.setItem(i, 0, source_item)
+
             # Number
             num_item = QTableWidgetItem(str(i + 1))
             num_item.setTextAlignment(Qt.AlignCenter)
-            self._tracks_table.setItem(i, 0, num_item)
+            self._tracks_table.setItem(i, 1, num_item)
 
             # Title
             title_item = QTableWidgetItem(track.title or track.display_name)
-            self._tracks_table.setItem(i, 1, title_item)
+            self._tracks_table.setItem(i, 2, title_item)
 
             # Duration
             duration_item = QTableWidgetItem(format_duration(track.duration))
             duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self._tracks_table.setItem(i, 2, duration_item)
+            self._tracks_table.setItem(i, 3, duration_item)
 
             # Store track ID in item data
             title_item.setData(Qt.UserRole, track.id)
@@ -716,7 +730,7 @@ class AlbumView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            ["#", t("title"), t("duration")]
+            [t("source"), "#", t("title"), t("duration")]
         )
 
         # Update loading indicator label
