@@ -402,9 +402,7 @@ class LyricsController(QObject):
 
     def edit_lyrics(self):
         """Edit lyrics for current track."""
-        from services import LyricsService
-        from utils.lrc_parser import detect_and_parse
-        from system.theme import ThemeManager
+        from ui.dialogs.lyrics_edit_dialog import LyricsEditDialog
 
         current_track = self._playback.engine.current_track
         if not current_track:
@@ -435,82 +433,15 @@ class LyricsController(QObject):
             track_title = track.title
             track_artist = track.artist
 
-        # Create edit dialog
-        dialog = QDialog(None)
-        dialog.setWindowTitle(t("edit_lyrics_title"))
-        dialog.setMinimumSize(600, 500)
-        dialog.setStyleSheet(ThemeManager.instance().get_qss("""
-            QDialog {
-                background-color: %background_alt%;
-                color: %text%;
-            }
-            QLabel {
-                color: %text%;
-                font-size: 13px;
-            }
-            QTextEdit {
-                background-color: %background%;
-                color: %text%;
-                border: 1px solid %border%;
-                border-radius: 4px;
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: %highlight%;
-                color: %background%;
-                border: none;
-                padding: 8px 20px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: %highlight_hover%;
-            }
-        """))
+        # Show edit dialog
+        result = LyricsEditDialog.show_dialog(
+            track_path, track_title, track_artist, None
+        )
 
-        layout = QVBoxLayout(dialog)
-
-        info_label = QLabel(f"{track_title} - {track_artist}")
-        info_label.setStyleSheet(ThemeManager.instance().get_qss("color: %highlight%; font-size: 14px; padding: 5px;"))
-        layout.addWidget(info_label)
-
-        help_label = QLabel(t("lyrics_format_help"))
-        help_label.setStyleSheet(ThemeManager.instance().get_qss("color: %text_secondary%; font-size: 11px;"))
-        help_label.setWordWrap(True)
-        layout.addWidget(help_label)
-
-        text_edit = QTextEdit()
-        layout.addWidget(text_edit)
-
-        # Load existing lyrics
-        existing_lyrics = LyricsService.get_lyrics(track_path, track_title, track_artist)
-        if existing_lyrics:
-            text_edit.setPlainText(existing_lyrics)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setCursor(Qt.PointingHandCursor)
-        cancel_btn.clicked.connect(dialog.reject)
-        btn_layout.addWidget(cancel_btn)
-
-        save_btn = QPushButton(t("save"))
-        save_btn.setCursor(Qt.PointingHandCursor)
-        save_btn.clicked.connect(dialog.accept)
-        btn_layout.addWidget(save_btn)
-
-        layout.addLayout(btn_layout)
-
-        if dialog.exec() == QDialog.Accepted:
-            new_lyrics = text_edit.toPlainText()
-            if new_lyrics.strip():
-                LyricsService.save_lyrics(track_path, new_lyrics)
-                self._panel.set_lyrics(new_lyrics)
+        if result is not None:
+            if result.strip():
+                self._panel.set_lyrics(result)
             else:
-                LyricsService.delete_lyrics(track_path)
                 self._panel.set_no_lyrics()
 
     def delete_lyrics(self):

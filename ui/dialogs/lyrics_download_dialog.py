@@ -5,7 +5,7 @@ import logging
 from typing import Optional, List
 
 from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QCheckBox,
     QProgressBar,
+    QWidget,
+    QGraphicsDropShadowEffect,
 )
 from shiboken6.Shiboken import isValid
 
@@ -82,9 +84,16 @@ class LyricsDownloadDialog(QDialog):
     download_requested = Signal(dict, bool)  # Emits (song_info, download_cover)
 
     _STYLE_TEMPLATE = """
-        QDialog {
-            background-color: %background_hover%;
+        QWidget#dialogContainer {
+            background-color: %background_alt%;
             color: %text%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QLabel#dialogTitle {
+            color: %text%;
+            font-size: 15px;
+            font-weight: bold;
         }
         QLabel {
             color: %text%;
@@ -122,6 +131,9 @@ class LyricsDownloadDialog(QDialog):
         QPushButton[role="cancel"] {
             background-color: %border%;
             color: %text%;
+        }
+        QPushButton[role="cancel"]:hover {
+            background-color: %background_hover%;
         }
         QCheckBox {
             color: %text%;
@@ -180,10 +192,24 @@ class LyricsDownloadDialog(QDialog):
         self._selected_song: Optional[dict] = None
         self._download_cover = False
         self._search_thread: Optional[LyricsSearchThread] = None
+        self._drag_pos = None
 
+        # Make dialog frameless
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self._setup_shadow()
         self._setup_ui()
         self._start_search()
         ThemeManager.instance().register_widget(self)
+
+    def _setup_shadow(self):
+        """Setup drop shadow effect."""
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 8)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
 
     def _setup_ui(self):
         """Setup the dialog UI."""
@@ -192,7 +218,23 @@ class LyricsDownloadDialog(QDialog):
         self.setMinimumHeight(500)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
-        layout = QVBoxLayout(self)
+        # Outer layout with 0 margins — container fills the dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Container widget for rounded corners
+        container = QWidget()
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        layout = QVBoxLayout(container)
+        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        # Title
+        title_label = QLabel(t("select_song"))
+        title_label.setObjectName("dialogTitle")
+        layout.addWidget(title_label)
 
         # Info label
         self._info_label = QLabel(
@@ -225,6 +267,8 @@ class LyricsDownloadDialog(QDialog):
 
         # Buttons
         button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
         cancel_btn.setCursor(QCursor(Qt.PointingHandCursor))
@@ -235,7 +279,6 @@ class LyricsDownloadDialog(QDialog):
         self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._download_btn.clicked.connect(self.accept)
 
-        button_layout.addStretch()
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(self._download_btn)
         layout.addLayout(button_layout)
@@ -473,3 +516,24 @@ class LyricsDownloadDialog(QDialog):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         if self._status_label:
             self._status_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary};")
+
+    def resizeEvent(self, event):
+        """Apply rounded corner mask."""
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press for drag to move."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for drag to move."""
+        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release."""
+        self._drag_pos = None
