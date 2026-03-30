@@ -5,6 +5,8 @@ import logging
 import shutil
 from pathlib import Path
 
+from system.theme import ThemeManager
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -48,16 +50,24 @@ class LoadTracksWorker(QThread):
 
     finished = Signal(list)
 
-    def __init__(self, library_service, search_text="", parent=None):
+    def __init__(self, library_service, search_text="", source_filter="all", parent=None):
         super().__init__(parent)
         self._library = library_service
         self._search_text = search_text
+        self._source_filter = source_filter
 
     def run(self):
         if self._search_text:
             tracks = self._library.search_tracks(self._search_text)
         else:
             tracks = self._library.get_all_tracks()
+
+        # Filter by source if needed
+        if self._source_filter and self._source_filter != "all":
+            from domain.track import TrackSource
+            source_enum = TrackSource(self._source_filter)
+            tracks = [t for t in tracks if t.source == source_enum]
+
         self.finished.emit(tracks)
 
 
@@ -72,6 +82,7 @@ class LibraryView(QWidget):
             font-weight: bold;
             padding: 10px;
         }
+        """ + ThemeManager.get_combobox_style() + """
         QLineEdit {
             background-color: %background_hover%;
             color: %text%;
@@ -275,6 +286,20 @@ class LibraryView(QWidget):
 
         header_layout.addStretch()
 
+        # Source filter dropdown
+        from PySide6.QtWidgets import QComboBox
+        self._source_filter = QComboBox()
+        self._source_filter.addItem(t("all_sources"), "all")
+        self._source_filter.addItem(t("source_local"), "Local")
+        self._source_filter.addItem(t("source_quark"), "QUARK")
+        self._source_filter.addItem(t("source_baidu"), "BAIDU")
+        self._source_filter.addItem(t("source_qq"), "QQ")
+        self._source_filter.setFixedWidth(120)
+        header_layout.addWidget(self._source_filter)
+
+        # Add spacing between filter and search box
+        header_layout.addSpacing(10)
+
         # Search box
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText(t("search_tracks"))
@@ -287,9 +312,9 @@ class LibraryView(QWidget):
         # Tracks table
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(6)
+        self._tracks_table.setColumnCount(7)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("duration"), ""]
+            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration"), ""]
         )
 
         # Configure table
@@ -311,10 +336,11 @@ class LibraryView(QWidget):
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         # Favorites: fixed small width
-        header.setSectionResizeMode(5, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(5, 40)
+        header.setSectionResizeMode(6, QHeaderView.Fixed)
+        self._tracks_table.setColumnWidth(6, 40)
 
         # Loading indicator
         self._loading_label = QLabel("⏳ " + t("loading"))
@@ -338,6 +364,7 @@ class LibraryView(QWidget):
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(300)
         self._search_timer.timeout.connect(self._on_search)
+        self._source_filter.currentIndexChanged.connect(self._on_source_filter_changed)
         self._tracks_table.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         # Connect to player engine signals
@@ -376,7 +403,7 @@ class LibraryView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("duration"), ""]
+            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration"), ""]
         )
 
         # Update title based on current view
@@ -403,6 +430,9 @@ class LibraryView(QWidget):
         self._current_view = "all"
         self._title_label.setText(t("library"))
 
+        # Show source filter for library view
+        self._source_filter.setVisible(True)
+
         # 恢复 Library 视图的搜索文本
         saved_text = self._view_search_texts.get("all", "")
         self._search_input.setText(saved_text)
@@ -427,6 +457,9 @@ class LibraryView(QWidget):
         self._current_view = "favorites"
         self._title_label.setText(t("favorites"))
 
+        # Hide source filter for favorites view
+        self._source_filter.setVisible(False)
+
         # 恢复 Favorites 视图的搜索文本
         saved_text = self._view_search_texts.get("favorites", "")
         self._search_input.setText(saved_text)
@@ -445,6 +478,9 @@ class LibraryView(QWidget):
 
         self._current_view = "history"
         self._title_label.setText(t("history"))
+
+        # Hide source filter for history view
+        self._source_filter.setVisible(False)
 
         # 恢复 History 视图的搜索文本
         saved_text = self._view_search_texts.get("history", "")
@@ -470,8 +506,9 @@ class LibraryView(QWidget):
                 self._load_worker.wait()
 
         search_text = self._search_input.text()
+        source_filter = self._source_filter.currentData()
         self._load_worker = LoadTracksWorker(
-            self._library_service, search_text=search_text, parent=self
+            self._library_service, search_text=search_text, source_filter=source_filter, parent=self
         )
         self._load_worker.finished.connect(self._on_tracks_loaded)
         self._load_worker.start()
@@ -564,11 +601,16 @@ class LibraryView(QWidget):
             album_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 3, album_item)
 
+            # Genre
+            genre_item = QTableWidgetItem(item.get("genre", "") or t("unknown"))
+            genre_item.setForeground(text_brush)
+            self._tracks_table.setItem(row, 4, genre_item)
+
             # Duration
             # format_duration imported at top
             duration_item = QTableWidgetItem(format_duration(item.get("duration", 0)))
             duration_item.setForeground(text_brush)
-            self._tracks_table.setItem(row, 4, duration_item)
+            self._tracks_table.setItem(row, 5, duration_item)
 
         # Re-enable updates after batch population
         self._tracks_table.setUpdatesEnabled(True)
@@ -717,10 +759,15 @@ class LibraryView(QWidget):
                 album_item.setForeground(QBrush(text_secondary_color))
                 self._tracks_table.setItem(row, 3, album_item)
 
+                # Genre
+                genre_item = QTableWidgetItem(track.genre or t("unknown"))
+                genre_item.setForeground(QBrush(text_secondary_color))
+                self._tracks_table.setItem(row, 4, genre_item)
+
                 # Duration
                 duration_item = QTableWidgetItem(format_duration(track.duration))
                 duration_item.setForeground(QBrush(text_secondary_color))
-                self._tracks_table.setItem(row, 4, duration_item)
+                self._tracks_table.setItem(row, 5, duration_item)
 
                 # Favorite indicator (check if actually favorited) - O(1) set lookup
                 is_fav = track.id in favorite_ids
@@ -731,7 +778,7 @@ class LibraryView(QWidget):
                 fav_item.setForeground(
                     QBrush(QColor(tm.current_theme.highlight if is_fav else tm.current_theme.border))
                 )
-                self._tracks_table.setItem(row, 5, fav_item)
+                self._tracks_table.setItem(row, 6, fav_item)
 
                 # Process events periodically to keep UI responsive
                 if (row + 1) % batch_size == 0:
@@ -798,6 +845,12 @@ class LibraryView(QWidget):
     def _on_search_text_changed(self, text: str):
         """Debounce search - restart timer on each keystroke."""
         self._search_timer.start()
+
+    def _on_source_filter_changed(self):
+        """Handle source filter change."""
+        # Reload tracks with new filter
+        if self._current_view == "all":
+            self._load_all_tracks()
 
     def _on_search(self, query: str = ""):
         """Handle search based on current view (debounced)."""

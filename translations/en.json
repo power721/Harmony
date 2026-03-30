@@ -60,6 +60,7 @@
     "source_quark": "Quark",
     "source_baidu": "Baidu",
     "source_qq": "QQ Music",
+    "all_sources": "All Sources",
     "artist": "Artist",
     "album": "Album",
     "duration": "Duration",

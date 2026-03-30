@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSlider,
     QLabel, QPushButton, QComboBox
 )
+from system.theme import ThemeManager
 
 
 class EqualizerPreset:
@@ -55,45 +56,7 @@ class EqualizerWidget(QWidget):
 
     _PRESET_LABEL_STYLE = "color: %text_secondary%;"
 
-    _COMBO_STYLE = """
-        QComboBox {
-            background-color: %background_alt%;
-            color: %text%;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
-        }
-        QComboBox:hover {
-            background-color: %border%;
-        }
-        QComboBox::drop-down {
-            border: none;
-        }
-        QComboBox::down-arrow {
-            color: %text_secondary%;
-        }
-        QComboBox QAbstractItemView {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            selection-background-color: %highlight%;
-            selection-color: %background%;
-            padding: 4px;
-        }
-        QComboBox QAbstractItemView::item {
-            color: %text%;
-            padding: 6px 12px;
-            min-height: 24px;
-        }
-        QComboBox QAbstractItemView::item:hover {
-            background-color: %border%;
-            color: %text%;
-        }
-        QComboBox QAbstractItemView::item:selected {
-            background-color: %highlight%;
-            color: %text%;
-        }
-    """
+    _COMBO_STYLE = ThemeManager.get_combobox_style()
 
     _BUTTON_STYLE = """
         QPushButton {

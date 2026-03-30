@@ -174,6 +174,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 t.title,
                 t.artist,
                 t.album,
+                t.genre,
                 t.duration,
                 t.source,
                 t.cover_path

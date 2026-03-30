@@ -306,6 +306,54 @@ class ThemeManager(QObject):
 
         return result
 
+    @staticmethod
+    def get_combobox_style() -> str:
+        """
+        Get unified QComboBox style template.
+
+        Returns:
+            QSS string with theme tokens for QComboBox styling
+        """
+        return """
+            QComboBox {
+                background-color: %background%;
+                border: 1px solid %border%;
+                border-radius: 6px;
+                padding: 0px 12px;
+                min-height: 32px;
+                color: %text%;
+                min-width: 80px;
+            }
+            QComboBox:hover {
+                background-color: %background_hover%;
+                border: 1px solid %highlight%;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: %background_alt%;
+                border: 1px solid %border%;
+                color: %text%;
+                selection-background-color: %highlight%;
+                selection-color: %background%;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item {
+                padding: 6px 10px;
+                min-height: 20px;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background-color: %highlight%;
+                color: %background%;
+            }
+            QComboBox QAbstractItemView::item:selected {
+                background-color: %highlight%;
+                color: %background%;
+            }
+        """
+
     def apply_global_stylesheet(self):
         """Load and apply themed global stylesheet to QApplication."""
         app = QApplication.instance()

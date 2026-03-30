@@ -135,43 +135,7 @@ class GeneralSettingsDialog(QDialog):
         QTabBar::tab:hover:!selected {
             background-color: %selection%;
         }
-        QComboBox {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 0px 12px;
-            min-height: 32px;
-            font-size: 13px;
-        }
-        QComboBox:hover {
-            background-color: %background_hover%;
-            border: 1px solid %highlight%;
-        }
-        QComboBox::drop-down {
-            border: none;
-            width: 30px;
-        }
-        QComboBox QAbstractItemView {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            selection-background-color: %highlight%;
-            selection-color: %background%;
-            outline: none;
-        }
-        QComboBox QAbstractItemView::item {
-            padding: 6px 10px;
-            min-height: 20px;
-        }
-        QComboBox QAbstractItemView::item:hover {
-            background-color: %highlight%;
-            color: %background%;
-        }
-        QComboBox QAbstractItemView::item:selected {
-            background-color: %highlight%;
-            color: %background%;
-        }
+        """ + ThemeManager.get_combobox_style() + """
     """
 
     def __init__(self, config_manager, parent=None):

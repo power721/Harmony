@@ -291,23 +291,7 @@ QSpinBox {
 QSpinBox::up-button, QSpinBox::down-button {
     width: 20px;
 }
-QComboBox::drop-down { border: none; width: 30px; }
-QComboBox {
-    background-color: %background%;
-    border: 1px solid %border%;
-    border-radius: 6px;
-    padding: 0px 12px;
-    min-height: 32px;
-    color: %text%;
-    min-width: 120px;
-}
-QComboBox QAbstractItemView {
-    background-color: %background_alt%;
-    border: 1px solid %border%;
-    color: %text%;
-    selection-background-color: %highlight%;
-    selection-color: %background%;
-}
+""" + ThemeManager.get_combobox_style() + """
 QPushButton { background-color: %highlight%; color: %background%; border: none; border-radius: 6px; padding: 8px 24px; font-size: 14px; min-width: 80px; }
 QPushButton:hover { background-color: %highlight_hover%; }
 QPushButton:pressed { background-color: %selection%; }
