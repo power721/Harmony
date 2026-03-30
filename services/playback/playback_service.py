@@ -308,6 +308,34 @@ class PlaybackService(QObject):
         """Get current volume (0-100)."""
         return self._engine.volume
 
+    def _filter_and_convert_tracks(self, tracks: List[Track]) -> List[PlaylistItem]:
+        """
+        Filter and convert tracks to playlist items.
+
+        This helper method consolidates the common logic for:
+        - Filtering out invalid tracks
+        - Checking file existence for local tracks
+        - Including online tracks (QQ Music)
+        - Converting Track to PlaylistItem
+
+        Args:
+            tracks: List of Track objects to process
+
+        Returns:
+            List of PlaylistItem objects
+        """
+        items = []
+        for track in tracks:
+            if not track or not track.id or track.id <= 0:
+                continue
+
+            # Include online tracks (empty path) and existing local files
+            is_online = not track.path or track.source == TrackSource.QQ
+            if is_online or Path(track.path).exists():
+                items.append(PlaylistItem.from_track(track))
+
+        return items
+
     @property
     def play_mode(self) -> PlayMode:
         """Get current play mode."""
@@ -394,18 +422,19 @@ class PlaybackService(QObject):
         self._engine.cleanup_temp_files()
 
         tracks = self._db.get_all_tracks()
+
+        # Build items and find start index
         items = []
         start_index = 0
-
         for t in tracks:
-            if t.id and t.id > 0:
-                # Include online tracks (empty path) and existing local files
-                t_is_online = not t.path or t.source == TrackSource.QQ
-                if t_is_online or Path(t.path).exists():
-                    item = PlaylistItem.from_track(t)
-                    if t.id == track_id:
-                        start_index = len(items)
-                    items.append(item)
+            if not t or not t.id or t.id <= 0:
+                continue
+            is_online = not t.path or t.source == TrackSource.QQ
+            if is_online or Path(t.path).exists():
+                item = PlaylistItem.from_track(t)
+                if t.id == track_id:
+                    start_index = len(items)
+                items.append(item)
 
         self._engine.load_playlist_items(items)
 
@@ -436,16 +465,7 @@ class PlaybackService(QObject):
 
         # Batch-load all tracks at once
         tracks = self._db.get_tracks_by_ids(track_ids)
-        track_map = {t.id: t for t in tracks}
-
-        items = []
-        for track_id in track_ids:
-            track = track_map.get(track_id)
-            if track:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
+        items = self._filter_and_convert_tracks(tracks)
 
         self._engine.load_playlist_items(items)
 
@@ -463,15 +483,7 @@ class PlaybackService(QObject):
         self._set_source("local")
 
         tracks = self._db.get_all_tracks()
-        items = []
-
-        for t in tracks:
-            if t.id and t.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not t.path or t.source == TrackSource.QQ
-                if is_online or Path(t.path).exists():
-                    items.append(PlaylistItem.from_track(t))
-
+        items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
@@ -492,15 +504,7 @@ class PlaybackService(QObject):
         # self._set_source("local")
 
         tracks = self._db.get_playlist_tracks(playlist_id)
-        items = []
-
-        for track in tracks:
-            if track.id and track.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
-
+        items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
@@ -519,18 +523,12 @@ class PlaybackService(QObject):
         self._set_source("local")
 
         tracks = self._db.get_playlist_tracks(playlist_id)
-        items = []
+        items = self._filter_and_convert_tracks(tracks)
         start_index = 0
-
-        for track in tracks:
-            if track.id and track.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    item = PlaylistItem.from_track(track)
-                    if track.id == track_id:
-                        start_index = len(items)
-                    items.append(item)
+        for i, item in enumerate(items):
+            if item.track_id == track_id:
+                start_index = i
+                break
 
         self._engine.load_playlist_items(items)
 
@@ -547,15 +545,7 @@ class PlaybackService(QObject):
     def load_favorites(self):
         """Load all favorite tracks."""
         tracks = self._db.get_favorites()
-        items = []
-
-        for track in tracks:
-            if track.id:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
-
+        items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:

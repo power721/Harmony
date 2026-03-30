@@ -49,6 +49,16 @@ BAIDU_ERRNO = {
 class BaiduDriveService:
     """Service for Baidu Drive cloud storage integration"""
 
+    # Class-level session for connection pooling
+    _session = None
+
+    @classmethod
+    def _get_session(cls):
+        """Get or create the shared session for connection pooling."""
+        if cls._session is None:
+            cls._session = requests.Session()
+        return cls._session
+
     BASE_URL = "https://pan.baidu.com"
     PASSPORT_URL = "https://passport.baidu.com"
 
@@ -75,7 +85,7 @@ class BaiduDriveService:
                 'tt': int(time.time() * 1000),
             }
 
-            response = requests.get(url, params=params, headers=cls.HEADERS, timeout=10)
+            response = cls._get_session().get(url, params=params, headers=cls.HEADERS, timeout=10)
 
             # Check if response is valid
             if not response.text:
@@ -115,7 +125,7 @@ class BaiduDriveService:
                     'callback': ''
                 }
 
-                response = requests.get(url, params=params, headers=cls.HEADERS, timeout=10)
+                response = cls._get_session().get(url, params=params, headers=cls.HEADERS, timeout=10)
 
                 if not response.text:
                     return {'status': 'waiting', 'message': 'Waiting for scan'}
@@ -156,7 +166,7 @@ class BaiduDriveService:
                 'callback': ''
             }
 
-            response = requests.get(url, params=params, headers=cls.HEADERS,
+            response = cls._get_session().get(url, params=params, headers=cls.HEADERS,
                                     timeout=10, allow_redirects=True)
 
             # Extract cookies from both the response and the redirect chain
@@ -244,7 +254,7 @@ class BaiduDriveService:
 
             headers['Cookie'] = access_token
 
-            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response = cls._get_session().get(url, params=params, headers=headers, timeout=30)
 
             if not response.text:
                 logger.error("Baidu file list: empty response")
@@ -347,7 +357,7 @@ class BaiduDriveService:
                         'origin': 'dlna',
                     }
 
-                    response = requests.get(media_url, params=params, headers=headers, timeout=30)
+                    response = cls._get_session().get(media_url, params=params, headers=headers, timeout=30)
 
                     if response.text:
                         data = response.json()
@@ -367,7 +377,7 @@ class BaiduDriveService:
                 "web": 1
             }
 
-            response = requests.get(meta_url, params=params, headers=headers, timeout=30)
+            response = cls._get_session().get(meta_url, params=params, headers=headers, timeout=30)
 
             if not response.text:
                 logger.error("Baidu download: empty response")
@@ -427,7 +437,7 @@ class BaiduDriveService:
             try:
                 user_url = f"{cls.BASE_URL}/rest/2.0/xpan/nas"
                 params = {'method': 'uinfo'}
-                user_response = requests.get(user_url, params=params, headers=headers, timeout=30)
+                user_response = cls._get_session().get(user_url, params=params, headers=headers, timeout=30)
                 if user_response.status_code == 200 and user_response.text:
                     user_data = user_response.json()
                     if user_data.get('errno') == 0:
@@ -447,7 +457,7 @@ class BaiduDriveService:
                     "web": 1,
                     "channel": "chunlei"
                 }
-                quota_response = requests.get(quota_url, params=params, headers=headers, timeout=30)
+                quota_response = cls._get_session().get(quota_url, params=params, headers=headers, timeout=30)
                 if quota_response.status_code == 200 and quota_response.text:
                     quota_data = quota_response.json()
                     if quota_data.get('errno') == 0:
@@ -506,7 +516,7 @@ class BaiduDriveService:
             # Test cookie via xpan nas API
             user_url = f"{cls.BASE_URL}/rest/2.0/xpan/nas"
             params = {'method': 'uinfo'}
-            response = requests.get(user_url, params=params, headers=headers, timeout=30)
+            response = cls._get_session().get(user_url, params=params, headers=headers, timeout=30)
 
             if response.status_code == 200 and response.text:
                 data = response.json()
@@ -544,7 +554,7 @@ class BaiduDriveService:
                     'Cookie': access_token,
                 }
 
-                r = requests.get(url, headers=headers,
+                r = cls._get_session().get(url, headers=headers,
                                 allow_redirects=False, timeout=10)
 
                 real_url = r.headers.get('Location')
@@ -559,7 +569,7 @@ class BaiduDriveService:
                 'Cookie': access_token,
             }
 
-            response = requests.get(url, headers=headers, timeout=120, stream=True)
+            response = cls._get_session().get(url, headers=headers, timeout=120, stream=True)
 
             if response.status_code == 200:
                 with open(dest_path, 'wb') as f:

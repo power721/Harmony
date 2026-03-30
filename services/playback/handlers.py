@@ -60,6 +60,29 @@ class LocalTrackHandler:
         self._set_source = set_source_callback
         self._save_queue = save_queue_callback
 
+    @staticmethod
+    def _filter_and_convert_tracks(tracks) -> List:
+        """
+        Filter and convert tracks to playlist items.
+
+        Consolidates common logic for filtering invalid tracks,
+        checking file existence, and converting to PlaylistItem.
+
+        Args:
+            tracks: List of Track objects to process
+
+        Returns:
+            List of PlaylistItem objects
+        """
+        items = []
+        for track in tracks:
+            if not track or not track.id or track.id <= 0:
+                continue
+            is_online = not track.path or track.source == TrackSource.QQ
+            if is_online or Path(track.path).exists():
+                items.append(PlaylistItem.from_track(track))
+        return items
+
     def play_track(self, track_id: int):
         """
         Play a local track by ID.
@@ -132,16 +155,7 @@ class LocalTrackHandler:
 
         # Batch-load all tracks at once
         tracks = self._db.get_tracks_by_ids(track_ids)
-        track_map = {t.id: t for t in tracks}
-
-        items = []
-        for track_id in track_ids:
-            track = track_map.get(track_id)
-            if track:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
+        items = self._filter_and_convert_tracks(tracks)
 
         self._engine.load_playlist_items(items)
 
@@ -159,15 +173,7 @@ class LocalTrackHandler:
         self._set_source("local")
 
         tracks = self._db.get_all_tracks()
-        items = []
-
-        for t in tracks:
-            if t.id and t.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not t.path or t.source == TrackSource.QQ
-                if is_online or Path(t.path).exists():
-                    items.append(PlaylistItem.from_track(t))
-
+        items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
@@ -186,15 +192,7 @@ class LocalTrackHandler:
         logger.debug(f"[LocalTrackHandler] Loading playlist: {playlist_id}")
 
         tracks = self._db.get_playlist_tracks(playlist_id)
-        items = []
-
-        for track in tracks:
-            if track.id and track.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    items.append(PlaylistItem.from_track(track))
-
+        items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
@@ -211,18 +209,12 @@ class LocalTrackHandler:
         self._set_source("local")
 
         tracks = self._db.get_playlist_tracks(playlist_id)
-        items = []
+        items = self._filter_and_convert_tracks(tracks)
         start_index = 0
-
-        for track in tracks:
-            if track.id and track.id > 0:
-                # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
-                if is_online or Path(track.path).exists():
-                    item = PlaylistItem.from_track(track)
-                    if track.id == track_id:
-                        start_index = len(items)
-                    items.append(item)
+        for i, item in enumerate(items):
+            if item.track_id == track_id:
+                start_index = i
+                break
 
         self._engine.load_playlist_items(items)
 

@@ -29,6 +29,16 @@ class QuarkDriveService:
         'Origin': 'https://pan.quark.cn'
     }
 
+    # Class-level session for connection pooling
+    _session = None
+
+    @classmethod
+    def _get_session(cls):
+        """Get or create the shared session for connection pooling."""
+        if cls._session is None:
+            cls._session = requests.Session()
+        return cls._session
+
     @classmethod
     def _update_cookie_from_response(cls, access_token: str, response_cookies) -> str:
         """Update access token cookie with new __puus if present in response cookies."""
@@ -72,7 +82,7 @@ class QuarkDriveService:
                 'request_id': t
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = cls._get_session().get(url, params=params, timeout=10)
 
             data = response.json()
 
@@ -106,7 +116,7 @@ class QuarkDriveService:
                     'request_id': t
                 }
 
-                response = requests.get(url, params=params, timeout=10)
+                response = cls._get_session().get(url, params=params, timeout=10)
                 data = response.json()
                 status = data.get('status')
                 message = data.get('message', '')
@@ -118,7 +128,7 @@ class QuarkDriveService:
                     # Get account info with ticket
                     info_url = f"https://pan.quark.cn/account/info"
                     info_params = {'st': ticket, 'lw': 'scan'}
-                    info_response = requests.get(info_url, params=info_params, timeout=10)
+                    info_response = cls._get_session().get(info_url, params=info_params, timeout=10)
 
                     # Extract cookies
                     cookies = info_response.cookies
@@ -245,7 +255,7 @@ class QuarkDriveService:
 
             data = {'fids': [file_id]}
 
-            response = requests.post(url, params=params, json=data,
+            response = cls._get_session().post(url, params=params, json=data,
                                      headers=headers, timeout=30)
 
             # Check for updated cookies

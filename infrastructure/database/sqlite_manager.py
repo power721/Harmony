@@ -1171,6 +1171,8 @@ class DatabaseManager:
         """
         Bulk insert/update tracks in a single transaction.
 
+        Optimized to use batch operations instead of individual INSERTs.
+
         Args:
             tracks: List of Track objects to add
 
@@ -1181,6 +1183,19 @@ class DatabaseManager:
             added = 0
             skipped = 0
             cursor = conn.cursor()
+
+            if not tracks:
+                return added, skipped
+
+            # Batch check for existing paths
+            paths = [track.path for track in tracks]
+            placeholders = ",".join("?" for _ in paths)
+            cursor.execute(f"SELECT id, path FROM tracks WHERE path IN ({placeholders})", paths)
+            existing_map = {row["path"]: row["id"] for row in cursor.fetchall()}
+
+            # Separate into new tracks and updates
+            new_tracks = []
+            update_tracks = []
 
             for track in tracks:
                 track_data = {
@@ -1197,53 +1212,48 @@ class DatabaseManager:
                     'file_mtime': getattr(track, 'file_mtime', None),
                 }
 
-                # Check if path already exists
-                cursor.execute("SELECT id FROM tracks WHERE path = ?", (track_data['path'],))
-                existing = cursor.fetchone()
-
-                if existing:
-                    # Update metadata for changed files
-                    cursor.execute(
-                        """
-                        UPDATE tracks
-                        SET title=?, artist=?, album=?, duration=?, cover_path=?,
-                            file_size=?, file_mtime=?
-                        WHERE path=?
-                        """,
-                        (
-                            track_data['title'],
-                            track_data['artist'],
-                            track_data['album'],
-                            track_data['duration'],
-                            track_data['cover_path'],
-                            track_data['file_size'],
-                            track_data['file_mtime'],
-                            track_data['path'],
-                        ),
-                    )
-                    skipped += 1
+                if track.path in existing_map:
+                    update_tracks.append(track_data)
                 else:
-                    cursor.execute(
-                        """
-                        INSERT INTO tracks
-                        (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
+                    new_tracks.append(track_data)
+
+            # Batch insert new tracks
+            if new_tracks:
+                cursor.executemany(
+                    """
+                    INSERT INTO tracks
+                    (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
                         (
-                            track_data['path'],
-                            track_data['title'],
-                            track_data['artist'],
-                            track_data['album'],
-                            track_data['duration'],
-                            track_data['cover_path'],
-                            track_data['created_at'],
-                            track_data['cloud_file_id'],
-                            track_data['source'],
-                            track_data['file_size'],
-                            track_data['file_mtime'],
-                        ),
-                    )
-                    added += 1
+                            t['path'], t['title'], t['artist'], t['album'],
+                            t['duration'], t['cover_path'], t['created_at'],
+                            t['cloud_file_id'], t['source'], t['file_size'], t['file_mtime']
+                        )
+                        for t in new_tracks
+                    ]
+                )
+                added = len(new_tracks)
+
+            # Batch update existing tracks
+            if update_tracks:
+                cursor.executemany(
+                    """
+                    UPDATE tracks
+                    SET title=?, artist=?, album=?, duration=?, cover_path=?,
+                        file_size=?, file_mtime=?
+                    WHERE path=?
+                    """,
+                    [
+                        (
+                            t['title'], t['artist'], t['album'], t['duration'],
+                            t['cover_path'], t['file_size'], t['file_mtime'], t['path']
+                        )
+                        for t in update_tracks
+                    ]
+                )
+                skipped = len(update_tracks)
 
             conn.commit()
             return added, skipped
