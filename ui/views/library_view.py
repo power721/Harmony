@@ -2121,7 +2121,8 @@ class LibraryView(QWidget):
     def _on_history_track_activated(self, track: Track):
         """Handle track activation from history list view."""
         # Add track to queue and play
-        from domain.playlist import PlaylistItem
+        from domain import PlaylistItem
         item = PlaylistItem(track_id=track.id)
+        # TODO:
         self._player.engine.set_playlist([item])
         self._player.engine.play()
