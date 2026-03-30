@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QAbstractItemView,
     QDialog,
-    QLineEdit,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QListView,
@@ -35,6 +34,7 @@ from services.library.playlist_service import PlaylistService
 from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.dialogs import EditMediaInfoDialog
 from ui.dialogs.add_to_playlist_dialog import AddToPlaylistDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from utils.dedup import deduplicate_playlist_items
@@ -246,7 +246,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         self._cover_loaded_signal.connect(self._on_cover_loaded)
         self._cover_versions: dict[str, int] = {}
         self._requested_covers: set[str] = set()  # track IDs with pending cover requests
-        self._failed_covers: set[str] = set()    # track IDs where cover loading returned nothing
+        self._failed_covers: set[str] = set()  # track IDs where cover loading returned nothing
         CoverPixmapCache.initialize()
         self._cover_size = 64
         self._index_width = 40
@@ -423,7 +423,8 @@ class QueueItemDelegate(QStyledItemDelegate):
                     nearby_track = model.get_track_at(nearby_row)
                     if nearby_track:
                         nearby_key = self._get_cover_cache_key(nearby_track)
-                        if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(nearby_key):
+                        if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(
+                                nearby_key):
                             self._requested_covers.add(nearby_key)
                             worker = CoverLoadWorker(
                                 nearby_key,
@@ -1348,6 +1349,11 @@ class QueueView(QWidget):
 
         menu.addSeparator()
 
+        edit_action = menu.addAction(t("edit_media_info"))
+        edit_action.triggered.connect(lambda: self._edit_media_info())
+
+        menu.addSeparator()
+
         # Add to playlist action
         add_to_playlist_action = menu.addAction(t("add_to_playlist"))
         add_to_playlist_action.triggered.connect(self._add_selected_to_playlist)
@@ -1435,103 +1441,27 @@ class QueueView(QWidget):
 
     def _edit_media_info(self):
         """Edit media information for selected track."""
-        from PySide6.QtWidgets import (
-            QDialog,
-            QVBoxLayout,
-            QFormLayout,
-            QLabel,
-            QLineEdit,
-            QDialogButtonBox,
-        )
-        from services import MetadataService
-
         selected_rows = self._model.get_selected_rows()
         if not selected_rows:
             return
 
-        track = self._model.get_track_at(selected_rows[0])
+        track_ids = []
+        for row in selected_rows:
+            track = self._model.get_track_at(row)
+            if track:
+                track_ids.append(track["id"])
 
-        if not track or not isinstance(track, dict):
+        if not track_ids:
             return
 
-        track_id = track.get("id")
-        if not track_id:
-            return
-
-        track = self._library_service.get_track(track_id)
-        if not track:
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("edit_media_info_title"))
-        dialog.setMinimumWidth(450)
-        from system.theme import ThemeManager
-        dialog.setStyleSheet(ThemeManager.instance().get_qss(self._EDIT_DIALOG_STYLE))
-
-        layout = QVBoxLayout(dialog)
-
-        form_layout = QFormLayout()
-        form_layout.setSpacing(10)
-        form_layout.setLabelAlignment(Qt.AlignRight)
-
-        title_input = QLineEdit(track.title or "")
-        title_input.setPlaceholderText(t("enter_title"))
-        artist_input = QLineEdit(track.artist or "")
-        artist_input.setPlaceholderText(t("enter_artist"))
-        album_input = QLineEdit(track.album or "")
-        album_input.setPlaceholderText(t("enter_album"))
-
-        path_label = QLabel(track.path)
-        theme = ThemeManager.instance().current_theme
-        path_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
-        path_label.setWordWrap(True)
-
-        form_layout.addRow(t("title") + ":", title_input)
-        form_layout.addRow(t("artist") + ":", artist_input)
-        form_layout.addRow(t("album") + ":", album_input)
-        form_layout.addRow(t("file") + ":", path_label)
-
-        layout.addLayout(form_layout)
-
-        buttons = QDialogButtonBox()
-        ok_button = QPushButton(t("save"))
-        ok_button.setCursor(Qt.PointingHandCursor)
-        cancel_button = QPushButton(t("cancel"))
-        cancel_button.setCursor(Qt.PointingHandCursor)
-        cancel_button.setProperty("role", "cancel")
-
-        buttons.addButton(ok_button, QDialogButtonBox.AcceptRole)
-        buttons.addButton(cancel_button, QDialogButtonBox.RejectRole)
-
-        layout.addWidget(buttons)
-
-        def save_changes():
-            new_title = title_input.text().strip() or track.title
-            new_artist = artist_input.text().strip() or track.artist
-            new_album = album_input.text().strip() or track.album
-
-            success = MetadataService.save_metadata(
-                track.path, title=new_title, artist=new_artist, album=new_album
-            )
-
-            if success:
-                track.title = new_title
-                track.artist = new_artist
-                track.album = new_album
-                self._library_service.update_track(track)
-                # Emit metadata_updated signal to update play_queue
-                EventBus.instance().metadata_updated.emit(track_id)
-                MessageDialog.information(self, t("success"), t("media_saved"))
-                self.refresh()
-            else:
-                MessageDialog.warning(self, "Error", t("media_save_failed"))
-
-            dialog.accept()
-
-        ok_button.clicked.connect(save_changes)
-        cancel_button.clicked.connect(dialog.reject)
-
+        dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
+        dialog.tracks_updated.connect(self._on_tracks_updated)
         dialog.exec()
+
+    def _on_tracks_updated(self, track_ids: List[int]):
+        """Handle tracks updated event from EditMediaInfoDialog."""
+        logger.info(f"Tracks updated {len(track_ids)} tracks")
+        # TODO: refresh_tracks_in_table
 
     def refresh(self):
         """Refresh the queue display."""
