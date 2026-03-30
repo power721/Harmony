@@ -87,6 +87,8 @@ class ArtistView(QWidget):
     def _setup_ui(self):
         """Set up the artist view UI."""
         from system.theme import ThemeManager
+        from ui.styles import get_scroll_area_style
+
         theme = ThemeManager.instance().current_theme
 
         self.setStyleSheet(f"background-color: {theme.background};")
@@ -101,24 +103,7 @@ class ArtistView(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet(f"""
-            QScrollArea {{
-                background-color: {theme.background};
-                border: none;
-            }}
-            QScrollBar:vertical {{
-                background-color: {theme.background};
-                width: 12px;
-            }}
-            QScrollBar::handle:vertical {{
-                background-color: {theme.background_alt};
-                border-radius: 6px;
-                min-height: 30px;
-            }}
-            QScrollBar::handle:vertical:hover {{
-                background-color: {theme.background_hover};
-            }}
-        """)
+        scroll_area.setStyleSheet(get_scroll_area_style(theme))
 
         # Content container
         self._content = QWidget()
