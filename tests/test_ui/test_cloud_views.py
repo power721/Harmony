@@ -12,9 +12,9 @@ from PySide6.QtWidgets import QApplication
 from domain.cloud import CloudFile, CloudAccount
 from ui.views.cloud.file_table import CloudFileTable
 from ui.views.cloud.context_menu import CloudFileContextMenu, CloudAccountContextMenu
+from system.theme import ThemeManager
 
 
-# Ensure QApplication exists for widget tests
 @pytest.fixture(scope="module")
 def qapp():
     """Create QApplication for tests."""
@@ -24,23 +24,42 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def reset_theme_singleton():
+    """Reset ThemeManager singleton before and after each test."""
+    ThemeManager._instance = None
+    yield
+    ThemeManager._instance = None
+
+
+@pytest.fixture
+def mock_config():
+    """Mock config manager for ThemeManager."""
+    config = Mock()
+    config.get.return_value = 'dark'
+    return config
+
+
 class TestCloudFileTable:
     """Tests for CloudFileTable widget."""
 
-    def test_init(self, qapp):
+    def test_init(self, qapp, mock_config):
         """Test table initialization."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
         assert table is not None
         assert table._table.columnCount() == 5
 
-    def test_populate_empty(self, qapp):
+    def test_populate_empty(self, qapp, mock_config):
         """Test populating with empty list."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
         table.populate([])
         assert table._table.rowCount() == 0
 
-    def test_populate_with_files(self, qapp):
+    def test_populate_with_files(self, qapp, mock_config):
         """Test populating with files."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
 
         files = [
@@ -80,8 +99,9 @@ class TestCloudFileTable:
         assert folder_item is not None
         assert "📁" in folder_item.text()
 
-    def test_update_playing_status(self, qapp):
+    def test_update_playing_status(self, qapp, mock_config):
         """Test updating playing status."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
 
         files = [
@@ -103,8 +123,9 @@ class TestCloudFileTable:
         name_item = table._table.item(0, 0)
         assert "▶️" in name_item.text() or "⏸️" in name_item.text()
 
-    def test_update_file_local_path(self, qapp):
+    def test_update_file_local_path(self, qapp, mock_config):
         """Test updating local path."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
 
         files = [
@@ -125,8 +146,9 @@ class TestCloudFileTable:
         status_item = table._table.item(0, 4)
         assert status_item.text() == "✓"
 
-    def test_get_current_files(self, qapp):
+    def test_get_current_files(self, qapp, mock_config):
         """Test getting current files."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
 
         files = [
@@ -146,8 +168,9 @@ class TestCloudFileTable:
         assert len(current_files) == 1
         assert current_files[0].file_id == "file1"
 
-    def test_clear(self, qapp):
+    def test_clear(self, qapp, mock_config):
         """Test clearing the table."""
+        ThemeManager.instance(mock_config)
         table = CloudFileTable()
 
         files = [

@@ -129,3 +129,40 @@ class TestPlayQueueItem:
         specific_time = datetime(2024, 1, 1, 12, 0, 0)
         item = PlayQueueItem(created_at=specific_time)
         assert item.created_at == specific_time
+
+    def test_download_failed_default_false(self):
+        """Test download_failed defaults to False."""
+        item = PlayQueueItem()
+        assert item.download_failed is False
+
+    def test_download_failed_set_true(self):
+        """Test download_failed can be set to True."""
+        item = PlayQueueItem(download_failed=True)
+        assert item.download_failed is True
+
+
+class TestPlayModeAdditional:
+    """Additional PlayMode tests."""
+
+    def test_play_mode_iteration(self):
+        """Test iterating over all PlayMode values."""
+        modes = list(PlayMode)
+        assert len(modes) == 6
+        assert PlayMode.SEQUENTIAL in modes
+        assert PlayMode.LOOP in modes
+        assert PlayMode.PLAYLIST_LOOP in modes
+        assert PlayMode.RANDOM in modes
+        assert PlayMode.RANDOM_LOOP in modes
+        assert PlayMode.RANDOM_TRACK_LOOP in modes
+
+
+class TestPlaybackStateAdditional:
+    """Additional PlaybackState tests."""
+
+    def test_playback_state_iteration(self):
+        """Test iterating over all PlaybackState values."""
+        states = list(PlaybackState)
+        assert len(states) == 3
+        assert PlaybackState.STOPPED in states
+        assert PlaybackState.PLAYING in states
+        assert PlaybackState.PAUSED in states

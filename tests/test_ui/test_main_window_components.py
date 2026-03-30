@@ -11,9 +11,9 @@ from PySide6.QtWidgets import QApplication
 from ui.windows.components.sidebar import Sidebar
 from ui.windows.components.lyrics_panel import LyricsPanel
 from ui.windows.components.online_music_handler import OnlineMusicHandler
+from system.theme import ThemeManager
 
 
-# Ensure QApplication exists for widget tests
 @pytest.fixture(scope="module")
 def qapp():
     """Create QApplication for tests."""
@@ -23,16 +23,34 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def reset_theme_singleton():
+    """Reset ThemeManager singleton before and after each test."""
+    ThemeManager._instance = None
+    yield
+    ThemeManager._instance = None
+
+
+@pytest.fixture
+def mock_config():
+    """Mock config manager for ThemeManager."""
+    config = Mock()
+    config.get.return_value = 'dark'
+    return config
+
+
 class TestSidebar:
     """Tests for Sidebar widget."""
 
-    def test_init(self, qapp):
+    def test_init(self, qapp, mock_config):
         """Test sidebar initialization."""
+        ThemeManager.instance(mock_config)
         sidebar = Sidebar()
         assert sidebar is not None
 
-    def test_page_constants(self, qapp):
+    def test_page_constants(self, qapp, mock_config):
         """Test page index constants match stacked widget order in MainWindow."""
+        ThemeManager.instance(mock_config)
         # Stacked widget order:
         # 0: library_view, 1: cloud_drive_view, 2: playlist_view, 3: queue_view
         # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: online_music_view
@@ -47,8 +65,9 @@ class TestSidebar:
         assert Sidebar.PAGE_FAVORITES == 100
         assert Sidebar.PAGE_HISTORY == 101
 
-    def test_signals_exist(self, qapp):
+    def test_signals_exist(self, qapp, mock_config):
         """Test that all expected signals exist."""
+        ThemeManager.instance(mock_config)
         sidebar = Sidebar()
 
         assert hasattr(sidebar, 'page_requested')
@@ -56,8 +75,9 @@ class TestSidebar:
         assert hasattr(sidebar, 'settings_requested')
         assert hasattr(sidebar, 'add_music_requested')
 
-    def test_set_current_page(self, qapp):
+    def test_set_current_page(self, qapp, mock_config):
         """Test setting current page."""
+        ThemeManager.instance(mock_config)
         sidebar = Sidebar()
 
         sidebar.set_current_page(Sidebar.PAGE_ALBUMS)
@@ -68,12 +88,13 @@ class TestSidebar:
                 assert btn.isChecked()
                 break
 
-    def test_update_settings_status(self, qapp):
+    def test_update_settings_status(self, qapp, mock_config):
         """Test updating settings status."""
-        mock_config = Mock()
-        mock_config.get_ai_enabled.return_value = True
+        ThemeManager.instance(mock_config)
+        mock_config_ai = Mock()
+        mock_config_ai.get_ai_enabled.return_value = True
 
-        sidebar = Sidebar(config_manager=mock_config)
+        sidebar = Sidebar(config_manager=mock_config_ai)
         sidebar.update_settings_status(True)
 
         # Button text should contain the checkmark
@@ -83,13 +104,15 @@ class TestSidebar:
 class TestLyricsPanel:
     """Tests for LyricsPanel widget."""
 
-    def test_init(self, qapp):
+    def test_init(self, qapp, mock_config):
         """Test panel initialization."""
+        ThemeManager.instance(mock_config)
         panel = LyricsPanel()
         assert panel is not None
 
-    def test_signals_exist(self, qapp):
+    def test_signals_exist(self, qapp, mock_config):
         """Test that all expected signals exist."""
+        ThemeManager.instance(mock_config)
         panel = LyricsPanel()
 
         assert hasattr(panel, 'download_requested')
@@ -99,16 +122,18 @@ class TestLyricsPanel:
         assert hasattr(panel, 'open_location_requested')
         assert hasattr(panel, 'seek_requested')
 
-    def test_set_lyrics(self, qapp):
+    def test_set_lyrics(self, qapp, mock_config):
         """Test setting lyrics content."""
+        ThemeManager.instance(mock_config)
         panel = LyricsPanel()
 
         panel.set_lyrics("Test lyrics content")
 
         # Should not raise any exceptions
 
-    def test_set_no_lyrics(self, qapp):
+    def test_set_no_lyrics(self, qapp, mock_config):
         """Test setting no lyrics message."""
+        ThemeManager.instance(mock_config)
         panel = LyricsPanel()
 
         panel.set_no_lyrics()
@@ -166,20 +191,22 @@ class TestOnlineMusicHandler:
 class TestSidebarWithConfig:
     """Tests for Sidebar with ConfigManager."""
 
-    def test_ai_enabled_shows_checkmark(self, qapp):
+    def test_ai_enabled_shows_checkmark(self, qapp, mock_config):
         """Test that AI enabled shows checkmark in settings button."""
-        mock_config = Mock()
-        mock_config.get_ai_enabled.return_value = True
+        ThemeManager.instance(mock_config)
+        mock_config_ai = Mock()
+        mock_config_ai.get_ai_enabled.return_value = True
 
-        sidebar = Sidebar(config_manager=mock_config)
+        sidebar = Sidebar(config_manager=mock_config_ai)
 
         assert "✅" in sidebar._settings_btn.text()
 
-    def test_ai_disabled_shows_gear(self, qapp):
+    def test_ai_disabled_shows_gear(self, qapp, mock_config):
         """Test that AI disabled shows gear emoji in settings button."""
-        mock_config = Mock()
-        mock_config.get_ai_enabled.return_value = False
+        ThemeManager.instance(mock_config)
+        mock_config_ai = Mock()
+        mock_config_ai.get_ai_enabled.return_value = False
 
-        sidebar = Sidebar(config_manager=mock_config)
+        sidebar = Sidebar(config_manager=mock_config_ai)
 
         assert "⚙️" in sidebar._settings_btn.text()

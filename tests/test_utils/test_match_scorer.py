@@ -206,3 +206,191 @@ class TestMatchScorer:
         # NetEase should win because it has higher score (exact title match)
         assert best.source == "netease"
         assert best.id == "2"
+
+
+class TestTitleScoreWithDictAndList:
+    """Test _title_score with dict and list inputs."""
+
+    def test_title_score_dict_input(self):
+        """Test _title_score when result_title is a dict with 'title' key."""
+        track_title = "Hello World"
+        result_title = {"title": "Hello World"}
+        score = MatchScorer._title_score(track_title, result_title)
+        assert score == 100.0
+
+    def test_title_score_dict_with_name_key(self):
+        """Test _title_score when dict has 'name' key instead of 'title'."""
+        track_title = "Hello World"
+        result_title = {"name": "Hello World"}
+        score = MatchScorer._title_score(track_title, result_title)
+        assert score == 100.0
+
+    def test_title_score_dict_empty(self):
+        """Test _title_score when dict has no matching keys."""
+        track_title = "Hello World"
+        result_title = {"other": "value"}
+        score = MatchScorer._title_score(track_title, result_title)
+        assert score == 0.0
+
+    def test_title_score_list_input(self):
+        """Test _title_score when result_title is a list."""
+        track_title = "Hello World"
+        result_title = ["Hello World", "Alternative"]
+        score = MatchScorer._title_score(track_title, result_title)
+        assert score == 100.0
+
+    def test_title_score_list_empty(self):
+        """Test _title_score when list is empty."""
+        track_title = "Hello World"
+        result_title = []
+        score = MatchScorer._title_score(track_title, result_title)
+        assert score == 0.0
+
+
+class TestArtistScoreWithList:
+    """Test _artist_score with list input."""
+
+    def test_artist_score_list_input(self):
+        """Test _artist_score when result_artist is a list."""
+        score = MatchScorer._artist_score("Artist", ["Artist", "Other"])
+        # List is joined with ", " so result becomes "Artist, Other"
+        # After normalization comma is removed -> "artist other"
+        # "artist" is contained in "artist other" -> partial match = 70
+        assert score == 70.0
+
+    def test_artist_score_list_empty(self):
+        """Test _artist_score when list is empty."""
+        score = MatchScorer._artist_score("Artist", [])
+        assert score == 0.0
+
+    def test_artist_score_list_with_none_values(self):
+        """Test _artist_score when list contains None values."""
+        score = MatchScorer._artist_score("Artist", [None, "Artist"])
+        # Non-None values are joined, None is filtered out
+        assert score >= 90.0
+
+
+class TestAlbumScoreWithDictAndList:
+    """Test _album_score with dict and list inputs."""
+
+    def test_album_score_dict_input(self):
+        """Test _album_score when result_album is a dict."""
+        track_album = "My Album"
+        result_album = {"name": "My Album"}
+        score = MatchScorer._album_score(track_album, result_album)
+        assert score == 100.0
+
+    def test_album_score_dict_with_title_key(self):
+        """Test _album_score when dict has 'title' key."""
+        track_album = "My Album"
+        result_album = {"title": "My Album"}
+        score = MatchScorer._album_score(track_album, result_album)
+        assert score == 100.0
+
+    def test_album_score_dict_empty(self):
+        """Test _album_score when dict has no matching keys."""
+        track_album = "My Album"
+        result_album = {"other": "value"}
+        score = MatchScorer._album_score(track_album, result_album)
+        # No album info - don't penalize
+        assert score == 50.0
+
+    def test_album_score_list_input(self):
+        """Test _album_score when result_album is a list."""
+        track_album = "My Album"
+        result_album = ["My Album", "Other"]
+        score = MatchScorer._album_score(track_album, result_album)
+        # List is joined with ", " so result becomes "My Album, Other"
+        # "My Album" is contained in "My Album, Other" -> partial match = 70
+        assert score == 70.0
+
+    def test_album_score_list_empty(self):
+        """Test _album_score when list is empty."""
+        score = MatchScorer._album_score("Album", [])
+        assert score == 50.0
+
+
+class TestSourcePriority:
+    """Test SOURCE_PRIORITY tie-breaking."""
+
+    def test_qqmusic_highest_priority(self):
+        """Test QQ Music has lowest priority number (highest priority)."""
+        assert MatchScorer.SOURCE_PRIORITY['qqmusic'] == 0
+
+    def test_source_priority_order(self):
+        """Test source priority order is correct."""
+        assert MatchScorer.SOURCE_PRIORITY['qqmusic'] < MatchScorer.SOURCE_PRIORITY['netease']
+        assert MatchScorer.SOURCE_PRIORITY['netease'] < MatchScorer.SOURCE_PRIORITY['kugou']
+        assert MatchScorer.SOURCE_PRIORITY['kugou'] < MatchScorer.SOURCE_PRIORITY['lrclib']
+
+    def test_unknown_source_default_priority(self):
+        """Test unknown source gets default priority 99."""
+        assert MatchScorer.SOURCE_PRIORITY.get('unknown_source', 99) == 99
+
+
+class TestNoneAndEmptyStringHandling:
+    """Test score methods with None and empty strings."""
+
+    def test_title_score_none_track_title(self):
+        """Test _title_score with None track title."""
+        score = MatchScorer._title_score(None, "Song")
+        assert score == 0.0
+
+    def test_title_score_none_result_title(self):
+        """Test _title_score with None result title."""
+        score = MatchScorer._title_score("Song", None)
+        assert score == 0.0
+
+    def test_title_score_empty_track_title(self):
+        """Test _title_score with empty track title."""
+        score = MatchScorer._title_score("", "Song")
+        assert score == 0.0
+
+    def test_title_score_empty_result_title(self):
+        """Test _title_score with empty result title."""
+        score = MatchScorer._title_score("Song", "")
+        assert score == 0.0
+
+    def test_title_score_both_empty(self):
+        """Test _title_score with both empty strings."""
+        score = MatchScorer._title_score("", "")
+        assert score == 0.0
+
+    def test_artist_score_none_track_artist(self):
+        """Test _artist_score with None track artist."""
+        score = MatchScorer._artist_score(None, "Artist")
+        assert score == 0.0
+
+    def test_artist_score_none_result_artist(self):
+        """Test _artist_score with None result artist."""
+        score = MatchScorer._artist_score("Artist", None)
+        assert score == 0.0
+
+    def test_artist_score_empty_strings(self):
+        """Test _artist_score with empty strings."""
+        score = MatchScorer._artist_score("", "")
+        assert score == 0.0
+
+    def test_album_score_none_track_album(self):
+        """Test _album_score with None track album."""
+        # No album info - don't penalize
+        score = MatchScorer._album_score(None, "Album")
+        assert score == 50.0
+
+    def test_album_score_none_result_album(self):
+        """Test _album_score with None result album."""
+        score = MatchScorer._album_score("Album", None)
+        assert score == 50.0
+
+    def test_album_score_both_empty(self):
+        """Test _album_score with both empty strings."""
+        score = MatchScorer._album_score("", "")
+        assert score == 50.0
+
+    def test_album_score_one_empty(self):
+        """Test _album_score with one side empty."""
+        score = MatchScorer._album_score("", "Album")
+        assert score == 50.0
+
+        score = MatchScorer._album_score("Album", "")
+        assert score == 50.0

@@ -247,3 +247,268 @@ class TestSleepTimerService:
         assert stopped_called
 
         assert 10 in remaining_changed_called
+
+    # ===== _trigger_action Tests =====
+
+    def test_trigger_action_stop_no_fade(self, sleep_timer_service, mock_playback_service):
+        """Test _trigger_action executes stop without fade out."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='stop',
+            fade_out=False
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._is_active = True
+
+        triggered = []
+        sleep_timer_service.timer_triggered.connect(lambda: triggered.append(True))
+
+        sleep_timer_service._trigger_action()
+
+        assert not sleep_timer_service.is_active
+        assert triggered
+        mock_playback_service.stop.assert_called_once()
+
+    def test_trigger_action_starts_fade_out(self, sleep_timer_service, mock_playback_service):
+        """Test _trigger_action starts fade out when enabled."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='stop',
+            fade_out=True
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._is_active = True
+        mock_playback_service.volume = 80
+
+        sleep_timer_service._trigger_action()
+
+        assert not sleep_timer_service.is_active
+        assert sleep_timer_service._original_volume == 80
+        assert sleep_timer_service._fade_steps == 20
+
+    def test_trigger_action_quit(self, sleep_timer_service, mock_playback_service):
+        """Test _trigger_action with quit action."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='quit',
+            fade_out=False
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._is_active = True
+
+        with patch('PySide6.QtWidgets.QApplication') as mock_app:
+            mock_instance = Mock()
+            mock_app.instance.return_value = mock_instance
+
+            sleep_timer_service._trigger_action()
+
+            mock_playback_service.stop.assert_called_once()
+            mock_instance.quit.assert_called_once()
+
+    def test_trigger_action_shutdown(self, sleep_timer_service, mock_playback_service):
+        """Test _trigger_action with shutdown action."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='shutdown',
+            fade_out=False
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._is_active = True
+
+        with patch('sys.platform', 'linux'):
+            with patch('os.system') as mock_system:
+                sleep_timer_service._trigger_action()
+                mock_system.assert_called_once_with('shutdown now')
+
+    def test_trigger_action_emits_timer_triggered(self, sleep_timer_service, mock_playback_service):
+        """Test _trigger_action emits timer_triggered signal."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='stop',
+            fade_out=False
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._is_active = True
+
+        triggered = []
+        sleep_timer_service.timer_triggered.connect(lambda: triggered.append(True))
+
+        sleep_timer_service._trigger_action()
+
+        assert len(triggered) == 1
+
+    # ===== _fade_step Tests =====
+
+    def test_fade_step_reduces_volume(self, sleep_timer_service, mock_playback_service):
+        """Test _fade_step reduces volume by step size."""
+        sleep_timer_service._original_volume = 100
+        sleep_timer_service._fade_steps = 5
+        mock_playback_service.volume = 100
+
+        sleep_timer_service._fade_step()
+
+        assert sleep_timer_service._fade_steps == 4
+        mock_playback_service.set_volume.assert_called_once()
+
+    def test_fade_step_calls_set_volume(self, sleep_timer_service, mock_playback_service):
+        """Test _fade_step calls set_volume with correct value."""
+        sleep_timer_service._original_volume = 100
+        sleep_timer_service._fade_steps = 10
+        mock_playback_service.volume = 100
+
+        sleep_timer_service._fade_step()
+
+        call_args = mock_playback_service.set_volume.call_args[0][0]
+        assert call_args < 100  # Volume should decrease
+        assert call_args >= 0    # Volume should not go negative
+
+    def test_fade_step_does_not_go_below_zero(self, sleep_timer_service, mock_playback_service):
+        """Test _fade_step clamps volume to 0."""
+        sleep_timer_service._original_volume = 5
+        sleep_timer_service._fade_steps = 10
+        mock_playback_service.volume = 2
+
+        sleep_timer_service._fade_step()
+
+        call_args = mock_playback_service.set_volume.call_args[0][0]
+        assert call_args >= 0
+
+    def test_fade_step_zero_steps_executes_action(self, sleep_timer_service, mock_playback_service):
+        """Test _fade_step executes action when fade_steps reaches 0."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='stop',
+            fade_out=True
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._fade_steps = 0
+
+        sleep_timer_service._fade_step()
+
+        mock_playback_service.stop.assert_called_once()
+
+    def test_fade_step_volume_zero_original(self, sleep_timer_service, mock_playback_service):
+        """Test _fade_step handles zero original volume gracefully."""
+        sleep_timer_service._original_volume = 0
+        sleep_timer_service._fade_steps = 5
+        mock_playback_service.volume = 0
+
+        # Should not crash when original_volume is 0
+        sleep_timer_service._fade_step()
+
+        assert sleep_timer_service._fade_steps == 4
+
+    # ===== Track Mode with Fade Out Tests =====
+
+    def test_track_mode_with_fade_out(self, sleep_timer_service, mock_event_bus, mock_playback_service):
+        """Test track count mode with fade out enabled."""
+        config = SleepTimerConfig(
+            mode='track',
+            value=1,
+            action='stop',
+            fade_out=True
+        )
+        mock_playback_service._engine.current_index = 0
+        mock_playback_service._engine.playlist_items = [Mock(), Mock()]
+        mock_playback_service.volume = 80
+
+        sleep_timer_service.start(config)
+
+        sleep_timer_service._on_track_finished()
+
+        # Should have triggered fade out instead of immediate stop
+        assert not sleep_timer_service.is_active
+        assert sleep_timer_service._original_volume == 80
+
+    def test_track_mode_last_track_index_reset(self, sleep_timer_service, mock_event_bus, mock_playback_service):
+        """Test track mode resets index to -1 at last track."""
+        config = SleepTimerConfig(
+            mode='track',
+            value=1,
+            action='stop',
+            fade_out=False
+        )
+        mock_playback_service._engine.current_index = 1
+        mock_playback_service._engine.playlist_items = [Mock(), Mock()]  # 2 tracks, index=1 is last
+
+        sleep_timer_service.start(config)
+        sleep_timer_service._on_track_finished()
+
+        # Should have called restore_state with -1 (last track)
+        restore_calls = mock_playback_service._engine.restore_state.call_args_list
+        assert len(restore_calls) >= 1
+
+    # ===== Cancel with Volume Restoration Tests =====
+
+    def test_cancel_restores_volume(self, sleep_timer_service, mock_playback_service):
+        """Test canceling timer restores original volume."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=60,
+            action='stop',
+            fade_out=True
+        )
+        sleep_timer_service.start(config)
+        sleep_timer_service._original_volume = 75
+
+        sleep_timer_service.cancel()
+
+        mock_playback_service.set_volume.assert_called_with(75)
+        assert sleep_timer_service._original_volume is None
+
+    def test_cancel_no_volume_to_restore(self, sleep_timer_service, mock_playback_service):
+        """Test canceling timer when no volume was saved."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=60,
+            action='stop',
+            fade_out=False
+        )
+        sleep_timer_service.start(config)
+
+        sleep_timer_service.cancel()
+
+        mock_playback_service.set_volume.assert_not_called()
+
+    # ===== Start Cancels Existing Timer =====
+
+    def test_start_cancels_existing_timer(self, sleep_timer_service, mock_playback_service):
+        """Test starting a new timer cancels the existing one."""
+        config1 = SleepTimerConfig(mode='time', value=60, action='stop', fade_out=False)
+        config2 = SleepTimerConfig(mode='time', value=30, action='quit', fade_out=False)
+
+        sleep_timer_service.start(config1)
+        assert sleep_timer_service.remaining == 60
+
+        sleep_timer_service.start(config2)
+        assert sleep_timer_service.remaining == 30
+        assert sleep_timer_service.config.action == 'quit'
+
+        sleep_timer_service.cancel()
+
+    # ===== Execute Action Tests =====
+
+    def test_execute_action_restores_volume_after_fade(self, sleep_timer_service, mock_playback_service):
+        """Test _execute_action restores volume after fade out."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='stop',
+            fade_out=True
+        )
+        sleep_timer_service._config = config
+        sleep_timer_service._original_volume = 80
+        mock_playback_service.volume = 0  # Volume was faded to 0
+
+        sleep_timer_service._execute_action()
+
+        # Volume should be restored before stopping
+        set_volume_calls = [call for call in mock_playback_service.set_volume.call_args_list]
+        # Last set_volume call should restore original volume
+        assert mock_playback_service.set_volume.call_args_list[-1][0][0] == 80

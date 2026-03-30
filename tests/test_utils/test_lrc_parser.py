@@ -10,8 +10,15 @@ from utils.lrc_parser import (
     parse_words,
     parse_yrc,
     parse_qrc,
+    parse_char_word_lrc,
     detect_and_parse,
     detect_format,
+    extract_qrc_xml,
+    fix_durations,
+    build_word_index,
+    find_current_word,
+    find_current_line,
+    ms_to_s,
     TIME_RE,
     META_RE,
     WORD_RE,
@@ -507,3 +514,368 @@ class TestParseQrc:
 
         assert len(lyrics) == 1
         assert lyrics[0].text == "稻香"
+
+
+class TestExtractQrcXml:
+    """Test extract_qrc_xml function."""
+
+    def test_extract_qrc_xml_basic(self):
+        """Test extracting QRC content from XML wrapper."""
+        xml_text = '''<?xml version="1.0"?>
+<QrcInfos>
+<Lyric_1 LyricContent="[0,3000]测(0,500)试(500,500)
+[3000,3000]第(3000,500)二(3500,500)
+"/>
+</QrcInfos>'''
+
+        result = extract_qrc_xml(xml_text)
+
+        assert "[0,3000]" in result
+        assert "测(0,500)" in result
+        assert "[3000,3000]" in result
+
+    def test_extract_qrc_xml_html_unescape(self):
+        """Test that HTML entities are unescaped."""
+        xml_text = '<QrcInfos><Lyric_1 LyricContent="[0,3000]&amp;test"/>'
+
+        result = extract_qrc_xml(xml_text)
+
+        assert "&test" in result
+        assert "&amp;" not in result
+
+    def test_extract_qrc_xml_no_match(self):
+        """Test with text that doesn't match LyricContent pattern."""
+        result = extract_qrc_xml("no content here")
+        assert result == ""
+
+    def test_extract_qrc_xml_empty_input(self):
+        """Test with empty input."""
+        result = extract_qrc_xml("")
+        assert result == ""
+
+    def test_extract_qrc_xml_multiline_content(self):
+        """Test extracting multiline QRC content."""
+        xml_text = '''<QrcInfos>
+<Lyric_1 LyricContent="[0,3000]Line1
+[3000,3000]Line2
+[6000,3000]Line3
+"/>
+</QrcInfos>'''
+
+        result = extract_qrc_xml(xml_text)
+
+        assert "Line1" in result
+        assert "Line2" in result
+        assert "Line3" in result
+        assert "[0,3000]" in result
+        assert "[3000,3000]" in result
+        assert "[6000,3000]" in result
+
+
+class TestParseCharWordLrc:
+    """Test parse_char_word_lrc function directly."""
+
+    def test_parse_char_word_basic(self):
+        """Test parsing basic character-word format."""
+        text = "[00:00.00]<00:00.000>青<00:00.366>花<00:00.732>瓷"
+        lyrics = parse_char_word_lrc(text)
+
+        assert len(lyrics) == 1
+        assert lyrics[0].text == "青花瓷"
+        assert lyrics[0].time == 0.0
+        assert len(lyrics[0].words) == 3
+
+    def test_parse_char_word_multiple_lines(self):
+        """Test parsing multiple lines of character-word lyrics."""
+        text = """[00:00.00]<00:00.000>青<00:00.366>花
+[00:05.49]<00:05.490>词<00:06.588>："""
+        lyrics = parse_char_word_lrc(text)
+
+        assert len(lyrics) == 2
+        assert lyrics[0].text == "青花"
+        assert lyrics[1].text == "词："
+
+    def test_parse_char_word_sorted_by_time(self):
+        """Test that lyrics are sorted by time."""
+        text = """[00:10.00]<00:10.000>晚
+[00:05.00]<00:05.000>早"""
+        lyrics = parse_char_word_lrc(text)
+
+        assert len(lyrics) == 2
+        assert lyrics[0].text == "早"
+        assert lyrics[1].text == "晚"
+
+    def test_parse_char_word_empty(self):
+        """Test parsing empty text."""
+        lyrics = parse_char_word_lrc("")
+        assert lyrics == []
+
+    def test_parse_char_word_no_matching_tags(self):
+        """Test text without char-word tags returns empty."""
+        lyrics = parse_char_word_lrc("[00:01.00]Plain text")
+        assert lyrics == []
+
+    def test_parse_char_word_word_durations(self):
+        """Test that word durations are computed correctly."""
+        text = "[00:00.00]<00:00.000>A<00:01.000>B<00:02.000>C"
+        lyrics = parse_char_word_lrc(text)
+
+        assert len(lyrics[0].words) == 3
+        # Duration between chars
+        assert lyrics[0].words[0].duration == pytest.approx(1.0)
+        assert lyrics[0].words[1].duration == pytest.approx(1.0)
+        # Last word gets default 1.0 before fix_durations recalculates
+
+
+class TestFixDurations:
+    """Test fix_durations function."""
+
+    def test_fix_durations_between_lines(self):
+        """Test durations are set based on next line start time."""
+        lines = [
+            LyricLine(0.0, "Line1"),
+            LyricLine(5.0, "Line2"),
+        ]
+        fix_durations(lines)
+
+        assert lines[0].end == 5.0
+        assert lines[1].end == 8.0  # Last line gets +3 seconds default
+
+    def test_fix_durations_last_line_default(self):
+        """Test last line gets 3 seconds default duration."""
+        lines = [
+            LyricLine(10.0, "Last"),
+        ]
+        fix_durations(lines)
+
+        assert lines[0].end == 13.0
+
+    def test_fix_durations_with_explicit_duration(self):
+        """Test that explicit line duration is respected."""
+        lines = [
+            LyricLine(0.0, "Line1", duration=3.0),
+            LyricLine(5.0, "Line2", duration=4.0),
+        ]
+        fix_durations(lines)
+
+        assert lines[0].end == 3.0  # 0.0 + 3.0
+        assert lines[1].end == 9.0  # 5.0 + 4.0
+
+    def test_fix_durations_word_level(self):
+        """Test that word durations are recalculated."""
+        lines = [
+            LyricLine(0.0, "AB", words=[
+                LyricWord(0.0, 0, "A"),
+                LyricWord(1.0, 0, "B"),
+            ]),
+        ]
+        fix_durations(lines)
+
+        # First word: next word time - this word time = 1.0 - 0.0 = 1.0
+        assert lines[0].words[0].duration == pytest.approx(1.0)
+        # Last word: end - word time = 3.0 - 1.0 = 2.0
+        assert lines[0].words[1].duration == pytest.approx(2.0)
+
+    def test_fix_durations_empty_lines(self):
+        """Test fix_durations with empty list."""
+        fix_durations([])  # Should not raise
+
+    def test_fix_durations_single_word(self):
+        """Test fix_durations with single word line."""
+        lines = [
+            LyricLine(0.0, "A", words=[
+                LyricWord(0.0, 0, "A"),
+            ]),
+        ]
+        fix_durations(lines)
+
+        assert lines[0].words[0].duration == pytest.approx(3.0)  # end=3.0 - time=0.0
+
+
+class TestBuildWordIndex:
+    """Test build_word_index function."""
+
+    def test_build_word_index_basic(self):
+        """Test building word index from lines."""
+        lines = [
+            LyricLine(0.0, "AB", words=[
+                LyricWord(1.0, 0.5, "A"),
+                LyricWord(1.5, 0.5, "B"),
+            ]),
+            LyricLine(5.0, "CD", words=[
+                LyricWord(5.0, 0.5, "C"),
+                LyricWord(5.5, 0.5, "D"),
+            ]),
+        ]
+        index = build_word_index(lines)
+
+        assert len(index) == 4
+        assert index[0].text == "A"
+        assert index[1].text == "B"
+        assert index[2].text == "C"
+        assert index[3].text == "D"
+
+    def test_build_word_index_sorted_by_time(self):
+        """Test that word index is sorted by time."""
+        lines = [
+            LyricLine(5.0, "B", words=[
+                LyricWord(5.0, 0.5, "B"),
+            ]),
+            LyricLine(0.0, "A", words=[
+                LyricWord(0.0, 0.5, "A"),
+            ]),
+        ]
+        index = build_word_index(lines)
+
+        assert index[0].text == "A"
+        assert index[1].text == "B"
+
+    def test_build_word_index_empty(self):
+        """Test building index from empty lines."""
+        index = build_word_index([])
+        assert index == []
+
+    def test_build_word_index_no_words(self):
+        """Test building index from lines without words."""
+        lines = [LyricLine(0.0, "No words")]
+        index = build_word_index(lines)
+        assert index == []
+
+
+class TestFindCurrentWord:
+    """Test find_current_word function."""
+
+    def test_find_word_at_start(self):
+        """Test finding word at its start time."""
+        words = [
+            LyricWord(1.0, 1.0, "Hello"),
+            LyricWord(2.0, 1.0, "World"),
+        ]
+        result = find_current_word(words, 1.0)
+        assert result is not None
+        assert result.text == "Hello"
+
+    def test_find_word_in_middle(self):
+        """Test finding word in the middle of its duration."""
+        words = [
+            LyricWord(1.0, 1.0, "Hello"),
+            LyricWord(2.0, 1.0, "World"),
+        ]
+        result = find_current_word(words, 1.5)
+        assert result is not None
+        assert result.text == "Hello"
+
+    def test_find_word_at_end_of_duration(self):
+        """Test finding word exactly at end of duration."""
+        words = [
+            LyricWord(1.0, 1.0, "Hello"),
+            LyricWord(2.0, 1.0, "World"),
+        ]
+        result = find_current_word(words, 2.0)
+        assert result is not None
+        assert result.text == "World"
+
+    def test_find_word_before_first(self):
+        """Test with time before first word."""
+        words = [
+            LyricWord(1.0, 1.0, "Hello"),
+        ]
+        result = find_current_word(words, 0.5)
+        assert result is None
+
+    def test_find_word_after_last(self):
+        """Test with time after last word ends."""
+        words = [
+            LyricWord(1.0, 1.0, "Hello"),
+        ]
+        result = find_current_word(words, 3.0)
+        assert result is None
+
+    def test_find_word_empty_list(self):
+        """Test with empty word list."""
+        result = find_current_word([], 1.0)
+        assert result is None
+
+
+class TestFindCurrentLine:
+    """Test find_current_line function."""
+
+    def test_find_line_at_start(self):
+        """Test finding line at its start time."""
+        lines = [
+            LyricLine(0.0, "First"),
+            LyricLine(5.0, "Second"),
+        ]
+        result = find_current_line(lines, 0.0)
+        assert result is not None
+        assert result.text == "First"
+
+    def test_find_line_in_middle(self):
+        """Test finding line in the middle of its duration."""
+        lines = [
+            LyricLine(0.0, "First"),
+            LyricLine(5.0, "Second"),
+        ]
+        lines[0].end = 5.0
+        lines[1].end = 10.0
+        result = find_current_line(lines, 2.5)
+        assert result is not None
+        assert result.text == "First"
+
+    def test_find_line_at_boundary(self):
+        """Test finding line at exact boundary."""
+        lines = [
+            LyricLine(0.0, "First"),
+            LyricLine(5.0, "Second"),
+        ]
+        lines[0].end = 5.0
+        lines[1].end = 10.0
+        result = find_current_line(lines, 5.0)
+        assert result is not None
+        assert result.text == "Second"
+
+    def test_find_line_after_last(self):
+        """Test with time after last line ends."""
+        lines = [
+            LyricLine(0.0, "First"),
+            LyricLine(5.0, "Second"),
+        ]
+        lines[0].end = 5.0
+        lines[1].end = 10.0
+        result = find_current_line(lines, 20.0)
+        assert result is None
+
+    def test_find_line_empty_list(self):
+        """Test with empty line list."""
+        result = find_current_line([], 1.0)
+        assert result is None
+
+    def test_find_line_before_first(self):
+        """Test with time before first line."""
+        lines = [
+            LyricLine(5.0, "First"),
+            LyricLine(10.0, "Second"),
+        ]
+        lines[0].end = 10.0
+        lines[1].end = 15.0
+        result = find_current_line(lines, 1.0)
+        assert result is None
+
+
+class TestMsToS:
+    """Test ms_to_s utility function."""
+
+    def test_ms_to_s_zero(self):
+        assert ms_to_s(0) == 0.0
+
+    def test_ms_to_s_positive(self):
+        assert ms_to_s(1000) == 1.0
+        assert ms_to_s(500) == 0.5
+        assert ms_to_s(1500) == 1.5
+
+    def test_ms_to_s_large(self):
+        assert ms_to_s(123456) == pytest.approx(123.456)
+
+    def test_ms_to_s_fractional(self):
+        assert ms_to_s(100) == 0.1
+        assert ms_to_s(10) == 0.01

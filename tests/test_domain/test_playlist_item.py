@@ -409,3 +409,82 @@ class TestPlaylistItem:
         queue_item = PlayQueueItem(position=0, source="QUARK", download_failed=True)
         playlist_item = PlaylistItem.from_play_queue_item(queue_item)
         assert playlist_item.download_failed is True
+
+    def test_from_cloud_file_lowercase_provider(self, sample_cloud_file_data):
+        """Test from_cloud_file with lowercase provider."""
+        cloud_file = CloudFile(**sample_cloud_file_data)
+        item = PlaylistItem.from_cloud_file(cloud_file, account_id=1, provider="quark")
+        assert item.source == TrackSource.QUARK
+
+        item2 = PlaylistItem.from_cloud_file(cloud_file, account_id=1, provider="baidu")
+        assert item2.source == TrackSource.BAIDU
+
+    def test_from_dict_legacy_path_field(self):
+        """Test from_dict with old 'path' field for backward compatibility."""
+        data = {
+            "path": "/music/song.mp3",
+            "title": "Legacy Song",
+        }
+        item = PlaylistItem.from_dict(data)
+        assert item.local_path == "/music/song.mp3"
+        assert item.title == "Legacy Song"
+
+    def test_from_dict_invalid_source_fallback(self):
+        """Test from_dict falls back when source is invalid."""
+        data = {
+            "source": "INVALID_SOURCE",
+            "cloud_file_id": "fid_123",
+            "title": "Song",
+        }
+        item = PlaylistItem.from_dict(data)
+        # Falls back to QUARK because cloud_file_id is present
+        assert item.source == TrackSource.QUARK
+
+    def test_with_metadata_preserves_cloud_fields(self):
+        """Test with_metadata preserves cloud-related fields."""
+        item = PlaylistItem(
+            source=TrackSource.QUARK,
+            cloud_file_id="quark_123",
+            cloud_account_id=1,
+            cloud_file_size=5242880,
+            title="Original",
+        )
+        updated = item.with_metadata(title="Updated")
+        assert updated.source == TrackSource.QUARK
+        assert updated.cloud_file_id == "quark_123"
+        assert updated.cloud_account_id == 1
+        assert updated.cloud_file_size == 5242880
+
+    def test_to_dict_completeness(self):
+        """Test to_dict includes all expected keys."""
+        item = PlaylistItem(
+            track_id=1,
+            local_path="/music/song.mp3",
+            title="Song",
+            artist="Artist",
+            album="Album",
+            duration=180.0,
+            cover_path="/cover.jpg",
+            source=TrackSource.LOCAL,
+            cloud_file_id="fid_1",
+            cloud_account_id=2,
+            needs_download=True,
+            needs_metadata=False,
+            download_failed=False,
+            cloud_file_size=1024,
+        )
+        data = item.to_dict()
+        assert "id" in data
+        assert "path" in data
+        assert "title" in data
+        assert "artist" in data
+        assert "album" in data
+        assert "duration" in data
+        assert "cover_path" in data
+        assert "source" in data
+        assert "cloud_file_id" in data
+        assert "cloud_account_id" in data
+        assert "needs_download" in data
+        assert "needs_metadata" in data
+        assert "download_failed" in data
+        assert "is_cloud" in data

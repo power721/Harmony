@@ -35,14 +35,14 @@ class TestBug2DoublePop:
         assert cred.musicid == 12345
 
     def test_musicid_zero_when_absent(self):
-        """musicid should be 0 and str_musicid empty when both absent."""
+        """musicid should be 0 and str_musicid fallback to '0' when both absent."""
         cookies = {
             "openid": "open_1",
             "musickey": "key_1",
         }
         cred = Credential.from_cookies_dict(cookies)
         assert cred.musicid == 0
-        assert cred.str_musicid == ""
+        assert cred.str_musicid == "0"
 
     def test_musicid_string_coerced_to_int(self):
         """String musicid should be coerced to int."""

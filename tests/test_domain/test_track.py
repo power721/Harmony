@@ -4,7 +4,7 @@ Tests for Track domain model.
 
 import pytest
 from datetime import datetime
-from domain.track import Track, TrackId
+from domain.track import Track, TrackId, TrackSource
 
 
 class TestTrack:
@@ -86,3 +86,45 @@ class TestTrack:
         specific_time = datetime(2024, 1, 1, 12, 0, 0)
         track = Track(created_at=specific_time)
         assert track.created_at == specific_time
+
+    def test_source_default_local(self):
+        """Test source defaults to LOCAL."""
+        track = Track()
+        assert track.source == TrackSource.LOCAL
+
+    def test_source_set_other_values(self):
+        """Test source can be set to other values."""
+        track = Track(source=TrackSource.QUARK)
+        assert track.source == TrackSource.QUARK
+
+        track = Track(source=TrackSource.QQ)
+        assert track.source == TrackSource.QQ
+
+        track = Track(source=TrackSource.BAIDU)
+        assert track.source == TrackSource.BAIDU
+
+    def test_cloud_file_id_default_and_set(self):
+        """Test cloud_file_id default None and can be set."""
+        track = Track()
+        assert track.cloud_file_id is None
+
+        track = Track(cloud_file_id="quark_123")
+        assert track.cloud_file_id == "quark_123"
+
+    def test_file_size_and_file_mtime(self):
+        """Test file_size and file_mtime fields."""
+        track = Track(file_size=5242880, file_mtime=1700000000.0)
+        assert track.file_size == 5242880
+        assert track.file_mtime == 1700000000.0
+
+        # Defaults
+        track2 = Track()
+        assert track2.file_size is None
+        assert track2.file_mtime is None
+
+    def test_track_source_enum_string_values(self):
+        """Test TrackSource enum string values."""
+        assert TrackSource.LOCAL.value == "Local"
+        assert TrackSource.QUARK.value == "QUARK"
+        assert TrackSource.BAIDU.value == "BAIDU"
+        assert TrackSource.QQ.value == "QQ"

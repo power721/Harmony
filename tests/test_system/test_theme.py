@@ -1,6 +1,6 @@
 """Tests for the theme system."""
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from dataclasses import asdict
 
 from system.theme import Theme, ThemeManager, PRESET_THEMES
@@ -228,3 +228,133 @@ class TestThemeManager:
         calls = mock_config.set.call_args_list
         assert any(c[0][0] == 'ui.theme' and c[0][1] == 'custom' for c in calls)
         assert any(c[0][0] == 'ui.theme.custom' for c in calls)
+
+    def test_register_widget(self, mock_config):
+        """Test registering a widget to receive theme updates."""
+        tm = ThemeManager.instance(mock_config)
+        mock_widget = MagicMock()
+
+        tm.register_widget(mock_widget)
+
+        assert mock_widget in tm._widgets
+
+    def test_register_multiple_widgets(self, mock_config):
+        """Test registering multiple widgets."""
+        tm = ThemeManager.instance(mock_config)
+        widget1 = MagicMock()
+        widget2 = MagicMock()
+
+        tm.register_widget(widget1)
+        tm.register_widget(widget2)
+
+        assert widget1 in tm._widgets
+        assert widget2 in tm._widgets
+
+    def test_register_widget_refresh_on_theme_change(self, mock_config):
+        """Test registered widgets get refreshed when theme changes."""
+        tm = ThemeManager.instance(mock_config)
+        mock_widget = MagicMock()
+        mock_widget.refresh_theme = MagicMock()
+
+        tm.register_widget(mock_widget)
+        tm.set_theme('gold')
+
+        mock_widget.refresh_theme.assert_called_once()
+
+    def test_register_widget_no_refresh_theme_method(self, mock_config):
+        """Test widget without refresh_theme is safely skipped."""
+        tm = ThemeManager.instance(mock_config)
+        mock_widget = MagicMock()
+        # Remove refresh_theme attribute
+        del mock_widget.refresh_theme
+
+        tm.register_widget(mock_widget)
+        # Should not raise
+        tm.set_theme('ocean')
+
+    def test_register_widget_refresh_theme_raises(self, mock_config):
+        """Test widget whose refresh_theme raises is safely handled."""
+        tm = ThemeManager.instance(mock_config)
+        mock_widget = MagicMock()
+        mock_widget.refresh_theme.side_effect = RuntimeError("broken")
+
+        tm.register_widget(mock_widget)
+        # Should not raise
+        tm.set_theme('purple')
+
+        mock_widget.refresh_theme.assert_called_once()
+
+    def test_apply_and_broadcast_emits_signal(self, mock_config):
+        """Test _apply_and_broadcast emits theme_changed signal."""
+        tm = ThemeManager.instance(mock_config)
+        signal_received = []
+
+        tm.theme_changed.connect(lambda theme: signal_received.append(theme))
+        tm.set_theme('gold')
+
+        assert len(signal_received) == 1
+        assert signal_received[0].name == 'Gold'
+
+    def test_apply_and_broadcast_with_registered_widgets(self, mock_config):
+        """Test _apply_and_broadcast applies stylesheet and refreshes widgets."""
+        tm = ThemeManager.instance(mock_config)
+        widget1 = MagicMock()
+        widget1.refresh_theme = MagicMock()
+        widget2 = MagicMock()
+        widget2.refresh_theme = MagicMock()
+
+        tm.register_widget(widget1)
+        tm.register_widget(widget2)
+
+        signal_received = []
+        tm.theme_changed.connect(lambda theme: signal_received.append(theme))
+        tm.set_theme('ocean')
+
+        # Signal was emitted
+        assert len(signal_received) == 1
+        assert signal_received[0].name == 'Ocean'
+        # Both widgets refreshed
+        widget1.refresh_theme.assert_called_once()
+        widget2.refresh_theme.assert_called_once()
+
+    @patch('system.theme.QApplication')
+    def test_apply_global_stylesheet_no_qapp(self, mock_qapp):
+        """Test apply_global_stylesheet logs warning when no QApplication."""
+        mock_qapp.instance.return_value = None
+
+        config = MagicMock()
+        config.get.return_value = 'dark'
+        tm = ThemeManager.instance(config)
+
+        # Should not raise, just warn
+        tm.apply_global_stylesheet()
+
+    @patch('system.theme.QApplication')
+    @patch('system.theme.Path')
+    def test_apply_global_stylesheet_missing_file(self, mock_path_cls, mock_qapp):
+        """Test apply_global_stylesheet when QSS file doesn't exist."""
+        mock_qapp.instance.return_value = MagicMock()
+        mock_qss_path = MagicMock()
+        mock_qss_path.exists.return_value = False
+        mock_path_cls.return_value.parent.parent.__truediv__ = MagicMock(return_value=mock_qss_path)
+
+        config = MagicMock()
+        config.get.return_value = 'dark'
+        tm = ThemeManager.instance(config)
+
+        # Should not raise
+        tm.apply_global_stylesheet()
+
+    @patch('system.theme.QApplication')
+    @patch('builtins.open', new_callable=MagicMock, side_effect=OSError("permission denied"))
+    def test_apply_global_stylesheet_read_error(self, mock_open, mock_qapp):
+        """Test apply_global_stylesheet handles file read error."""
+        mock_app = MagicMock()
+        mock_qapp.instance.return_value = mock_app
+
+        config = MagicMock()
+        config.get.return_value = 'dark'
+        tm = ThemeManager.instance(config)
+
+        # Should not raise
+        tm.apply_global_stylesheet()

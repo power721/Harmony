@@ -2,6 +2,10 @@
 Tests for helper utility functions.
 """
 
+import sys
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
 import pytest
 from utils.helpers import (
     format_duration,
@@ -10,6 +14,7 @@ from utils.helpers import (
     sanitize_filename,
     truncate_text,
     format_count_message,
+    get_cache_dir,
 )
 
 
@@ -214,3 +219,71 @@ class TestFormatCountMessage:
 
         result = format_count_message("test.key", 1000)
         assert result == "1000 tracks"
+
+
+class TestGetCacheDir:
+    """Test get_cache_dir function."""
+
+    def test_get_cache_dir_default(self):
+        """Test get_cache_dir returns ~/.cache/Harmony in development mode."""
+        with patch.object(sys, 'frozen', False, create=True):
+            result = get_cache_dir()
+        assert result == Path.home() / '.cache' / 'Harmony'
+
+    def test_get_cache_dir_with_subdir(self):
+        """Test get_cache_dir with subdirectory."""
+        with patch.object(sys, 'frozen', False, create=True):
+            result = get_cache_dir('covers')
+        assert result == Path.home() / '.cache' / 'Harmony' / 'covers'
+
+    def test_get_cache_dir_with_nested_subdir(self):
+        """Test get_cache_dir with nested subdirectory path."""
+        with patch.object(sys, 'frozen', False, create=True):
+            result = get_cache_dir('covers/online_images')
+        assert result == Path.home() / '.cache' / 'Harmony' / 'covers/online_images'
+
+    def test_get_cache_dir_frozen_with_platformdirs(self):
+        """Test get_cache_dir uses platformdirs when frozen."""
+        mock_cache = MagicMock()
+        mock_cache.user_cache_dir.return_value = '/tmp/app_cache/HarmonyPlayer'
+
+        with patch.object(sys, 'frozen', True, create=True), \
+             patch.dict('sys.modules', {'platformdirs': MagicMock(user_cache_dir=mock_cache.user_cache_dir)}):
+            result = get_cache_dir()
+
+        mock_cache.user_cache_dir.assert_called_once_with('Harmony', 'HarmonyPlayer')
+        assert result == Path('/tmp/app_cache/HarmonyPlayer')
+
+    def test_get_cache_dir_frozen_platformdirs_import_error(self):
+        """Test get_cache_dir falls back when platformdirs is not available."""
+        with patch.object(sys, 'frozen', True, create=True), \
+             patch.dict('sys.modules', {'platformdirs': None}):
+            # Force ImportError by raising it when platformdirs is accessed
+            with patch('builtins.__import__', side_effect=ImportError("no module")):
+                result = get_cache_dir()
+
+        # Falls back to ~/.cache/Harmony
+        assert result == Path.home() / '.cache' / 'Harmony'
+
+    def test_get_cache_dir_frozen_with_subdir(self):
+        """Test get_cache_dir with subdirectory when frozen."""
+        mock_cache = MagicMock()
+        mock_cache.user_cache_dir.return_value = '/tmp/app_cache/HarmonyPlayer'
+
+        with patch.object(sys, 'frozen', True, create=True), \
+             patch.dict('sys.modules', {'platformdirs': MagicMock(user_cache_dir=mock_cache.user_cache_dir)}):
+            result = get_cache_dir('thumbnails')
+
+        assert result == Path('/tmp/app_cache/HarmonyPlayer') / 'thumbnails'
+
+    def test_get_cache_dir_empty_subdir(self):
+        """Test get_cache_dir with empty string subdirectory returns base."""
+        with patch.object(sys, 'frozen', False, create=True):
+            result = get_cache_dir('')
+        assert result == Path.home() / '.cache' / 'Harmony'
+
+    def test_get_cache_dir_returns_path_object(self):
+        """Test get_cache_dir returns a Path object."""
+        with patch.object(sys, 'frozen', False, create=True):
+            result = get_cache_dir()
+        assert isinstance(result, Path)

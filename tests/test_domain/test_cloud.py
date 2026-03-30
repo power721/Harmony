@@ -122,3 +122,80 @@ class TestCloudFile:
         specific_time = datetime(2024, 1, 1, 12, 0, 0)
         cloud_file = CloudFile(updated_at=specific_time)
         assert cloud_file.updated_at == specific_time
+
+    def test_local_path_set_and_get(self):
+        """Test local_path can be set and retrieved."""
+        cf = CloudFile()
+        assert cf.local_path is None
+        cf.local_path = "/downloads/song.mp3"
+        assert cf.local_path == "/downloads/song.mp3"
+
+    def test_metadata_field(self):
+        """Test metadata JSON field."""
+        cf = CloudFile(metadata='{"key": "value"}')
+        assert cf.metadata == '{"key": "value"}'
+
+    def test_size_and_duration_fields(self):
+        """Test size and duration fields."""
+        cf = CloudFile(size=1024000, duration=240.5, mime_type="audio/mpeg")
+        assert cf.size == 1024000
+        assert cf.duration == 240.5
+        assert cf.mime_type == "audio/mpeg"
+
+    def test_timestamp_consistency(self):
+        """Test updated_at >= created_at by default."""
+        cf = CloudFile()
+        assert cf.updated_at >= cf.created_at
+
+
+class TestCloudAccountAdditional:
+    """Additional CloudAccount tests for uncovered fields."""
+
+    def test_is_active_default_and_set_false(self):
+        """Test is_active defaults to True, can be set to False."""
+        account = CloudAccount()
+        assert account.is_active is True
+
+        account = CloudAccount(is_active=False)
+        assert account.is_active is False
+
+    def test_custom_last_folder_path(self):
+        """Test custom last_folder_path."""
+        account = CloudAccount(last_folder_path="/音乐/test")
+        assert account.last_folder_path == "/音乐/test"
+
+    def test_custom_last_fid_path(self):
+        """Test custom last_fid_path."""
+        account = CloudAccount(last_fid_path="/fid1/fid2/fid3")
+        assert account.last_fid_path == "/fid1/fid2/fid3"
+
+    def test_set_last_playing_fid(self):
+        """Test setting last_playing_fid."""
+        account = CloudAccount(last_playing_fid="file_abc_123")
+        assert account.last_playing_fid == "file_abc_123"
+
+    def test_set_last_position(self):
+        """Test setting last_position."""
+        account = CloudAccount(last_position=45.5)
+        assert account.last_position == 45.5
+
+    def test_set_last_playing_local_path(self):
+        """Test setting last_playing_local_path."""
+        account = CloudAccount(last_playing_local_path="/cache/song.mp3")
+        assert account.last_playing_local_path == "/cache/song.mp3"
+
+    def test_set_token_expires_at(self):
+        """Test setting token_expires_at."""
+        future = datetime(2025, 12, 31, 23, 59, 59)
+        account = CloudAccount(token_expires_at=future)
+        assert account.token_expires_at == future
+
+    def test_set_refresh_token(self):
+        """Test setting refresh_token."""
+        account = CloudAccount(refresh_token="refresh_abc_123")
+        assert account.refresh_token == "refresh_abc_123"
+
+    def test_account_timestamp_consistency(self):
+        """Test updated_at >= created_at by default."""
+        account = CloudAccount()
+        assert account.updated_at >= account.created_at

@@ -6,16 +6,28 @@ import time
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtCore import QThread, Signal
+from unittest.mock import Mock
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ui.windows.main_window import MainWindow
+from system.theme import ThemeManager
+
+
+def _init_theme():
+    """Initialize ThemeManager singleton for widget tests."""
+    config = Mock()
+    config.get.return_value = 'dark'
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
 
 
 def test_main_window_close():
     """Test that MainWindow closes without QThread errors."""
+    from ui.windows.main_window import MainWindow
+
     app = QApplication.instance() or QApplication(sys.argv)
+    _init_theme()
 
     # Create main window
     window = MainWindow()
@@ -32,15 +44,15 @@ def test_main_window_close():
     app.processEvents()
     time.sleep(0.5)
 
-    print("✓ MainWindow closed without QThread errors")
+    print("MainWindow closed without QThread errors")
 
 
 def test_lyrics_panel_cleanup():
     """Test that LyricsController properly cleans up threads."""
     from ui.windows.components.lyrics_panel import LyricsPanel, LyricsController
-    from unittest.mock import Mock
 
     app = QApplication.instance() or QApplication(sys.argv)
+    _init_theme()
 
     # Create panel and controller
     panel = LyricsPanel()
@@ -69,7 +81,7 @@ def test_lyrics_panel_cleanup():
     assert controller._lyrics_thread is None
     assert controller._lyrics_download_thread is None
 
-    print("✓ LyricsController cleanup works correctly")
+    print("LyricsController cleanup works correctly")
 
 
 def test_lyrics_loader_interruption():
@@ -89,11 +101,7 @@ def test_lyrics_loader_interruption():
     if not loader.wait(2000):
         loader.terminate()
         loader.wait()
-        print("✗ LyricsLoader did not respect interruption")
-        return False
-
-    print("✓ LyricsLoader respects interruption requests")
-    return True
+        assert False, "LyricsLoader did not respect interruption"
 
 
 if __name__ == "__main__":
@@ -103,17 +111,17 @@ if __name__ == "__main__":
     try:
         test_lyrics_loader_interruption()
     except Exception as e:
-        print(f"✗ LyricsLoader interruption test failed: {e}")
+        print(f"LyricsLoader interruption test failed: {e}")
 
     try:
         test_lyrics_panel_cleanup()
     except Exception as e:
-        print(f"✗ LyricsPanel cleanup test failed: {e}")
+        print(f"LyricsPanel cleanup test failed: {e}")
 
     try:
         test_main_window_close()
     except Exception as e:
-        print(f"✗ MainWindow close test failed: {e}")
+        print(f"MainWindow close test failed: {e}")
 
     print()
     print("All tests completed!")

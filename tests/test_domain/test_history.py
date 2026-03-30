@@ -94,3 +94,22 @@ class TestFavorite:
         custom_time = datetime(2023, 1, 1, 12, 0, 0)
         favorite = Favorite(track_id=1, created_at=custom_time)
         assert favorite.created_at == custom_time
+
+
+class TestPlayHistoryBoundary:
+    """Boundary tests for PlayHistory."""
+
+    def test_play_count_zero(self):
+        """Test play_count can be zero."""
+        history = PlayHistory(track_id=1, play_count=0)
+        assert history.play_count == 0
+
+    def test_play_count_negative(self):
+        """Test play_count accepts negative values (data may be corrupted)."""
+        history = PlayHistory(track_id=1, play_count=-1)
+        assert history.play_count == -1
+
+    def test_play_count_large_value(self):
+        """Test play_count with large value."""
+        history = PlayHistory(track_id=1, play_count=1000000)
+        assert history.play_count == 1000000
