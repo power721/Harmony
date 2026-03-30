@@ -39,13 +39,13 @@ class CoverSearchThread(BaseWorkerThread):
     completed = Signal(list)
 
     def __init__(
-        self,
-        cover_service: CoverService,
-        title: str = "",
-        artist: str = "",
-        album: str = "",
-        duration: Optional[float] = None,
-        parent=None,
+            self,
+            cover_service: CoverService,
+            title: str = "",
+            artist: str = "",
+            album: str = "",
+            duration: Optional[float] = None,
+            parent=None,
     ):
         super().__init__(parent)
         self._cover_service = cover_service
@@ -111,11 +111,11 @@ class QQMusicCoverFetchThread(BaseWorkerThread):
     completed = Signal(bytes, str, float)  # cover_data, source, score
 
     def __init__(
-        self,
-        album_mid: str | None = None,
-        song_mid: str | None = None,
-        score: float = 0,
-        parent=None,
+            self,
+            album_mid: str | None = None,
+            song_mid: str | None = None,
+            score: float = 0,
+            parent=None,
     ):
         super().__init__(parent)
         self._album_mid = album_mid

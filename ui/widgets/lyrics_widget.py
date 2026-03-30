@@ -2,7 +2,7 @@ import re
 from typing import List
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal
-from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics, QLinearGradient
+from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget
 
 from system.i18n import t

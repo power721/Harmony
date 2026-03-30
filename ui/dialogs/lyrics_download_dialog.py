@@ -2,7 +2,7 @@
 Lyrics download dialog for searching and downloading lyrics from online sources.
 """
 import logging
-from typing import Optional, List
+from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QCursor, QColor, QPainterPath, QRegion

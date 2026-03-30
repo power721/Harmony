@@ -5,6 +5,8 @@ Artist card widget for displaying artist information in a grid.
 import logging
 from pathlib import Path
 
+from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -12,8 +14,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QMenu,
 )
-from PySide6.QtCore import Qt, Signal, QRect
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 
 from domain.artist import Artist
 from system.i18n import t
@@ -309,4 +309,3 @@ class ArtistCard(QWidget):
 
         # Reload avatar to apply new theme colors to default avatar
         self._load_avatar()
-

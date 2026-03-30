@@ -5,34 +5,27 @@ Uses QListView + Model/Delegate for high-performance rendering with lazy loading
 
 import logging
 from typing import List, Optional, Union
-from urllib.parse import urlparse
 
+from PySide6.QtCore import (
+    Qt, Signal,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QHBoxLayout,
     QLabel,
     QListView,
-    QFrame,
     QProgressBar,
     QStyledItemDelegate,
     QStyle,
-    QMenu,
-    QApplication,
     QPushButton,
 )
-from PySide6.QtCore import (
-    Qt, Signal,
-    QAbstractListModel, QModelIndex, QSize, QRect, QUrl
-)
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
 from domain.online_music import OnlineArtist, OnlineAlbum, OnlinePlaylist
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
-
 
 # Type alias for online items
 OnlineItem = Union[OnlineArtist, OnlineAlbum, OnlinePlaylist]
@@ -106,7 +99,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
         if data_type == "singer":
             self._border_radius = 90  # Circular
         else:
-            self._border_radius = 8   # Rounded rectangle
+            self._border_radius = 8  # Rounded rectangle
 
         self._cover_cache = {}
         self._pending_downloads = set()  # Track URLs being downloaded

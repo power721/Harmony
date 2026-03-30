@@ -5,7 +5,7 @@ Handles online track playback and queue management.
 """
 
 import logging
-from typing import List, Tuple, Dict, TYPE_CHECKING
+from typing import List, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import QObject
 
@@ -31,10 +31,10 @@ class OnlineMusicHandler(QObject):
     """
 
     def __init__(
-        self,
-        playback_service: "PlaybackService",
-        status_callback=None,
-        parent=None
+            self,
+            playback_service: "PlaybackService",
+            status_callback=None,
+            parent=None
     ):
         """
         Initialize the handler.

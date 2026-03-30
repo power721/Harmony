@@ -14,11 +14,10 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QGraphicsDropShadowEffect
 )
 
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from ui.dialogs.progress_dialog import ProgressDialog
-
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.progress_dialog import ProgressDialog
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -717,7 +716,7 @@ class GeneralSettingsDialog(QDialog):
         # Two-column layout
         for index, (field, label_text) in enumerate(color_fields):
             column = index % 2  # 0 for left column, 1 for right column
-            row = index // 2    # Integer division to get row number
+            row = index // 2  # Integer division to get row number
 
             # Each column uses 3 grid columns: label, color button, hex input
             grid_col = column * 3
@@ -1772,6 +1771,7 @@ class GeneralSettingsDialog(QDialog):
     def mouseReleaseEvent(self, event):
         """Handle mouse release."""
         self._drag_pos = None
+
 
 # Backward compatibility alias
 AISettingsDialog = GeneralSettingsDialog

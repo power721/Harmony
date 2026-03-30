@@ -5,6 +5,8 @@ Online music view for searching and browsing online music.
 import logging
 from typing import Optional, List, Dict, Any
 
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
+from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -12,7 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QLineEdit,
-    QTabWidget,
     QTabBar,
     QTableWidget,
     QTableWidgetItem,
@@ -20,22 +21,17 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QAbstractItemView,
     QMenu,
-    QProgressBar,
     QListWidget,
     QListWidgetItem,
-    QSplitter,
     QFrame,
     QCompleter,
-    QListView,
-    QScrollArea,
-    QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
-from PySide6.QtGui import QCursor, QColor, QBrush, QAction
 
 from ui.dialogs.message_dialog import MessageDialog
-
 from ui.widgets.recommend_card import RecommendSection
+from ui.views.ranking_list_view import RankingListView
+from ui.icons import IconName, get_icon
+from system.theme import ThemeManager
 
 
 class CustomQCompleter(QCompleter):
@@ -78,6 +74,7 @@ class CustomQCompleter(QCompleter):
         """Refresh popup styles."""
         self._apply_theme()
 
+
 from domain.online_music import (
     OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
     SearchResult, SearchType
@@ -85,7 +82,6 @@ from domain.online_music import (
 from services.online import OnlineMusicService, OnlineDownloadService
 from system.i18n import t
 from system.event_bus import EventBus
-from ui.icons import IconName, get_icon
 from ui.views.online_grid_view import OnlineGridView
 from ui.views.online_detail_view import OnlineDetailView
 from utils import format_duration
@@ -823,11 +819,11 @@ class OnlineMusicView(QWidget):
     """
 
     def __init__(
-        self,
-        config_manager=None,
-        db_manager=None,
-        qqmusic_service=None,
-        parent=None
+            self,
+            config_manager=None,
+            db_manager=None,
+            qqmusic_service=None,
+            parent=None
     ):
         super().__init__(parent)
 
@@ -1100,13 +1096,40 @@ class OnlineMusicView(QWidget):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(10, 0, 0, 0)
 
+        # Header with title and view toggle
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+
         self._top_list_title = QLabel(t("select_ranking"))
-        right_layout.addWidget(self._top_list_title)
+        header_layout.addWidget(self._top_list_title)
+
+        header_layout.addStretch()
+
+        # View toggle button
+        self._ranking_view_toggle_btn = QPushButton()
+        self._ranking_view_toggle_btn.setFixedSize(32, 32)
+        self._ranking_view_toggle_btn.setToolTip(t("toggle_view"))
+        self._ranking_view_toggle_btn.clicked.connect(self._toggle_ranking_view_mode)
+        header_layout.addWidget(self._ranking_view_toggle_btn)
+
+        right_layout.addLayout(header_layout)
+
+        # Stacked widget for table and list views
+        self._ranking_stacked_widget = QStackedWidget()
 
         self._top_songs_table = self._create_songs_table()
-        right_layout.addWidget(self._top_songs_table)
+        self._ranking_stacked_widget.addWidget(self._top_songs_table)
+
+        self._ranking_list_view = RankingListView()
+        self._ranking_list_view.track_activated.connect(self._on_ranking_track_activated)
+        self._ranking_stacked_widget.addWidget(self._ranking_list_view)
+
+        right_layout.addWidget(self._ranking_stacked_widget)
 
         layout.addWidget(right_widget, 3)
+
+        # Load view mode preference
+        self._load_ranking_view_mode()
 
         return widget
 
@@ -1283,7 +1306,8 @@ class OnlineMusicView(QWidget):
         qqmusic_credential = self._config.get("qqmusic.credential") if self._config else None
         if qqmusic_credential:
             try:
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential, str) else qqmusic_credential
+                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
+                                                                         str) else qqmusic_credential
                 self._qqmusic_service = QQMusicService(cred_dict)
                 # Update service reference
                 self._service._qqmusic = self._qqmusic_service
@@ -1507,7 +1531,7 @@ class OnlineMusicView(QWidget):
 
                     if not cover_url:
                         cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
-                                playlist_info.get('picurl') or playlist_info.get('pic'))
+                                 playlist_info.get('picurl') or playlist_info.get('pic'))
                         if cover:
                             if isinstance(cover, dict):
                                 cover_url = cover.get('default_url') or cover.get('small_url')
@@ -1537,7 +1561,7 @@ class OnlineMusicView(QWidget):
             else:
                 # Song structure (guess, home_feed, newsong)
                 cover_url = (item.get('cover') or item.get('picurl') or
-                            item.get('cover_url') or item.get('pic'))
+                             item.get('cover_url') or item.get('pic'))
 
                 if not cover_url:
                     album_mid = None
@@ -1560,7 +1584,6 @@ class OnlineMusicView(QWidget):
 
     def _display_favorites_cards(self):
         """Display 4 summary cards in the favorites section."""
-        from ui.icons import get_icon, IconName
 
         cards = []
 
@@ -1644,12 +1667,13 @@ class OnlineMusicView(QWidget):
 
                         # Fallback to direct fields
                         if not playlist_id:
-                            playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get('disstid')
+                            playlist_id = playlist_info.get('tid') or playlist_info.get('id') or playlist_info.get(
+                                'disstid')
 
                     else:
                         # Try direct structure - check for various ID fields
                         playlist_id = (first_item.get('tid') or first_item.get('id') or
-                                      first_item.get('disstid') or first_item.get('dissid'))
+                                       first_item.get('disstid') or first_item.get('dissid'))
 
                 elif recommend_type == 'radar':
                     # Radar structure: {'Track': {...}, 'Abt': ..., 'Ext': ...}
@@ -1668,7 +1692,7 @@ class OnlineMusicView(QWidget):
                     # Cover is already extracted by _get_random_cover_from_items
                     # Get playlist ID if available (for playlist-based recommendations)
                     playlist_id = (first_item.get('id') or first_item.get('disstid') or
-                                  first_item.get('tid') or first_item.get('playlist_id'))
+                                   first_item.get('tid') or first_item.get('playlist_id'))
 
                 return {
                     'id': playlist_id,
@@ -1692,11 +1716,10 @@ class OnlineMusicView(QWidget):
                 if content and isinstance(content, list) and content:
                     first_item = content[0]
                     if isinstance(first_item, dict):
-
                         # Get a random cover from all items
                         cover_url = self._get_random_cover_from_items(content, recommend_type)
                         playlist_id = (first_item.get('id') or first_item.get('disstid') or
-                                      first_item.get('tid') or data.get('id'))
+                                       first_item.get('tid') or data.get('id'))
 
                         return {
                             'id': playlist_id,
@@ -1910,12 +1933,12 @@ class OnlineMusicView(QWidget):
                         # Fallback to direct fields
                         if not playlist_id:
                             playlist_id = (playlist_info.get('tid') or playlist_info.get('id') or
-                                          playlist_info.get('disstid') or playlist_info.get('dissid'))
+                                           playlist_info.get('disstid') or playlist_info.get('dissid'))
                         if not playlist_title:
                             playlist_title = playlist_info.get('title') or playlist_info.get('name')
                         if not cover_url:
                             cover = (playlist_info.get('cover_url') or playlist_info.get('cover') or
-                                    playlist_info.get('picurl') or playlist_info.get('pic'))
+                                     playlist_info.get('picurl') or playlist_info.get('pic'))
                             if cover:
                                 if isinstance(cover, dict):
                                     cover_url = cover.get('default_url') or cover.get('small_url')
@@ -1930,12 +1953,12 @@ class OnlineMusicView(QWidget):
                             basic = playlist_info.get('basic', {})
                             if isinstance(basic, dict):
                                 song_count = (basic.get('song_count') or basic.get('song_num') or
-                                             basic.get('songNum') or basic.get('song_cnt') or 0)
+                                              basic.get('songNum') or basic.get('song_cnt') or 0)
                         if not song_count and 'content' in playlist_info:
                             content = playlist_info.get('content', {})
                             if isinstance(content, dict):
                                 song_count = (content.get('song_count') or content.get('song_num') or
-                                             content.get('songNum') or content.get('song_cnt') or 0)
+                                              content.get('songNum') or content.get('song_cnt') or 0)
                         # Check songlist if exists
                         if not song_count:
                             song_list = playlist_info.get('songlist', [])
@@ -1944,8 +1967,8 @@ class OnlineMusicView(QWidget):
                         # Fallback to direct field - try multiple field name variations
                         if not song_count:
                             song_count = (playlist_info.get('song_count') or playlist_info.get('song_num') or
-                                         playlist_info.get('songNum') or playlist_info.get('song_cnt') or
-                                         playlist_info.get('songnum') or 0)
+                                          playlist_info.get('songNum') or playlist_info.get('song_cnt') or
+                                          playlist_info.get('songnum') or 0)
 
                         if playlist_id:
                             playlists.append({
@@ -2343,8 +2366,8 @@ class OnlineMusicView(QWidget):
 
         # Show "load more" button if there are more results
         has_more = len(artists) >= self._grid_page_size and (
-            self._grid_total == 0 or  # Unknown total, assume more
-            self._grid_page * self._grid_page_size < self._grid_total
+                self._grid_total == 0 or  # Unknown total, assume more
+                self._grid_page * self._grid_page_size < self._grid_total
         )
         self._singers_page.set_has_more(has_more)
 
@@ -2357,8 +2380,8 @@ class OnlineMusicView(QWidget):
 
         # Show "load more" button if there are more results
         has_more = len(albums) >= self._grid_page_size and (
-            self._grid_total == 0 or
-            self._grid_page * self._grid_page_size < self._grid_total
+                self._grid_total == 0 or
+                self._grid_page * self._grid_page_size < self._grid_total
         )
         self._albums_page.set_has_more(has_more)
 
@@ -2371,8 +2394,8 @@ class OnlineMusicView(QWidget):
 
         # Show "load more" button if there are more results
         has_more = len(playlists) >= self._grid_page_size and (
-            self._grid_total == 0 or
-            self._grid_page * self._grid_page_size < self._grid_total
+                self._grid_total == 0 or
+                self._grid_page * self._grid_page_size < self._grid_total
         )
         self._playlists_page.set_has_more(has_more)
 
@@ -2855,8 +2878,6 @@ class OnlineMusicView(QWidget):
         if not tracks:
             return
 
-        from app.bootstrap import Bootstrap
-
         added_count = 0
 
         for track in tracks:
@@ -3027,7 +3048,8 @@ class OnlineMusicView(QWidget):
         self._display_top_songs(songs)
 
     def _display_top_songs(self, songs: List[OnlineTrack]):
-        """Display top songs in table."""
+        """Display top songs in both table and list views."""
+        # Update table view
         self._top_songs_table.setRowCount(len(songs))
 
         for i, song in enumerate(songs):
@@ -3049,6 +3071,44 @@ class OnlineMusicView(QWidget):
             # Duration
             duration_str = format_duration(song.duration) if song.duration else ""
             self._top_songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
+
+        # Update list view
+        self._ranking_list_view.load_tracks(songs)
+
+    def _load_ranking_view_mode(self):
+        """Load ranking view mode preference from config."""
+        view_mode = self._config.get("view/ranking_view_mode", "table") if self._config else "table"
+        self._update_ranking_view_toggle_icon()
+        self._ranking_stacked_widget.setCurrentIndex(0 if view_mode == "table" else 1)
+
+    def _toggle_ranking_view_mode(self):
+        """Toggle between table and list view for rankings."""
+        current_mode = self._config.get("view/ranking_view_mode", "table") if self._config else "table"
+        new_mode = "list" if current_mode == "table" else "table"
+        if self._config:
+            self._config.set("view/ranking_view_mode", new_mode)
+        self._update_ranking_view_toggle_icon()
+        self._ranking_stacked_widget.setCurrentIndex(0 if new_mode == "table" else 1)
+
+    def _update_ranking_view_toggle_icon(self):
+        """Update ranking view toggle button icon."""
+        view_mode = self._config.get("view/ranking_view_mode", "table") if self._config else "table"
+        theme = ThemeManager.instance().current_theme
+
+        if view_mode == "list":
+            icon = get_icon(IconName.GRID, theme.text_secondary)
+            self._ranking_view_toggle_btn.setToolTip(t("switch_to_table_view"))
+        else:
+            icon = get_icon(IconName.LIST, theme.text_secondary)
+            self._ranking_view_toggle_btn.setToolTip(t("switch_to_list_view"))
+
+        self._ranking_view_toggle_btn.setIcon(icon)
+
+    def _on_ranking_track_activated(self, track):
+        """Handle track activation from ranking list view."""
+        # TODO: Implement online track playback
+        logger.info(f"Ranking track activated: {track.title}")
+
 
     def refresh_ui(self):
         """Refresh UI texts after language change."""

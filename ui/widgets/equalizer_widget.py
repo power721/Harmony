@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSlider,
     QLabel, QPushButton, QComboBox
 )
+
 from system.theme import ThemeManager
 
 
@@ -255,7 +256,6 @@ class EqualizerWidget(QWidget):
         # Update sliders
         for slider in self.findChildren(QSlider):
             slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
-
 
 
 class EqualizerDialog:

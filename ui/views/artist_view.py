@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import List
 
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QCursor, QMouseEvent, QScreen
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -23,19 +25,17 @@ from PySide6.QtWidgets import (
     QMenu,
     QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction, QCursor, QMouseEvent, QScreen
 
-from domain.artist import Artist
 from domain.album import Album
+from domain.artist import Artist
 from domain.track import Track
 from services.library import LibraryService
 from services.metadata import CoverService
 from services.playback import PlaybackService
-from ui.widgets import AlbumCard
-from utils import format_duration
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.widgets import AlbumCard
+from utils import format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,11 @@ class ArtistView(QWidget):
     download_cover_requested = Signal(object)  # Emits Album object
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        playback_service: PlaybackService = None,
-        cover_service: CoverService = None,
-        parent=None
+            self,
+            library_service: LibraryService,
+            playback_service: PlaybackService = None,
+            cover_service: CoverService = None,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service

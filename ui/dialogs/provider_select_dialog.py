@@ -2,9 +2,9 @@
 Provider selection dialog for cloud services.
 """
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QWidget, QGraphicsDropShadowEffect)
-from PySide6.QtGui import QColor, QPainterPath, QRegion
 
 from system.i18n import t
 from system.theme import ThemeManager

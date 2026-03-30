@@ -7,7 +7,11 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from shiboken6 import isValid
+from PySide6.QtCore import (
+    Qt, Signal, QTimer, QThread,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,13 +24,8 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyle,
     QMenu,
-    QApplication,
 )
-from PySide6.QtCore import (
-    Qt, Signal, QTimer, QThread,
-    QAbstractListModel, QModelIndex, QSize, QRect, QEvent
-)
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction, QCursor
+from shiboken6 import isValid
 
 from domain.genre import Genre
 from services.library import LibraryService
@@ -244,10 +243,10 @@ class GenresView(QWidget):
     MARGIN = 20
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        cover_service: CoverService = None,
-        parent=None
+            self,
+            library_service: LibraryService,
+            cover_service: CoverService = None,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service

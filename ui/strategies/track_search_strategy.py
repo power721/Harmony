@@ -4,9 +4,9 @@ Track cover search strategy.
 import logging
 from typing import List, Optional
 
-from services.metadata import CoverService
-from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
 from infrastructure.network import HttpClient
+from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+from services.metadata import CoverService
 from ui.strategies.cover_search_strategy import CoverSearchStrategy
 
 logger = logging.getLogger(__name__)
@@ -80,9 +80,9 @@ class TrackSearchStrategy(CoverSearchStrategy):
     def needs_lazy_fetch(self, result: dict) -> bool:
         """Check if result needs QQ Music lazy fetch."""
         return (
-            result.get('source') == 'qqmusic' and
-            not result.get('cover_url') and
-            bool(result.get('album_mid') or result.get('id'))
+                result.get('source') == 'qqmusic' and
+                not result.get('cover_url') and
+                bool(result.get('album_mid') or result.get('id'))
         )
 
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:

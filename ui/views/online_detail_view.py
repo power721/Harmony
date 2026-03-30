@@ -6,6 +6,8 @@ Shows details for artist, album, or playlist.
 import logging
 from typing import Optional, List, Dict, Any
 
+from PySide6.QtCore import Qt, Signal, QThread, QRect, QTimer
+from PySide6.QtGui import QColor, QPixmap, QPainter, QFont
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -19,19 +21,13 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QMenu,
-    QGridLayout,
-    QGraphicsDropShadowEffect,
-    QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
-from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
 
-from ui.dialogs.message_dialog import MessageDialog
-from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist, OnlineSinger, AlbumInfo
+from domain.online_music import OnlineTrack, OnlineAlbum, OnlineSinger, AlbumInfo
 from services.online import OnlineMusicService, OnlineDownloadService
-from system.i18n import t
 from system.event_bus import EventBus
-from system.theme import ThemeManager
+from system.i18n import t
+from ui.dialogs.message_dialog import MessageDialog
 from utils import format_duration
 
 logger = logging.getLogger(__name__)
@@ -73,7 +69,8 @@ class AlbumListWorker(QThread):
 
     albums_loaded = Signal(list, int, int)  # (albums list, total count, request_id)
 
-    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0, request_id: int = 0):
+    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0,
+                 request_id: int = 0):
         super().__init__()
         self._service = service
         self._singer_mid = singer_mid
@@ -601,11 +598,11 @@ class OnlineDetailView(QWidget):
     """
 
     def __init__(
-        self,
-        config_manager=None,
-        db_manager=None,
-        qqmusic_service=None,
-        parent=None
+            self,
+            config_manager=None,
+            db_manager=None,
+            qqmusic_service=None,
+            parent=None
     ):
         super().__init__(parent)
 
@@ -1138,7 +1135,8 @@ class OnlineDetailView(QWidget):
         if self._current_page == 1:
             self._total_songs = total
             self._page_size = page_size if page_size > 0 else 30
-            self._total_pages = (self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
+            self._total_pages = (
+                                            self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
 
         self._tracks = self._parse_songs(songs)
 
@@ -1533,7 +1531,8 @@ class OnlineDetailView(QWidget):
                 self._album_list_worker.wait()
             self._album_list_worker.deleteLater()
 
-        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin, request_id=current_request_id)
+        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin,
+                                                  request_id=current_request_id)
         self._album_list_worker.albums_loaded.connect(self._on_albums_loaded, Qt.QueuedConnection)
 
         # Clean up worker after thread has fully stopped
@@ -1848,7 +1847,6 @@ class OnlineDetailView(QWidget):
 
     def _add_tracks_to_favorites(self, tracks: list):
         """Add multiple tracks to favorites."""
-        from app.bootstrap import Bootstrap
 
         added_count = 0
         for track in tracks:
@@ -1896,7 +1894,6 @@ class OnlineDetailView(QWidget):
     def _add_online_track_to_library(self, track: OnlineTrack):
         """Add online track to library, return track_id."""
         from app.bootstrap import Bootstrap
-        from domain.track import TrackSource
 
         bootstrap = Bootstrap.instance()
         if not bootstrap.library_service:

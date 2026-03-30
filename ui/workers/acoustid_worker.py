@@ -20,10 +20,10 @@ class AcoustIDWorker(QThread):
     finished_signal = Signal(list, int, int)  # identified_ids, success_count, failed_count
 
     def __init__(
-        self,
-        track_ids: List[int],
-        library_service,
-        api_key: str
+            self,
+            track_ids: List[int],
+            library_service,
+            api_key: str
     ):
         """
         Initialize the worker.

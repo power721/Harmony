@@ -14,20 +14,20 @@ Features:
 import logging
 import os
 import time
-from pathlib import Path
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Callable
 
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QProgressBar, QPushButton, QWidget, QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
-from PySide6.QtGui import QColor, QPainterPath, QRegion
 
-from services import MetadataService
 from domain.track import Track
+from services import MetadataService
 from system.i18n import t
 from system.theme import ThemeManager
 
@@ -83,13 +83,13 @@ class ScanWorker(QObject):
     log = Signal(str)
 
     def __init__(
-        self,
-        folder_path: str,
-        db_manager: "DatabaseManager",
-        cover_service: Optional["CoverService"] = None,
-        library_service: Optional["LibraryService"] = None,
-        batch_size: int = 100,
-        enable_cover_extraction: bool = False,
+            self,
+            folder_path: str,
+            db_manager: "DatabaseManager",
+            cover_service: Optional["CoverService"] = None,
+            library_service: Optional["LibraryService"] = None,
+            batch_size: int = 100,
+            enable_cover_extraction: bool = False,
     ):
         super().__init__()
         self.folder_path = folder_path
@@ -597,15 +597,15 @@ class ScanController(QObject):
     completed = Signal(dict)
 
     def __init__(
-        self,
-        folder: str,
-        db_manager: "DatabaseManager",
-        cover_service: Optional["CoverService"] = None,
-        library_service: Optional["LibraryService"] = None,
-        parent=None,
-        on_complete: Optional[Callable[[dict], None]] = None,
-        batch_size: int = 100,
-        enable_cover_extraction: bool = False,
+            self,
+            folder: str,
+            db_manager: "DatabaseManager",
+            cover_service: Optional["CoverService"] = None,
+            library_service: Optional["LibraryService"] = None,
+            parent=None,
+            on_complete: Optional[Callable[[dict], None]] = None,
+            batch_size: int = 100,
+            enable_cover_extraction: bool = False,
     ):
         super().__init__(parent)
         self.folder = folder
@@ -729,14 +729,14 @@ class ScanDialog:
 
     @staticmethod
     def scan_folder(
-        folder: str,
-        db_manager: "DatabaseManager",
-        cover_service: Optional["CoverService"] = None,
-        library_service: Optional["LibraryService"] = None,
-        parent=None,
-        on_complete: Optional[Callable[[dict], None]] = None,
-        batch_size: int = 100,
-        enable_cover_extraction: bool = False,
+            folder: str,
+            db_manager: "DatabaseManager",
+            cover_service: Optional["CoverService"] = None,
+            library_service: Optional["LibraryService"] = None,
+            parent=None,
+            on_complete: Optional[Callable[[dict], None]] = None,
+            batch_size: int = 100,
+            enable_cover_extraction: bool = False,
     ) -> ScanController:
         """
         Start scanning a music folder asynchronously.

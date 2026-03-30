@@ -5,21 +5,21 @@ Album card widget for displaying album information in a grid.
 import logging
 from pathlib import Path
 
+from PySide6.QtCore import Qt, Signal, QRect, QTimer
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QLabel,
     QFrame,
-    QGraphicsDropShadowEffect,
     QMenu,
 )
-from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QRect, QEasingCurve, QTimer
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction
 
 from domain.album import Album
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
+
 
 class AlbumCard(QWidget):
     """
@@ -270,4 +270,3 @@ class AlbumCard(QWidget):
                 background: transparent;
             }
         """))
-

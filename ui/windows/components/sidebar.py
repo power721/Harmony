@@ -4,11 +4,11 @@ Sidebar navigation widget for MainWindow.
 
 from typing import List, Tuple, TYPE_CHECKING
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 
-from ui.icons import IconName, IconButton
 from system.i18n import t, get_language
+from ui.icons import IconName, IconButton
 
 if TYPE_CHECKING:
     from system.config import ConfigManager

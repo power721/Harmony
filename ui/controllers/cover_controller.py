@@ -7,8 +7,8 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
-from services.metadata import CoverService
 from infrastructure.network import HttpClient
+from services.metadata import CoverService
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ Album rename dialog for renaming albums and merging duplicates.
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QFormLayout, QLineEdit
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QFormLayout, QLineEdit
 
 from domain.album import Album
 from services.library import LibraryService
@@ -23,12 +23,12 @@ class RenameAlbumWorker(BaseRenameWorker):
     """Worker thread for renaming album."""
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        old_name: str,
-        artist: str,
-        new_name: str,
-        parent=None
+            self,
+            library_service: LibraryService,
+            old_name: str,
+            artist: str,
+            new_name: str,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service
@@ -56,10 +56,10 @@ class AlbumRenameDialog(BaseRenameDialog):
     album_renamed = Signal(str, str, str)  # old_name, artist, new_name
 
     def __init__(
-        self,
-        album: Album,
-        library_service: LibraryService,
-        parent=None
+            self,
+            album: Album,
+            library_service: LibraryService,
+            parent=None
     ):
         super().__init__(parent)
         self._album = album

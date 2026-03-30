@@ -28,9 +28,9 @@ from domain.track import Track
 from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
-from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from utils import format_duration
 
 

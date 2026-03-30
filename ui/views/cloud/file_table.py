@@ -4,6 +4,8 @@ Cloud file table widget for displaying files from cloud storage.
 
 from typing import List, Optional, TYPE_CHECKING
 
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -12,12 +14,10 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QAbstractItemView,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QBrush
 
 from domain.cloud import CloudFile
-from utils import format_duration
 from system.i18n import t
+from utils import format_duration
 
 if TYPE_CHECKING:
     from domain.playback import PlaybackState
@@ -226,9 +226,9 @@ class CloudFileTable(QWidget):
 
                 # Check if this file is currently playing
                 is_currently_playing = (
-                    current_playing_file_id and
-                    file.file_id == current_playing_file_id and
-                    file.file_type == "audio"
+                        current_playing_file_id and
+                        file.file_id == current_playing_file_id and
+                        file.file_type == "audio"
                 )
 
                 # Name column

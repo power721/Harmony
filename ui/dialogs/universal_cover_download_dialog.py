@@ -2,7 +2,6 @@
 Universal cover download dialog that works with any search strategy.
 """
 import logging
-from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
@@ -12,13 +11,12 @@ from PySide6.QtWidgets import (
 )
 
 from services.metadata import CoverService
-from system.event_bus import EventBus
 from system.i18n import t
 from system.theme import ThemeManager
-from ui.dialogs.base_cover_download_dialog import BaseCoverDownloadDialog
 from ui.controllers.cover_controller import CoverController
-from ui.strategies.cover_search_strategy import CoverSearchStrategy
+from ui.dialogs.base_cover_download_dialog import BaseCoverDownloadDialog
 from ui.dialogs.message_dialog import MessageDialog
+from ui.strategies.cover_search_strategy import CoverSearchStrategy
 
 logger = logging.getLogger(__name__)
 

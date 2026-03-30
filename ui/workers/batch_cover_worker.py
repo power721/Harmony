@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 class BatchArtistCoverWorker(QThread):
     """Worker thread for batch downloading artist covers."""
 
-    progress = Signal(int, int)           # current, total
-    item_progress = Signal(str)           # current artist name
-    finished_signal = Signal(int, int)    # success_count, failed_count
+    progress = Signal(int, int)  # current, total
+    item_progress = Signal(str)  # current artist name
+    finished_signal = Signal(int, int)  # success_count, failed_count
 
     def __init__(self, cover_service, library_service, artists):
         super().__init__()
@@ -95,9 +95,9 @@ class BatchArtistCoverWorker(QThread):
 class BatchAlbumCoverWorker(QThread):
     """Worker thread for batch downloading album covers."""
 
-    progress = Signal(int, int)           # current, total
-    item_progress = Signal(str)           # current album name
-    finished_signal = Signal(int, int)    # success_count, failed_count
+    progress = Signal(int, int)  # current, total
+    item_progress = Signal(str)  # current album name
+    finished_signal = Signal(int, int)  # success_count, failed_count
 
     def __init__(self, cover_service, library_service, albums):
         super().__init__()

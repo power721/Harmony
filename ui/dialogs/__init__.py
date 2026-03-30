@@ -6,7 +6,6 @@ from .artist_rename_dialog import ArtistRenameDialog
 from .base_cover_download_dialog import BaseCoverDownloadDialog
 from .cloud_login_dialog import CloudLoginDialog
 from .edit_media_info_dialog import EditMediaInfoDialog
-from .welcome_dialog import WelcomeDialog
 from .help_dialog import HelpDialog
 from .input_dialog import InputDialog
 from .lyrics_download_dialog import LyricsDownloadDialog
@@ -15,6 +14,7 @@ from .provider_select_dialog import ProviderSelectDialog
 from .qqmusic_qr_login_dialog import QQMusicQRLoginDialog
 from .settings_dialog import GeneralSettingsDialog
 from .universal_cover_download_dialog import UniversalCoverDownloadDialog
+from .welcome_dialog import WelcomeDialog
 
 # Backward compatibility aliases
 TrackCoverDownloadDialog = UniversalCoverDownloadDialog

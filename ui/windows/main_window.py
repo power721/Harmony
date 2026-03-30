@@ -11,7 +11,6 @@ import logging
 
 from app import Bootstrap
 from domain.playback import PlaybackState
-from services import PlaybackService
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,28 +22,22 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSplitter,
     QStackedWidget,
-    QPushButton,
     QFileDialog,
-    QLabel,
     QMenu,
     QSystemTrayIcon,
     QStyle,
     QDialog,
     QSizeGrip,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QSettings
+from PySide6.QtCore import Qt, Signal, QSettings
 from typing import Optional
-
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.welcome_dialog import WelcomeDialog
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
-from system.config import ConfigManager
 from system.event_bus import EventBus
 from system.theme import ThemeManager
-from ui.icons import IconName, IconButton, set_button_icon
-from domain.track import Track
 from domain.playlist_item import PlaylistItem
 from domain.track import TrackSource
 
@@ -396,23 +389,24 @@ class MainWindow(QMainWindow):
         if qqmusic_credential:
             try:
                 import json
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential, str) else qqmusic_credential
+                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
+                                                                         str) else qqmusic_credential
                 qqmusic_service = QQMusicService(cred_dict)
             except Exception:
                 pass
         self._online_music_view = OnlineMusicView(self._config, self._db, qqmusic_service)
 
-        self._stacked_widget.addWidget(self._library_view)       # 0
-        self._stacked_widget.addWidget(self._cloud_drive_view)   # 1
-        self._stacked_widget.addWidget(self._playlist_view)      # 2
-        self._stacked_widget.addWidget(self._queue_view)         # 3
-        self._stacked_widget.addWidget(self._albums_view)        # 4
-        self._stacked_widget.addWidget(self._artists_view)       # 5
-        self._stacked_widget.addWidget(self._artist_view)        # 6
-        self._stacked_widget.addWidget(self._album_view)         # 7
+        self._stacked_widget.addWidget(self._library_view)  # 0
+        self._stacked_widget.addWidget(self._cloud_drive_view)  # 1
+        self._stacked_widget.addWidget(self._playlist_view)  # 2
+        self._stacked_widget.addWidget(self._queue_view)  # 3
+        self._stacked_widget.addWidget(self._albums_view)  # 4
+        self._stacked_widget.addWidget(self._artists_view)  # 5
+        self._stacked_widget.addWidget(self._artist_view)  # 6
+        self._stacked_widget.addWidget(self._album_view)  # 7
         self._stacked_widget.addWidget(self._online_music_view)  # 8
-        self._stacked_widget.addWidget(self._genres_view)        # 9
-        self._stacked_widget.addWidget(self._genre_view)         # 10
+        self._stacked_widget.addWidget(self._genres_view)  # 9
+        self._stacked_widget.addWidget(self._genre_view)  # 10
 
         self._splitter.addWidget(self._stacked_widget)
 
@@ -1462,9 +1456,17 @@ class MainWindow(QMainWindow):
             6: "artist",
             7: "album",
             8: "online",
+            9: "genres",
+            10: "genre",
         }
 
         view_type = index_to_type.get(current_index, "library")
+
+        # Special handling for library view - check if it's showing favorites or history
+        if view_type == "library":
+            current_view = self._library_view.get_current_view()
+            if current_view in ("favorites", "history"):
+                view_type = current_view
 
         # Save view-specific data
         if view_type == "album":
@@ -1479,6 +1481,12 @@ class MainWindow(QMainWindow):
             if artist:
                 view_data = {
                     "name": artist.name,
+                }
+        elif view_type == "genre":
+            genre = self._genre_view.get_genre()
+            if genre:
+                view_data = {
+                    "name": genre.name,
                 }
 
         self._config.set_view_type(view_type)
@@ -1548,11 +1556,26 @@ class MainWindow(QMainWindow):
                 self._show_page(5)
             elif view_type == "online":
                 self._show_page(8)
+            elif view_type == "genres":
+                self._show_page(9)
+            elif view_type == "genre":
+                name = view_data.get("name")
+                if name:
+                    # Find genre from library
+                    from app.bootstrap import Bootstrap
+                    bootstrap = Bootstrap.instance()
+                    genres = bootstrap.library_service.get_genres()
+                    for genre in genres:
+                        if genre.name == name:
+                            self._nav_stack.append(self._stacked_widget.currentIndex())
+                            self._genre_view.set_genre(genre)
+                            self._stacked_widget.setCurrentIndex(10)
+                            self._update_nav_buttons_for_detail_view()
+                            break
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":
                 self._show_history()
-
 
         # Delay to ensure UI is ready
         QTimer.singleShot(100, restore_view)

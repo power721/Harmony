@@ -21,12 +21,12 @@ class AIEnhanceWorker(QThread):
     finished_signal = Signal(list, int, int)  # enhanced_ids, enhanced_count, failed_count
 
     def __init__(
-        self,
-        track_ids: List[int],
-        library_service,
-        base_url: str,
-        api_key: str,
-        model: str
+            self,
+            track_ids: List[int],
+            library_service,
+            base_url: str,
+            api_key: str,
+            model: str
     ):
         """
         Initialize the worker.

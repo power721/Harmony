@@ -7,19 +7,18 @@ Provides static methods with the same API as QMessageBox:
 - question(parent, title, text, buttons, default_button) -> StandardButton
 - critical(parent, title, text)
 """
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel,
     QPushButton, QGraphicsDropShadowEffect, QWidget,
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QRegion
-
-from system.theme import ThemeManager
-from system.i18n import t
-from ui.icons import IconName, get_icon
-
 # Re-export QMessageBox constants so callers can keep using QMessageBox.Yes etc.
 from PySide6.QtWidgets import QMessageBox as _QMB
+
+from system.i18n import t
+from system.theme import ThemeManager
+from ui.icons import IconName, get_icon
 
 Yes = _QMB.StandardButton.Yes
 No = _QMB.StandardButton.No

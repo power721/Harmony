@@ -16,20 +16,20 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QAbstractItemView,
-    QPushButton,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
     QMenu,
     QDialog,
+    QStackedWidget,
+    QPushButton,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QThread
 from PySide6.QtGui import QColor, QBrush
 from typing import List, Optional
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from app import Bootstrap
 from domain.track import Track
 from services.playback import PlaybackService
 from domain.playback import PlaybackState
@@ -38,11 +38,12 @@ from utils import format_duration, format_count_message
 from system.i18n import t
 from system.config import ConfigManager
 from system.event_bus import EventBus
-from ui.icons import IconName, get_icon
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.ai_enhance_worker import AIEnhanceWorker
 from ui.workers.acoustid_worker import AcoustIDWorker
+from ui.views.history_list_view import HistoryListView
+from ui.icons import IconName, get_icon
 
 
 class LoadTracksWorker(QThread):
@@ -230,7 +231,8 @@ class LibraryView(QWidget):
     )  # Signal when tracks should be added to a playlist
 
     def __init__(
-            self, library_service, favorites_service, play_history_service, player: PlaybackService, config_manager: ConfigManager = None,
+            self, library_service, favorites_service, play_history_service, player: PlaybackService,
+            config_manager: ConfigManager = None,
             cover_service: CoverService = None, parent=None
     ):
         """
@@ -257,6 +259,8 @@ class LibraryView(QWidget):
         self._current_playing_row = -1  # Row of currently playing track
         self._track_id_to_row = {}  # Dict for O(1) row lookup by track_id
         self._load_worker = None
+        self._history_list_view = None  # History list view widget
+        self._history_played_at_map = {}  # track_id -> played_at datetime
         self._view_search_texts = {
             "all": "",
             "favorites": "",
@@ -284,6 +288,13 @@ class LibraryView(QWidget):
         self._title_label.setObjectName("libraryTitle")
         header_layout.addWidget(self._title_label)
 
+        # View toggle button (for history view)
+        self._view_toggle_btn = QPushButton()
+        self._view_toggle_btn.setFixedSize(32, 32)
+        self._view_toggle_btn.setToolTip(t("toggle_view"))
+        self._view_toggle_btn.setVisible(False)  # Only visible in history view
+        header_layout.addWidget(self._view_toggle_btn)
+
         header_layout.addStretch()
 
         # Source filter dropdown
@@ -309,7 +320,11 @@ class LibraryView(QWidget):
 
         layout.addLayout(header_layout)
 
-        # Tracks table
+        # Stacked widget for table and list views
+        self._stacked_widget = QStackedWidget()
+        layout.addWidget(self._stacked_widget)
+
+        # Tracks table (page 0)
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
         self._tracks_table.setColumnCount(7)
@@ -342,17 +357,24 @@ class LibraryView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.Fixed)
         self._tracks_table.setColumnWidth(6, 40)
 
+        self._stacked_widget.addWidget(self._tracks_table)
+
+        # History list view (page 1)
+        self._history_list_view = HistoryListView()
+        self._stacked_widget.addWidget(self._history_list_view)
+
         # Loading indicator
         self._loading_label = QLabel("⏳ " + t("loading"))
         self._loading_label.setAlignment(Qt.AlignCenter)
         self._loading_label.setVisible(False)
         layout.addWidget(self._loading_label)
 
-        layout.addWidget(self._tracks_table)
-
         # Status bar
         self._status_label = QLabel(t("no_tracks"))
         layout.addWidget(self._status_label)
+
+        # Load view mode preference
+        self._load_view_mode()
 
         # Apply themed styles
         self.refresh_theme()
@@ -366,6 +388,12 @@ class LibraryView(QWidget):
         self._search_timer.timeout.connect(self._on_search)
         self._source_filter.currentIndexChanged.connect(self._on_source_filter_changed)
         self._tracks_table.itemDoubleClicked.connect(self._on_item_double_clicked)
+
+        # View toggle button
+        self._view_toggle_btn.clicked.connect(self._toggle_history_view_mode)
+
+        # History list view
+        self._history_list_view.track_activated.connect(self._on_history_track_activated)
 
         # Connect to player engine signals
         self._player.engine.current_track_changed.connect(
@@ -415,12 +443,21 @@ class LibraryView(QWidget):
             self._title_label.setText(t("history"))
 
         # Reload data
+        self._stacked_widget.setCurrentIndex(0)  # Show table view
         if self._current_view == "all":
             self._load_all_tracks()
         elif self._current_view == "favorites":
             self._load_favorites()
         elif self._current_view == "history":
             self._load_history()
+
+    def get_current_view(self) -> str:
+        """Get current view type.
+
+        Returns:
+            "all", "favorites", or "history"
+        """
+        return self._current_view
 
     def show_all(self):
         """Show all tracks."""
@@ -429,6 +466,10 @@ class LibraryView(QWidget):
 
         self._current_view = "all"
         self._title_label.setText(t("library"))
+
+        # Hide view toggle button for non-history views
+        self._view_toggle_btn.setVisible(False)
+        self._stacked_widget.setCurrentIndex(0)  # Show table view
 
         # Show source filter for library view
         self._source_filter.setVisible(True)
@@ -457,6 +498,10 @@ class LibraryView(QWidget):
         self._current_view = "favorites"
         self._title_label.setText(t("favorites"))
 
+        # Hide view toggle button for non-history views
+        self._view_toggle_btn.setVisible(False)
+        self._stacked_widget.setCurrentIndex(0)  # Show table view
+
         # Hide source filter for favorites view
         self._source_filter.setVisible(False)
 
@@ -478,6 +523,10 @@ class LibraryView(QWidget):
 
         self._current_view = "history"
         self._title_label.setText(t("history"))
+
+        # Show view toggle button for history
+        self._view_toggle_btn.setVisible(True)
+        self._update_view_toggle_icon()
 
         # Hide source filter for history view
         self._source_filter.setVisible(False)
@@ -579,7 +628,8 @@ class LibraryView(QWidget):
 
             # Source
             source_value = item.get("source", "Local")
-            source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
+            source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu",
+                              "QQ": "source_qq"}
             source_text = t(source_key_map.get(source_value, "source_local"))
             source_item = QTableWidgetItem(source_text)
             source_item.setForeground(text_brush)
@@ -618,7 +668,7 @@ class LibraryView(QWidget):
     def _load_history(self):
         """Load play history."""
         self._loading_label.setVisible(True)
-        self._tracks_table.setVisible(False)
+        self._stacked_widget.setVisible(False)
 
         history = self._play_history_service.get_history()
 
@@ -627,19 +677,33 @@ class LibraryView(QWidget):
         tracks_map = {t.id: t for t in self._library_service.get_tracks_by_ids(track_ids)}
 
         tracks = []
+        self._history_played_at_map = {}
         for entry in history:
             track = tracks_map.get(entry.track_id)
             if track:
-                tracks.append((track, entry.played_at))
+                tracks.append(track)
+                self._history_played_at_map[track.id] = entry.played_at
 
-        self._populate_table([t[0] for t in tracks])
+        # Check current view mode
+        view_mode = self._config.get("view/history_view_mode", "table")
+
+        if view_mode == "list":
+            # Load into list view
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._history_list_view.load_tracks(tracks, self._history_played_at_map, favorite_ids)
+            self._stacked_widget.setCurrentIndex(1)  # Show list view
+        else:
+            # Load into table view
+            self._populate_table(tracks)
+            self._stacked_widget.setCurrentIndex(0)  # Show table view
+
         self._status_label.setText(f"{len(tracks)} {t('recently_played')}")
 
         self._loading_label.setVisible(False)
-        self._tracks_table.setVisible(True)
+        self._stacked_widget.setVisible(True)
 
-        # Apply current playing indicator after loading
-        if self._current_playing_track_id:
+        # Apply current playing indicator after loading (only for table view)
+        if view_mode == "table" and self._current_playing_track_id:
             self._set_track_playing_status(self._current_playing_track_id, True)
             self._scroll_to_playing_track()
 
@@ -714,7 +778,8 @@ class LibraryView(QWidget):
 
                 # Source
                 source_value = track.source.value if hasattr(track, 'source') and track.source else "Local"
-                source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu", "QQ": "source_qq"}
+                source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu",
+                                  "QQ": "source_qq"}
                 source_text = t(source_key_map.get(source_value, "source_local"))
                 source_item = QTableWidgetItem(source_text)
                 source_item.setForeground(QBrush(text_secondary_color))
@@ -1824,7 +1889,8 @@ class LibraryView(QWidget):
             title_item.setText(title_text)
             from system.theme import ThemeManager
             tm = ThemeManager.instance()
-            title_item.setForeground(QBrush(QColor(tm.current_theme.highlight if is_currently_playing else tm.current_theme.text)))
+            title_item.setForeground(
+                QBrush(QColor(tm.current_theme.highlight if is_currently_playing else tm.current_theme.text)))
 
             if is_currently_playing:
                 font = title_item.font()
@@ -2021,3 +2087,41 @@ class LibraryView(QWidget):
         if success > 0:
             # Refresh the view to show updated paths
             self.refresh()
+
+    def _load_view_mode(self):
+        """Load view mode preference from config."""
+        view_mode = self._config.get("view/history_view_mode", "table")
+        self._update_view_toggle_icon()
+
+    def _toggle_history_view_mode(self):
+        """Toggle between table and list view for history."""
+        current_mode = self._config.get("view/history_view_mode", "table")
+        new_mode = "list" if current_mode == "table" else "table"
+        self._config.set("view/history_view_mode", new_mode)
+        self._update_view_toggle_icon()
+
+        # Reload history with new view mode
+        if self._current_view == "history":
+            self._load_history()
+
+    def _update_view_toggle_icon(self):
+        """Update view toggle button icon."""
+        view_mode = self._config.get("view/history_view_mode", "table")
+        theme = ThemeManager.instance().current_theme
+
+        if view_mode == "list":
+            icon = get_icon(IconName.GRID, theme.text_secondary)
+            self._view_toggle_btn.setToolTip(t("switch_to_table_view"))
+        else:
+            icon = get_icon(IconName.LIST, theme.text_secondary)
+            self._view_toggle_btn.setToolTip(t("switch_to_list_view"))
+
+        self._view_toggle_btn.setIcon(icon)
+
+    def _on_history_track_activated(self, track: Track):
+        """Handle track activation from history list view."""
+        # Add track to queue and play
+        from domain.playlist import PlaylistItem
+        item = PlaylistItem(track_id=track.id)
+        self._player.engine.set_playlist([item])
+        self._player.engine.play()
