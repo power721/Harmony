@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, Q
 from PySide6.QtGui import QColor, QPixmap, QPainter, QImage, QCursor
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
-from domain.track import Track
+from domain.track import Track, TrackSource
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
 from system.event_bus import EventBus
@@ -125,6 +125,26 @@ class CoverLoadWorker(QRunnable):
             return None
 
         from pathlib import Path
+
+        source = self.track.source
+        cloud_file_id = self.track.cloud_file_id
+        is_online = source == TrackSource.QQ
+
+        if is_online and cloud_file_id:
+            try:
+                from app.bootstrap import Bootstrap
+                bootstrap = Bootstrap.instance()
+                if bootstrap and hasattr(bootstrap, 'cover_service'):
+                    cover_path = bootstrap.cover_service.get_online_cover(
+                        song_mid=cloud_file_id,
+                        album_mid=None,
+                        artist=self.track.artist,
+                        title=self.track.title,
+                    )
+                    if cover_path:
+                        return cover_path
+            except Exception:
+                pass
 
         # Try cover_path first
         cover_path = self.track.cover_path
@@ -358,6 +378,8 @@ class HistoryItemDelegate(QStyledItemDelegate):
 
     def _get_cover_cache_key(self, track: Track) -> str:
         """Generate cache key for a track."""
+        if track.cloud_file_id:
+            return f"{track.source.name}_{track.cloud_file_id}"
         if track.artist and track.title:
             return CoverPixmapCache.make_key(track.artist, track.title)
         path = track.path or track.cover_path or ""

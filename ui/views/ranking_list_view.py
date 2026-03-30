@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, Q
 from PySide6.QtGui import QColor, QPixmap, QPainter, QImage
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
+from domain import TrackSource
 from domain.online_music import OnlineTrack
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
@@ -350,7 +351,7 @@ class RankingItemDelegate(QStyledItemDelegate):
 
     def _get_cover_cache_key(self, track: OnlineTrack) -> str:
         """Generate cache key for an online track."""
-        return f"online_{track.mid}"
+        return f"{TrackSource.QQ}_{track.mid}"
 
     @staticmethod
     def _elided_text(painter, text: str, max_width: int) -> str:
