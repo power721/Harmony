@@ -12,6 +12,7 @@ from repositories.favorite_repository import SqliteFavoriteRepository
 from repositories.history_repository import SqliteHistoryRepository
 from repositories.album_repository import SqliteAlbumRepository
 from repositories.artist_repository import SqliteArtistRepository
+from repositories.genre_repository import SqliteGenreRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
 from repositories.settings_repository import SqliteSettingsRepository
@@ -60,6 +61,7 @@ class Bootstrap:
         self._history_repo: Optional[SqliteHistoryRepository] = None
         self._album_repo: Optional[SqliteAlbumRepository] = None
         self._artist_repo: Optional[SqliteArtistRepository] = None
+        self._genre_repo: Optional[SqliteGenreRepository] = None
         self._settings_repo: Optional[SqliteSettingsRepository] = None
 
         # Services
@@ -82,6 +84,7 @@ class Bootstrap:
         # Services
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
         self._sleep_timer_service: Optional["SleepTimerService"] = None
+        self._mpris_controller: Optional["MPRISController"] = None
 
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
@@ -187,6 +190,13 @@ class Bootstrap:
         return self._artist_repo
 
     @property
+    def genre_repo(self) -> SqliteGenreRepository:
+        """Get genre repository."""
+        if self._genre_repo is None:
+            self._genre_repo = SqliteGenreRepository(self._db_path, db_manager=self.db)
+        return self._genre_repo
+
+    @property
     def settings_repo(self) -> SqliteSettingsRepository:
         """Get settings repository."""
         if self._settings_repo is None:
@@ -230,6 +240,7 @@ class Bootstrap:
                 playlist_repo=self.playlist_repo,
                 album_repo=self.album_repo,
                 artist_repo=self.artist_repo,
+                genre_repo=self.genre_repo,
                 event_bus=self.event_bus,
                 cover_service=self.cover_service,
             )
@@ -263,6 +274,7 @@ class Bootstrap:
         if self._playlist_service is None:
             self._playlist_service = PlaylistService(
                 playlist_repo=self.playlist_repo,
+                track_repo=self.track_repo,
                 event_bus=self.event_bus,
             )
         return self._playlist_service
@@ -400,4 +412,34 @@ class Bootstrap:
                 event_bus=self.event_bus
             )
         return self._sleep_timer_service
+
+    @property
+    def mpris_controller(self) -> "MPRISController":
+        """Get MPRIS D-Bus controller (Linux only)."""
+        if self._mpris_controller is None:
+            import sys
+            if sys.platform == "linux":
+                from system.mpris import MPRISController
+                self._mpris_controller = MPRISController(
+                    playback_service=self.playback_service,
+                    event_bus=self.event_bus,
+                )
+        return self._mpris_controller
+
+    def start_mpris(self, main_window=None):
+        """
+        Start MPRIS D-Bus service (Linux only).
+
+        Args:
+            main_window: Main window instance for Raise/Quit support
+        """
+        import sys
+        if sys.platform == "linux" and self._mpris_controller is not None:
+            self._mpris_controller._main_window = main_window
+            self._mpris_controller.start()
+
+    def stop_mpris(self):
+        """Stop MPRIS D-Bus service."""
+        if self._mpris_controller is not None:
+            self._mpris_controller.stop()
 

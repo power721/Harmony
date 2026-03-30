@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QMenu,
+    QFileDialog,
 )
 
 from domain.playlist import Playlist
@@ -320,6 +321,19 @@ class PlaylistView(QWidget):
         self._delete_playlist_btn.setEnabled(False)
         header_layout.addWidget(self._delete_playlist_btn)
 
+        self._export_playlist_btn = QPushButton(t("export_playlist"))
+        self._export_playlist_btn.setObjectName("playlistActionBtn")
+        self._export_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._export_playlist_btn.setEnabled(False)
+        self._export_playlist_btn.clicked.connect(self._export_playlist)
+        header_layout.addWidget(self._export_playlist_btn)
+
+        self._import_playlist_btn = QPushButton(t("import_playlist"))
+        self._import_playlist_btn.setObjectName("playlistActionBtn")
+        self._import_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._import_playlist_btn.clicked.connect(self._import_playlist)
+        header_layout.addWidget(self._import_playlist_btn)
+
         layout.addLayout(header_layout)
 
         # Tracks table
@@ -399,6 +413,8 @@ class PlaylistView(QWidget):
         self._play_playlist_btn.setText(t("play"))
         self._rename_playlist_btn.setText(t("rename"))
         self._delete_playlist_btn.setText("🗑️ " + t("delete_playlist"))
+        self._export_playlist_btn.setText(t("export_playlist"))
+        self._import_playlist_btn.setText(t("import_playlist"))
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
@@ -507,6 +523,7 @@ class PlaylistView(QWidget):
         # Enable buttons
         self._delete_playlist_btn.setEnabled(True)
         self._rename_playlist_btn.setEnabled(True)
+        self._export_playlist_btn.setEnabled(True)
         tracks = self._playlist_service.get_playlist_tracks(playlist_id)
         self._play_playlist_btn.setEnabled(len(tracks) > 0)
 
@@ -530,6 +547,7 @@ class PlaylistView(QWidget):
         self._delete_playlist_btn.setEnabled(False)
         self._rename_playlist_btn.setEnabled(False)
         self._play_playlist_btn.setEnabled(False)
+        self._export_playlist_btn.setEnabled(False)
 
     def _populate_table(self, tracks: List[Track]):
         """Populate the table with tracks."""
@@ -732,3 +750,73 @@ class PlaylistView(QWidget):
         """Handle tracks updated event from EditMediaInfoDialog."""
         if self._current_playlist_id:
             self._load_playlist(self._current_playlist_id)
+
+    def _import_playlist(self):
+        """Import playlist from an M3U file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, t("import_playlist"), "", "M3U Files (*.m3u);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        playlist_name, ok = InputDialog.getText(
+            self, t("import_playlist"), t("enter_playlist_name")
+        )
+        if not ok or not playlist_name:
+            return
+
+        try:
+            imported = self._playlist_service.import_m3u(file_path, playlist_name)
+            if imported > 0:
+                self._refresh_playlists()
+                # Select the new playlist
+                playlists = self._playlist_service.get_all_playlists()
+                for p in playlists:
+                    if p.name == playlist_name:
+                        for i in range(self._playlist_list.count()):
+                            item = self._playlist_list.item(i)
+                            if item.data(Qt.UserRole) == p.id:
+                                self._playlist_list.setCurrentItem(item)
+                                self._load_playlist(p.id)
+                                break
+                        break
+                MessageDialog.information(
+                    self, t("import_playlist"),
+                    t("playlist_imported").format(count=imported, name=playlist_name)
+                )
+            else:
+                MessageDialog.warning(
+                    self, t("import_playlist"), t("no_valid_tracks_found")
+                )
+        except FileNotFoundError:
+            MessageDialog.warning(self, t("error"), t("file_not_found"))
+        except Exception as e:
+            MessageDialog.warning(self, t("error"), str(e))
+
+    def _export_playlist(self):
+        """Export the current playlist to an M3U file."""
+        if self._current_playlist_id is None:
+            return
+
+        playlist = self._playlist_service.get_playlist(self._current_playlist_id)
+        if not playlist:
+            return
+
+        default_name = f"{playlist.name}.m3u"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, t("export_playlist"), default_name, "M3U Files (*.m3u);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        if not file_path.endswith('.m3u'):
+            file_path += '.m3u'
+
+        try:
+            exported = self._playlist_service.export_m3u(self._current_playlist_id, file_path)
+            MessageDialog.information(
+                self, t("export_playlist"),
+                t("playlist_exported").format(count=exported, name=playlist.name)
+            )
+        except Exception as e:
+            MessageDialog.warning(self, t("error"), str(e))

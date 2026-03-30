@@ -37,6 +37,7 @@ from typing import Optional
 
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.welcome_dialog import WelcomeDialog
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
 from system.config import ConfigManager
@@ -58,6 +59,8 @@ from ui.views.albums_view import AlbumsView
 from ui.views.artists_view import ArtistsView
 from ui.views.artist_view import ArtistView
 from ui.views.album_view import AlbumView
+from ui.views.genres_view import GenresView
+from ui.views.genre_view import GenreView
 from ui.views.online_music_view import OnlineMusicView
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.title_bar import TitleBar
@@ -383,6 +386,8 @@ class MainWindow(QMainWindow):
         self._artists_view = ArtistsView(bootstrap.library_service, bootstrap.cover_service)
         self._artist_view = ArtistView(bootstrap.library_service, self._playback, bootstrap.cover_service)
         self._album_view = AlbumView(bootstrap.library_service, self._playback, bootstrap.cover_service)
+        self._genres_view = GenresView(bootstrap.library_service, bootstrap.cover_service)
+        self._genre_view = GenreView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
         # Online music view with QQ Music service
         from services.cloud.qqmusic.qqmusic_service import QQMusicService
@@ -406,6 +411,8 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._artist_view)        # 6
         self._stacked_widget.addWidget(self._album_view)         # 7
         self._stacked_widget.addWidget(self._online_music_view)  # 8
+        self._stacked_widget.addWidget(self._genres_view)        # 9
+        self._stacked_widget.addWidget(self._genre_view)         # 10
 
         self._splitter.addWidget(self._stacked_widget)
 
@@ -544,6 +551,18 @@ class MainWindow(QMainWindow):
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
         self._album_view.back_clicked.connect(self._on_back)
+
+        # Genres view connections
+        self._genres_view.genre_clicked.connect(self._on_genre_clicked)
+        self._genres_view.play_genre.connect(self._play_tracks)
+
+        # Genre view connections
+        self._genre_view.play_tracks.connect(self._play_tracks)
+        self._genre_view.track_double_clicked.connect(self._play_track)
+        self._genre_view.insert_to_queue.connect(self._insert_tracks_to_queue)
+        self._genre_view.add_to_queue.connect(self._add_tracks_to_queue)
+        self._genre_view.add_to_playlist.connect(self._add_tracks_to_playlist)
+        self._genre_view.back_clicked.connect(self._on_back)
 
         # Player controls connections
         self._player_controls.artist_clicked.connect(self._on_player_artist_clicked)
@@ -688,6 +707,17 @@ class MainWindow(QMainWindow):
         # Show artist detail view
         self._artist_view.set_artist(artist)
         self._stacked_widget.setCurrentIndex(6)
+
+        # Update nav button states - no active nav for detail views
+        self._sidebar.set_current_page(-1)
+
+    def _on_genre_clicked(self, genre):
+        """Handle genre card click."""
+        # Push current page to nav stack
+        self._nav_stack.append(self._stacked_widget.currentIndex())
+        # Show genre detail view
+        self._genre_view.set_genre(genre)
+        self._stacked_widget.setCurrentIndex(10)
 
         # Update nav button states - no active nav for detail views
         self._sidebar.set_current_page(-1)
@@ -855,12 +885,14 @@ class MainWindow(QMainWindow):
             self._library_view.refresh()
             self._albums_view.refresh()
             self._artists_view.refresh()
+            self._genres_view.refresh()
 
         # Keep reference to prevent GC
         self._scan_controller = ScanDialog.scan_folder(
             folder=folder,
             db_manager=self._db,
             cover_service=cover_service,
+            library_service=self._library_service,
             parent=self,
             batch_size=100,
             enable_cover_extraction=False,
@@ -908,6 +940,8 @@ class MainWindow(QMainWindow):
         self._artists_view.refresh_ui()
         self._artist_view.refresh_ui()
         self._album_view.refresh_ui()
+        self._genres_view.refresh_ui()
+        self._genre_view.refresh_ui()
         self._online_music_view.refresh_ui()  # Refresh online music view
 
         # Update settings button status in sidebar
@@ -1388,6 +1422,26 @@ class MainWindow(QMainWindow):
 
         # Restore playback state
         self._restore_playback_state()
+
+        # Show welcome dialog on first run (empty library)
+        self._check_first_run()
+
+    def _check_first_run(self):
+        """Show welcome dialog if the library is empty (first run)."""
+        from PySide6.QtCore import QTimer
+
+        tracks = self._library_service.get_all_tracks()
+        if len(tracks) > 0:
+            return
+
+        def _show_welcome():
+            dialog = WelcomeDialog(parent=self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                folder = dialog.get_selected_folder()
+                if folder:
+                    self._scan_music_folder(folder)
+
+        QTimer.singleShot(500, _show_welcome)
 
     def _save_view_state(self):
         """Save current view state to config."""

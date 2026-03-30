@@ -71,7 +71,7 @@ class PlayHistoryService:
         """
         return self._history_repo.add(track_id)
 
-    def get_most_played(self, limit: int = 20) -> List[tuple]:
+    def get_most_played(self, limit: int = 20) -> List[Track]:
         """
         Get most played tracks.
 
@@ -79,12 +79,9 @@ class PlayHistoryService:
             limit: Maximum number of tracks to return
 
         Returns:
-            List of tuples with track data and play counts
+            List of Track objects ordered by play count (descending)
         """
-        # TODO: Implement this method in HistoryRepository
-        # For now, return empty list
-        logger.warning("get_most_played not yet implemented in HistoryRepository")
-        return []
+        return self._history_repo.get_most_played(limit)
 
     def clear_history(self) -> bool:
         """
@@ -93,7 +90,7 @@ class PlayHistoryService:
         Returns:
             True if cleared successfully
         """
-        # This method doesn't exist in DatabaseManager yet, would need to add
-        # For now, return False to indicate not implemented
-        logger.warning("[PlayHistoryService] clear_history not implemented")
-        return False
+        result = self._history_repo.clear()
+        if result:
+            self._event_bus.history_cleared.emit()
+        return result

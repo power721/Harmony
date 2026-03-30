@@ -200,7 +200,7 @@ def is_filename_like(title: str) -> bool:
         return False
 
     # Common file extensions
-    extensions = ['.mp3', '.flac', '.m4a', '.wav', '.ogg', '.wma', '.ape', '.aac']
+    extensions = ['.mp3', '.flac', '.m4a', '.wav', '.ogg', '.wma', '.ape', '.aac', '.opus']
     title_lower = title.lower()
     if any(title_lower.endswith(ext) for ext in extensions):
         return True

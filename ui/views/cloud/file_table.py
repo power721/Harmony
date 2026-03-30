@@ -168,7 +168,7 @@ class CloudFileTable(QWidget):
 
         # Configure table
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
@@ -398,6 +398,17 @@ class CloudFileTable(QWidget):
             if item:
                 file = item.data(Qt.UserRole)
                 if file:
+                    files.append(file)
+        return files
+
+    def get_selected_audio_files(self) -> List[CloudFile]:
+        """Get selected audio files from the table."""
+        files = []
+        for row in self._table.selectionModel().selectedRows():
+            item = self._table.item(row.row(), 0)
+            if item:
+                file = item.data(Qt.UserRole)
+                if file and file.file_type == "audio":
                     files.append(file)
         return files
 

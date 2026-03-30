@@ -675,7 +675,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 6
+        CURRENT_SCHEMA_VERSION = 8
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -942,6 +942,30 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE tracks ADD COLUMN file_mtime DOUBLE")
             logger.info("[Database] Added 'file_mtime' column to tracks table")
 
+        # Migration 7: Add genre column to tracks and create genres cache table
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = [col[1] for col in cursor.fetchall()]
+        if 'genre' not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN genre TEXT")
+            logger.info("[Database] Added 'genre' column to tracks table")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS genres (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                cover_path TEXT,
+                song_count INTEGER DEFAULT 0,
+                album_count INTEGER DEFAULT 0
+            )
+        """)
+
+        # Migration 8: Add total_duration column to genres table
+        cursor.execute("PRAGMA table_info(genres)")
+        genre_columns = [col[1] for col in cursor.fetchall()]
+        if 'total_duration' not in genre_columns:
+            cursor.execute("ALTER TABLE genres ADD COLUMN total_duration REAL DEFAULT 0.0")
+            logger.info("[Database] Added 'total_duration' column to genres table")
+
         # Update schema version after all migrations complete
         if schema_changed:
             cursor.execute(
@@ -960,6 +984,7 @@ class DatabaseManager:
             'title': track.title,
             'artist': track.artist,
             'album': track.album,
+            'genre': getattr(track, 'genre', None),
             'duration': track.duration,
             'cover_path': track.cover_path,
             'created_at': track.created_at or datetime.now(),
@@ -990,6 +1015,7 @@ class DatabaseManager:
             'title': track.title,
             'artist': track.artist,
             'album': track.album,
+            'genre': getattr(track, 'genre', None),
             'duration': track.duration,
             'cover_path': track.cover_path,
             'created_at': track.created_at or datetime.now(),
@@ -1014,14 +1040,15 @@ class DatabaseManager:
         cursor.execute(
             """
             INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (path, title, artist, album, genre, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 track_data['path'],
                 track_data['title'],
                 track_data['artist'],
                 track_data['album'],
+                track_data['genre'],
                 track_data['duration'],
                 track_data['cover_path'],
                 track_data['created_at'],
@@ -1043,6 +1070,7 @@ class DatabaseManager:
             title=row["title"],
             artist=row["artist"],
             album=row["album"],
+            genre=row["genre"] if "genre" in row.keys() else None,
             duration=row["duration"],
             cover_path=row["cover_path"],
             created_at=datetime.fromisoformat(row["created_at"]),
@@ -1203,6 +1231,7 @@ class DatabaseManager:
                     'title': track.title,
                     'artist': track.artist,
                     'album': track.album,
+                    'genre': getattr(track, 'genre', None),
                     'duration': track.duration,
                     'cover_path': track.cover_path,
                     'created_at': track.created_at or datetime.now(),
@@ -1222,13 +1251,13 @@ class DatabaseManager:
                 cursor.executemany(
                     """
                     INSERT INTO tracks
-                    (path, title, artist, album, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (path, title, artist, album, genre, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
                             t['path'], t['title'], t['artist'], t['album'],
-                            t['duration'], t['cover_path'], t['created_at'],
+                            t['genre'], t['duration'], t['cover_path'], t['created_at'],
                             t['cloud_file_id'], t['source'], t['file_size'], t['file_mtime']
                         )
                         for t in new_tracks
@@ -1241,14 +1270,15 @@ class DatabaseManager:
                 cursor.executemany(
                     """
                     UPDATE tracks
-                    SET title=?, artist=?, album=?, duration=?, cover_path=?,
+                    SET title=?, artist=?, album=?, genre=?, duration=?, cover_path=?,
                         file_size=?, file_mtime=?
                     WHERE path=?
                     """,
                     [
                         (
-                            t['title'], t['artist'], t['album'], t['duration'],
-                            t['cover_path'], t['file_size'], t['file_mtime'], t['path']
+                            t['title'], t['artist'], t['album'], t['genre'],
+                            t['duration'], t['cover_path'],
+                            t['file_size'], t['file_mtime'], t['path']
                         )
                         for t in update_tracks
                     ]
@@ -1412,15 +1442,15 @@ class DatabaseManager:
 
     def update_track(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: str = None
+            genre: str = None, cloud_file_id: str = None
     ) -> bool:
         """Update track metadata in the database."""
-        future = self._submit_write(self._do_update_track, track_id, title, artist, album, cloud_file_id)
+        future = self._submit_write(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
         return future.result(timeout=10.0)
 
     def update_track_async(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: str = None, callback: Callable[[bool], None] = None
+            genre: str = None, cloud_file_id: str = None, callback: Callable[[bool], None] = None
     ) -> None:
         """
         Update track metadata asynchronously without blocking.
@@ -1430,18 +1460,19 @@ class DatabaseManager:
             title: New title (optional)
             artist: New artist (optional)
             album: New album (optional)
+            genre: New genre (optional)
             cloud_file_id: New cloud file ID (optional)
             callback: Optional callback called with success boolean on completion
         """
         if callback:
-            future = self._submit_write(self._do_update_track, track_id, title, artist, album, cloud_file_id)
+            future = self._submit_write(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
             future.add_done_callback(lambda f: callback(f.result()))
         else:
-            self._submit_write_async(self._do_update_track, track_id, title, artist, album, cloud_file_id)
+            self._submit_write_async(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
 
     def _do_update_track(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: str = None, conn: sqlite3.Connection = None
+            genre: str = None, cloud_file_id: str = None, conn: sqlite3.Connection = None
     ) -> bool:
         """Internal method to update track metadata (runs in write worker)."""
         if conn is None:
@@ -1460,6 +1491,9 @@ class DatabaseManager:
         if album is not None:
             updates.append("album = ?")
             params.append(album)
+        if genre is not None:
+            updates.append("genre = ?")
+            params.append(genre)
         if cloud_file_id is not None:
             updates.append("cloud_file_id = ?")
             params.append(cloud_file_id)
@@ -3037,6 +3071,58 @@ class DatabaseManager:
         cursor.execute("SELECT COUNT(*) as count FROM albums")
         row = cursor.fetchone()
         return row["count"] == 0 if row else True
+
+    # Genre operations
+
+    def refresh_genres(self) -> bool:
+        """
+        Refresh the genres table from tracks table.
+
+        Returns:
+            True if successful
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Clear existing data
+        cursor.execute("DELETE FROM genres")
+
+        # Populate from tracks
+        cursor.execute("""
+            INSERT INTO genres (name, cover_path, song_count, album_count)
+            SELECT
+                genre as name,
+                (SELECT cover_path FROM tracks t2
+                 WHERE t2.genre = tracks.genre AND cover_path IS NOT NULL
+                 LIMIT 1) as cover_path,
+                COUNT(*) as song_count,
+                COUNT(DISTINCT album) as album_count
+            FROM tracks
+            WHERE genre IS NOT NULL AND genre != ''
+            GROUP BY genre
+        """)
+
+        conn.commit()
+        return True
+
+    def get_genres_from_db(self) -> List[dict]:
+        """
+        Get all genres from database.
+
+        Returns:
+            List of genre dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT name, cover_path, song_count, album_count
+            FROM genres
+            ORDER BY song_count DESC
+        """)
+
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
     # Artist operations
 

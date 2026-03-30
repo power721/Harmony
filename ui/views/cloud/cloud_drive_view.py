@@ -126,6 +126,35 @@ class CloudDriveView(QWidget):
             font-size: 12px;
             padding: 5px;
         }
+        QPushButton#batchDownloadBtn {
+            background-color: %highlight%;
+            color: %background%;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        QPushButton#batchDownloadBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QPushButton#batchDownloadBtn:disabled {
+            background-color: %border%;
+            color: %text_secondary%;
+        }
+        QPushButton#cancelDownloadsBtn {
+            background-color: transparent;
+            color: %text_secondary%;
+            border: 1px solid %border%;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        QPushButton#cancelDownloadsBtn:hover {
+            background-color: %background_hover%;
+            color: %highlight%;
+            border-color: %highlight%;
+        }
     """
 
     track_double_clicked = Signal(str)
@@ -173,6 +202,13 @@ class CloudDriveView(QWidget):
         self._fid_path = []
         self._current_playing_file_id = ""
         self._data_loaded = False
+
+        # Batch download state
+        self._download_queue: List[CloudFile] = []
+        self._is_downloading = False
+        self._current_download_thread = None
+        self._batch_total = 0
+        self._batch_completed = 0
 
         # Context menus
         self._file_context_menu = CloudFileContextMenu(
@@ -282,6 +318,28 @@ class CloudDriveView(QWidget):
         header_layout.addWidget(self._path_label)
 
         layout.addLayout(header_layout)
+
+        # Toolbar for batch download
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._batch_download_btn = QPushButton(t("batch_download"))
+        self._batch_download_btn.setObjectName("batchDownloadBtn")
+        self._batch_download_btn.setCursor(Qt.PointingHandCursor)
+        self._batch_download_btn.clicked.connect(self._download_selected_files)
+        self._batch_download_btn.setVisible(False)
+        toolbar_layout.addWidget(self._batch_download_btn)
+
+        self._cancel_downloads_btn = QPushButton(t("cancel_downloads"))
+        self._cancel_downloads_btn.setObjectName("cancelDownloadsBtn")
+        self._cancel_downloads_btn.setCursor(Qt.PointingHandCursor)
+        self._cancel_downloads_btn.clicked.connect(self._cancel_downloads)
+        self._cancel_downloads_btn.setVisible(False)
+        toolbar_layout.addWidget(self._cancel_downloads_btn)
+
+        toolbar_layout.addStretch()
+
+        layout.addLayout(toolbar_layout)
 
         # Stacked widget for different states
         self._stack = QStackedWidget()
@@ -524,6 +582,9 @@ class CloudDriveView(QWidget):
         )
 
         self._current_audio_files = [f for f in files if f.file_type == "audio"]
+
+        # Show batch download button when audio files are present
+        self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
 
         # Use the CloudFileTable component
         self._file_table.populate(files, self._current_playing_file_id)
@@ -1002,6 +1063,165 @@ class CloudDriveView(QWidget):
         else:
             self._status_label.setText(f"{t('download_failed')}: {file.name}")
 
+    # === Batch Download ===
+
+    def _download_selected_files(self):
+        """Download selected audio files sequentially."""
+        if not self._current_account:
+            return
+
+        selected_files = self._file_table.get_selected_audio_files()
+        if not selected_files:
+            self._status_label.setText(t("select_files_to_download"))
+            return
+
+        # Filter out already-downloaded files
+        to_download = []
+        for f in selected_files:
+            if f.local_path:
+                local_path = Path(f.local_path)
+                if local_path.exists() and f.size:
+                    actual_size = local_path.stat().st_size
+                    size_diff = abs(actual_size - f.size)
+                    tolerance = f.size * 0.01
+                    if size_diff <= tolerance:
+                        continue
+            to_download.append(f)
+
+        if not to_download:
+            self._status_label.setText(f"✓ {t('file_already_exists')}")
+            return
+
+        self._download_queue = list(to_download)
+        self._batch_total = len(self._download_queue)
+        self._batch_completed = 0
+        self._is_downloading = True
+
+        # Update UI
+        self._batch_download_btn.setEnabled(False)
+        self._cancel_downloads_btn.setVisible(True)
+
+        self._status_label.setText(
+            t("download_progress").format(current=0, total=self._batch_total)
+        )
+
+        self._process_next_download()
+
+    def _process_next_download(self):
+        """Process the next file in the download queue."""
+        if not self._download_queue:
+            self._on_batch_complete()
+            return
+
+        file = self._download_queue.pop(0)
+        current_num = self._batch_completed + 1
+
+        size_info = ""
+        if file.size:
+            size_mb = file.size / (1024 * 1024)
+            size_info = f" ({size_mb:.1f} MB)"
+
+        self._status_label.setText(
+            f"{t('download_progress').format(current=current_num, total=self._batch_total)}"
+            f" - {file.name}{size_info}"
+        )
+
+        # Check if file already exists at database path
+        db_local_path = None
+        if self._current_account:
+            db_file = self._cloud_file_service.get_file_by_file_id(file.file_id)
+            if db_file and db_file.local_path:
+                db_local_path = db_file.local_path
+
+        file_index = 0
+        try:
+            file_index = next(
+                i for i, f in enumerate(self._current_audio_files)
+                if f.file_id == file.file_id
+            )
+        except StopIteration:
+            pass
+
+        download_thread = CloudFileDownloadThread(
+            self._current_account.access_token,
+            file,
+            file_index,
+            self._current_audio_files,
+            self._config_manager,
+            self,
+            db_local_path,
+            self._current_account.provider,
+        )
+
+        # Store reference for cancellation
+        self._current_download_thread = download_thread
+
+        download_thread.finished.connect(
+            lambda path, f=file: self._on_batch_download_finished(path, f)
+        )
+        download_thread.file_exists.connect(
+            lambda path, f=file: self._on_batch_download_finished(path, f)
+        )
+        download_thread.token_updated.connect(self._on_token_updated)
+        download_thread.start()
+
+    def _on_batch_download_finished(self, local_path: str, file: CloudFile):
+        """Handle completion of a single batch download."""
+        self._current_download_thread = None
+        self._batch_completed += 1
+
+        if local_path:
+            import os
+            if os.path.exists(local_path):
+                if self._current_account:
+                    self._cloud_file_service.update_local_path(
+                        file.file_id,
+                        self._current_account.id,
+                        local_path
+                    )
+
+                for audio_file in self._current_audio_files:
+                    if audio_file.file_id == file.file_id:
+                        audio_file.local_path = local_path
+                        break
+
+                self._file_table.update_file_local_path(file.file_id, local_path)
+                EventBus.instance().download_completed.emit(file.file_id, local_path)
+            else:
+                logger.warning(f"[BatchDownload] File not found after download: {file.name}")
+        else:
+            logger.warning(f"[BatchDownload] Download failed: {file.name}")
+
+        # Process next download
+        self._process_next_download()
+
+    def _on_batch_complete(self):
+        """Handle completion of all batch downloads."""
+        self._is_downloading = False
+        self._current_download_thread = None
+        self._batch_download_btn.setEnabled(True)
+        self._cancel_downloads_btn.setVisible(False)
+
+        self._status_label.setText(
+            t("all_downloads_complete").format(count=self._batch_completed)
+        )
+        QTimer.singleShot(5000, lambda: self._status_label.setText(""))
+
+    def _cancel_downloads(self):
+        """Cancel all pending downloads."""
+        self._download_queue.clear()
+
+        if self._current_download_thread:
+            self._current_download_thread.terminate()
+            self._current_download_thread.wait(2000)
+            self._current_download_thread = None
+
+        self._is_downloading = False
+        self._batch_download_btn.setEnabled(True)
+        self._cancel_downloads_btn.setVisible(False)
+
+        self._status_label.setText("")
+
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for a cloud file."""
         # Get track by cloud file ID
@@ -1285,7 +1505,9 @@ class CloudDriveView(QWidget):
 
     def _on_playback_state_changed(self, state: str):
         """Handle playback state change event."""
-        pass
+        if self._current_playing_file_id:
+            is_playing = state == "playing"
+            self._file_table.update_playing_status(self._current_playing_file_id, is_playing)
 
     # === Public API ===
 
@@ -1297,6 +1519,8 @@ class CloudDriveView(QWidget):
         self._account_list_title.setText(t("cloud_drive"))
         self._add_account_btn.setText(t("add_account"))
         self._back_btn.setText("← " + t("back"))
+        self._batch_download_btn.setText(t("batch_download"))
+        self._cancel_downloads_btn.setText(t("cancel_downloads"))
         self._account_title.setText(
             self._current_account.account_name if self._current_account else t("select_account")
         )

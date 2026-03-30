@@ -173,6 +173,24 @@ class PlayerEngine(QObject):
             self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
+    def reorder_playlist(self, items: List[PlaylistItem], current_index: int):
+        """
+        Reorder the playlist while preserving the currently playing track.
+
+        This is used for drag-drop reordering in the queue view.
+        Unlike load_playlist_items, this preserves playback state.
+
+        Args:
+            items: List of PlaylistItem objects in new order
+            current_index: Index of the currently playing track in the new order
+        """
+        with self._playlist_lock:
+            self._playlist = items.copy()
+            self._original_playlist = items.copy()  # Update original order to new order
+            self._current_index = current_index
+            self._rebuild_cloud_file_id_index()
+        self.playlist_changed.emit()
+
     def clear_playlist(self):
         """Clear the playlist."""
         with self._playlist_lock:
@@ -259,6 +277,38 @@ class PlayerEngine(QObject):
                 # Add new item's cloud_file_id if present
                 if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
                     self._cloud_file_id_to_index[item.cloud_file_id] = index
+        self.playlist_changed.emit()
+
+    def move_track(self, from_index: int, to_index: int):
+        """
+        Move a track from one position to another in the playlist.
+
+        Args:
+            from_index: Current index of the track
+            to_index: Target index for the track
+        """
+        with self._playlist_lock:
+            if not (0 <= from_index < len(self._playlist)):
+                return
+            if to_index < 0:
+                to_index = 0
+            if to_index > len(self._playlist) - 1:
+                to_index = len(self._playlist) - 1
+            if from_index == to_index:
+                return
+
+            item = self._playlist.pop(from_index)
+            self._playlist.insert(to_index, item)
+
+            # Update current index
+            if self._current_index == from_index:
+                self._current_index = to_index
+            elif from_index < self._current_index <= to_index:
+                self._current_index -= 1
+            elif to_index <= self._current_index < from_index:
+                self._current_index += 1
+
+            self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
     def remove_track(self, index: int):

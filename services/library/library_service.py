@@ -16,6 +16,7 @@ from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
 from repositories.album_repository import SqliteAlbumRepository
 from repositories.artist_repository import SqliteArtistRepository
+from repositories.genre_repository import SqliteGenreRepository
 from services.metadata.metadata_service import MetadataService
 from system.event_bus import EventBus
 
@@ -34,6 +35,7 @@ class LibraryService:
             playlist_repo: SqlitePlaylistRepository,
             album_repo: SqliteAlbumRepository,
             artist_repo: SqliteArtistRepository,
+            genre_repo: SqliteGenreRepository = None,
             event_bus: EventBus = None,
             cover_service: 'CoverService' = None
     ):
@@ -41,6 +43,7 @@ class LibraryService:
         self._playlist_repo = playlist_repo
         self._album_repo = album_repo
         self._artist_repo = artist_repo
+        self._genre_repo = genre_repo
         self._event_bus = event_bus or EventBus.instance()
         self._cover_service = cover_service
 
@@ -59,9 +62,11 @@ class LibraryService:
             self._artist_repo.refresh()
 
     def refresh_albums_artists(self):
-        """Refresh album and artist tables."""
+        """Refresh album, artist, and genre tables."""
         self._album_repo.refresh()
         self._artist_repo.refresh()
+        if self._genre_repo:
+            self._genre_repo.refresh()
 
     def rebuild_albums_artists(self) -> dict:
         """
@@ -151,9 +156,11 @@ class LibraryService:
             self._refresh_albums_artist_async()
 
     def _do_refresh(self):
-        """Actually perform the album/artist refresh."""
+        """Actually perform the album/artist/genre refresh."""
         self._album_repo.refresh()
         self._artist_repo.refresh()
+        if self._genre_repo:
+            self._genre_repo.refresh()
 
     def add_online_track(
             self,
@@ -239,6 +246,7 @@ class LibraryService:
         title: str = None,
         artist: str = None,
         album: str = None,
+        genre: str = None,
         cloud_file_id: str = None
     ) -> bool:
         """
@@ -252,6 +260,7 @@ class LibraryService:
             title: New title
             artist: New artist
             album: New album
+            genre: New genre
             cloud_file_id: Cloud file ID to associate
 
         Returns:
@@ -268,6 +277,8 @@ class LibraryService:
             track.artist = artist
         if album is not None:
             track.album = album
+        if genre is not None:
+            track.genre = genre
         if cloud_file_id is not None:
             track.cloud_file_id = cloud_file_id
 
@@ -365,7 +376,7 @@ class LibraryService:
         Returns:
             Number of tracks added
         """
-        supported_extensions = {'.mp3', '.flac', '.m4a', '.ogg', '.wav', '.oga'}
+        supported_extensions = {'.mp3', '.flac', '.m4a', '.ogg', '.wav', '.oga', '.opus'}
         added_count = 0
 
         path = Path(directory)
@@ -459,6 +470,20 @@ class LibraryService:
             Album object or None if not found
         """
         return self._track_repo.get_album_by_name(album_name, artist)
+
+    # ===== Genre Operations =====
+
+    def get_genres(self):
+        """Get all genres in the library."""
+        if self._genre_repo:
+            return self._genre_repo.get_all()
+        return []
+
+    def get_genre_tracks(self, name: str) -> List[Track]:
+        """Get all tracks for a specific genre."""
+        if self._genre_repo:
+            return self._genre_repo.get_tracks(name)
+        return []
 
     def rename_artist(self, old_name: str, new_name: str) -> dict:
         """

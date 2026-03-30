@@ -6,8 +6,9 @@ import logging
 from typing import List, Optional
 
 from domain.playlist import Playlist
-from domain.track import Track, TrackId
+from domain.track import Track, TrackId, TrackSource
 from repositories.playlist_repository import SqlitePlaylistRepository
+from repositories.track_repository import SqliteTrackRepository
 from system.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class PlaylistService:
     def __init__(
         self,
         playlist_repo: SqlitePlaylistRepository,
+        track_repo: SqliteTrackRepository,
         event_bus: EventBus = None
     ):
         """
@@ -31,9 +33,11 @@ class PlaylistService:
 
         Args:
             playlist_repo: Playlist repository for data persistence
+            track_repo: Track repository for track lookups
             event_bus: Event bus for broadcasting changes
         """
         self._playlist_repo = playlist_repo
+        self._track_repo = track_repo
         self._event_bus = event_bus or EventBus.instance()
 
     def get_all_playlists(self) -> List[Playlist]:
@@ -144,3 +148,58 @@ class PlaylistService:
         if result:
             logger.debug(f"Removed track {track_id} from playlist {playlist_id}")
         return result
+
+    def export_m3u(self, playlist_id: int, file_path: str) -> int:
+        """
+        Export playlist to M3U file.
+
+        Args:
+            playlist_id: Playlist ID
+            file_path: Destination file path
+
+        Returns:
+            Number of tracks exported
+        """
+        tracks = self._playlist_repo.get_tracks(playlist_id)
+        count = 0
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write("#EXTM3U\n")
+            for track in tracks:
+                if track.path and track.source == TrackSource.LOCAL:
+                    duration = int(track.duration)
+                    artist_title = f"{track.artist} - {track.title}" if track.artist else track.title
+                    f.write(f"#EXTINF:{duration},{artist_title}\n")
+                    f.write(f"{track.path}\n")
+                    count += 1
+        logger.info(f"Exported {count} tracks from playlist {playlist_id} to {file_path}")
+        return count
+
+    def import_m3u(self, file_path: str, playlist_name: str) -> int:
+        """
+        Import playlist from M3U file.
+
+        Args:
+            file_path: Path to M3U file
+            playlist_name: Name for the new playlist
+
+        Returns:
+            Number of tracks imported
+        """
+        playlist = Playlist(name=playlist_name)
+        playlist_id = self.create_playlist(playlist)
+
+        imported = 0
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            track = self._track_repo.get_by_path(line)
+            if track:
+                self.add_track_to_playlist(playlist_id, track.id)
+                imported += 1
+
+        logger.info(f"Imported {imported} tracks into playlist '{playlist_name}' (ID: {playlist_id})")
+        return imported

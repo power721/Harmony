@@ -87,6 +87,7 @@ class ScanWorker(QObject):
         folder_path: str,
         db_manager: "DatabaseManager",
         cover_service: Optional["CoverService"] = None,
+        library_service: Optional["LibraryService"] = None,
         batch_size: int = 100,
         enable_cover_extraction: bool = False,
     ):
@@ -94,6 +95,7 @@ class ScanWorker(QObject):
         self.folder_path = folder_path
         self._db = db_manager
         self._cover_service = cover_service
+        self._library_service = library_service
         self._batch_size = max(1, batch_size)
         self._enable_cover_extraction = enable_cover_extraction
 
@@ -294,6 +296,7 @@ class ScanWorker(QObject):
                     title=metadata.get("title", Path(candidate.path).stem),
                     artist=metadata.get("artist", ""),
                     album=metadata.get("album", ""),
+                    genre=metadata.get("genre", ""),
                     duration=metadata.get("duration", 0.0),
                     cover_path=cover_path,
                     created_at=datetime.now(),
@@ -409,10 +412,9 @@ class ScanWorker(QObject):
                     stats.failed += 1
 
     def _refresh_aggregates(self):
-        if hasattr(self._db, "refresh_albums"):
-            self._db.refresh_albums()
-        if hasattr(self._db, "refresh_artists"):
-            self._db.refresh_artists()
+        """Refresh albums, artists, and genres tables."""
+        if self._library_service:
+            self._library_service.refresh_albums_artists(immediate=True)
 
     def _safe_extract_cover(self, file_path: str, metadata: dict) -> Optional[str]:
         """
@@ -599,6 +601,7 @@ class ScanController(QObject):
         folder: str,
         db_manager: "DatabaseManager",
         cover_service: Optional["CoverService"] = None,
+        library_service: Optional["LibraryService"] = None,
         parent=None,
         on_complete: Optional[Callable[[dict], None]] = None,
         batch_size: int = 100,
@@ -608,6 +611,7 @@ class ScanController(QObject):
         self.folder = folder
         self.db_manager = db_manager
         self.cover_service = cover_service
+        self.library_service = library_service
         self.on_complete = on_complete
         self.batch_size = batch_size
         self.enable_cover_extraction = enable_cover_extraction
@@ -626,6 +630,7 @@ class ScanController(QObject):
             folder_path=self.folder,
             db_manager=self.db_manager,
             cover_service=self.cover_service,
+            library_service=self.library_service,
             batch_size=self.batch_size,
             enable_cover_extraction=self.enable_cover_extraction,
         )
@@ -727,6 +732,7 @@ class ScanDialog:
         folder: str,
         db_manager: "DatabaseManager",
         cover_service: Optional["CoverService"] = None,
+        library_service: Optional["LibraryService"] = None,
         parent=None,
         on_complete: Optional[Callable[[dict], None]] = None,
         batch_size: int = 100,
@@ -744,6 +750,7 @@ class ScanDialog:
             folder=folder,
             db_manager=db_manager,
             cover_service=cover_service,
+            library_service=library_service,
             parent=parent,
             on_complete=on_complete,
             batch_size=batch_size,

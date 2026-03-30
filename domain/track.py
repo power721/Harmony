@@ -32,6 +32,7 @@ class Track:
     title: str = ""
     artist: str = ""
     album: str = ""
+    genre: Optional[str] = None
     duration: float = 0.0
     cover_path: Optional[str] = None
     created_at: Optional[datetime] = None

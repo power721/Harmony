@@ -53,6 +53,7 @@ class QueueTrackModel(QAbstractListModel):
     IndexRole = Qt.UserRole + 6
 
     cover_ready = Signal(int)
+    rows_moved = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -160,6 +161,89 @@ class QueueTrackModel(QAbstractListModel):
         if 0 <= row < len(self._tracks):
             idx = self.index(row)
             self.dataChanged.emit(idx, idx, [self.CoverRole])
+
+    def flags(self, index):
+        """Enable item dragging."""
+        default_flags = super().flags(index)
+        if index.isValid():
+            return default_flags | Qt.ItemIsDragEnabled
+        return default_flags | Qt.ItemIsDropEnabled
+
+    def supportedDropActions(self):
+        return Qt.MoveAction
+
+    def supportedDragActions(self):
+        return Qt.MoveAction
+
+    def mimeTypes(self):
+        return ["application/x-queueitem"]
+
+    def mimeData(self, indexes):
+        """Encode dragged row indices."""
+        from PySide6.QtCore import QMimeData
+        mime = QMimeData()
+        rows = [idx.row() for idx in indexes if idx.isValid()]
+        mime.setData("application/x-queueitem", str(rows).encode())
+        return mime
+
+    def dropMimeData(self, data, action, row, column, parent):
+        """Handle drop to reorder items."""
+        if action == Qt.IgnoreAction:
+            return True
+        if not data.hasFormat("application/x-queueitem"):
+            return False
+
+        try:
+            source_rows = eval(data.data("application/x-queueitem").data().decode())
+        except Exception:
+            return False
+
+        if not source_rows:
+            return False
+
+        # Determine target row
+        if parent.isValid():
+            target_row = parent.row()
+        elif row >= 0:
+            target_row = row
+        else:
+            target_row = self.rowCount()
+
+        # Calculate adjusted target (account for source removal)
+        sorted_sources = sorted(source_rows)
+        adjusted_target = target_row
+        for src in sorted_sources:
+            if src < adjusted_target:
+                adjusted_target -= 1
+
+        if adjusted_target < 0:
+            adjusted_target = 0
+
+        # Move items
+        items = [self._tracks[r] for r in sorted_sources if 0 <= r < len(self._tracks)]
+        if not items:
+            return False
+
+        # Remove from old positions
+        for r in sorted(sorted_sources, reverse=True):
+            if 0 <= r < len(self._tracks):
+                self._tracks.pop(r)
+
+        if adjusted_target > len(self._tracks):
+            adjusted_target = len(self._tracks)
+
+        for i, item in enumerate(items):
+            self._tracks.insert(adjusted_target + i, item)
+
+        # Update current index
+        for src in sorted_sources:
+            if self._current_index == src:
+                self._current_index = adjusted_target
+                break
+
+        self.layoutChanged.emit()
+        self.rows_moved.emit()
+        return True
 
 
 class CoverLoadWorker(QRunnable):
@@ -847,6 +931,7 @@ class QueueView(QWidget):
         self._list_view.setItemDelegate(self._delegate)
         self._list_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._list_view.setDragDropMode(QAbstractItemView.InternalMove)
+        self._model.rows_moved.connect(self._on_rows_moved)
         self._list_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self._list_view.customContextMenuRequested.connect(self._show_context_menu)
         self._list_view.doubleClicked.connect(self._on_item_double_clicked)
@@ -1197,12 +1282,24 @@ class QueueView(QWidget):
         self._update_current_track_indicator()
 
     def _on_rows_moved(self):
-        """Handle row move (drag and drop reorder)."""
-        # This won't be auto-triggered since we don't have QListWidget rowsMoved.
-        # Drag-drop with QListView needs different handling.
-        # For now, keep the method as a no-op stub.
-        # Will be properly implemented if drag-drop is needed.
-        pass
+        """Handle row move (drag and drop reorder) - sync engine playlist."""
+        # Reload engine playlist from model to keep in sync
+        model_items = [self._model.get_track_at(i) for i in range(self._model.rowCount())]
+
+        # Sync by reloading the engine playlist with the new order
+        if model_items:
+            from domain import PlaylistItem
+            items = []
+            for item in model_items:
+                if isinstance(item, PlaylistItem):
+                    items.append(item)
+                elif isinstance(item, dict):
+                    items.append(PlaylistItem.from_dict(item))
+            if items:
+                current_idx = self._model.current_index
+                # Use reorder_playlist instead of load_playlist_items to preserve playback state
+                self._player.engine.reorder_playlist(items, current_idx)
+        self.queue_reordered.emit()
 
     def _on_item_double_clicked(self, index):
         """Handle item double click."""

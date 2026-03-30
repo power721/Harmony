@@ -35,12 +35,14 @@ class Sidebar(QWidget):
     # Stacked widget order:
     # 0: library_view, 1: cloud_drive_view, 2: playlist_view, 3: queue_view
     # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: online_music_view
+    # 9: genres_view, 10: genre_view
     PAGE_LIBRARY = 0
     PAGE_CLOUD = 1
     PAGE_PLAYLISTS = 2
     PAGE_QUEUE = 3
     PAGE_ALBUMS = 4
     PAGE_ARTISTS = 5
+    PAGE_GENRES = 9
     PAGE_ONLINE = 8
     # Special pages (not in stacked widget, handled specially)
     PAGE_FAVORITES = 100
@@ -126,6 +128,7 @@ class Sidebar(QWidget):
             (self.PAGE_LIBRARY, IconName.MUSIC, t("library")),
             (self.PAGE_ALBUMS, IconName.COMPACT_DISC, t("albums")),
             (self.PAGE_ARTISTS, IconName.MICROPHONE, t("artists")),
+            (self.PAGE_GENRES, IconName.COMPACT_DISC, t("genres")),
             (self.PAGE_CLOUD, IconName.CLOUD, t("cloud_drive")),
             (self.PAGE_ONLINE, IconName.GLOBE, t("online_music")),
             (self.PAGE_PLAYLISTS, IconName.LIST, t("playlists")),
@@ -231,6 +234,7 @@ class Sidebar(QWidget):
             t("library"),
             t("albums"),
             t("artists"),
+            t("genres"),
             t("cloud_drive"),
             t("online_music"),
             t("playlists"),

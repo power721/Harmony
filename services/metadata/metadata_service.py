@@ -26,6 +26,7 @@ class MetadataService:
         ".flac",
         ".ogg",
         ".oga",
+        ".opus",
         ".m4a",
         ".mp4",
         ".wma",
@@ -60,6 +61,7 @@ class MetadataService:
             "title": "",
             "artist": "",
             "album": "",
+            "genre": "",
             "duration": 0.0,
             "cover": None,
         }
@@ -139,6 +141,10 @@ class MetadataService:
                 if "TALB" in tags:
                     metadata["album"] = str(tags["TALB"])
 
+                # Genre
+                if "TCON" in tags:
+                    metadata["genre"] = str(tags["TCON"])
+
                 # Extract cover art from APIC frame
                 if "APIC:" in tags:
                     for key in tags:
@@ -169,6 +175,10 @@ class MetadataService:
         if "album" in audio:
             metadata["album"] = audio["album"][0]
 
+        # Genre
+        if "genre" in audio:
+            metadata["genre"] = audio["genre"][0]
+
         # Extract cover art
         if audio.pictures:
             metadata["cover"] = audio.pictures[0].data
@@ -192,6 +202,10 @@ class MetadataService:
         if "album" in audio:
             metadata["album"] = audio["album"][0]
 
+        # Genre
+        if "genre" in audio:
+            metadata["genre"] = audio["genre"][0]
+
         return metadata
 
     @classmethod
@@ -211,6 +225,16 @@ class MetadataService:
         # Album
         if "\xa9alb" in audio:
             metadata["album"] = audio["\xa9alb"][0]
+
+        # Genre (check both standard and iTunes-specific tags)
+        if "\xa9gen" in audio:
+            metadata["genre"] = audio["\xa9gen"][0]
+        elif "----:com.apple.iTunes:genre" in audio:
+            genre_data = audio["----:com.apple.iTunes:genre"][0]
+            # iTunes genre tags may be bytes
+            if isinstance(genre_data, bytes):
+                genre_data = genre_data.decode("utf-8", errors="replace")
+            metadata["genre"] = genre_data
 
         # Cover art
         if "covr" in audio:
@@ -237,6 +261,10 @@ class MetadataService:
                 # Album
                 if "TALB" in audio.tags:
                     metadata["album"] = str(audio.tags["TALB"])
+
+                # Genre
+                if "TCON" in audio.tags:
+                    metadata["genre"] = str(audio.tags["TCON"])
 
                 # Extract cover art from APIC frame
                 if "APIC:" in audio.tags:
@@ -277,7 +305,8 @@ class MetadataService:
 
     @classmethod
     def save_metadata(
-            cls, file_path: str, title: str = None, artist: str = None, album: str = None
+            cls, file_path: str, title: str = None, artist: str = None, album: str = None,
+            genre: str = None
     ) -> bool:
         """
         Save metadata to an audio file.
@@ -287,6 +316,7 @@ class MetadataService:
             title: Title to set
             artist: Artist to set
             album: Album to set
+            genre: Genre to set
 
         Returns:
             True if metadata was saved successfully
@@ -301,23 +331,23 @@ class MetadataService:
 
             if suffix == ".mp3":
                 audio = MP3(file_path)
-                cls._save_mp3_metadata(audio, title, artist, album)
+                cls._save_mp3_metadata(audio, title, artist, album, genre)
             elif suffix == ".flac":
                 audio = FLAC(file_path)
-                cls._save_flac_metadata(audio, title, artist, album)
+                cls._save_flac_metadata(audio, title, artist, album, genre)
             elif suffix in {".ogg", ".oga"}:
                 audio = OggVorbis(file_path)
-                cls._save_ogg_metadata(audio, title, artist, album)
+                cls._save_ogg_metadata(audio, title, artist, album, genre)
             elif suffix in {".m4a", ".mp4"}:
                 audio = MP4(file_path)
-                cls._save_mp4_metadata(audio, title, artist, album)
+                cls._save_mp4_metadata(audio, title, artist, album, genre)
             elif suffix == ".wav":
                 audio = WAVE(file_path)
-                cls._save_wav_metadata(audio, title, artist, album)
+                cls._save_wav_metadata(audio, title, artist, album, genre)
             else:
                 audio = mutagen.File(file_path)
                 if audio is not None:
-                    cls._save_generic_metadata(audio, title, artist, album)
+                    cls._save_generic_metadata(audio, title, artist, album, genre)
 
             if audio:
                 audio.save()
@@ -329,7 +359,7 @@ class MetadataService:
         return False
 
     @classmethod
-    def _save_mp3_metadata(cls, audio: MP3, title: str, artist: str, album: str):
+    def _save_mp3_metadata(cls, audio: MP3, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to MP3 file."""
         try:
             if audio.tags is None:
@@ -337,7 +367,7 @@ class MetadataService:
 
                 audio.add_tags()
 
-            from mutagen.id3 import ID3, TIT2, TPE1, TALB
+            from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON
 
             if title is not None:
                 audio.tags["TIT2"] = TIT2(encoding=3, text=title)
@@ -345,11 +375,13 @@ class MetadataService:
                 audio.tags["TPE1"] = TPE1(encoding=3, text=artist)
             if album is not None:
                 audio.tags["TALB"] = TALB(encoding=3, text=album)
+            if genre is not None:
+                audio.tags["TCON"] = TCON(encoding=3, text=genre)
         except Exception as e:
             logger.error(f"Error saving MP3 metadata: {e}", exc_info=True)
 
     @classmethod
-    def _save_flac_metadata(cls, audio: FLAC, title: str, artist: str, album: str):
+    def _save_flac_metadata(cls, audio: FLAC, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to FLAC file."""
         try:
             if title is not None:
@@ -358,11 +390,13 @@ class MetadataService:
                 audio["artist"] = [artist]
             if album is not None:
                 audio["album"] = [album]
+            if genre is not None:
+                audio["genre"] = [genre]
         except Exception as e:
             logger.error(f"Error saving FLAC metadata: {e}", exc_info=True)
 
     @classmethod
-    def _save_ogg_metadata(cls, audio: OggVorbis, title: str, artist: str, album: str):
+    def _save_ogg_metadata(cls, audio: OggVorbis, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to OGG file."""
         try:
             if title is not None:
@@ -371,11 +405,13 @@ class MetadataService:
                 audio["artist"] = [artist]
             if album is not None:
                 audio["album"] = [album]
+            if genre is not None:
+                audio["genre"] = [genre]
         except Exception as e:
             logger.error(f"Error saving OGG metadata: {e}", exc_info=True)
 
     @classmethod
-    def _save_mp4_metadata(cls, audio: MP4, title: str, artist: str, album: str):
+    def _save_mp4_metadata(cls, audio: MP4, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to MP4/M4A file."""
         try:
             if title is not None:
@@ -384,18 +420,20 @@ class MetadataService:
                 audio["\xa9ART"] = [artist]
             if album is not None:
                 audio["\xa9alb"] = [album]
+            if genre is not None:
+                audio["\xa9gen"] = [genre]
         except Exception as e:
             logger.error(f"Error saving MP4 metadata: {e}", exc_info=True)
 
     @classmethod
-    def _save_wav_metadata(cls, audio: WAVE, title: str, artist: str, album: str):
+    def _save_wav_metadata(cls, audio: WAVE, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to WAV file using ID3 tags."""
         try:
             if audio.tags is None:
                 from mutagen.id3 import ID3
                 audio.add_tags()
 
-            from mutagen.id3 import TIT2, TPE1, TALB
+            from mutagen.id3 import TIT2, TPE1, TALB, TCON
 
             if title is not None:
                 audio.tags["TIT2"] = TIT2(encoding=3, text=title)
@@ -403,11 +441,13 @@ class MetadataService:
                 audio.tags["TPE1"] = TPE1(encoding=3, text=artist)
             if album is not None:
                 audio.tags["TALB"] = TALB(encoding=3, text=album)
+            if genre is not None:
+                audio.tags["TCON"] = TCON(encoding=3, text=genre)
         except Exception as e:
             logger.error(f"Error saving WAV metadata: {e}", exc_info=True)
 
     @classmethod
-    def _save_generic_metadata(cls, audio, title: str, artist: str, album: str):
+    def _save_generic_metadata(cls, audio, title: str, artist: str, album: str, genre: str = None):
         """Save metadata to generic audio file."""
         try:
             if title is not None:
@@ -416,5 +456,7 @@ class MetadataService:
                 audio["artist"] = [artist]
             if album is not None:
                 audio["album"] = [album]
+            if genre is not None:
+                audio["genre"] = [genre]
         except Exception as e:
             logger.error(f"Error saving generic metadata: {e}", exc_info=True)

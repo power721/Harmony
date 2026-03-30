@@ -121,10 +121,16 @@ class Application(QObject):
         if cache_cleaner:
             cache_cleaner.start()
 
+        # Start MPRIS D-Bus service (Linux only)
+        self._bootstrap.start_mpris(self._main_window)
+
         return self._qt_app.exec()
 
     def quit(self):
         """Quit the application."""
+        # Stop MPRIS D-Bus service
+        self._bootstrap.stop_mpris()
+
         # Stop cache cleaner service
         cache_cleaner = self._bootstrap.cache_cleaner_service
         if cache_cleaner:

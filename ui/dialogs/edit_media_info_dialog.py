@@ -255,6 +255,9 @@ class EditMediaInfoDialog(QDialog):
         self._album_input = QLineEdit(first_track.album or "")
         self._album_input.setPlaceholderText(t("enter_album"))
         self._album_input.setReadOnly(not self._can_save)
+        self._genre_input = QLineEdit(first_track.genre or "")
+        self._genre_input.setPlaceholderText(t("enter_genre"))
+        self._genre_input.setReadOnly(not self._can_save)
 
         # For batch edit, add checkboxes to control which fields to update
         if self._is_batch_edit:
@@ -264,14 +267,20 @@ class EditMediaInfoDialog(QDialog):
             self._update_album_cb = QCheckBox(t("update_album"))
             self._update_album_cb.setChecked(True)
             self._update_album_cb.setEnabled(self._can_save)
+            self._update_genre_cb = QCheckBox(t("update_genre"))
+            self._update_genre_cb.setChecked(True)
+            self._update_genre_cb.setEnabled(self._can_save)
 
             form_layout.addRow(t("artist") + ":", self._artist_input)
             form_layout.addRow("", self._update_artist_cb)
             form_layout.addRow(t("album") + ":", self._album_input)
             form_layout.addRow("", self._update_album_cb)
+            form_layout.addRow(t("genre") + ":", self._genre_input)
+            form_layout.addRow("", self._update_genre_cb)
         else:
             form_layout.addRow(t("artist") + ":", self._artist_input)
             form_layout.addRow(t("album") + ":", self._album_input)
+            form_layout.addRow(t("genre") + ":", self._genre_input)
 
             # Show file information for single track
             self._add_file_info(form_layout, first_track)
@@ -451,14 +460,15 @@ class EditMediaInfoDialog(QDialog):
         """Save changes for batch edit mode."""
         new_artist = self._artist_input.text().strip()
         new_album = self._album_input.text().strip()
+        new_genre = self._genre_input.text().strip()
 
-        if not self._update_artist_cb.isChecked() and not self._update_album_cb.isChecked():
+        if not self._update_artist_cb.isChecked() and not self._update_album_cb.isChecked() and not self._update_genre_cb.isChecked():
             MessageDialog.warning(
                 self, t("warning"), t("select_fields_to_update")
             )
             return
 
-        if not new_artist and not new_album:
+        if not new_artist and not new_album and not new_genre:
             MessageDialog.warning(self, t("warning"), t("enter_artist_or_album"))
             return
 
@@ -486,6 +496,11 @@ class EditMediaInfoDialog(QDialog):
                 if (self._update_album_cb.isChecked() and new_album)
                 else track.album
             )
+            save_genre = (
+                new_genre
+                if (self._update_genre_cb.isChecked() and new_genre)
+                else track.genre
+            )
 
             # Save to file
             success = MetadataService.save_metadata(
@@ -493,6 +508,7 @@ class EditMediaInfoDialog(QDialog):
                 title=track.title,
                 artist=save_artist,
                 album=save_album,
+                genre=save_genre,
             )
 
             if success:
@@ -501,6 +517,7 @@ class EditMediaInfoDialog(QDialog):
                     title=track.title,
                     artist=save_artist,
                     album=save_album,
+                    genre=save_genre,
                 )
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)
@@ -526,12 +543,14 @@ class EditMediaInfoDialog(QDialog):
         new_title = self._title_input.text().strip() or self._first_track.title
         new_artist = self._artist_input.text().strip() or self._first_track.artist
         new_album = self._album_input.text().strip() or self._first_track.album
+        new_genre = self._genre_input.text().strip() or self._first_track.genre
 
         success = MetadataService.save_metadata(
             self._first_track.path,
             title=new_title,
             artist=new_artist,
             album=new_album,
+            genre=new_genre,
         )
 
         if success:
@@ -540,6 +559,7 @@ class EditMediaInfoDialog(QDialog):
                 title=new_title,
                 artist=new_artist,
                 album=new_album,
+                genre=new_genre,
             )
             # Emit metadata_updated signal to update play_queue
             EventBus.instance().metadata_updated.emit(self._track_ids[0])

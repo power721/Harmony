@@ -104,11 +104,12 @@ class SqliteTrackRepository(BaseRepository):
             known_artists = {row[0] for row in cursor.fetchall() if row[0]}
 
             cursor.execute("""
-                           INSERT INTO tracks (path, title, artist, album, duration, cover_path, cloud_file_id, source)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                            """, (
                                track.path, track.title, track.artist, track.album,
-                               track.duration, track.cover_path, track.cloud_file_id,
+                               track.genre, track.duration, track.cover_path,
+                               track.cloud_file_id,
                                track.source.value if hasattr(track, 'source') and track.source else 'Local'
                            ))
             track_id = cursor.lastrowid
@@ -152,6 +153,7 @@ class SqliteTrackRepository(BaseRepository):
                            title         = ?,
                            artist        = ?,
                            album         = ?,
+                           genre         = ?,
                            duration      = ?,
                            cover_path    = ?,
                            cloud_file_id = ?,
@@ -159,7 +161,8 @@ class SqliteTrackRepository(BaseRepository):
                        WHERE id = ?
                        """, (
                            track.path, track.title, track.artist, track.album,
-                           track.duration, track.cover_path, track.cloud_file_id,
+                           track.genre, track.duration, track.cover_path,
+                           track.cloud_file_id,
                            track.source.value if hasattr(track, 'source') and track.source else 'Local',
                            track.id
                        ))
@@ -224,6 +227,7 @@ class SqliteTrackRepository(BaseRepository):
             title=row["title"] or "",
             artist=row["artist"] or "",
             album=row["album"] or "",
+            genre=row["genre"],
             duration=row["duration"] or 0.0,
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],

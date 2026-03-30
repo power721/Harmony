@@ -108,3 +108,39 @@ class SqliteHistoryRepository(BaseRepository):
         """, (limit,))
         rows = cursor.fetchall()
         return [self._track_repo._row_to_track(row) for row in rows]
+
+    def get_most_played(self, limit: int = 20) -> List[Track]:
+        """
+        Get most played tracks (returns Track objects).
+
+        Args:
+            limit: Maximum number of tracks to return
+
+        Returns:
+            List of Track objects ordered by play count (descending)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.*, SUM(ph.play_count) as total_plays
+            FROM play_history ph
+            JOIN tracks t ON ph.track_id = t.id
+            GROUP BY t.id
+            ORDER BY total_plays DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [self._track_repo._row_to_track(row) for row in rows]
+
+    def clear(self) -> bool:
+        """
+        Clear all play history.
+
+        Returns:
+            True if cleared successfully
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM play_history")
+        conn.commit()
+        return True

@@ -2707,6 +2707,7 @@ class OnlineMusicView(QWidget):
         self._download_progress.setWindowTitle(t("downloading"))
         self._download_progress.setWindowModality(Qt.WindowModal)
         self._download_progress.setMinimumDuration(0)
+        self._download_progress.canceled.connect(lambda: self._cancel_download(track.mid))
 
         # Store current track for callback
         self._downloading_track = track
@@ -2732,6 +2733,11 @@ class OnlineMusicView(QWidget):
             logger.error("No downloading_track found")
             return
 
+        # Skip if download was cancelled
+        if hasattr(self, '_download_worker') and self._download_worker._cancelled:
+            logger.info(f"Download cancelled: {song_mid}")
+            return
+
         if song_mid == track.mid and local_path:
             logger.info(f"Emitting play_online_track: {song_mid}, {local_path}")
             # Build metadata from track info
@@ -2750,7 +2756,10 @@ class OnlineMusicView(QWidget):
 
     def _cancel_download(self, song_mid: str):
         """Cancel ongoing download."""
-        pass
+        if hasattr(self, '_download_worker') and self._download_worker:
+            self._download_worker.cancel()
+        if hasattr(self, '_download_progress') and self._download_progress:
+            self._download_progress.close()
 
     def _show_track_context_menu(self, pos):
         """Show context menu for track."""
@@ -3125,9 +3134,17 @@ class DownloadWorker(QThread):
         self._download_service = download_service
         self._song_mid = song_mid
         self._song_title = song_title
+        self._cancelled = False
+
+    def cancel(self):
+        """Cancel the download."""
+        self._cancelled = True
 
     def run(self):
         """Run download."""
+        if self._cancelled:
+            self.download_finished.emit(self._song_mid, "")
+            return
         try:
             result = self._download_service.download(self._song_mid, self._song_title)
             self.download_finished.emit(self._song_mid, result or "")

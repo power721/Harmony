@@ -30,6 +30,7 @@ def temp_db():
             title TEXT,
             artist TEXT,
             album TEXT,
+            genre TEXT,
             duration REAL,
             cover_path TEXT,
             cloud_file_id TEXT,

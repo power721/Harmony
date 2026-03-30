@@ -14,7 +14,7 @@ class TestMetadataService:
 
     def test_supported_formats(self):
         """Test SUPPORTED_FORMATS contains expected formats."""
-        expected_formats = {".mp3", ".flac", ".ogg", ".oga", ".m4a", ".mp4", ".wma", ".wav"}
+        expected_formats = {".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".mp4", ".wma", ".wav"}
         assert MetadataService.SUPPORTED_FORMATS == expected_formats
 
     def test_is_supported_with_mp3(self):
@@ -43,6 +43,7 @@ class TestMetadataService:
         assert result["title"] == ""
         assert result["artist"] == ""
         assert result["album"] == ""
+        assert result["genre"] == ""
         assert result["duration"] == 0.0
         assert result["cover"] is None
 
@@ -76,6 +77,7 @@ class TestMetadataService:
             "TIT2": MagicMock(__str__=lambda self: "Test Title"),
             "TPE1": MagicMock(__str__=lambda self: "Test Artist"),
             "TALB": MagicMock(__str__=lambda self: "Test Album"),
+            "TCON": MagicMock(__str__=lambda self: "Rock"),
         }
         mock_audio.tags = mock_tags
         mock_mp3_class.return_value = mock_audio
@@ -90,6 +92,7 @@ class TestMetadataService:
             assert result["title"] == "Test Title"
             assert result["artist"] == "Test Artist"
             assert result["album"] == "Test Album"
+            assert result["genre"] == "Rock"
             assert result["duration"] == 180.5
 
     @patch("services.metadata.metadata_service.FLAC")
@@ -97,7 +100,7 @@ class TestMetadataService:
         """Test extract_metadata from FLAC file successfully."""
         mock_audio = MagicMock()
         mock_audio.info.length = 240.0
-        mock_audio.__contains__ = lambda self, key: key in ["title", "artist", "album"]
+        mock_audio.__contains__ = lambda self, key: key in ["title", "artist", "album", "genre"]
         mock_audio.__getitem__ = lambda self, key: ["Test Value"]
 
         mock_flac_class.return_value = mock_audio
@@ -112,6 +115,7 @@ class TestMetadataService:
             assert result["title"] == "Test Value"
             assert result["artist"] == "Test Value"
             assert result["album"] == "Test Value"
+            assert result["genre"] == "Test Value"
             assert result["duration"] == 240.0
 
     @patch("services.metadata.metadata_service.MP3")
@@ -213,6 +217,7 @@ class TestMetadataService:
             result = MetadataService.extract_metadata("test.ogg")
 
             assert result["title"] == "Ogg Value"
+            assert result["genre"] == "Ogg Value"
             assert result["duration"] == 200.0
 
     @patch("services.metadata.metadata_service.MP4")
@@ -233,6 +238,7 @@ class TestMetadataService:
             result = MetadataService.extract_metadata("test.m4a")
 
             assert result["title"] == "M4A Value"
+            assert result["genre"] == "M4A Value"
             assert result["duration"] == 150.0
 
     @patch("services.metadata.metadata_service.mutagen.File")
@@ -518,6 +524,7 @@ class TestMetadataService:
             "TIT2": MagicMock(__str__=lambda self: "WAV Title"),
             "TPE1": MagicMock(__str__=lambda self: "WAV Artist"),
             "TALB": MagicMock(__str__=lambda self: "WAV Album"),
+            "TCON": MagicMock(__str__=lambda self: "Jazz"),
         }
         mock_audio.tags = mock_tags
 
@@ -532,6 +539,7 @@ class TestMetadataService:
         assert result["title"] == "WAV Title"
         assert result["artist"] == "WAV Artist"
         assert result["album"] == "WAV Album"
+        assert result["genre"] == "Jazz"
         assert result["duration"] == 300.0
 
     @patch("services.metadata.metadata_service.WAVE")
@@ -552,3 +560,256 @@ class TestMetadataService:
 
         assert result["title"] == "wavsong"  # Falls back to filename
         assert result["duration"] == 300.0
+
+    # ===== Genre extraction tests =====
+
+    @patch("services.metadata.metadata_service.MP3")
+    def test_extract_metadata_mp3_genre(self, mock_mp3_class):
+        """Test genre extraction from MP3 file."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 180.0
+        mock_tags = {
+            "TIT2": MagicMock(__str__=lambda self: "Song"),
+            "TPE1": MagicMock(__str__=lambda self: "Artist"),
+            "TCON": MagicMock(__str__=lambda self: "Pop"),
+        }
+        mock_audio.tags = mock_tags
+        mock_mp3_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".mp3"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.mp3")
+            assert result["genre"] == "Pop"
+
+    @patch("services.metadata.metadata_service.MP3")
+    def test_extract_metadata_mp3_no_genre(self, mock_mp3_class):
+        """Test MP3 file without genre tag returns empty string."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 180.0
+        mock_tags = {
+            "TIT2": MagicMock(__str__=lambda self: "Song"),
+            "TPE1": MagicMock(__str__=lambda self: "Artist"),
+        }
+        mock_audio.tags = mock_tags
+        mock_mp3_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".mp3"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.mp3")
+            assert result["genre"] == ""
+
+    @patch("services.metadata.metadata_service.FLAC")
+    def test_extract_metadata_flac_genre(self, mock_flac_class):
+        """Test genre extraction from FLAC file."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 240.0
+        mock_audio.__contains__ = lambda self, key: key == "genre"
+        mock_audio.__getitem__ = lambda self, key: ["Electronic"]
+
+        mock_flac_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".flac"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.flac")
+            assert result["genre"] == "Electronic"
+
+    @patch("services.metadata.metadata_service.OggVorbis")
+    def test_extract_metadata_ogg_genre(self, mock_ogg_class):
+        """Test genre extraction from OGG file."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 200.0
+        mock_audio.__contains__ = lambda self, key: key == "genre"
+        mock_audio.__getitem__ = lambda self, key: ["Classical"]
+
+        mock_ogg_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".ogg"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.ogg")
+            assert result["genre"] == "Classical"
+
+    @patch("services.metadata.metadata_service.MP4")
+    def test_extract_metadata_mp4_genre_standard(self, mock_mp4_class):
+        """Test genre extraction from MP4 file using standard \xa9gen tag."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 150.0
+        mock_audio.__contains__ = lambda self, key: key == "\xa9gen"
+        mock_audio.__getitem__ = lambda self, key: ["Hip Hop"]
+
+        mock_mp4_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".m4a"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.m4a")
+            assert result["genre"] == "Hip Hop"
+
+    @patch("services.metadata.metadata_service.MP4")
+    def test_extract_metadata_mp4_genre_itunes_tag(self, mock_mp4_class):
+        """Test genre extraction from MP4 file using iTunes-specific genre tag."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 150.0
+
+        def mock_getitem(self, key):
+            if key == "----:com.apple.iTunes:genre":
+                return [b"Alternative"]
+            raise KeyError(key)
+
+        # Only has iTunes genre tag, not standard \xa9gen
+        # MagicMock's default __contains__ returns False, which is correct for all
+        # standard tags. We need to override it to return True for the iTunes key.
+        mock_audio.__contains__ = lambda self, key: key == "----:com.apple.iTunes:genre"
+        mock_audio.__getitem__ = mock_getitem
+
+        mock_mp4_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".m4a"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.m4a")
+            assert result["genre"] == "Alternative"
+
+    @patch("services.metadata.metadata_service.MP4")
+    def test_extract_metadata_mp4_no_genre(self, mock_mp4_class):
+        """Test MP4 file without genre tag returns empty string."""
+        mock_audio = MagicMock()
+        mock_audio.info.length = 150.0
+        mock_audio.__contains__ = lambda self, key: False
+
+        mock_mp4_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".m4a"
+            mock_path.return_value.stem = "song"
+
+            result = MetadataService.extract_metadata("test.m4a")
+            assert result["genre"] == ""
+
+    # ===== Genre saving tests =====
+
+    def test_save_mp3_metadata_with_genre(self):
+        """Test _save_mp3_metadata saves genre tag."""
+        mock_audio = MagicMock()
+        mock_tags = {}
+        mock_audio.tags = mock_tags
+
+        MetadataService._save_mp3_metadata(mock_audio, "Title", "Artist", "Album", "Rock")
+
+        assert "TCON" in mock_tags
+
+    def test_save_mp3_metadata_genre_none_ignored(self):
+        """Test _save_mp3_metadata skips genre when None."""
+        mock_audio = MagicMock()
+        mock_tags = {}
+        mock_audio.tags = mock_tags
+
+        MetadataService._save_mp3_metadata(mock_audio, "Title", "Artist", "Album", genre=None)
+
+        assert "TCON" not in mock_tags
+
+    def test_save_flac_metadata_with_genre(self):
+        """Test _save_flac_metadata saves genre tag."""
+        mock_audio = {}
+
+        MetadataService._save_flac_metadata(mock_audio, "Title", "Artist", "Album", "Jazz")
+
+        assert mock_audio["genre"] == ["Jazz"]
+
+    def test_save_flac_metadata_genre_none_ignored(self):
+        """Test _save_flac_metadata skips genre when None."""
+        mock_audio = {}
+
+        MetadataService._save_flac_metadata(mock_audio, "Title", "Artist", "Album", genre=None)
+
+        assert "genre" not in mock_audio
+
+    def test_save_ogg_metadata_with_genre(self):
+        """Test _save_ogg_metadata saves genre tag."""
+        mock_audio = {}
+
+        MetadataService._save_ogg_metadata(mock_audio, "Title", "Artist", "Album", "Blues")
+
+        assert mock_audio["genre"] == ["Blues"]
+
+    def test_save_mp4_metadata_with_genre(self):
+        """Test _save_mp4_metadata saves genre tag."""
+        mock_audio = {}
+
+        MetadataService._save_mp4_metadata(mock_audio, "Title", "Artist", "Album", "Pop")
+
+        assert mock_audio["\xa9gen"] == ["Pop"]
+
+    def test_save_mp4_metadata_genre_none_ignored(self):
+        """Test _save_mp4_metadata skips genre when None."""
+        mock_audio = {}
+
+        MetadataService._save_mp4_metadata(mock_audio, "Title", "Artist", "Album", genre=None)
+
+        assert "\xa9gen" not in mock_audio
+
+    def test_save_wav_metadata_with_genre(self):
+        """Test _save_wav_metadata saves genre tag."""
+        mock_audio = MagicMock()
+        mock_tags = {}
+        mock_audio.tags = mock_tags
+
+        MetadataService._save_wav_metadata(mock_audio, "Title", "Artist", "Album", "Metal")
+
+        assert "TCON" in mock_tags
+
+    def test_save_generic_metadata_with_genre(self):
+        """Test _save_generic_metadata saves genre tag."""
+        mock_audio = {}
+
+        MetadataService._save_generic_metadata(mock_audio, "Title", "Artist", "Album", "Folk")
+
+        assert mock_audio["genre"] == ["Folk"]
+
+    @patch("services.metadata.metadata_service.MP3")
+    def test_save_metadata_with_genre_parameter(self, mock_mp3_class):
+        """Test save_metadata passes genre to format-specific save method."""
+        mock_audio = MagicMock()
+        mock_mp3_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".mp3"
+
+            result = MetadataService.save_metadata(
+                "test.mp3", title="Title", artist="Artist", genre="Rock"
+            )
+
+            assert result is True
+            mock_audio.save.assert_called_once()
+
+    @patch("services.metadata.metadata_service.MP3")
+    def test_save_metadata_backward_compatible_without_genre(self, mock_mp3_class):
+        """Test save_metadata still works when genre is not provided (backward compatibility)."""
+        mock_audio = MagicMock()
+        mock_mp3_class.return_value = mock_audio
+
+        with patch("services.metadata.metadata_service.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.suffix.lower.return_value = ".mp3"
+
+            result = MetadataService.save_metadata("test.mp3", title="Title", artist="Artist")
+
+            assert result is True
+            mock_audio.save.assert_called_once()
