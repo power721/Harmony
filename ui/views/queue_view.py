@@ -345,7 +345,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         self._current_anim_row = -1
 
     def sizeHint(self, option, index):
-        return QSize(0, 72)
+        return QSize(0, 82)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
         from system.theme import ThemeManager
@@ -419,7 +419,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         x += self._index_width
 
         # Cover art
-        cover_rect = QRect(x + 2, rect.top() + 4, self._cover_size, self._cover_size)
+        cover_rect = QRect(x + 2, rect.top() + 9, self._cover_size, self._cover_size)
         self._paint_cover(painter, cover_rect, track, row, theme)
         x += self._cover_size + 8
 
@@ -427,10 +427,10 @@ class QueueItemDelegate(QStyledItemDelegate):
         title = track.get("title", "Unknown") if isinstance(track, dict) else "Unknown"
 
         painter.setPen(text_color)
-        font.setPixelSize(13)
+        font.setPixelSize(15)
         font.setBold(True)
         painter.setFont(font)
-        title_rect = QRect(x, rect.top() + 14, rect.right() - x - 60, 22)
+        title_rect = QRect(x, rect.top() + 10, rect.right() - x - 60, 22)
         painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter,
                          self._elided_text(painter, title, title_rect.width()))
 
@@ -440,12 +440,39 @@ class QueueItemDelegate(QStyledItemDelegate):
         artist_album = artist + (f" \u2022 {album}" if album else "")
 
         painter.setPen(secondary_color)
-        font.setPixelSize(11)
+        font.setPixelSize(13)
         font.setBold(False)
         painter.setFont(font)
-        info_rect = QRect(x, rect.top() + 38, rect.right() - x - 60, 22)
+        info_rect = QRect(x, rect.top() + 32, rect.right() - x - 60, 20)
         painter.drawText(info_rect, Qt.AlignLeft | Qt.AlignVCenter,
                          self._elided_text(painter, artist_album, info_rect.width()))
+
+        # Source indicator
+        from domain.track import TrackSource
+        source_str = track.get("source", "Local") if isinstance(track, dict) else "Local"
+        try:
+            source = TrackSource(source_str) if source_str else TrackSource.LOCAL
+        except ValueError:
+            source = TrackSource.LOCAL
+
+        source_text = ""
+        if source == TrackSource.LOCAL:
+            source_text = t("source_local")
+        elif source == TrackSource.QQ:
+            source_text = t("source_qq")
+        elif source == TrackSource.QUARK:
+            source_text = t("source_quark")
+        elif source == TrackSource.BAIDU:
+            source_text = t("source_baidu")
+
+        if source_text:
+            painter.setPen(secondary_color)
+            font.setPixelSize(11)
+            font.setBold(False)
+            painter.setFont(font)
+            source_rect = QRect(x, rect.top() + 52, rect.right() - x - 60, 16)
+            painter.drawText(source_rect, Qt.AlignLeft | Qt.AlignVCenter,
+                             self._elided_text(painter, source_text, source_rect.width()))
 
         # Duration / status label
         from system.i18n import t as i18n_t
@@ -610,7 +637,7 @@ class QueueItemDelegate(QStyledItemDelegate):
         """Create a QStyleOptionViewItem for testing paint."""
         from PySide6.QtWidgets import QStyle
         option = QStyleOptionViewItem()
-        option.rect = QRect(0, 0, 400, 72)
+        option.rect = QRect(0, 0, 400, 82)
         option.state = QStyle.StateFlag.State_Enabled
         return option
 

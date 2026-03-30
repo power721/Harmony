@@ -45,7 +45,7 @@ def test_size_hint():
         from PySide6.QtWidgets import QStyleOptionViewItem
         d = QueueItemDelegate()
         option = QStyleOptionViewItem()
-        assert d.sizeHint(option, None) == QSize(0, 72)
+        assert d.sizeHint(option, None) == QSize(0, 82)
 
 
 def test_paint_does_not_crash():
@@ -61,7 +61,7 @@ def test_paint_does_not_crash():
         delegate = QueueItemDelegate()
 
         # Paint normal item
-        pixmap = QPixmap(400, 72)
+        pixmap = QPixmap(400, 82)
         pixmap.fill(QColor("#121212"))
         painter = QPainter(pixmap)
         idx = model.index(0)
@@ -72,7 +72,7 @@ def test_paint_does_not_crash():
         # Paint current playing item
         model.set_current(0)
         model.set_playing(True)
-        pixmap2 = QPixmap(400, 72)
+        pixmap2 = QPixmap(400, 82)
         pixmap2.fill(QColor("#121212"))
         painter2 = QPainter(pixmap2)
         idx = model.index(0)
@@ -83,7 +83,7 @@ def test_paint_does_not_crash():
         # Paint selected item
         model.reset_tracks([{"id": 1, "title": "Sel", "artist": "A", "album": "B", "duration": 180, "path": "/a.mp3"}])
         model.set_selection({0})
-        pixmap3 = QPixmap(400, 72)
+        pixmap3 = QPixmap(400, 82)
         pixmap3.fill(QColor("#121212"))
         painter3 = QPainter(pixmap3)
         idx = model.index(0)
