@@ -263,7 +263,8 @@ class CloudLoginDialog(QDialog):
         self._cookie_mode_btn.setChecked(False)
         self._stacked_widget.setCurrentIndex(0)
         self._refresh_btn.setVisible(True)
-        self._poll_timer.start(2000) if self._qr_token else None
+        if self._qr_token:
+            self._poll_timer.start(2000)
 
     def _switch_to_cookie_mode(self):
         """Switch to cookie input mode"""

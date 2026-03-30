@@ -166,5 +166,5 @@ class InputDialog(QDialog):
         Returns (text, accepted) tuple similar to QInputDialog.getText.
         """
         dialog = InputDialog(title, label, text, parent)
-        result = dialog.exec_()
+        result = dialog.exec()
         return dialog.get_text(), result == QDialog.Accepted

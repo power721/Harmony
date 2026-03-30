@@ -139,8 +139,8 @@ class TestSleepTimerService:
         mock_playback_service.stop.assert_called_once()
         # Should have set prevent_auto_next flag
         mock_playback_service._engine.set_prevent_auto_next.assert_called_once_with(True)
-        # Should have advanced queue index to next track
-        assert mock_playback_service._engine._current_index == 1
+        # Should have advanced queue index to next track via restore_state
+        mock_playback_service._engine.restore_state.assert_called()
 
     def test_fade_out_volume(self, sleep_timer_service, mock_playback_service, qtbot):
         """Test volume fade out."""

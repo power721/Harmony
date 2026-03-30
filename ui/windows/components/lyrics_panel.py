@@ -340,7 +340,9 @@ class LyricsController(QObject):
             self._lyrics_download_thread
         ) and self._lyrics_download_thread.isRunning():
             self._lyrics_download_thread.quit()
-            self._lyrics_download_thread.wait(100)
+            if not self._lyrics_download_thread.wait(100):
+                self._lyrics_download_thread.terminate()
+                self._lyrics_download_thread.wait()
 
         self._lyrics_download_thread = LyricsDownloadWorker(
             self._lyrics_download_path,

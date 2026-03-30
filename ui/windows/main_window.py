@@ -916,7 +916,7 @@ class MainWindow(QMainWindow):
     def _show_settings(self):
         """Show general settings dialog."""
         dialog = GeneralSettingsDialog(self._config, self)
-        if dialog.exec_():
+        if dialog.exec():
             # Update settings button status after settings change
             self._sidebar.update_settings_status(self._config.get_ai_enabled())
 
@@ -925,7 +925,7 @@ class MainWindow(QMainWindow):
         from ui.dialogs.help_dialog import HelpDialog
 
         dialog = HelpDialog(self)
-        dialog.exec_()
+        dialog.exec()
 
     def _play_track(self, track_id: int):
         """Play a local track from library (loads entire library as playlist)."""

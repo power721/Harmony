@@ -1414,7 +1414,7 @@ class LibraryView(QWidget):
 
         dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
         dialog.tracks_updated.connect(self._refresh_tracks_in_table)
-        dialog.exec_()
+        dialog.exec()
 
     def _open_file_location(self):
         """Open the file location in system file manager."""

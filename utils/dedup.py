@@ -43,7 +43,8 @@ _PATTERN_HARMONY_DETECT = re.compile(r'和声伴奏|和声|harmony')
 _PATTERN_SPECIAL_DETECT = re.compile(
     r'([（\(]纯享版[）\)]|[（\(]吟唱版[）\)]|[（\(]explicit\s+version[）\)]|'
     r'[（\(]singing\s+version[）\)]|[（\(]singing\s+ver\.?[）\)]|'
-    r'[（\(]chorus\s+version[）\)]|[（\(]remix[）\)]|[（\(]solo\s+version[）\)])'
+    r'[（\(]chorus\s+version[）\)]|[（\(]remix[）\)]|[（\(]solo\s+version[）\)]|'
+    r'[（\(](?:纯享版|吟唱版|remix|solo\s+version)[^)）]*[）\)])'
 )
 
 # Base title cleanup - live markers
@@ -122,6 +123,10 @@ class VersionInfo:
         if self.is_live and not self.has_instrumental and not self.has_harmony and not self.has_special_version:
             # Live version only
             return 80
+
+        if self.is_live and self.has_special_version and not self.has_instrumental and not self.has_harmony:
+            # Live + special version (e.g., "Live remix")
+            return 65
 
         if self.has_special_version and not self.is_live and not self.has_instrumental and not self.has_harmony:
             # Special version only (singing version, remix, etc.)
@@ -230,6 +235,7 @@ def extract_version_info(title: str) -> VersionInfo:
         is_live=is_live,
         has_instrumental=has_instrumental,
         has_harmony=has_harmony,
+        has_special_version=has_special_version,
         base_title=base_title,
         raw_title=title
     )

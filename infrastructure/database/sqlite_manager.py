@@ -675,7 +675,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 2
+        CURRENT_SCHEMA_VERSION = 6
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -1358,7 +1358,7 @@ class DatabaseManager:
 
     def update_track(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: int = None
+            cloud_file_id: str = None
     ) -> bool:
         """Update track metadata in the database."""
         future = self._submit_write(self._do_update_track, track_id, title, artist, album, cloud_file_id)
@@ -1366,7 +1366,7 @@ class DatabaseManager:
 
     def update_track_async(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: int = None, callback: Callable[[bool], None] = None
+            cloud_file_id: str = None, callback: Callable[[bool], None] = None
     ) -> None:
         """
         Update track metadata asynchronously without blocking.
@@ -1387,7 +1387,7 @@ class DatabaseManager:
 
     def _do_update_track(
             self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            cloud_file_id: int = None, conn: sqlite3.Connection = None
+            cloud_file_id: str = None, conn: sqlite3.Connection = None
     ) -> bool:
         """Internal method to update track metadata (runs in write worker)."""
         if conn is None:

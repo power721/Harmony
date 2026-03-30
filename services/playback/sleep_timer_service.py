@@ -201,11 +201,15 @@ class SleepTimerService(QObject):
             playlist_length = len(self._playback_service._engine.playlist_items)
             if current_index >= 0 and current_index < playlist_length - 1:
                 # Move to next track
-                self._playback_service._engine._current_index = current_index + 1
+                self._playback_service._engine.restore_state(
+                    self._playback_service._engine.play_mode, current_index + 1
+                )
                 logger.info(f"Advanced queue index to next track: {current_index + 1}")
             elif current_index == playlist_length - 1:
                 # At the last track, set index to -1 (no track)
-                self._playback_service._engine._current_index = -1
+                self._playback_service._engine.restore_state(
+                    self._playback_service._engine.play_mode, -1
+                )
                 logger.info("At last track, queue index reset to -1")
 
         # Stop playback for all actions

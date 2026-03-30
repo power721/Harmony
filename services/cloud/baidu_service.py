@@ -174,12 +174,10 @@ class BaiduDriveService:
                     set_cookie = hist_response.headers.get('Set-Cookie', '')
                     if 'BDUSS=' in set_cookie:
                         # Parse BDUSS from Set-Cookie header
-                        import re
                         match = re.search(r'BDUSS=([^;]+)', set_cookie)
                         if match:
                             bduss = match.group(1)
                     if 'STOKEN=' in set_cookie:
-                        import re
                         match = re.search(r'STOKEN=([^;]+)', set_cookie)
                         if match:
                             stoken = match.group(1)

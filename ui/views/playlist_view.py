@@ -721,7 +721,7 @@ class PlaylistView(QWidget):
 
         dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
         dialog.tracks_updated.connect(self._on_tracks_updated)
-        dialog.exec_()
+        dialog.exec()
 
     def _on_tracks_updated(self, track_ids: List[int]):
         """Handle tracks updated event from EditMediaInfoDialog."""

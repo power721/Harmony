@@ -410,7 +410,6 @@ class ArtistView(QWidget):
         """)
         self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
-        layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
 
         # Artist info
         info_widget = QWidget()
@@ -857,7 +856,7 @@ class ArtistView(QWidget):
             try:
                 artist_name = self._artist.display_name if self._artist else ""
                 dialog = ArtistCoverDialog(self._current_cover_path, artist_name, self)
-                dialog.exec_()
+                dialog.exec()
             except Exception as e:
                 logger.error(f"Error showing cover dialog: {e}")
 

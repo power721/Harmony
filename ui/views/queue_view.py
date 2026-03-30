@@ -183,7 +183,7 @@ class CoverLoadWorker(QRunnable):
                 self.callback_signal.emit(self.track_id, cover_path, qimage)
             except RuntimeError:
                 pass  # signal source deleted (e.g., delegate GC'd during test)
-        except RuntimeError:
+        except Exception:
             pass
 
 
@@ -1531,7 +1531,7 @@ class QueueView(QWidget):
         ok_button.clicked.connect(save_changes)
         cancel_button.clicked.connect(dialog.reject)
 
-        dialog.exec_()
+        dialog.exec()
 
     def refresh(self):
         """Refresh the queue display."""

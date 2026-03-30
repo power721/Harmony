@@ -31,7 +31,7 @@ def generate_sign(request_data: dict) -> str:
     sha1_hash = hashlib.sha1(json_str.encode()).hexdigest().upper()
 
     # Part 1: specific indexes
-    part1_indexes = [23, 14, 6, 36, 16, 40, 7, 19]
+    part1_indexes = [23, 14, 6, 36, 16, 39, 7, 19]
     part1 = ''.join(sha1_hash[i] if i < 40 else '' for i in part1_indexes)
 
     # Part 2: specific indexes

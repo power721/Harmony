@@ -1525,13 +1525,7 @@ class PlaybackService(QObject):
 
         existing_by_path = self._db.get_track_by_path(local_path)
         if existing_by_path:
-            conn = self._db._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE tracks SET cloud_file_id = ? WHERE id = ?",
-                (file_id, existing_by_path.id)
-            )
-            conn.commit()
+            self._db.update_track(existing_by_path.id, cloud_file_id=file_id)
 
             # Also update metadata if needed
             if is_filename_like(existing_by_path.title) or not existing_by_path.artist:

@@ -198,7 +198,7 @@ class QuarkDriveService:
                     # Determine file type
                     if not is_file:
                         file_type = 'folder'
-                    elif category == 2 or file_type_num == 'audio':  # Audio category in Quark
+                    elif category == 2 or file_type_num == 1:  # Audio category in Quark
                         file_type = 'audio'
                         duration = item.get('duration', 0)
                     else:

@@ -798,7 +798,7 @@ class ConfigManager:
             try:
                 import json
                 history = json.loads(history)
-            except:
+            except (ValueError, TypeError):
                 history = []
         return history if isinstance(history, list) else []
 

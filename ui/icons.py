@@ -54,7 +54,6 @@ class IconName:
     # Actions
     PLAY = "play.svg"
     PAUSE = "pause.svg"
-    STOP = "play.svg"
     NEXT = "next.svg"
     PREVIOUS = "previous.svg"
     SHUFFLE = "shuffle.svg"

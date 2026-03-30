@@ -341,14 +341,16 @@ class OrganizeFilesDialog(QDialog):
 
             # Update new path
             new_path_item = self.preview_table.item(row, 2)
-            new_path_item.setText(preview['new_audio_path'])
+            if new_path_item:
+                new_path_item.setText(preview['new_audio_path'])
 
             # Update lyrics
             lyrics_item = self.preview_table.item(row, 3)
-            if preview['has_lyrics']:
-                lyrics_item.setText(t("yes"))
-            else:
-                lyrics_item.setText(t("no"))
+            if lyrics_item:
+                if preview['has_lyrics']:
+                    lyrics_item.setText(t("yes"))
+                else:
+                    lyrics_item.setText(t("no"))
 
         self.status_label.setText(
             f"{len(self.previews)} {t('files_to_organize')}"

@@ -1191,7 +1191,7 @@ class GeneralSettingsDialog(QDialog):
 
         dialog = QQMusicQRLoginDialog(self)
         dialog.credentials_obtained.connect(self._update_qqmusic_status)
-        dialog.exec_()
+        dialog.exec()
 
     def _browse_download_dir(self):
         """Browse for download directory."""

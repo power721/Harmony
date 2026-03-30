@@ -1171,7 +1171,7 @@ class PlayerControls(QWidget):
         if self._current_cover_path:
             try:
                 dialog = CoverDialog(self._current_cover_path, self)
-                dialog.exec_()
+                dialog.exec()
             except Exception as e:
                 logger.error(f"Error showing cover dialog: {e}")
 

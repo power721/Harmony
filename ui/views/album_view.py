@@ -580,7 +580,7 @@ class AlbumView(QWidget):
             try:
                 album_name = self._album.display_name if self._album else ""
                 dialog = AlbumCoverDialog(self._current_cover_path, album_name, self)
-                dialog.exec_()
+                dialog.exec()
             except Exception as e:
                 logger.error(f"Error showing cover dialog: {e}")
 

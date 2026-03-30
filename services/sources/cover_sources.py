@@ -487,7 +487,7 @@ class SpotifyCoverSource(CoverSource):
                         if cover_url:
                             results.append(CoverSearchResult(
                                 title=album_info.get("name", ""),
-                                artist=album_info.get("artists", [{}])[0].get("name", ""),
+                                artist=(album_info.get("artists") or [{}])[0].get("name", ""),
                                 album=album_info.get("name", ""),
                                 source='spotify',
                                 id=album_info.get("id", ""),

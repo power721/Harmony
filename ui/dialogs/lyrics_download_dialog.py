@@ -460,7 +460,7 @@ class LyricsDownloadDialog(QDialog):
             parent
         )
 
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             selected_song = dialog.get_selected_song()
             download_cover = dialog.get_download_cover()
             if selected_song:
