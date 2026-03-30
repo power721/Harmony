@@ -607,7 +607,7 @@ class TestLibraryService:
 
     def test_refresh_albums_artists(self, library_service, mock_album_repo, mock_artist_repo):
         """Test refresh_albums_artists refreshes both tables."""
-        library_service.refresh_albums_artists()
+        library_service.refresh_albums_artists(immediate=True)
 
         mock_album_repo.refresh.assert_called_once()
         mock_artist_repo.refresh.assert_called_once()
@@ -812,6 +812,8 @@ class TestLibraryService:
         result = library_service.update_track(new_track)
 
         assert result is True
+        # Trigger immediate refresh since debounced refresh won't fire in test
+        library_service.refresh_albums_artists(immediate=True)
         mock_album_repo.refresh.assert_called()
         mock_artist_repo.refresh.assert_called()
 

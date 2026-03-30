@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from PySide6.QtCore import QTimer
+
 from domain.album import Album
 from domain.artist import Artist
 from domain.playlist import Playlist
@@ -41,6 +43,11 @@ class LibraryService:
         self._artist_repo = artist_repo
         self._event_bus = event_bus or EventBus.instance()
         self._cover_service = cover_service
+
+        # Debounce timer for album/artist refresh
+        self._refresh_timer = QTimer()
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._do_refresh)
 
     # ===== Album/Artist Table Operations =====
 
@@ -127,14 +134,24 @@ class LibraryService:
 
     def _refresh_albums_artist_async(self):
         """Refresh albums and artists tables asynchronously (debounced)."""
-        # This is a lightweight refresh that can be called frequently
-        # In a production app, this might use a background thread with debouncing
-        # For now, we'll just mark that a refresh is needed
-        if not hasattr(self, '_needs_album_artist_refresh'):
-            self._needs_album_artist_refresh = False
+        # Debounce: wait 500ms before actually refreshing
+        # Multiple rapid calls will only trigger one refresh
+        self._refresh_timer.start(500)
 
-        self._needs_album_artist_refresh = True
-        # Actually refresh immediately for now (TODO: add debouncing)
+    def refresh_albums_artists(self, immediate: bool = False):
+        """
+        Refresh albums and artists tables.
+
+        Args:
+            immediate: If True, refresh immediately; otherwise debounce
+        """
+        if immediate:
+            self._do_refresh()
+        else:
+            self._refresh_albums_artist_async()
+
+    def _do_refresh(self):
+        """Actually perform the album/artist refresh."""
         self._album_repo.refresh()
         self._artist_repo.refresh()
 

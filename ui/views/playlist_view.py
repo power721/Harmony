@@ -540,6 +540,8 @@ class PlaylistView(QWidget):
         text_secondary_color = QColor(theme.text_secondary)
         text_color = QColor(theme.text)
 
+        # Disable updates during batch population
+        self._tracks_table.setUpdatesEnabled(False)
         self._tracks_table.setRowCount(len(tracks))
 
         for row, track in enumerate(tracks):
@@ -569,6 +571,9 @@ class PlaylistView(QWidget):
             duration_item = QTableWidgetItem(format_duration(track.duration))
             duration_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 4, duration_item)
+
+        # Re-enable updates after batch population
+        self._tracks_table.setUpdatesEnabled(True)
 
     def _get_source_display_name(self, source) -> str:
         """Get display name for track source."""

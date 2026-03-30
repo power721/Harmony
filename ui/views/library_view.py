@@ -506,6 +506,8 @@ class LibraryView(QWidget):
         text_secondary_color = QColor(theme.text_secondary)
         text_color = QColor(theme.text)
 
+        # Disable updates during batch population
+        self._tracks_table.setUpdatesEnabled(False)
         self._tracks_table.setRowCount(0)
         self._current_tracks = []
 
@@ -567,6 +569,9 @@ class LibraryView(QWidget):
             duration_item = QTableWidgetItem(format_duration(item.get("duration", 0)))
             duration_item.setForeground(text_brush)
             self._tracks_table.setItem(row, 4, duration_item)
+
+        # Re-enable updates after batch population
+        self._tracks_table.setUpdatesEnabled(True)
 
     def _load_history(self):
         """Load play history."""

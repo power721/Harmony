@@ -404,7 +404,7 @@ class OnlineDetailView(QWidget):
     """Detail view for artist, album, or playlist."""
 
     back_requested = Signal()
-    play_all = Signal(list)  # List of OnlineTrack (current page)
+    play_all = Signal(list, int)  # List of OnlineTrack (current page)
     insert_all_to_queue = Signal(list)  # List of OnlineTrack (current page)
     add_all_to_queue = Signal(list)  # List of OnlineTrack (current page)
     play_all_tracks = Signal(list)  # List of OnlineTrack (all tracks)
@@ -1615,7 +1615,7 @@ class OnlineDetailView(QWidget):
     def _on_play_current(self):
         """Play current page tracks."""
         if self._tracks:
-            self.play_all.emit(self._tracks)
+            self.play_all.emit(self._tracks, 0)
 
     def _on_insert_current_to_queue(self):
         """Insert current page tracks to queue."""
@@ -1714,8 +1714,7 @@ class OnlineDetailView(QWidget):
         """Handle track double click."""
         row = index.row()
         if 0 <= row < len(self._tracks):
-            # TODO: Play single track
-            pass
+            self._play_track(self._tracks[row])
 
     def _show_track_context_menu(self, pos):
         """Show context menu for track."""
@@ -1780,8 +1779,7 @@ class OnlineDetailView(QWidget):
             # Find the track index and play all from that track
             try:
                 index = self._tracks.index(track)
-                tracks_to_play = self._tracks[index:]
-                self.play_all.emit(tracks_to_play)
+                self.play_all.emit(self._tracks, index)
             except ValueError:
                 logger.warning(f"Track not found in list: {track.title}")
 
@@ -1804,7 +1802,7 @@ class OnlineDetailView(QWidget):
     def _play_tracks(self, tracks: list):
         """Play multiple tracks."""
         if tracks:
-            self.play_all.emit(tracks)
+            self.play_all.emit(tracks, 0)
 
     def _download_track(self, track: OnlineTrack):
         """Download a track."""

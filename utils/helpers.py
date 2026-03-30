@@ -8,6 +8,11 @@ from typing import List, Tuple, Optional
 
 from system import t
 
+# Pre-compiled regex patterns for filename metadata parsing
+_RE_ARTIST_TITLE = re.compile(r'^(.+?)\s*-\s*(.+)$')
+_RE_BRACKETS = re.compile(r'\[[^\]]+\]')
+_RE_PARENTHESES = re.compile(r'\([^)]*\)')
+
 
 def get_cache_dir(subdir: str = '') -> Path:
     """
@@ -164,8 +169,7 @@ def parse_filename_as_metadata(filename: str) -> Tuple[str, str]:
 
     # Pattern: "Artist - Title" with optional suffix like "(伴奏)" or "[网站]"
     # Common separator: " - " or "-"
-    pattern = r'^(.+?)\s*-\s*(.+)$'
-    match = re.match(pattern, name)
+    match = _RE_ARTIST_TITLE.match(name)
 
     if match:
         artist = match.group(1).strip()
@@ -173,9 +177,9 @@ def parse_filename_as_metadata(filename: str) -> Tuple[str, str]:
 
         # Clean common suffixes from title
         # Remove content in brackets like [putaojie.com], [www.xxx.com]
-        title = re.sub(r'\[[^\]]+\]', '', title).strip()
+        title = _RE_BRACKETS.sub('', title).strip()
         # Remove content in parentheses like (伴奏), (Inst.)
-        title = re.sub(r'\([^)]*\)', '', title).strip()
+        title = _RE_PARENTHESES.sub('', title).strip()
 
         return artist, title
 

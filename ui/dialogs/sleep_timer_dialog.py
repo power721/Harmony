@@ -39,7 +39,7 @@ class SleepTimerDialog(QDialog):
     def _setup_window(self):
         self.setWindowTitle(t("sleep_timer"))
         self.setModal(True)
-        self.setFixedSize(520, 490)
+        self.setFixedSize(530, 490)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
@@ -73,7 +73,7 @@ class SleepTimerDialog(QDialog):
 
         self._container = QWidget(self)
         self._container.setObjectName("dialogContainer")
-        self._container.setGeometry(0, 0, 520, 490)
+        self._container.setGeometry(0, 0, 530, 490)
         layout.addWidget(self._container)
 
         self._main_layout = QVBoxLayout(self._container)
@@ -166,7 +166,7 @@ class SleepTimerDialog(QDialog):
             btn = QPushButton(label)
             btn.setObjectName("presetBtn")
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setFixedWidth(60)  # 与输入框相同宽度
+            btn.setFixedWidth(80)  # 与输入框相同宽度
             btn.clicked.connect(lambda checked, m=minutes: self._set_preset_time(m))
             preset_row.addWidget(btn)
 

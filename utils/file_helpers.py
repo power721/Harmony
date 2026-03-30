@@ -5,6 +5,11 @@ import re
 from pathlib import Path
 from domain.track import Track
 
+# Pre-compiled regex patterns for filename sanitization
+_RE_PATH_SEP = re.compile(r'[\\/]')
+_RE_INVALID_CHARS = re.compile(r'[<>:"|?*]')
+_RE_WHITESPACE = re.compile(r'\s+')
+
 # 跨平台非法字符
 INVALID_CHARS = r'[<>:"/\\|?*]'
 
@@ -23,11 +28,11 @@ def sanitize_filename(name: str) -> str:
         return "unnamed"
 
     # 替换路径分隔符为 &
-    cleaned = re.sub(r'[\\/]', '&', name)
+    cleaned = _RE_PATH_SEP.sub('&', name)
     # 移除其他非法字符
-    cleaned = re.sub(r'[<>:"|?*]', '', cleaned)
+    cleaned = _RE_INVALID_CHARS.sub('', cleaned)
     # 清理多余空格和点
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip('. ')
+    cleaned = _RE_WHITESPACE.sub(' ', cleaned).strip('. ')
     return cleaned or "unnamed"
 
 

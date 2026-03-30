@@ -194,10 +194,10 @@ class PlayerControls(QWidget):
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
 
-        # Update position timer
+        # Update position timer - start only when playing
         self._position_timer = QTimer(self)
         self._position_timer.timeout.connect(self._update_position_display)
-        self._position_timer.start(100)
+        # Timer will be started/stopped based on playback state
 
         # Initialize favorite button state if there's a current track
         QTimer.singleShot(0, self._initialize_favorite_button)
@@ -961,8 +961,10 @@ class PlayerControls(QWidget):
         """Handle player state change."""
         if state == PlaybackState.PLAYING:
             self._update_button_icon(self._play_pause_btn, IconName.PAUSE, icon_size=PLAY_ICON_SIZE)
+            self._position_timer.start(100)  # Start position updates when playing
         else:
             self._update_button_icon(self._play_pause_btn, IconName.PLAY, icon_size=PLAY_ICON_SIZE)
+            self._position_timer.stop()  # Stop position updates when paused/stopped
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""

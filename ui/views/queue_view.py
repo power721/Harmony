@@ -1206,11 +1206,7 @@ class QueueView(QWidget):
 
     def _on_item_double_clicked(self, index):
         """Handle item double click."""
-        track = self._model.get_track_at(index.row())
-        if track:
-            track_id = track.get("id") if isinstance(track, dict) else None
-            if track_id:
-                self.play_track.emit(track_id)
+        self._player.engine.play_at(index.row())
 
     def _clear_queue(self):
         """Clear the queue."""
@@ -1357,6 +1353,8 @@ class QueueView(QWidget):
         # Add to playlist action
         add_to_playlist_action = menu.addAction(t("add_to_playlist"))
         add_to_playlist_action.triggered.connect(self._add_selected_to_playlist)
+
+        menu.addSeparator()
 
         remove_action = menu.addAction(t("remove_from_queue"))
         remove_action.triggered.connect(self._remove_selected)

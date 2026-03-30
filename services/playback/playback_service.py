@@ -94,6 +94,7 @@ class PlaybackService(QObject):
         self._current_source = "local"  # "local" or "cloud"
         self._cloud_account: Optional["CloudAccount"] = None
         self._cloud_files: List["CloudFile"] = []
+        self._cloud_files_by_id: dict = {}  # O(1) lookup by file_id
         self._downloaded_files: dict = {}  # cloud_file_id -> local_path
 
         # Current track ID for history
@@ -433,9 +434,13 @@ class PlaybackService(QObject):
         self._set_source("local")
         self._engine.clear_playlist()
 
+        # Batch-load all tracks at once
+        tracks = self._db.get_tracks_by_ids(track_ids)
+        track_map = {t.id: t for t in tracks}
+
         items = []
         for track_id in track_ids:
-            track = self._db.get_track(track_id)
+            track = track_map.get(track_id)
             if track:
                 # Include online tracks (empty path) and existing local files
                 is_online = not track.path or track.source == TrackSource.QQ
@@ -574,6 +579,7 @@ class PlaybackService(QObject):
         """
         self._cloud_account = account
         self._cloud_files = cloud_files or [cloud_file]
+        self._cloud_files_by_id = {cf.file_id: cf for cf in self._cloud_files}
         self._set_source("cloud")
 
         # Build playlist items
@@ -618,7 +624,12 @@ class PlaybackService(QObject):
         """
         self._cloud_account = account
         self._cloud_files = cloud_files
+        self._cloud_files_by_id = {cf.file_id: cf for cf in cloud_files}
         self._set_source("cloud")
+
+        # Batch-load all tracks by cloud file IDs
+        cloud_file_ids = [cf.file_id for cf in cloud_files]
+        tracks_by_cloud_id = self._db.get_tracks_by_cloud_file_ids(cloud_file_ids)
 
         # Build playlist items - fast path, no blocking operations
         items = []
@@ -636,8 +647,8 @@ class PlaybackService(QObject):
 
             # For already downloaded files, try fast path first
             if local_path:
-                # Try to get existing track record (fast DB lookup)
-                track = self._db.get_track_by_cloud_file_id(cf.file_id)
+                # Try to get existing track record (fast batch lookup)
+                track = tracks_by_cloud_id.get(cf.file_id)
                 if track:
                     item.track_id = track.id
                     item.title = track.title or item.title
@@ -1201,12 +1212,8 @@ class PlaybackService(QObject):
         service = CloudDownloadService.instance()
         service.set_download_dir(self._config.get_cloud_download_dir())
 
-        # Find the CloudFile
-        cloud_file = None
-        for cf in self._cloud_files:
-            if cf.file_id == item.cloud_file_id:
-                cloud_file = cf
-                break
+        # Find the CloudFile - O(1) lookup
+        cloud_file = self._cloud_files_by_id.get(item.cloud_file_id)
 
         if not cloud_file:
             cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)

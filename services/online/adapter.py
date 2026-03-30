@@ -3,6 +3,7 @@ Online music API adapter.
 Unifies response formats from different API sources.
 """
 
+import re
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -12,6 +13,9 @@ from domain.online_music import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Pre-compiled regex pattern for HTML tag stripping
+_RE_HTML_TAG = re.compile(r'<[^>]+>')
 
 
 class ApiSource:
@@ -108,7 +112,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_tracks(items: List[Dict]) -> List[OnlineTrack]:
         """Parse tracks from YGKing API format."""
-        import re
         tracks = []
         for item in items:
             # Parse singers - handle different formats
@@ -120,25 +123,25 @@ class OnlineMusicAdapter:
                         name = s.get("name", "")
                         # Strip HTML tags
                         if name:
-                            name = re.sub(r'<[^>]+>', '', name)
+                            name = _RE_HTML_TAG.sub('', name)
                         singers.append(OnlineSinger(
                             mid=s.get("mid", ""),
                             name=name
                         ))
                     elif isinstance(s, str):
                         # Strip HTML tags
-                        name = re.sub(r'<[^>]+>', '', s)
+                        name = _RE_HTML_TAG.sub('', s)
                         singers.append(OnlineSinger(mid="", name=name))
             elif isinstance(singer_data, dict):
                 name = singer_data.get("name", "")
                 if name:
-                    name = re.sub(r'<[^>]+>', '', name)
+                    name = _RE_HTML_TAG.sub('', name)
                 singers.append(OnlineSinger(
                     mid=singer_data.get("mid", ""),
                     name=name
                 ))
             elif isinstance(singer_data, str):
-                name = re.sub(r'<[^>]+>', '', singer_data)
+                name = _RE_HTML_TAG.sub('', singer_data)
                 singers.append(OnlineSinger(mid="", name=name))
 
             # Parse album - handle different formats
@@ -146,18 +149,18 @@ class OnlineMusicAdapter:
             if isinstance(album_data, dict):
                 album_name = album_data.get("name", album_data.get("albumname", ""))
                 if album_name:
-                    album_name = re.sub(r'<[^>]+>', '', album_name)
+                    album_name = _RE_HTML_TAG.sub('', album_name)
                 album = AlbumInfo(
                     mid=album_data.get("mid", album_data.get("albummid", "")),
                     name=album_name
                 )
             elif isinstance(album_data, str):
-                album_name = re.sub(r'<[^>]+>', '', album_data)
+                album_name = _RE_HTML_TAG.sub('', album_data)
                 album = AlbumInfo(mid="", name=album_name)
             else:
                 album_name = item.get("albumname", item.get("albumName", ""))
                 if album_name:
-                    album_name = re.sub(r'<[^>]+>', '', album_name)
+                    album_name = _RE_HTML_TAG.sub('', album_name)
                 album = AlbumInfo(
                     mid=item.get("albummid", item.get("albumMid", "")),
                     name=album_name
@@ -176,7 +179,7 @@ class OnlineMusicAdapter:
             # Get title - try multiple field names
             title = item.get("title", item.get("name", item.get("songname", item.get("songName", ""))))
             if title:
-                title = re.sub(r'<[^>]+>', '', title)
+                title = _RE_HTML_TAG.sub('', title)
 
             track = OnlineTrack(
                 mid=mid,
@@ -200,7 +203,7 @@ class OnlineMusicAdapter:
             # Strip HTML tags from name
             name = item.get("singerName", item.get("name", ""))
             if name:
-                name = re.sub(r'<[^>]+>', '', name)
+                name = _RE_HTML_TAG.sub('', name)
 
             artist = OnlineArtist(
                 mid=item.get("singerMID", item.get("mid", "")),
@@ -225,18 +228,18 @@ class OnlineMusicAdapter:
                 singer_name = singer_list[0].get("name", "")
                 # Strip HTML tags
                 if singer_name:
-                    singer_name = re.sub(r'<[^>]+>', '', singer_name)
+                    singer_name = _RE_HTML_TAG.sub('', singer_name)
             else:
                 singer_mid = item.get("singer_id", "")
                 singer_name = item.get("singer", "")
                 # Strip HTML tags
                 if singer_name:
-                    singer_name = re.sub(r'<[^>]+>', '', singer_name)
+                    singer_name = _RE_HTML_TAG.sub('', singer_name)
 
             # Strip HTML tags from album name
             album_name = item.get("name", "")
             if album_name:
-                album_name = re.sub(r'<[^>]+>', '', album_name)
+                album_name = _RE_HTML_TAG.sub('', album_name)
 
             album = OnlineAlbum(
                 mid=item.get("albummid", item.get("mid", "")),
@@ -259,7 +262,7 @@ class OnlineMusicAdapter:
             # Strip HTML tags from title
             title = item.get("dissname", item.get("title", ""))
             if title:
-                title = re.sub(r'<[^>]+>', '', title)
+                title = _RE_HTML_TAG.sub('', title)
 
             playlist = OnlinePlaylist(
                 id=str(item.get("dissid", item.get("id", ""))),
@@ -283,7 +286,7 @@ class OnlineMusicAdapter:
             singers = []
             singer_name = item.get("singerName", "")
             if singer_name:
-                singer_name = re.sub(r'<[^>]+>', '', singer_name)
+                singer_name = _RE_HTML_TAG.sub('', singer_name)
                 singers.append(OnlineSinger(
                     mid=item.get("singerMid", ""),
                     name=singer_name
@@ -292,7 +295,7 @@ class OnlineMusicAdapter:
             # Album info - strip HTML tags
             album_name = item.get("albumName", "")
             if album_name:
-                album_name = re.sub(r'<[^>]+>', '', album_name)
+                album_name = _RE_HTML_TAG.sub('', album_name)
             album = AlbumInfo(
                 mid=item.get("albumMid", ""),
                 name=album_name
@@ -301,7 +304,7 @@ class OnlineMusicAdapter:
             # Title - strip HTML tags
             title = item.get("title", "")
             if title:
-                title = re.sub(r'<[^>]+>', '', title)
+                title = _RE_HTML_TAG.sub('', title)
 
             track = OnlineTrack(
                 mid=item.get("songMid", ""),
@@ -406,25 +409,25 @@ class OnlineMusicAdapter:
             singer_data = item.get("singer", [])
             if isinstance(singer_data, str):
                 # Singer is just a name string
-                name = re.sub(r'<[^>]+>', '', singer_data) if singer_data else ""
+                name = _RE_HTML_TAG.sub('', singer_data) if singer_data else ""
                 singers.append(OnlineSinger(mid="", name=name))
             elif isinstance(singer_data, list):
                 for s in singer_data:
                     if isinstance(s, dict):
                         name = s.get("name", "")
                         if name:
-                            name = re.sub(r'<[^>]+>', '', name)
+                            name = _RE_HTML_TAG.sub('', name)
                         singers.append(OnlineSinger(
                             mid=s.get("mid", ""),
                             name=name
                         ))
                     elif isinstance(s, str):
-                        name = re.sub(r'<[^>]+>', '', s) if s else ""
+                        name = _RE_HTML_TAG.sub('', s) if s else ""
                         singers.append(OnlineSinger(mid="", name=name))
             elif isinstance(singer_data, dict):
                 name = singer_data.get("name", "")
                 if name:
-                    name = re.sub(r'<[^>]+>', '', name)
+                    name = _RE_HTML_TAG.sub('', name)
                 singers.append(OnlineSinger(
                     mid=singer_data.get("mid", ""),
                     name=name
@@ -433,12 +436,12 @@ class OnlineMusicAdapter:
             # Parse album - can be dict or string
             album_data = item.get("album")
             if isinstance(album_data, str):
-                album_name = re.sub(r'<[^>]+>', '', album_data) if album_data else ""
+                album_name = _RE_HTML_TAG.sub('', album_data) if album_data else ""
                 album = AlbumInfo(mid="", name=album_name)
             elif isinstance(album_data, dict):
                 album_name = album_data.get("name", "")
                 if album_name:
-                    album_name = re.sub(r'<[^>]+>', '', album_name)
+                    album_name = _RE_HTML_TAG.sub('', album_name)
                 album = AlbumInfo(
                     mid=album_data.get("mid", ""),
                     name=album_name
@@ -446,7 +449,7 @@ class OnlineMusicAdapter:
             else:
                 album_name = item.get("albumname", "")
                 if album_name:
-                    album_name = re.sub(r'<[^>]+>', '', album_name)
+                    album_name = _RE_HTML_TAG.sub('', album_name)
                 album = AlbumInfo(
                     mid=item.get("albummid", ""),
                     name=album_name
@@ -455,7 +458,7 @@ class OnlineMusicAdapter:
             # Get title and strip HTML tags
             title = item.get("songname", item.get("title", ""))
             if title:
-                title = re.sub(r'<[^>]+>', '', title)
+                title = _RE_HTML_TAG.sub('', title)
 
             track = OnlineTrack(
                 mid=item.get("songmid", item.get("mid", "")),
@@ -502,7 +505,7 @@ class OnlineMusicAdapter:
             # Strip HTML tags from album name
             album_name = item.get("name", "")
             if album_name:
-                album_name = re.sub(r'<[^>]+>', '', album_name)
+                album_name = _RE_HTML_TAG.sub('', album_name)
 
             # QQ Music API uses different field names
             album = OnlineAlbum(
@@ -525,7 +528,7 @@ class OnlineMusicAdapter:
         for item in items:
             # Clean HTML tags from title
             dissname = item.get("dissname", "")
-            title = re.sub(r'<[^>]+>', '', dissname) if dissname else ""
+            title = _RE_HTML_TAG.sub('', dissname) if dissname else ""
 
             # Get creator nickname
             creator = item.get("nickname", "")
@@ -605,18 +608,18 @@ class OnlineMusicAdapter:
         # Strip HTML tags from name
         name = song.get('title', song.get('name', song.get('songName', '')))
         if name:
-            name = re.sub(r'<[^>]+>', '', name)
+            name = _RE_HTML_TAG.sub('', name)
 
         # Strip HTML tags from album name
         album_name = song.get('albumName', song.get('albumname', ''))
         if album_name:
-            album_name = re.sub(r'<[^>]+>', '', album_name)
+            album_name = _RE_HTML_TAG.sub('', album_name)
 
         # Strip HTML tags from singer names
         singers = song.get('singer', [])
         if isinstance(singers, list):
             singers = [
-                {'mid': s.get('mid', ''), 'name': re.sub(r'<[^>]+>', '', s.get('name', ''))} if isinstance(s, dict) else s
+                {'mid': s.get('mid', ''), 'name': _RE_HTML_TAG.sub('', s.get('name', ''))} if isinstance(s, dict) else s
                 for s in singers
             ]
 
@@ -849,7 +852,7 @@ class OnlineMusicAdapter:
         if not name:
             name = playlist_data.get("dissname", "") or playlist_data.get("title", "") or playlist_data.get("name", "")
         if name:
-            name = re.sub(r'<[^>]+>', '', name)  # Remove HTML tags
+            name = _RE_HTML_TAG.sub('', name)  # Remove HTML tags
 
         # Get creator info - try multiple locations
         creator = ""
@@ -919,13 +922,13 @@ class OnlineMusicAdapter:
             if isinstance(s, dict):
                 name = s.get("name", "") or ""
                 if name:
-                    name = re.sub(r'<[^>]+>', '', name)
+                    name = _RE_HTML_TAG.sub('', name)
                 singers.append({
                     'mid': s.get("mid", "") or "",
                     'name': name
                 })
             elif isinstance(s, str):
-                name = re.sub(r'<[^>]+>', '', s) if s else ""
+                name = _RE_HTML_TAG.sub('', s) if s else ""
                 singers.append({'mid': "", 'name': name})
 
         # Parse album - strip HTML tags from name
@@ -933,18 +936,18 @@ class OnlineMusicAdapter:
         if isinstance(album_data, dict):
             album_name = album_data.get("name", "") or ""
             if album_name:
-                album_name = re.sub(r'<[^>]+>', '', album_name)
+                album_name = _RE_HTML_TAG.sub('', album_name)
             album = {
                 'mid': album_data.get("mid", "") or "",
                 'name': album_name
             }
         elif isinstance(album_data, str):
-            album_name = re.sub(r'<[^>]+>', '', album_data) if album_data else ""
+            album_name = _RE_HTML_TAG.sub('', album_data) if album_data else ""
             album = {'mid': "", 'name': album_name}
         else:
             album_name = item.get("albumname", "") or item.get("albumName", "") or ""
             if album_name:
-                album_name = re.sub(r'<[^>]+>', '', album_name)
+                album_name = _RE_HTML_TAG.sub('', album_name)
             album = {
                 'mid': item.get("albummid", "") or item.get("albumMid", "") or "",
                 'name': album_name
@@ -953,7 +956,7 @@ class OnlineMusicAdapter:
         # Get song name - strip HTML tags
         name = item.get("title", "") or item.get("name", "") or ""
         if name:
-            name = re.sub(r'<[^>]+>', '', name)
+            name = _RE_HTML_TAG.sub('', name)
 
         return {
             'mid': item.get("mid", "") or "",

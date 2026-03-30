@@ -143,9 +143,10 @@ class CoverService:
             # Create cache directory if needed
             self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-            # Generate cache filename
+            # Generate cache filename (use MD5 for deterministic hash)
             track_file = Path(track_path)
-            cache_filename = f"{track_file.stem}_{hash(track_path)}.jpg"
+            path_hash = hashlib.md5(track_path.encode()).hexdigest()[:16]
+            cache_filename = f"{track_file.stem}_{path_hash}.jpg"
             cache_path = self.CACHE_DIR / cache_filename
 
             # Check if already cached
@@ -179,14 +180,15 @@ class CoverService:
             # Create cache directory if needed
             self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-            # Generate cache filename
+            # Generate cache filename (use MD5 for deterministic hash)
             track_file = Path(track_path)
+            path_hash = hashlib.md5(track_path.encode()).hexdigest()[:16]
             # Determine extension from data
             if cover_data[:4] == b'\x89PNG':
                 ext = '.png'
             else:
                 ext = '.jpg'
-            cache_filename = f"{track_file.stem}_{hash(track_path)}{ext}"
+            cache_filename = f"{track_file.stem}_{path_hash}{ext}"
             cache_path = self.CACHE_DIR / cache_filename
 
             # Check if already cached

@@ -77,8 +77,12 @@ class FileOrganizationService:
             results['errors'].append(f"目标目录不存在: {target_dir}")
             return results
 
+        # Batch-load all tracks at once
+        tracks = self._track_repo.get_by_ids(track_ids)
+        track_map = {t.id: t for t in tracks}
+
         for track_id in track_ids:
-            track = self._track_repo.get_by_id(track_id)
+            track = track_map.get(track_id)
             if not track:
                 results['failed'] += 1
                 results['errors'].append(f"Track ID {track_id}: 不存在")

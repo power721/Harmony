@@ -2586,7 +2586,7 @@ class OnlineMusicView(QWidget):
             return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
         return ""
 
-    def _on_play_all_from_detail(self, tracks: List[OnlineTrack]):
+    def _on_play_all_from_detail(self, tracks: List[OnlineTrack], index: int = 0):
         """Handle play all from detail view."""
         if not tracks:
             return
@@ -2605,7 +2605,7 @@ class OnlineMusicView(QWidget):
             tracks_data.append((track.mid, metadata))
 
         # Emit signal to play all tracks, starting from first
-        self.play_online_tracks.emit(0, tracks_data)
+        self.play_online_tracks.emit(index, tracks_data)
 
     def _on_add_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle add all to queue from detail view."""

@@ -22,6 +22,10 @@ ARTIST_SEPARATORS = [
 _SEPARATOR_PATTERN = '|'.join(f'({sep})' for sep in ARTIST_SEPARATORS)
 _SPLIT_REGEX = re.compile(_SEPARATOR_PATTERN, re.IGNORECASE)
 
+# Pre-compiled regex patterns for filtering
+_RE_SEPARATOR_PATTERN = re.compile(r'^[\s,，、/\\&]+$', re.IGNORECASE)
+_RE_FEAT_PATTERN = re.compile(r'^(feat\.?|featuring|ft\.?|and)$', re.IGNORECASE)
+
 
 def split_artists(artist_string: str) -> List[str]:
     """
@@ -56,9 +60,9 @@ def split_artists(artist_string: str) -> List[str]:
         if not part:
             continue
         # Check if this part looks like a separator
-        if re.match(r'^[\s,，、/\\&]+$', part, re.IGNORECASE):
+        if _RE_SEPARATOR_PATTERN.match(part):
             continue
-        if re.match(r'^(feat\.?|featuring|ft\.?|and)$', part, re.IGNORECASE):
+        if _RE_FEAT_PATTERN.match(part):
             continue
         artists.append(part)
 

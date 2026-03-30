@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from concurrent.futures import Future
 from datetime import datetime
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from domain.cloud import CloudAccount, CloudFile
 from domain.history import PlayHistory
@@ -1064,6 +1064,28 @@ class DatabaseManager:
             return self._row_to_track(row)
         return None
 
+    def get_tracks_by_ids(self, track_ids: List[int]) -> List[Track]:
+        """
+        Get multiple tracks by IDs in batch.
+
+        Args:
+            track_ids: List of track IDs
+
+        Returns:
+            List of Track objects (only existing tracks)
+        """
+        if not track_ids:
+            return []
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        placeholders = ",".join("?" * len(track_ids))
+        cursor.execute(f"SELECT * FROM tracks WHERE id IN ({placeholders})", track_ids)
+        rows = cursor.fetchall()
+
+        return [self._row_to_track(row) for row in rows]
+
     def get_track_by_path(self, path: str) -> Optional[Track]:
         """Get a track by file path."""
         conn = self._get_connection()
@@ -1087,6 +1109,28 @@ class DatabaseManager:
         if row:
             return self._row_to_track(row)
         return None
+
+    def get_tracks_by_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
+        """
+        Get multiple tracks by cloud file IDs in batch.
+
+        Args:
+            cloud_file_ids: List of cloud file IDs
+
+        Returns:
+            Dict mapping cloud_file_id -> Track
+        """
+        if not cloud_file_ids:
+            return {}
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        placeholders = ",".join("?" * len(cloud_file_ids))
+        cursor.execute(f"SELECT * FROM tracks WHERE cloud_file_id IN ({placeholders})", cloud_file_ids)
+        rows = cursor.fetchall()
+
+        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
 
     def get_track_index_for_paths(self, paths: list[str]) -> dict[str, dict]:
         """

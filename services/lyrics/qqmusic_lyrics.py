@@ -223,8 +223,7 @@ class QQMusicClient:
         }
 
         try:
-            session = requests.Session()
-            r = session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
             data = r.json()
             songs = data.get("data", {}).get("list", [])
 
@@ -368,8 +367,7 @@ class QQMusicClient:
             # Fallback to remote API
             try:
                 url = f"{self.REMOTE_BASE_URL}/song/cover"
-                session = requests.Session()
-                r = session.get(url, params={"mid": mid, "size": size},
+                r = self.session.get(url, params={"mid": mid, "size": size},
                               headers=self.HEADERS, timeout=self.timeout,
                               allow_redirects=False)
 
