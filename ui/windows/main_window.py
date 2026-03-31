@@ -414,6 +414,7 @@ class MainWindow(QMainWindow):
         # Lyrics panel
         self._lyrics_panel = self._create_lyrics_panel()
         self._lyrics_panel.setMinimumWidth(250)  # Prevent lyrics panel from collapsing
+        self._lyrics_panel.setMaximumWidth(1200)
         self._splitter.addWidget(self._lyrics_panel)
 
         # Set splitter proportions
