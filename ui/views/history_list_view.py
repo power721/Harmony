@@ -622,9 +622,17 @@ class HistoryListView(QWidget):
                 return row
         return None
 
+    def _apply_viewport_bg(self):
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+        self._list_view.setStyleSheet(
+            f"QListView {{ background-color: {theme.background_alt}; border: none; outline: none; }}"
+        )
+
     def load_tracks(self, tracks: List[Track], played_at_map: dict, favorite_ids: set):
         """Load tracks into the view."""
         self._model.reset_tracks(tracks, played_at_map, favorite_ids)
+        self._apply_viewport_bg()
 
     def clear(self):
         """Clear all tracks."""

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from ui.dialogs.message_dialog import MessageDialog
 from ui.widgets.recommend_card import RecommendSection
-from ui.views.ranking_list_view import RankingListView
+from ui.views.online_tracks_list_view import OnlineTracksListView
 from ui.icons import IconName, get_icon
 from system.theme import ThemeManager
 
@@ -1121,7 +1121,7 @@ class OnlineMusicView(QWidget):
         self._top_songs_table = self._create_songs_table()
         self._ranking_stacked_widget.addWidget(self._top_songs_table)
 
-        self._ranking_list_view = RankingListView()
+        self._ranking_list_view = OnlineTracksListView()
         self._ranking_list_view.track_activated.connect(self._on_ranking_track_activated)
         self._ranking_list_view.play_requested.connect(self._play_selected_tracks)
         self._ranking_list_view.insert_to_queue_requested.connect(self._insert_selected_to_queue)

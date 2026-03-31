@@ -1,29 +1,27 @@
 """
-Ranking list view for displaying online music rankings.
+Online tracks list view for displaying online music tracks.
 """
 
 import logging
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
-from PySide6.QtGui import QColor, QPixmap, QPainter, QImage
+from PySide6.QtGui import QColor, QPainter, QImage
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
 from domain import TrackSource
 from domain.online_music import OnlineTrack
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
-from services.library.favorites_service import FavoritesService
 from system import t
 from system.event_bus import EventBus
-from ui.icons import IconName, get_icon
 from ui.widgets.context_menus import OnlineTrackContextMenu
 from utils.helpers import format_duration
 
 logger = logging.getLogger(__name__)
 
 
-class RankingTrackModel(QAbstractListModel):
-    """QAbstractListModel for ranking track data."""
+class OnlineTracksModel(QAbstractListModel):
+    """QAbstractListModel for online track data."""
 
     TrackRole = Qt.UserRole + 1
     CoverRole = Qt.UserRole + 2
@@ -144,8 +142,8 @@ class OnlineCoverLoadWorker(QRunnable):
         return None
 
 
-class RankingItemDelegate(QStyledItemDelegate):
-    """Delegate for painting ranking items without per-item QWidget overhead."""
+class OnlineTracksDelegate(QStyledItemDelegate):
+    """Delegate for painting online track items without per-item QWidget overhead."""
 
     _cover_loaded_signal = Signal(str, object, object)
 
@@ -167,11 +165,11 @@ class RankingItemDelegate(QStyledItemDelegate):
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
 
-        track = index.data(RankingTrackModel.TrackRole)
-        is_favorite = index.data(RankingTrackModel.IsFavoriteRole)
-        rank = index.data(RankingTrackModel.RankRole)
-        is_vip = index.data(RankingTrackModel.IsVipRole)
-        row = index.data(RankingTrackModel.IndexRole)
+        track = index.data(OnlineTracksModel.TrackRole)
+        is_favorite = index.data(OnlineTracksModel.IsFavoriteRole)
+        rank = index.data(OnlineTracksModel.RankRole)
+        is_vip = index.data(OnlineTracksModel.IsVipRole)
+        row = index.data(OnlineTracksModel.IndexRole)
 
         if not track:
             return
@@ -218,22 +216,15 @@ class RankingItemDelegate(QStyledItemDelegate):
 
         x = rect.left() + self._padding
 
-        # Rank number (with special styling for top 3)
+        # Index number
         painter.setPen(secondary_color)
         font = painter.font()
         font.setPixelSize(12)
-        font.setBold(True)
+        font.setBold(False)
         painter.setFont(font)
 
-        if rank <= 3:
-            # Top 3 with gold color
-            painter.setPen(QColor("#FFD700"))
-            rank_text = ["🥇", "🥈", "🥉"][rank - 1]
-        else:
-            rank_text = str(rank)
-
         painter.drawText(x, rect.top(), self._rank_width, rect.height(),
-                         Qt.AlignVCenter | Qt.AlignHCenter, rank_text)
+                         Qt.AlignVCenter | Qt.AlignHCenter, str(rank))
         x += self._rank_width
 
         # Cover art
@@ -285,16 +276,6 @@ class RankingItemDelegate(QStyledItemDelegate):
         painter.drawText(rect.right() - self._padding - 50 - self._star_size - 10, rect.top(), 50, rect.height(),
                          Qt.AlignVCenter | Qt.AlignRight, duration_text)
 
-        # Favorite icon (star)
-        # star_x = rect.right() - self._padding - self._star_size
-        # star_y = rect.top() + (rect.height() - self._star_size) // 2
-        #
-        # star_color = "#ff4444" if is_favorite else theme.text_secondary  # Gold color
-        # star_icon = get_icon(IconName.STAR_FILLED if is_favorite else IconName.STAR_OUTLINE,
-        #                     star_color)
-        # star_pixmap = star_icon.pixmap(self._star_size, self._star_size)
-        # painter.drawPixmap(star_x, star_y, star_pixmap)
-
         painter.restore()
 
     def _paint_cover(self, painter: QPainter, rect: QRect, track: OnlineTrack, row: int, theme):
@@ -337,7 +318,8 @@ class RankingItemDelegate(QStyledItemDelegate):
                     nearby_track = model.get_track_at(nearby_row)
                     if nearby_track:
                         nearby_key = self._get_cover_cache_key(nearby_track)
-                        if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(nearby_key):
+                        if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(
+                                nearby_key):
                             self._requested_covers.add(nearby_key)
                             worker = OnlineCoverLoadWorker(nearby_key, nearby_track, self._cover_loaded_signal)
                             QThreadPool.globalInstance().start(worker)
@@ -363,8 +345,8 @@ class RankingItemDelegate(QStyledItemDelegate):
         return fm.elidedText(text, Qt.ElideRight, max_width)
 
 
-class RankingListView(QWidget):
-    """List view for online rankings with delegate-based rendering."""
+class OnlineTracksListView(QWidget):
+    """List view for online tracks with delegate-based rendering."""
 
     track_activated = Signal(object)  # OnlineTrack
     favorite_toggled = Signal(object, bool)  # OnlineTrack, is_favorite
@@ -377,8 +359,8 @@ class RankingListView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._model = RankingTrackModel(self)
-        self._delegate = RankingItemDelegate(self)
+        self._model = OnlineTracksModel(self)
+        self._delegate = OnlineTracksDelegate(self)
         self._setup_ui()
         self._setup_connections()
         self._context_menu = OnlineTrackContextMenu(self)
@@ -390,6 +372,7 @@ class RankingListView(QWidget):
         layout.setSpacing(0)
 
         self._list_view = QListView()
+        self._apply_viewport_bg()
         self._list_view.setModel(self._model)
         self._list_view.setItemDelegate(self._delegate)
         self._list_view.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
@@ -411,7 +394,7 @@ class RankingListView(QWidget):
         bus.favorite_changed.connect(self._on_favorite_changed)
 
     def _on_item_activated(self, index):
-        track = index.data(RankingTrackModel.TrackRole)
+        track = index.data(OnlineTracksModel.TrackRole)
         if track:
             self.track_activated.emit(track)
 
@@ -435,9 +418,9 @@ class RankingListView(QWidget):
 
         if star_area.contains(pos):
             # Toggle favorite
-            track = index.data(RankingTrackModel.TrackRole)
+            track = index.data(OnlineTracksModel.TrackRole)
             if track:
-                is_favorite = index.data(RankingTrackModel.IsFavoriteRole)
+                is_favorite = index.data(OnlineTracksModel.IsFavoriteRole)
                 self._toggle_favorite(track, not is_favorite)
 
     def _toggle_favorite(self, track: OnlineTrack, new_state: bool):
@@ -453,7 +436,7 @@ class RankingListView(QWidget):
         for i, track in enumerate(self._model._tracks):
             if track.mid == mid:
                 idx = self._model.index(i)
-                self._model.dataChanged.emit(idx, idx, [RankingTrackModel.IsFavoriteRole])
+                self._model.dataChanged.emit(idx, idx, [OnlineTracksModel.IsFavoriteRole])
                 break
 
     def _connect_context_menu(self):
@@ -516,9 +499,17 @@ class RankingListView(QWidget):
                 return row
         return None
 
+    def _apply_viewport_bg(self):
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+        self._list_view.setStyleSheet(
+            f"QListView {{ background-color: {theme.background_alt}; border: none; outline: none; }}"
+        )
+
     def load_tracks(self, tracks: List[OnlineTrack], favorite_mids: set = None):
         """Load tracks into the view."""
         self._model.reset_tracks(tracks, favorite_mids or set())
+        self._apply_viewport_bg()
 
     def clear(self):
         """Clear all tracks."""
