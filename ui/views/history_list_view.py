@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelega
 from domain.track import Track, TrackSource
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
+from system import t
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
 from ui.widgets.context_menus import LocalTrackContextMenu
@@ -29,6 +30,8 @@ class HistoryTrackModel(QAbstractListModel):
     IsFavoriteRole = Qt.UserRole + 3
     PlayedAtRole = Qt.UserRole + 4
     IndexRole = Qt.UserRole + 5
+    IsCurrentRole = Qt.UserRole + 6
+    IsPlayingRole = Qt.UserRole + 7
 
     cover_ready = Signal(int)
 
@@ -37,6 +40,8 @@ class HistoryTrackModel(QAbstractListModel):
         self._tracks: List[Track] = []
         self._played_at_map: dict = {}  # track_id -> datetime
         self._favorite_ids: set = set()
+        self._current_track_id = None
+        self._is_playing: bool = False
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._tracks)
@@ -56,6 +61,11 @@ class HistoryTrackModel(QAbstractListModel):
             return self._played_at_map.get(track.id) if track else None
         elif role == self.IndexRole:
             return row
+        elif role == self.IsCurrentRole:
+            return bool(self._current_track_id and track and track.id == self._current_track_id)
+        elif role == self.IsPlayingRole:
+            return (bool(self._current_track_id and track and track.id == self._current_track_id)
+                    and self._is_playing)
         return None
 
     def roleNames(self):
@@ -66,6 +76,8 @@ class HistoryTrackModel(QAbstractListModel):
             self.IsFavoriteRole: b"favorite",
             self.PlayedAtRole: b"played_at",
             self.IndexRole: b"index",
+            self.IsCurrentRole: b"current",
+            self.IsPlayingRole: b"playing",
         }
 
     def reset_tracks(self, tracks: List[Track], played_at_map: dict, favorite_ids: set):
@@ -95,6 +107,25 @@ class HistoryTrackModel(QAbstractListModel):
         if 0 <= row < len(self._tracks):
             idx = self.index(row)
             self.dataChanged.emit(idx, idx, [self.CoverRole])
+
+    def set_current_track(self, track_id):
+        """Update the current track and emit dataChanged for affected rows."""
+        old_track_id = self._current_track_id
+        self._current_track_id = track_id
+        for i, track in enumerate(self._tracks):
+            if track and (track.id == old_track_id or track.id == track_id):
+                idx = self.index(i)
+                self.dataChanged.emit(idx, idx, [self.IsCurrentRole, self.IsPlayingRole])
+
+    def set_playing(self, playing: bool):
+        """Update playing state and emit dataChanged for current track."""
+        self._is_playing = playing
+        if self._current_track_id:
+            for i, track in enumerate(self._tracks):
+                if track and track.id == self._current_track_id:
+                    idx = self.index(i)
+                    self.dataChanged.emit(idx, idx, [self.IsPlayingRole])
+                    break
 
 
 class CoverLoadWorker(QRunnable):
@@ -198,6 +229,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
         is_favorite = index.data(HistoryTrackModel.IsFavoriteRole)
         played_at = index.data(HistoryTrackModel.PlayedAtRole)
         row = index.data(HistoryTrackModel.IndexRole)
+        is_current = index.data(HistoryTrackModel.IsCurrentRole)
 
         if not track:
             return
@@ -234,6 +266,9 @@ class HistoryItemDelegate(QStyledItemDelegate):
         if is_selected:
             text_color = QColor(theme.background)
             secondary_color = QColor(theme.background)
+        elif is_current:
+            text_color = QColor(theme.highlight)
+            secondary_color = QColor(theme.highlight)
         else:
             text_color = QColor(theme.text)
             secondary_color = QColor(theme.text_secondary)
@@ -279,13 +314,13 @@ class HistoryItemDelegate(QStyledItemDelegate):
 
         source_text = ""
         if source == TrackSource.LOCAL:
-            source_text = "本地"
+            source_text = t("source_local")
         elif source == TrackSource.QQ:
-            source_text = "QQ"
+            source_text = t("source_qq")
         elif source == TrackSource.QUARK:
-            source_text = "夸克"
+            source_text = t("source_quark")
         elif source == TrackSource.BAIDU:
-            source_text = "百度"
+            source_text = t("source_baidu")
 
         played_time_text = ""
         if played_at:
@@ -445,11 +480,16 @@ class HistoryListView(QWidget):
         # Event bus
         bus = EventBus.instance()
         bus.favorite_changed.connect(self._on_favorite_changed)
+        bus.track_changed.connect(self._on_track_changed)
+        bus.playback_state_changed.connect(self._on_playback_state_changed)
 
     def closeEvent(self, event):
         """Clean up event bus connections before closing."""
         try:
-            EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
+            bus = EventBus.instance()
+            bus.favorite_changed.disconnect(self._on_favorite_changed)
+            bus.track_changed.disconnect(self._on_track_changed)
+            bus.playback_state_changed.disconnect(self._on_playback_state_changed)
         except RuntimeError:
             pass
         super().closeEvent(event)
@@ -537,6 +577,20 @@ class HistoryListView(QWidget):
         if bootstrap and hasattr(bootstrap, 'favorites_service'):
             favorite_ids = bootstrap.favorites_service.get_all_favorite_track_ids()
             self._model.update_favorites(favorite_ids)
+
+    def _on_track_changed(self, track_item):
+        """Handle current track change from EventBus."""
+        track_id = None
+        if track_item:
+            if isinstance(track_item, dict):
+                track_id = track_item.get("track_id") or track_item.get("id")
+            else:
+                track_id = getattr(track_item, 'track_id', None) or getattr(track_item, 'id', None)
+        self._model.set_current_track(track_id)
+
+    def _on_playback_state_changed(self, state):
+        """Handle playback state change from EventBus."""
+        self._model.set_playing(state == "playing")
 
     def _on_cover_ready(self, cache_key: str, cover_path: str, qimage):
         """Handle cover loaded from background worker."""

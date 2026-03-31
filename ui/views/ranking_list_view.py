@@ -13,6 +13,7 @@ from domain import TrackSource
 from domain.online_music import OnlineTrack
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
+from system import t
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
 from ui.widgets.context_menus import OnlineTrackContextMenu
@@ -267,7 +268,7 @@ class RankingItemDelegate(QStyledItemDelegate):
                          self._elided_text(painter, artist_album, info_rect.width()))
 
         # Source indicator (QQ Music)
-        source_text = "QQ音乐"
+        source_text = t("source_qq")
         painter.setPen(secondary_color)
         font.setPixelSize(11)
         font.setBold(False)
