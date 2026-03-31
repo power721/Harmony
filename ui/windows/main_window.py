@@ -551,7 +551,13 @@ class MainWindow(QMainWindow):
         self._album_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
+        self._album_view.favorites_toggle_requested.connect(self._on_album_favorites_toggle)
         self._album_view.back_clicked.connect(self._on_back)
+        self._album_view.edit_info_requested.connect(self._on_album_edit_media_info)
+        self._album_view.download_cover_requested.connect(self._on_album_download_track_cover)
+        self._album_view.open_file_location_requested.connect(self._on_album_open_file_location)
+        self._album_view.remove_from_library_requested.connect(self._on_album_remove_from_library)
+        self._album_view.delete_file_requested.connect(self._on_album_delete_file)
 
         # Genres view connections
         self._genres_view.genre_clicked.connect(self._on_genre_clicked)
@@ -700,6 +706,146 @@ class MainWindow(QMainWindow):
 
         dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()
+
+    def _on_album_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Toggle favorite status for tracks in album view."""
+        from app.bootstrap import Bootstrap
+        from system.event_bus import EventBus
+
+        bootstrap = Bootstrap.instance()
+        if not bootstrap or not hasattr(bootstrap, 'favorites_service'):
+            return
+
+        service = bootstrap.favorites_service
+        bus = EventBus.instance()
+
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if all_favorited:
+                service.remove_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, False, is_cloud=False)
+            else:
+                service.add_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+        # Refresh album view to update favorite icons
+        if self._album_view.get_album():
+            self._album_view.set_album(self._album_view.get_album())
+
+    def _on_album_edit_media_info(self, track):
+        """Edit media info for a track in album view."""
+        if not track or not track.id:
+            return
+        from ui.dialogs import EditMediaInfoDialog
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        dialog = EditMediaInfoDialog([track.id], bootstrap.library_service, self)
+        # Refresh album view when tracks are updated
+        def on_tracks_updated():
+            if self._album_view.get_album():
+                self._album_view.set_album(self._album_view.get_album())
+        dialog.tracks_updated.connect(on_tracks_updated)
+        dialog.exec()
+
+    def _on_album_download_track_cover(self, track):
+        """Download cover for a track in album view."""
+        if not track or not track.id:
+            return
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
+            [track], bootstrap.track_repo, bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, bootstrap.cover_service, self)
+        dialog.exec()
+
+    def _on_album_open_file_location(self, track):
+        """Open file location for a track in album view."""
+        from pathlib import Path
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        import platform
+        import subprocess
+        import shutil
+
+        if not track or not track.path or not track.path.strip():
+            MessageDialog.warning(self, "Error", t("no_local_file"))
+            return
+        file_path = Path(track.path)
+        if not file_path.exists():
+            MessageDialog.warning(self, "Error", t("file_not_found"))
+            return
+        try:
+            system = platform.system()
+            if system == "Windows":
+                subprocess.Popen(["explorer", f"/select,{file_path}"])
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-R", str(file_path)])
+            else:
+                file_managers = {
+                    "nautilus": ["nautilus", "--select", str(file_path)],
+                    "dolphin": ["dolphin", "--select", str(file_path)],
+                    "caja": ["caja", "--select", str(file_path)],
+                    "nemo": ["nemo", str(file_path)],
+                }
+                for fm, cmd in file_managers.items():
+                    if shutil.which(fm):
+                        subprocess.Popen(cmd)
+                        return
+                subprocess.Popen(["xdg-open", str(file_path.parent)])
+        except Exception as e:
+            logger.error(f"Failed to open file location: {e}", exc_info=True)
+            MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _on_album_remove_from_library(self, tracks: list):
+        """Remove tracks from library."""
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        from utils.dedup import format_count_message
+        from app.bootstrap import Bootstrap
+
+        track_ids = [t.id for t in tracks if t.id]
+        if not track_ids:
+            return
+        confirm_message = format_count_message("remove_from_library_confirm", len(track_ids))
+        reply = MessageDialog.question(
+            self, t("remove_from_library"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        bootstrap = Bootstrap.instance()
+        removed_count = bootstrap.library_service.delete_tracks(track_ids)
+        if removed_count > 0:
+            success_message = format_count_message("remove_from_library_success", removed_count)
+            MessageDialog.information(self, t("remove_from_library"), success_message)
+            # Refresh album view
+            if self._album_view.get_album():
+                self._album_view.set_album(self._album_view.get_album())
+
+    def _on_album_delete_file(self, tracks: list):
+        """Delete files from disk and library."""
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        from utils.dedup import format_count_message
+        from app.bootstrap import Bootstrap
+        import os
+
+        if not tracks:
+            return
+        confirm_message = format_count_message("delete_file_confirm", len(tracks))
+        reply = MessageDialog.question(
+            self, t("delete_file"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        bootstrap = Bootstrap.instance()
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if track.path and os.path.exists(track.path):
+                os.remove(track.path)
+            bootstrap.library_service.delete_track(track.id)
+        # Refresh album view
+        if self._album_view.get_album():
+            self._album_view.set_album(self._album_view.get_album())
 
     def _on_artist_clicked(self, artist):
         """Handle artist card click."""

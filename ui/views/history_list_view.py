@@ -1,209 +1,61 @@
 """
 History list view for displaying play history.
+Extends LocalTracksListView to add played time display.
 """
 
 import logging
 from datetime import datetime
 from typing import List
 
-from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
-from PySide6.QtGui import QColor, QPixmap, QPainter, QImage, QCursor
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
+from PySide6.QtCore import Qt, Signal, QSize, QModelIndex, QRect
+from PySide6.QtGui import QColor, QPainter, QCursor
+from PySide6.QtWidgets import QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
-from domain.track import Track, TrackSource
+from domain.track import Track
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
-from services.library.favorites_service import FavoritesService
 from system import t
-from system.event_bus import EventBus
-from ui.icons import IconName, get_icon
+from ui.views.local_tracks_list_view import (
+    LocalTracksListView,
+    LocalTrackModel,
+    CoverLoadWorker,
+)
 from ui.widgets.context_menus import LocalTrackContextMenu
 from utils.helpers import format_relative_time
 
 logger = logging.getLogger(__name__)
 
 
-class HistoryTrackModel(QAbstractListModel):
-    """QAbstractListModel for history track data."""
+class HistoryTrackModel(LocalTrackModel):
+    """Extended model for history track data with played_at support."""
 
-    TrackRole = Qt.UserRole + 1
-    CoverRole = Qt.UserRole + 2
-    IsFavoriteRole = Qt.UserRole + 3
-    PlayedAtRole = Qt.UserRole + 4
-    IndexRole = Qt.UserRole + 5
-    IsCurrentRole = Qt.UserRole + 6
-    IsPlayingRole = Qt.UserRole + 7
-
-    cover_ready = Signal(int)
+    PlayedAtRole = Qt.UserRole + 20
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._tracks: List[Track] = []
         self._played_at_map: dict = {}  # track_id -> datetime
-        self._favorite_ids: set = set()
-        self._current_track_id = None
-        self._is_playing: bool = False
-
-    def rowCount(self, parent=QModelIndex()):
-        return len(self._tracks)
-
-    def data(self, index, role=Qt.DisplayRole):
-        if not index.isValid() or index.row() >= len(self._tracks):
-            return None
-        row = index.row()
-        track = self._tracks[row]
-        if role == self.TrackRole:
-            return track
-        elif role == self.CoverRole:
-            return None
-        elif role == self.IsFavoriteRole:
-            return track.id in self._favorite_ids if track else False
-        elif role == self.PlayedAtRole:
-            return self._played_at_map.get(track.id) if track else None
-        elif role == self.IndexRole:
-            return row
-        elif role == self.IsCurrentRole:
-            return bool(self._current_track_id and track and track.id == self._current_track_id)
-        elif role == self.IsPlayingRole:
-            return (bool(self._current_track_id and track and track.id == self._current_track_id)
-                    and self._is_playing)
-        return None
 
     def roleNames(self):
-        return {
-            Qt.DisplayRole: b"display",
-            self.TrackRole: b"track",
-            self.CoverRole: b"cover",
-            self.IsFavoriteRole: b"favorite",
-            self.PlayedAtRole: b"played_at",
-            self.IndexRole: b"index",
-            self.IsCurrentRole: b"current",
-            self.IsPlayingRole: b"playing",
-        }
+        names = super().roleNames()
+        names[self.PlayedAtRole] = b"played_at"
+        return names
+
+    def data(self, index, role=Qt.DisplayRole):
+        if role == self.PlayedAtRole:
+            track = super().data(index, self.TrackRole)
+            return self._played_at_map.get(track.id) if track else None
+        return super().data(index, role)
 
     def reset_tracks(self, tracks: List[Track], played_at_map: dict, favorite_ids: set):
+        """Reset tracks with played_at timestamps."""
         self.beginResetModel()
         self._tracks = list(tracks)
         self._played_at_map = dict(played_at_map)
         self._favorite_ids = set(favorite_ids)
         self.endResetModel()
 
-    def update_favorites(self, favorite_ids: set):
-        """Update favorite IDs and emit dataChanged for affected rows."""
-        old_favs = self._favorite_ids
-        self._favorite_ids = set(favorite_ids)
-
-        # Find rows that changed
-        for i, track in enumerate(self._tracks):
-            if track and (track.id in old_favs) != (track.id in self._favorite_ids):
-                idx = self.index(i)
-                self.dataChanged.emit(idx, idx, [self.IsFavoriteRole])
-
-    def get_track_at(self, row: int):
-        if 0 <= row < len(self._tracks):
-            return self._tracks[row]
-        return None
-
-    def notify_cover_loaded(self, row: int):
-        if 0 <= row < len(self._tracks):
-            idx = self.index(row)
-            self.dataChanged.emit(idx, idx, [self.CoverRole])
-
-    def set_current_track(self, track_id):
-        """Update the current track and emit dataChanged for affected rows."""
-        old_track_id = self._current_track_id
-        self._current_track_id = track_id
-        for i, track in enumerate(self._tracks):
-            if track and (track.id == old_track_id or track.id == track_id):
-                idx = self.index(i)
-                self.dataChanged.emit(idx, idx, [self.IsCurrentRole, self.IsPlayingRole])
-
-    def set_playing(self, playing: bool):
-        """Update playing state and emit dataChanged for current track."""
-        self._is_playing = playing
-        if self._current_track_id:
-            for i, track in enumerate(self._tracks):
-                if track and track.id == self._current_track_id:
-                    idx = self.index(i)
-                    self.dataChanged.emit(idx, idx, [self.IsPlayingRole])
-                    break
-
-
-class CoverLoadWorker(QRunnable):
-    """Worker to load cover in background thread."""
-
-    def __init__(self, cache_key: str, track: Track, callback_signal):
-        super().__init__()
-        self.cache_key = cache_key
-        self.track = track
-        self.callback_signal = callback_signal
-        self.setAutoDelete(True)
-
-    def run(self):
-        try:
-            cover_path = self._resolve_cover_path()
-            qimage = None
-            if cover_path:
-                qimage = QImage(cover_path)
-            try:
-                self.callback_signal.emit(self.cache_key, cover_path, qimage)
-            except RuntimeError:
-                pass  # signal source deleted
-        except Exception:
-            pass
-
-    def _resolve_cover_path(self) -> str | None:
-        """Resolve cover path for a track (runs in worker thread)."""
-        if not self.track:
-            return None
-
-        from pathlib import Path
-
-        source = self.track.source
-        cloud_file_id = self.track.cloud_file_id
-        is_online = source == TrackSource.QQ
-
-        if is_online and cloud_file_id:
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_online_cover(
-                        song_mid=cloud_file_id,
-                        album_mid=None,
-                        artist=self.track.artist,
-                        title=self.track.title,
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        # Try cover_path first
-        cover_path = self.track.cover_path
-        if cover_path and Path(cover_path).exists():
-            return cover_path
-
-        # Try extracting from file
-        path = self.track.path
-        if path and Path(path).exists():
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_cover(
-                        path, self.track.title, self.track.artist,
-                        self.track.album, skip_online=True,
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        return None
-
 
 class HistoryItemDelegate(QStyledItemDelegate):
-    """Delegate for painting history items without per-item QWidget overhead."""
+    """Delegate for painting history items with played time."""
 
     _cover_loaded_signal = Signal(str, object, object)
 
@@ -214,7 +66,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
         self._failed_covers: set = set()
         CoverPixmapCache.initialize()
         self._cover_size = 64
-        self._index_width = 40
+        self._index_width = 50
         self._padding = 10
         self._star_size = 20
 
@@ -249,7 +101,6 @@ class HistoryItemDelegate(QStyledItemDelegate):
             hover_bg = QColor(theme.background_hover)
             hover_bg.setAlpha(220)
             painter.fillRect(rect, hover_bg)
-            # Hand cursor on hover
             if self.parent():
                 self.parent().setCursor(Qt.CursorShape.PointingHandCursor)
         else:
@@ -275,6 +126,16 @@ class HistoryItemDelegate(QStyledItemDelegate):
 
         x = rect.left() + self._padding
 
+        # Index number
+        painter.setPen(secondary_color)
+        font = painter.font()
+        font.setPixelSize(12)
+        font.setBold(False)
+        painter.setFont(font)
+        painter.drawText(x, rect.top(), self._index_width, rect.height(),
+                         Qt.AlignVCenter | Qt.AlignHCenter, str(row + 1))
+        x += self._index_width
+
         # Cover art
         cover_rect = QRect(x + 2, rect.top() + 9, self._cover_size, self._cover_size)
         self._paint_cover(painter, cover_rect, track, row, theme)
@@ -283,7 +144,6 @@ class HistoryItemDelegate(QStyledItemDelegate):
         # Title
         title = track.title or "Unknown"
         painter.setPen(text_color)
-        font = painter.font()
         font.setPixelSize(15)
         font.setBold(True)
         painter.setFont(font)
@@ -338,8 +198,8 @@ class HistoryItemDelegate(QStyledItemDelegate):
                          self._elided_text(painter, source_time_text, time_rect.width()))
 
         # Duration
-        duration = track.duration or 0
         from utils.helpers import format_duration
+        duration = track.duration or 0
         duration_text = format_duration(duration)
         font.setPixelSize(12)
         painter.setFont(font)
@@ -350,8 +210,8 @@ class HistoryItemDelegate(QStyledItemDelegate):
         star_x = rect.right() - self._padding - self._star_size
         star_y = rect.top() + (rect.height() - self._star_size) // 2
 
-        # Use gold for filled star, gray for outline
-        star_color = "#ff4444" if is_favorite else theme.text_secondary  # Gold color
+        star_color = "#ff4444" if is_favorite else theme.text_secondary
+        from ui.icons import IconName, get_icon
         star_icon = get_icon(IconName.STAR_FILLED if is_favorite else IconName.STAR_OUTLINE,
                             star_color)
         star_pixmap = star_icon.pixmap(self._star_size, self._star_size)
@@ -387,6 +247,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
             if cache_key not in self._requested_covers and cache_key not in self._failed_covers:
                 self._requested_covers.add(cache_key)
                 worker = CoverLoadWorker(cache_key, track, self._cover_loaded_signal)
+                from PySide6.QtCore import QThreadPool
                 QThreadPool.globalInstance().start(worker)
 
         # Preload nearby covers (±3 rows)
@@ -402,6 +263,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
                         if nearby_key not in self._requested_covers and nearby_key not in self._failed_covers and not CoverPixmapCache.get(nearby_key):
                             self._requested_covers.add(nearby_key)
                             worker = CoverLoadWorker(nearby_key, nearby_track, self._cover_loaded_signal)
+                            from PySide6.QtCore import QThreadPool
                             QThreadPool.globalInstance().start(worker)
 
     def _on_cover_loaded(self, cache_key: str, cover_path: str, qimage):
@@ -415,7 +277,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
     def _get_cover_cache_key(self, track: Track) -> str:
         """Generate cache key for a track."""
         if track.cloud_file_id:
-            return f"{track.source.name}_{track.cloud_file_id}"
+            return f"{track.source.name}:{track.cloud_file_id}"
         if track.artist and track.title:
             return CoverPixmapCache.make_key(track.artist, track.title)
         path = track.path or track.cover_path or ""
@@ -430,210 +292,24 @@ class HistoryItemDelegate(QStyledItemDelegate):
         return fm.elidedText(text, Qt.ElideRight, max_width)
 
 
-class HistoryListView(QWidget):
-    """List view for play history with delegate-based rendering."""
-
-    track_activated = Signal(object)  # Track
-    favorite_toggled = Signal(object, bool)  # Track, is_favorite
-    play_requested = Signal(list)
-    insert_to_queue_requested = Signal(list)
-    add_to_queue_requested = Signal(list)
-    add_to_playlist_requested = Signal(list)
-    favorites_toggle_requested = Signal(list, bool)  # (tracks, all_favorited)
-    edit_info_requested = Signal(object)
-    download_cover_requested = Signal(object)
-    open_file_location_requested = Signal(object)
-    remove_from_library_requested = Signal(list)
-    delete_file_requested = Signal(list)
+class HistoryListView(LocalTracksListView):
+    """List view for play history with played time display."""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        # Override parent init - we need custom model and delegate
+        super().__init__(parent, show_index=True, show_source=False)
+
+        # Replace with history-specific model and delegate
         self._model = HistoryTrackModel(self)
         self._delegate = HistoryItemDelegate(self)
-        self._setup_ui()
-        self._setup_connections()
+        self._list_view.setModel(self._model)
+        self._list_view.setItemDelegate(self._delegate)
+
+        # Reconnect context menu (same as parent)
         self._context_menu = LocalTrackContextMenu(self)
         self._connect_context_menu()
 
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        self._list_view = QListView()
-        self._list_view.setModel(self._model)
-        self._list_view.setItemDelegate(self._delegate)
-        self._list_view.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
-        self._list_view.setSelectionBehavior(QListView.SelectionBehavior.SelectRows)
-        self._list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._list_view.setMouseTracking(True)
-        self._list_view.setUniformItemSizes(True)
-        self._list_view.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
-
-        layout.addWidget(self._list_view)
-
-    def _setup_connections(self):
-        self._list_view.activated.connect(self._on_item_activated)
-        self._list_view.customContextMenuRequested.connect(self._show_context_menu)
-        self._list_view.clicked.connect(self._on_item_clicked)
-
-        # Event bus
-        bus = EventBus.instance()
-        bus.favorite_changed.connect(self._on_favorite_changed)
-        bus.track_changed.connect(self._on_track_changed)
-        bus.playback_state_changed.connect(self._on_playback_state_changed)
-
-    def closeEvent(self, event):
-        """Clean up event bus connections before closing."""
-        try:
-            bus = EventBus.instance()
-            bus.favorite_changed.disconnect(self._on_favorite_changed)
-            bus.track_changed.disconnect(self._on_track_changed)
-            bus.playback_state_changed.disconnect(self._on_playback_state_changed)
-        except RuntimeError:
-            pass
-        super().closeEvent(event)
-
-    def _on_item_activated(self, index):
-        track = index.data(HistoryTrackModel.TrackRole)
-        if track:
-            self.track_activated.emit(track)
-
-    def _on_item_clicked(self, index):
-        """Handle click events - check if star icon was clicked."""
-        from PySide6.QtGui import QMouseEvent
-
-        # Get click position
-        pos = self._list_view.mapFromGlobal(QCursor.pos())
-        rect = self._list_view.visualRect(index)
-
-        # Check if click is in star icon area (right side)
-        star_size = 20
-        padding = 10
-        star_area = QRect(
-            rect.right() - padding - star_size,
-            rect.top(),
-            star_size + padding,
-            rect.height()
-        )
-
-        if star_area.contains(pos):
-            # Toggle favorite
-            track = index.data(HistoryTrackModel.TrackRole)
-            if track:
-                is_favorite = index.data(HistoryTrackModel.IsFavoriteRole)
-                self._toggle_favorite(track, not is_favorite)
-
-    def _toggle_favorite(self, track: Track, new_state: bool):
-        """Toggle favorite status."""
-        from app.bootstrap import Bootstrap
-        bootstrap = Bootstrap.instance()
-        if bootstrap and hasattr(bootstrap, 'favorites_service'):
-            service = bootstrap.favorites_service
-            if new_state:
-                service.add_favorite(track_id=track.id)
-            else:
-                service.remove_favorite(track_id=track.id)
-
-    def _connect_context_menu(self):
-        self._context_menu.play.connect(self.play_requested)
-        self._context_menu.insert_to_queue.connect(self.insert_to_queue_requested)
-        self._context_menu.add_to_queue.connect(self.add_to_queue_requested)
-        self._context_menu.add_to_playlist.connect(self.add_to_playlist_requested)
-        self._context_menu.favorite_toggled.connect(self.favorites_toggle_requested)
-        self._context_menu.edit_info.connect(self.edit_info_requested)
-        self._context_menu.download_cover.connect(self.download_cover_requested)
-        self._context_menu.open_file_location.connect(self.open_file_location_requested)
-        self._context_menu.remove_from_library.connect(self.remove_from_library_requested)
-        self._context_menu.delete_file.connect(self.delete_file_requested)
-
-    def _show_context_menu(self, pos):
-        """Show context menu."""
-        indexes = self._list_view.selectedIndexes()
-        if not indexes:
-            return
-
-        rows = sorted(set(idx.row() for idx in indexes))
-        tracks = [self._model.get_track_at(r) for r in rows]
-        tracks = [t for t in tracks if t is not None]
-
-        if not tracks:
-            return
-
-        self._context_menu.show_menu(
-            tracks,
-            favorite_ids=self._model._favorite_ids,
-            parent_widget=self
-        )
-
-    def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
-        """Handle favorite changed event from EventBus."""
-        if is_cloud:
-            return  # History only shows local tracks
-
-        # Refresh favorites from service
-        from app.bootstrap import Bootstrap
-        bootstrap = Bootstrap.instance()
-        if bootstrap and hasattr(bootstrap, 'favorites_service'):
-            favorite_ids = bootstrap.favorites_service.get_all_favorite_track_ids()
-            self._model.update_favorites(favorite_ids)
-
-    def _on_track_changed(self, track_item):
-        """Handle current track change from EventBus."""
-        track_id = None
-        if track_item:
-            if isinstance(track_item, dict):
-                track_id = track_item.get("track_id") or track_item.get("id")
-            else:
-                track_id = getattr(track_item, 'track_id', None) or getattr(track_item, 'id', None)
-        self._model.set_current_track(track_id)
-
-    def _on_playback_state_changed(self, state):
-        """Handle playback state change from EventBus."""
-        self._model.set_playing(state == "playing")
-
-    def _on_cover_ready(self, cache_key: str, cover_path: str, qimage):
-        """Handle cover loaded from background worker."""
-        # Find the row for this cache_key
-        track_row = self._find_row_by_cover_key(cache_key)
-
-        if qimage and not qimage.isNull():
-            # Cache the cover
-            from PySide6.QtGui import QPixmap
-            pixmap = QPixmap.fromImage(qimage).scaled(
-                self._delegate._cover_size,
-                self._delegate._cover_size,
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            CoverPixmapCache.set(cache_key, pixmap)
-
-            if track_row is not None:
-                self._model.notify_cover_loaded(track_row)
-        elif track_row is not None:
-            # No cover found — mark as failed
-            self._delegate._failed_covers.add(cache_key)
-
-    def _find_row_by_cover_key(self, cache_key: str):
-        """Find row index for a cover cache key."""
-        for row in range(self._model.rowCount()):
-            track = self._model.get_track_at(row)
-            if track and self._delegate._get_cover_cache_key(track) == cache_key:
-                return row
-        return None
-
-    def _apply_viewport_bg(self):
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
-        self._list_view.setStyleSheet(
-            f"QListView {{ background-color: {theme.background_alt}; border: none; outline: none; }}"
-        )
-
     def load_tracks(self, tracks: List[Track], played_at_map: dict, favorite_ids: set):
-        """Load tracks into the view."""
+        """Load tracks into the view with played_at timestamps."""
         self._model.reset_tracks(tracks, played_at_map, favorite_ids)
         self._apply_viewport_bg()
-
-    def clear(self):
-        """Clear all tracks."""
-        self._model.reset_tracks([], {}, set())

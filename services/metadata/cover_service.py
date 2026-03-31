@@ -273,6 +273,12 @@ class CoverService:
 
             logger.debug(f"[CoverService] Got cover URL: {cover_url}")
 
+            # 同一个专辑的歌曲封面基本一样，但是每次都要get_qqmusic_cover_url
+            cache_key = hashlib.md5(cover_url.encode()).hexdigest()
+            cached_cover = self._get_cached_cover(cache_key)
+            if cached_cover and cached_cover.exists():
+                return str(cached_cover)
+
             # Download cover
             cover_data = self.http_client.get_content(cover_url, timeout=5)
             if cover_data:
