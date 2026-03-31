@@ -49,9 +49,14 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._items = strategy.get_items()
         self._current_index = 0
         self._current_result = None  # For lazy fetch
+        self._current_token = None  # Track current search token
 
-        # Create controller
-        self._controller = CoverController(cover_service, self)
+        # Create controller and connect signals
+        self._controller = CoverController(parent=self)
+        self._controller.search_completed.connect(self._on_search_completed)
+        self._controller.search_failed.connect(self._on_search_failed)
+        self._controller.download_completed.connect(self._on_download_completed)
+        self._controller.download_failed.connect(self._on_download_failed)
 
         # Setup UI
         self._setup_ui()
@@ -310,11 +315,13 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _search_covers(self):
         """Search for covers for current item."""
-        if self._search_thread and self._search_thread.isRunning():
-            logger.debug("Search already in progress")
-            return
-
         item = self._items[self._current_index]
+
+        # Generate unique key for deduplication
+        search_info = self._strategy.get_search_info(item)
+        artist = search_info.get('artist', '')
+        title = search_info.get('title', '')
+        key = f"{artist}-{title}"
 
         self._search_btn.setEnabled(False)
         self._progress.setVisible(True)
@@ -323,17 +330,20 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._results_list.clear()
         self._search_results = []
 
+        # Create search task
         def task():
             return self._strategy.search(self._cover_service, item)
 
-        self._controller.search(
-            task,
-            on_complete=self._on_search_completed,
-            on_error=self._on_search_failed
-        )
+        # Store token to track current search
+        self._current_token = self._controller.search(key, task)
 
-    def _on_search_completed(self, results: list):
+    def _on_search_completed(self, token, results: list):
         """Handle search completion."""
+        # Filter out stale results
+        if token != self._current_token:
+            logger.debug(f"Ignoring stale search result for token {token}")
+            return
+
         self._progress.setVisible(False)
         self._search_btn.setEnabled(True)
 
@@ -354,8 +364,13 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         self._status_label.setText(f"{t('found')} {len(results)} {t('results')}")
 
-    def _on_search_failed(self, error_message: str):
+    def _on_search_failed(self, token, error_message: str):
         """Handle search failure."""
+        # Filter out stale errors
+        if token != self._current_token:
+            logger.debug(f"Ignoring stale search error for token {token}")
+            return
+
         self._progress.setVisible(False)
         self._search_btn.setEnabled(True)
         self._status_label.setText(error_message)
@@ -380,13 +395,12 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
             self._status_label.setText(t("downloading"))
 
             def task():
-                return self._strategy.lazy_fetch(self._cover_service, result)
+                data = self._strategy.lazy_fetch(self._cover_service, result)
+                return (data, 'qqmusic') if data else None
 
-            self._controller.download_from_data(
-                task,
-                on_complete=self._on_download_completed,
-                on_error=self._on_download_failed
-            )
+            # Generate key for download
+            key = f"lazy-{result.get('album_mid', result.get('song_mid', ''))}"
+            self._current_token = self._controller.download(key, task)
             return
 
         # Normal download
@@ -399,15 +413,27 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._status_label.setText(t("downloading"))
 
         source = result.get('source', '')
-        self._controller.download(
-            cover_url,
-            on_complete=self._on_download_completed,
-            on_error=self._on_download_failed,
-            source=source
-        )
 
-    def _on_download_completed(self, cover_data: bytes, source: str):
+        def task():
+            from infrastructure.network import HttpClient
+            http_client = HttpClient()
+            cover_data = http_client.get_content(cover_url, timeout=10)
+            if cover_data:
+                return (cover_data, source)
+            else:
+                raise ValueError("No content received from URL")
+
+        # Generate key for download
+        key = f"download-{cover_url}"
+        self._current_token = self._controller.download(key, task)
+
+    def _on_download_completed(self, token, cover_data: bytes, source: str):
         """Handle download completion."""
+        # Filter out stale downloads
+        if token != self._current_token:
+            logger.debug(f"Ignoring stale download result for token {token}")
+            return
+
         self._progress.setVisible(False)
         self._current_cover_data = cover_data
 
@@ -418,8 +444,13 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._save_btn.setEnabled(True)
         self._status_label.setText(f"{t('success')} ({source})")
 
-    def _on_download_failed(self, error_message: str):
+    def _on_download_failed(self, token, error_message: str):
         """Handle download failure."""
+        # Filter out stale errors
+        if token != self._current_token:
+            logger.debug(f"Ignoring stale download error for token {token}")
+            return
+
         self._progress.setVisible(False)
         self._status_label.setText(error_message)
         self._cover_label.setText(t("cover_load_failed"))
