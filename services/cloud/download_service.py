@@ -153,6 +153,9 @@ class CloudDownloadWorker(QThread):
             with open(dest_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if self._cancelled:
+                        f.close()
+                        if Path(dest_path).exists():
+                            Path(dest_path).unlink()
                         return False
 
                     if chunk:
@@ -291,8 +294,8 @@ class CloudDownloadService(QObject):
                 # Another thread started, don't create duplicate
                 return False
             self._active_downloads[file_id] = worker
+            worker.start()
         self.download_started.emit(file_id)
-        worker.start()
 
         return True
 

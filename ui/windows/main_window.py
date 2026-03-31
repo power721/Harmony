@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QStyle,
     QDialog,
-    QSizeGrip,
+    QSizeGrip, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QSettings
 from typing import Optional
@@ -408,16 +408,22 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._genres_view)  # 9
         self._stacked_widget.addWidget(self._genre_view)  # 10
 
+        self._stacked_widget.setMinimumWidth(200)
         self._splitter.addWidget(self._stacked_widget)
 
         # Lyrics panel
         self._lyrics_panel = self._create_lyrics_panel()
+        self._lyrics_panel.setMinimumWidth(250)  # Prevent lyrics panel from collapsing
         self._splitter.addWidget(self._lyrics_panel)
 
         # Set splitter proportions
         self._splitter.setStretchFactor(0, 2)  # Library gets 2/3
         self._splitter.setStretchFactor(1, 1)  # Lyrics gets 1/3
-        self._splitter.setSizes([600, 400])  # Initial sizes
+        self._splitter.setSizes([700, 500])  # Initial sizes
+        self._splitter.setChildrenCollapsible(False)
+
+        self._stacked_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._lyrics_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         content_layout.addWidget(self._splitter, 4)
 
@@ -1207,28 +1213,28 @@ class MainWindow(QMainWindow):
             self._title_bar.clear_accent_color()
 
     def _extract_cover_color(self, title: str, artist: str, path: str, track_dict: dict):
-        """Extract dominant color from album cover and apply to title bar."""
-        cover_path = None
-        try:
-            cover_path = self._player.get_track_cover(
-                path, title, artist,
-                track_dict.get("album", ""),
-                skip_online=track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
-            )
-            if not cover_path:
-                album = track_dict.get("album", "")
-                if album and artist:
-                    cover_path = self._get_album_cover(album, artist)
-        except Exception as e:
-            logger.debug(f"[MainWindow] Error getting cover for color extraction: {e}")
+        """Extract dominant color from album cover and apply to title bar.
 
-        if cover_path:
-            from PySide6.QtCore import QThreadPool
-            from services.metadata.color_extractor import ColorWorker
-            worker = ColorWorker(cover_path, self._cover_color_extracted)
-            QThreadPool.globalInstance().start(worker)
-        else:
-            self._title_bar.clear_accent_color()
+        Uses background thread to fetch cover (avoiding UI blocking for online covers)
+        and extract dominant color.
+        """
+        from PySide6.QtCore import QThreadPool
+        from services.metadata.color_extractor import CoverFetchWorker
+
+        skip_online = track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
+
+        # Use CoverFetchWorker to fetch cover and extract color in background thread
+        worker = CoverFetchWorker(
+            cover_fetcher=self._player.get_track_cover,
+            title=title,
+            artist=artist,
+            path=path,
+            album=track_dict.get("album", ""),
+            skip_online=skip_online,
+            result_signal=self._cover_color_extracted,
+            fallback_fetcher=self._get_album_cover
+        )
+        QThreadPool.globalInstance().start(worker)
 
     def _get_album_cover(self, album: str, artist: str) -> str | None:
         """Get cover from albums table via LibraryService."""

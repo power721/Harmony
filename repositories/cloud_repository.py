@@ -515,3 +515,13 @@ class SqliteCloudRepository(BaseRepository):
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
             updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
         )
+
+    def get_account_id_by_file_id(self, file_id: str) -> Optional[int]:
+        """Get account_id for a cloud file by file_id."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT account_id FROM cloud_files WHERE file_id = ?", (file_id,))
+        row = cursor.fetchone()
+        if row:
+            return row["account_id"]
+        return None

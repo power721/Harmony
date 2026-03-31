@@ -292,6 +292,7 @@ class LibraryView(QWidget):
         self._view_toggle_btn = QPushButton()
         self._view_toggle_btn.setFixedSize(32, 32)
         self._view_toggle_btn.setToolTip(t("toggle_view"))
+        self._view_toggle_btn.setCursor(Qt.PointingHandCursor)
         self._view_toggle_btn.setVisible(False)  # Only visible in history view
         header_layout.addWidget(self._view_toggle_btn)
 

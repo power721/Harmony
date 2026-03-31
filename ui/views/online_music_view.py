@@ -1109,6 +1109,7 @@ class OnlineMusicView(QWidget):
         self._ranking_view_toggle_btn = QPushButton()
         self._ranking_view_toggle_btn.setFixedSize(32, 32)
         self._ranking_view_toggle_btn.setToolTip(t("toggle_view"))
+        self._ranking_view_toggle_btn.setCursor(Qt.PointingHandCursor)
         self._ranking_view_toggle_btn.clicked.connect(self._toggle_ranking_view_mode)
         header_layout.addWidget(self._ranking_view_toggle_btn)
 

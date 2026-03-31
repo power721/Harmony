@@ -381,6 +381,7 @@ class OrganizeFilesDialog(QDialog):
         )
         self.organize_thread.progress.connect(self._on_progress)
         self.organize_thread.finished.connect(self._on_finished)
+        self.organize_thread.finished.connect(self.organize_thread.deleteLater)
         self.organize_thread.start()
 
     def _on_progress(self, message: str):

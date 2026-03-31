@@ -262,7 +262,7 @@ class SqliteArtistRepository(BaseRepository):
         Rebuild artists and albums tables from tracks table.
 
         Returns:
-            Dict with 'albums' and 'artists' counts
+            Total count of albums and artists created/updated
         """
         from services.metadata import split_artists, normalize_artist_name
 

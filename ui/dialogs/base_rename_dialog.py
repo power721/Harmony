@@ -266,6 +266,7 @@ class BaseRenameDialog(QDialog):
 
         self._worker = self._create_worker(new_name)
         self._worker.finished.connect(self._on_rename_finished)
+        self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
 
     def _on_rename_finished(self, result: dict):

@@ -43,6 +43,7 @@ class DBWriteWorker:
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._conn: Optional[sqlite3.Connection] = None
+        self._start_lock = threading.Lock()
 
         self._start()
 
@@ -138,9 +139,10 @@ class DBWriteWorker:
         future = Future()
 
         # Ensure worker thread is running
-        if not self._thread or not self._thread.is_alive():
-            logger.warning("[DBWriteWorker] Thread not alive, restarting...")
-            self._start()
+        with self._start_lock:
+            if not self._thread or not self._thread.is_alive():
+                logger.warning("[DBWriteWorker] Thread not alive, restarting...")
+                self._start()
 
         self._queue.put((func, args, kwargs, future))
         return future

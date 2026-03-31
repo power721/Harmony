@@ -395,7 +395,7 @@ class MiniPlayer(QWidget):
 
     def _on_seek_end(self):
         """Handle seek end (slider released)."""
-        if hasattr(self, "_current_duration"):
+        if hasattr(self, "_current_duration") and self._current_duration > 0:
             # Calculate position in milliseconds
             position_ms = int(
                 (self._progress_slider.value() / 1000) * self._current_duration * 1000

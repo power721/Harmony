@@ -351,7 +351,7 @@ class RankingItemDelegate(QStyledItemDelegate):
 
     def _get_cover_cache_key(self, track: OnlineTrack) -> str:
         """Generate cache key for an online track."""
-        return f"{TrackSource.QQ}_{track.mid}"
+        return f"{TrackSource.QQ.name}_{track.mid}"
 
     @staticmethod
     def _elided_text(painter, text: str, max_width: int) -> str:

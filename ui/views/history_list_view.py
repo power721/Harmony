@@ -433,6 +433,14 @@ class HistoryListView(QWidget):
         bus = EventBus.instance()
         bus.favorite_changed.connect(self._on_favorite_changed)
 
+    def closeEvent(self, event):
+        """Clean up event bus connections before closing."""
+        try:
+            EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
+        except RuntimeError:
+            pass
+        super().closeEvent(event)
+
     def _on_item_activated(self, index):
         track = index.data(HistoryTrackModel.TrackRole)
         if track:

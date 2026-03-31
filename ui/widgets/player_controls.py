@@ -1018,7 +1018,6 @@ class PlayerControls(QWidget):
             self._cover_label.clear()
             # Reset favorite button style
             self._update_favorite_button_style(False)
-            self._update_favorite_button_style(False)
 
     def refresh_ui(self):
         """Refresh UI texts after language change."""

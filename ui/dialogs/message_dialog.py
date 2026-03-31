@@ -214,4 +214,6 @@ class MessageDialog(QDialog):
                 dialog._add_button(btn_text, role, is_primary=(role == default_button))
 
         dialog.exec()
-        return dialog._result
+        result = dialog._result
+        dialog.deleteLater()
+        return result

@@ -196,10 +196,6 @@ class ArtistCard(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
-        # Draw circular clip
-        path = QPainter()
-        painter.setClipRect(0, 0, size, size)
-
         # Create circular path
         from PySide6.QtGui import QPainterPath
         clip_path = QPainterPath()

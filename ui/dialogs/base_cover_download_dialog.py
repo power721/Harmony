@@ -596,8 +596,10 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Stop any running download thread
         if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
+            self._download_thread.requestInterruption()
+            if not self._download_thread.wait(1000):
+                self._download_thread.terminate()
+                self._download_thread.wait()
 
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)

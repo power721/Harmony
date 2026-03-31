@@ -6,7 +6,7 @@ Runs in background threads to avoid blocking the UI.
 """
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from PySide6.QtGui import QImage, QColor
 from PySide6.QtCore import QObject, QRunnable, Signal
@@ -113,3 +113,49 @@ class ColorWorker(QRunnable):
         except Exception as e:
             logger.error(f"[ColorExtractor] Error extracting color: {e}")
             self.result_signal.emit(None)
+
+
+class CoverFetchWorker(QRunnable):
+    """Runnable that fetches cover art and extracts color.
+
+    Combines cover fetching and color extraction in a single background task.
+    This prevents UI thread blocking when fetching online covers.
+    """
+
+    def __init__(self, cover_fetcher: Callable, title: str, artist: str,
+                 path: str, album: str, skip_online: bool, result_signal: Signal,
+                 fallback_fetcher: Callable = None):
+        super().__init__()
+        self.cover_fetcher = cover_fetcher
+        self.title = title
+        self.artist = artist
+        self.path = path
+        self.album = album
+        self.skip_online = skip_online
+        self.result_signal = result_signal
+        self.fallback_fetcher = fallback_fetcher
+        self.setAutoDelete(True)
+
+    def run(self):
+        """Fetch cover, extract color, and emit result."""
+        try:
+            # Fetch cover (may download from online sources)
+            cover_path = self.cover_fetcher(
+                self.path, self.title, self.artist,
+                self.album, self.skip_online
+            )
+
+            # Try fallback if main fetcher didn't find cover
+            if not cover_path and self.fallback_fetcher and self.album and self.artist:
+                cover_path = self.fallback_fetcher(self.album, self.artist)
+
+            if cover_path:
+                # Extract color from the cover
+                color = extract_from_file(cover_path)
+                self.result_signal.emit(color)
+            else:
+                self.result_signal.emit(None)
+        except Exception as e:
+            logger.error(f"[CoverFetchWorker] Error fetching cover or extracting color: {e}")
+            self.result_signal.emit(None)
+
