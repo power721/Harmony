@@ -7,21 +7,20 @@ import time
 from io import BytesIO
 from typing import Optional
 
+from PySide6.QtCore import Qt, Signal, QThread, Slot
+from PySide6.QtGui import QColor, QPainterPath, QRegion, QPixmap, QImage
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QButtonGroup, QRadioButton, QProgressBar, QWidget,
     QGraphicsDropShadowEffect,
 )
 
-from ui.dialogs.message_dialog import MessageDialog
-from PySide6.QtCore import Qt, Signal, QThread, Slot
-from PySide6.QtGui import QColor, QPainterPath, QRegion, QPixmap, QImage
-
 from services.cloud.qqmusic.qr_login import (
-    QQMusicQRLogin, QRLoginType, QRCodeLoginEvents, QR, Credential
+    QQMusicQRLogin, QRLoginType, QRCodeLoginEvents
 )
 from system.i18n import t, get_language
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +105,10 @@ class QRLoginThread(QThread):
                                 cred_dict['musicid'] = str(cred_dict['musicid'])
 
                             logger.info(f"Login success, musicid: {cred_dict.get('musicid')}, "
-                                       f"login_type: {cred_dict.get('login_type')}, "
-                                       f"has_refresh_key: {bool(cred_dict.get('refresh_key'))}, "
-                                       f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}, "
-                                       f"encrypt_uin: {cred_dict.get('encrypt_uin')}")
+                                        f"login_type: {cred_dict.get('login_type')}, "
+                                        f"has_refresh_key: {bool(cred_dict.get('refresh_key'))}, "
+                                        f"has_refresh_token: {bool(cred_dict.get('refresh_token'))}, "
+                                        f"encrypt_uin: {cred_dict.get('encrypt_uin')}")
 
                             self.login_success.emit(cred_dict)
                         else:
@@ -311,7 +310,8 @@ class QQMusicQRLoginDialog(QDialog):
         self._qr_label.setMinimumSize(300, 300)
         self._qr_label.setMaximumSize(300, 300)
         self._qr_label.setAlignment(Qt.AlignCenter)
-        self._qr_label.setStyleSheet(f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
+        self._qr_label.setStyleSheet(
+            f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
         qr_layout.addWidget(self._qr_label)
 
         layout.addWidget(qr_container, alignment=Qt.AlignCenter)
@@ -479,7 +479,8 @@ class QQMusicQRLoginDialog(QDialog):
     def _on_login_success(self, credential: dict):
         """Handle login success event."""
         self._progress_bar.hide()
-        self._status_label.setText(t("qqmusic_login_success") if t('language') != '中文' else "登录成功！正在保存凭证...")
+        self._status_label.setText(
+            t("qqmusic_login_success") if t('language') != '中文' else "登录成功！正在保存凭证...")
 
         try:
             # Save credentials (full credential dict)
@@ -553,8 +554,10 @@ class QQMusicQRLoginDialog(QDialog):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         theme = ThemeManager.instance().current_theme
         if self._status_label:
-            self._status_label.setStyleSheet(f"font-size: 14px; color: {theme.highlight}; padding: 8px; font-weight: bold;")
+            self._status_label.setStyleSheet(
+                f"font-size: 14px; color: {theme.highlight}; padding: 8px; font-weight: bold;")
         if self._qr_label:
-            self._qr_label.setStyleSheet(f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
+            self._qr_label.setStyleSheet(
+                f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
         if self._instructions_label:
             self._instructions_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")

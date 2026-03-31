@@ -4,10 +4,15 @@ Uses QListView + Model/Delegate for high-performance rendering.
 """
 
 import logging
+from collections import OrderedDict
 from pathlib import Path
 from typing import List, Optional
 
-from shiboken6 import isValid
+from PySide6.QtCore import (
+    Qt, Signal, QTimer, QThread,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,13 +25,8 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyle,
     QMenu,
-    QApplication,
 )
-from PySide6.QtCore import (
-    Qt, Signal, QTimer, QThread,
-    QAbstractListModel, QModelIndex, QSize, QRect, QEvent
-)
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction, QCursor
+from shiboken6 import isValid
 
 from domain.album import Album
 from services.library import LibraryService
@@ -96,7 +96,8 @@ class AlbumDelegate(QStyledItemDelegate):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._cover_cache = {}  # Cache for loaded covers
+        self._cover_cache = OrderedDict()  # LRU cache for loaded covers
+        self._cache_max_size = 200
         self._default_cover = self._create_default_cover()
 
     def _create_default_cover(self) -> QPixmap:
@@ -122,11 +123,12 @@ class AlbumDelegate(QStyledItemDelegate):
         return pixmap
 
     def _load_cover(self, cover_path: str) -> QPixmap:
-        """Load cover from path with caching."""
+        """Load cover from path with LRU caching."""
         if not cover_path:
             return self._default_cover
 
         if cover_path in self._cover_cache:
+            self._cover_cache.move_to_end(cover_path)
             return self._cover_cache[cover_path]
 
         if Path(cover_path).exists():
@@ -139,6 +141,8 @@ class AlbumDelegate(QStyledItemDelegate):
                         Qt.SmoothTransformation
                     )
                     self._cover_cache[cover_path] = scaled
+                    if len(self._cover_cache) > self._cache_max_size:
+                        self._cover_cache.popitem(last=False)
                     return scaled
             except Exception:
                 pass
@@ -244,10 +248,10 @@ class AlbumsView(QWidget):
     MARGIN = 20
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        cover_service: CoverService = None,
-        parent=None
+            self,
+            library_service: LibraryService,
+            cover_service: CoverService = None,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service

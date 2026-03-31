@@ -1,6 +1,7 @@
 """
 Quark Drive cloud storage service.
 """
+import json
 import logging
 import traceback
 
@@ -18,6 +19,24 @@ class QuarkDriveService:
     """Service for Quark Drive cloud storage integration"""
 
     BASE_URL = "https://drive-pc.quark.cn"
+
+    @staticmethod
+    def _safe_json_parse(response: requests.Response, context: str = "") -> Optional[Dict]:
+        """
+        Safely parse JSON from response with error handling.
+
+        Args:
+            response: HTTP response object
+            context: Context string for error logging
+
+        Returns:
+            Parsed JSON dict or None if parsing failed
+        """
+        try:
+            return response.json()
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid JSON response{f' ({context})' if context else ''}: {e}")
+            return None
     AUTH_URL = "https://uop.quark.cn"
     CLIENT_ID = "532"
 
@@ -84,7 +103,9 @@ class QuarkDriveService:
 
             response = cls._get_session().get(url, params=params, timeout=10)
 
-            data = response.json()
+            data = QuarkDriveService._safe_json_parse(response, "QR code generation")
+            if data is None:
+                return None
 
             if data.get('status') == 2000000:
                 token = data['data']['members']['token']
@@ -117,7 +138,9 @@ class QuarkDriveService:
                 }
 
                 response = cls._get_session().get(url, params=params, timeout=10)
-                data = response.json()
+                data = QuarkDriveService._safe_json_parse(response, "login status poll")
+                if data is None:
+                    continue
                 status = data.get('status')
                 message = data.get('message', '')
 
@@ -135,7 +158,9 @@ class QuarkDriveService:
                     cookie_dict = {name: value for name, value in cookies.items()}
                     cookie_str = '; '.join([f"{k}={v}" for k, v in cookie_dict.items()])
 
-                    info_data = info_response.json()
+                    info_data = QuarkDriveService._safe_json_parse(info_response, "account info after login")
+                    if info_data is None:
+                        return {'status': 'error', 'message': 'Failed to parse account info'}
 
                     nickname = info_data.get('data', {}).get('nickname', 'Unknown')
                     logger.debug(f"User nickname: {nickname}")
@@ -191,7 +216,10 @@ class QuarkDriveService:
             # Check for updated cookies
             updated_token = cls._update_cookie_from_response(access_token, response.cookies)
 
-            data = response.json()
+            data = QuarkDriveService._safe_json_parse(response, "file list")
+            if data is None:
+                return [], None
+
             if data.get('status') == 200:
                 files_list = data.get('data', {}).get('list', [])
 
@@ -261,7 +289,9 @@ class QuarkDriveService:
             # Check for updated cookies
             updated_token = cls._update_cookie_from_response(access_token, response.cookies)
 
-            response_data = response.json()
+            response_data = QuarkDriveService._safe_json_parse(response, "download URL")
+            if response_data is None:
+                return None, None
 
             if response_data.get('status') == 200:
                 download_list = response_data.get('data', [])
@@ -307,7 +337,9 @@ class QuarkDriveService:
                 logger.debug(f"Failed to get member info: {response1.status_code}")
                 return None, None
 
-            data1 = response1.json()
+            data1 = QuarkDriveService._safe_json_parse(response1, "member info")
+            if data1 is None:
+                return None, None
 
             # Check for updated cookies from first response
             updated_token = cls._update_cookie_from_response(access_token, response1.cookies)
@@ -325,8 +357,11 @@ class QuarkDriveService:
                 # Still return partial info
                 nickname = account_email
             else:
-                data2 = response2.json()
-                nickname = data2.get('data', {}).get('nickname', account_email)
+                data2 = QuarkDriveService._safe_json_parse(response2, "account nickname")
+                if data2 is None:
+                    nickname = account_email
+                else:
+                    nickname = data2.get('data', {}).get('nickname', account_email)
 
             # Extract member info
             if data1.get('status') == 200:
@@ -424,5 +459,5 @@ class QuarkDriveService:
             else:
                 return False
         except Exception as e:
-            logger.error(f"Quark cookie validation error: {e}", exc_info=True)
+            logger.error(f"Quark download file error: {e}", exc_info=True)
             return False

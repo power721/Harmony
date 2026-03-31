@@ -3,6 +3,11 @@
  * Dark theme inspired by Spotify
  */
 
+/* Global Font */
+QWidget {
+    font-family: "Inter", "Noto Sans SC", "Noto Color Emoji";
+}
+
 /* Main Window */
 QMainWindow {
     background-color: %background%;
@@ -214,6 +219,7 @@ QMenu {
     color: %text%;
     border: 1px solid %border%;
     padding: 4px;
+    font-family: "Inter", "Noto Sans SC", "Noto Color Emoji";
 }
 
 QMenu::item {

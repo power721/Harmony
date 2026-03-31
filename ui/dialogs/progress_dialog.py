@@ -5,7 +5,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
-    QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
 )
 
-from system.i18n import t
 from system.theme import ThemeManager
 
 

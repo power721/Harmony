@@ -4,35 +4,29 @@ Uses QListView + Model/Delegate for high-performance rendering with lazy loading
 """
 
 import logging
+from collections import OrderedDict
 from typing import List, Optional, Union
-from urllib.parse import urlparse
 
+from PySide6.QtCore import (
+    Qt, Signal,
+    QAbstractListModel, QModelIndex, QSize, QRect
+)
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QHBoxLayout,
     QLabel,
     QListView,
-    QFrame,
     QProgressBar,
     QStyledItemDelegate,
     QStyle,
-    QMenu,
-    QApplication,
     QPushButton,
 )
-from PySide6.QtCore import (
-    Qt, Signal,
-    QAbstractListModel, QModelIndex, QSize, QRect, QUrl
-)
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QPen, QAction
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
 from domain.online_music import OnlineArtist, OnlineAlbum, OnlinePlaylist
 from system.i18n import t
 
 logger = logging.getLogger(__name__)
-
 
 # Type alias for online items
 OnlineItem = Union[OnlineArtist, OnlineAlbum, OnlinePlaylist]
@@ -106,9 +100,10 @@ class OnlineItemDelegate(QStyledItemDelegate):
         if data_type == "singer":
             self._border_radius = 90  # Circular
         else:
-            self._border_radius = 8   # Rounded rectangle
+            self._border_radius = 8  # Rounded rectangle
 
-        self._cover_cache = {}
+        self._cover_cache = OrderedDict()  # LRU cache for loaded covers
+        self._cache_max_size = 200
         self._pending_downloads = set()  # Track URLs being downloaded
 
         self._default_cover = self._create_default_cover()
@@ -165,6 +160,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
             return self._default_cover
 
         if cover_url in self._cover_cache:
+            self._cover_cache.move_to_end(cover_url)
             return self._cover_cache[cover_url]
 
         # Start async download if not already pending
@@ -274,6 +270,8 @@ class OnlineItemDelegate(QStyledItemDelegate):
                 final = masked
 
             self._cover_cache[url] = final
+            if len(self._cover_cache) > self._cache_max_size:
+                self._cover_cache.popitem(last=False)
 
             # Trigger repaint
             if self.parent():

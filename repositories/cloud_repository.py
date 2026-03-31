@@ -418,29 +418,31 @@ class SqliteCloudRepository(BaseRepository):
         # Delete old cache only for this folder (not the entire account)
         cursor.execute("DELETE FROM cloud_files WHERE account_id = ? AND parent_id = ?", (account_id, parent_id))
 
-        # Insert new files, preserving local_path if it existed
-        for file in files:
-            local_path = existing_paths.get(file.file_id)  # Get existing local_path
-
-            cursor.execute(
-                """
-                INSERT INTO cloud_files
-                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    account_id,
-                    file.file_id,
-                    file.parent_id,
-                    file.name,
-                    file.file_type,
-                    file.size,
-                    file.mime_type,
-                    file.duration,
-                    file.metadata,
-                    local_path,
-                ),
+        # Insert new files in batch, preserving local_path if it existed
+        file_data = [
+            (
+                account_id,
+                file.file_id,
+                file.parent_id,
+                file.name,
+                file.file_type,
+                file.size,
+                file.mime_type,
+                file.duration,
+                file.metadata,
+                existing_paths.get(file.file_id),  # Preserve local_path
             )
+            for file in files
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO cloud_files
+            (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            file_data,
+        )
 
         conn.commit()
         return True
@@ -515,3 +517,13 @@ class SqliteCloudRepository(BaseRepository):
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
             updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
         )
+
+    def get_account_id_by_file_id(self, file_id: str) -> Optional[int]:
+        """Get account_id for a cloud file by file_id."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT account_id FROM cloud_files WHERE file_id = ?", (file_id,))
+        row = cursor.fetchone()
+        if row:
+            return row["account_id"]
+        return None

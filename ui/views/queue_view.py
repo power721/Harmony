@@ -618,10 +618,14 @@ class QueueItemDelegate(QStyledItemDelegate):
         """Generate cache key for a track."""
         if not isinstance(track, dict):
             return CoverPixmapCache.make_key_from_path("")
+        cloud_file_id = track.get("cloud_file_id", "")
+        source = track.get("source", "")
+        if cloud_file_id:
+            return f"{source}:{cloud_file_id}"
         artist = track.get("artist", "")
-        album = track.get("album", "")
-        if artist and album:
-            return CoverPixmapCache.make_key(artist, album)
+        title = track.get("title", "")
+        if artist and title:
+            return CoverPixmapCache.make_key(artist, title)
         path = track.get("path") or track.get("cover_path") or ""
         return CoverPixmapCache.make_key_from_path(path)
 

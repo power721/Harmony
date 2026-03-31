@@ -1,6 +1,7 @@
 """
 Baidu Drive cloud storage service.
 """
+import json
 import logging
 import threading
 import traceback
@@ -52,6 +53,24 @@ class BaiduDriveService:
     # Class-level session for connection pooling
     _session = None
 
+    @staticmethod
+    def _safe_json_parse(response: requests.Response, context: str = "") -> Optional[Dict]:
+        """
+        Safely parse JSON from response with error handling.
+
+        Args:
+            response: HTTP response object
+            context: Context string for error logging
+
+        Returns:
+            Parsed JSON dict or None if parsing failed
+        """
+        try:
+            return response.json()
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid JSON response{f' ({context})' if context else ''}: {e}")
+            return None
+
     @classmethod
     def _get_session(cls):
         """Get or create the shared session for connection pooling."""
@@ -92,7 +111,9 @@ class BaiduDriveService:
                 logger.error("Baidu QR code generation: empty response")
                 return None
 
-            data = response.json()
+            data = cls._safe_json_parse(response, "QR code generation")
+            if data is None:
+                return None
 
             # Baidu returns 0 for success
             if data.get('errno') == 0 or 'sign' in data:
@@ -130,7 +151,9 @@ class BaiduDriveService:
                 if not response.text:
                     return {'status': 'waiting', 'message': 'Waiting for scan'}
 
-                data = response.json()
+                data = cls._safe_json_parse(response, "login status poll")
+                if data is None:
+                    return {'status': 'waiting', 'message': 'Waiting for scan'}
                 errno = data.get('errno', -1)
 
                 if errno == 0:
@@ -260,7 +283,9 @@ class BaiduDriveService:
                 logger.error("Baidu file list: empty response")
                 return [], None
 
-            data = response.json()
+            data = cls._safe_json_parse(response, "file list")
+            if data is None:
+                return [], None
 
             # xpan API uses errno in different ways
             errno = data.get('errno', 0)
@@ -360,11 +385,12 @@ class BaiduDriveService:
                     response = cls._get_session().get(media_url, params=params, headers=headers, timeout=30)
 
                     if response.text:
-                        data = response.json()
-                        info = data.get('info', {})
-                        dlink = info.get('dlink', '')
-                        if dlink:
-                            return dlink, None
+                        data = cls._safe_json_parse(response, "mediainfo")
+                        if data is not None:
+                            info = data.get('info', {})
+                            dlink = info.get('dlink', '')
+                            if dlink:
+                                return dlink, None
                 except Exception as e:
                     logger.debug(f"Mediainfo API failed: {e}")
 
@@ -383,7 +409,9 @@ class BaiduDriveService:
                 logger.error("Baidu download: empty response")
                 return None, None
 
-            data = response.json()
+            data = cls._safe_json_parse(response, "download URL")
+            if data is None:
+                return None, None
             errno = data.get('errno', 0)
 
             if errno == -6:
@@ -439,8 +467,8 @@ class BaiduDriveService:
                 params = {'method': 'uinfo'}
                 user_response = cls._get_session().get(user_url, params=params, headers=headers, timeout=30)
                 if user_response.status_code == 200 and user_response.text:
-                    user_data = user_response.json()
-                    if user_data.get('errno') == 0:
+                    user_data = cls._safe_json_parse(user_response, "user info")
+                    if user_data is not None and user_data.get('errno') == 0:
                         username = user_data.get('baidu_name', account_email)
                         vip_type = user_data.get('vip_type', 0)
                         svip_type = user_data.get('svip_type', 0)
@@ -459,8 +487,8 @@ class BaiduDriveService:
                 }
                 quota_response = cls._get_session().get(quota_url, params=params, headers=headers, timeout=30)
                 if quota_response.status_code == 200 and quota_response.text:
-                    quota_data = quota_response.json()
-                    if quota_data.get('errno') == 0:
+                    quota_data = cls._safe_json_parse(quota_response, "quota info")
+                    if quota_data is not None and quota_data.get('errno') == 0:
                         total = quota_data.get('total', 0)
                         used = quota_data.get('used', 0)
             except Exception as e:
@@ -519,8 +547,8 @@ class BaiduDriveService:
             response = cls._get_session().get(user_url, params=params, headers=headers, timeout=30)
 
             if response.status_code == 200 and response.text:
-                data = response.json()
-                if data.get('errno') == 0:
+                data = cls._safe_json_parse(response, "cookie validation")
+                if data is not None and data.get('errno') == 0:
                     username = data.get('baidu_name', 'Baidu User')
 
                     return {
@@ -577,7 +605,6 @@ class BaiduDriveService:
                         if chunk:
                             f.write(chunk)
 
-                import os
                 if os.path.exists(dest_path):
                     return True
             return False

@@ -312,6 +312,7 @@ class Bootstrap:
         if self._file_org_service is None:
             self._file_org_service = FileOrganizationService(
                 track_repo=self.track_repo,
+                cloud_repo=self.cloud_repo,
                 event_bus=self.event_bus,
                 db_manager=self.db,
             )
@@ -434,9 +435,11 @@ class Bootstrap:
             main_window: Main window instance for Raise/Quit support
         """
         import sys
-        if sys.platform == "linux" and self._mpris_controller is not None:
-            self._mpris_controller._main_window = main_window
-            self._mpris_controller.start()
+        if sys.platform == "linux":
+            controller = self.mpris_controller  # Access property to trigger lazy init
+            if controller is not None:
+                controller._main_window = main_window
+                controller.start()
 
     def stop_mpris(self):
         """Stop MPRIS D-Bus service."""

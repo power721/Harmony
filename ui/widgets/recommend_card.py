@@ -5,6 +5,8 @@ Recommendation card widgets for QQ Music recommendations.
 import logging
 from typing import Dict, Any, Optional, List
 
+from PySide6.QtCore import Qt, Signal, QThread, QRect
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -14,8 +16,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QProgressBar,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
 
 from system.i18n import t
 
@@ -227,7 +227,6 @@ class RecommendCard(QWidget):
         """))
 
 
-
 class RecommendSection(QWidget):
     """Section widget displaying recommendation cards in a horizontal scroll."""
 
@@ -417,4 +416,3 @@ class RecommendSection(QWidget):
         progress = self._loading.findChild(QProgressBar)
         if progress:
             progress.setStyleSheet(ThemeManager.instance().get_qss(self._LOADING_STYLE_TEMPLATE))
-

@@ -5,6 +5,7 @@ Lyrics panel and controller for MainWindow.
 import logging
 from typing import Optional, TYPE_CHECKING
 
+from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget,
@@ -13,23 +14,18 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QMenu,
-    QDialog,
-    QTextEdit,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QObject
-
 from shiboken6 import isValid
 
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from ui.widgets.lyrics_widget_pro import LyricsWidget
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsDownloadWorker
-from system.i18n import t
 from system.event_bus import EventBus
+from system.i18n import t
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.widgets.lyrics_widget_pro import LyricsWidget
 
 if TYPE_CHECKING:
     from services.playback import PlaybackService
-    from services.metadata import CoverService
     from infrastructure.database import DatabaseManager
     from services.library import LibraryService
 
@@ -187,12 +183,12 @@ class LyricsController(QObject):
     cover_downloaded = Signal(str)
 
     def __init__(
-        self,
-        lyrics_panel: LyricsPanel,
-        playback_service: "PlaybackService",
-        db_manager: "DatabaseManager",
-        library_service: "LibraryService" = None,
-        parent=None
+            self,
+            lyrics_panel: LyricsPanel,
+            playback_service: "PlaybackService",
+            db_manager: "DatabaseManager",
+            library_service: "LibraryService" = None,
+            parent=None
     ):
         """
         Initialize the lyrics controller.
@@ -232,12 +228,12 @@ class LyricsController(QObject):
         self._panel.seek_requested.connect(self._playback.seek)
 
     def load_lyrics_async(
-        self,
-        path: str,
-        title: str,
-        artist: str,
-        song_mid: str = None,
-        is_online: bool = False
+            self,
+            path: str,
+            title: str,
+            artist: str,
+            song_mid: str = None,
+            is_online: bool = False
     ):
         """
         Load lyrics asynchronously with version control.
@@ -337,7 +333,7 @@ class LyricsController(QObject):
     def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
         """Download lyrics for a specific song."""
         if self._lyrics_download_thread and isValid(
-            self._lyrics_download_thread
+                self._lyrics_download_thread
         ) and self._lyrics_download_thread.isRunning():
             self._lyrics_download_thread.quit()
             if not self._lyrics_download_thread.wait(100):
@@ -385,8 +381,8 @@ class LyricsController(QObject):
             current_item = self._playback.current_track
             if current_item:
                 is_match = (
-                    current_item.track_id == track.id or
-                    current_item.local_path == self._lyrics_download_path
+                        current_item.track_id == track.id or
+                        current_item.local_path == self._lyrics_download_path
                 )
                 if is_match:
                     current_item.cover_path = cover_path

@@ -3,6 +3,7 @@ Helper utility functions for the music player.
 """
 import re
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -210,3 +211,62 @@ def is_filename_like(title: str) -> bool:
         return True
 
     return False
+
+
+def format_relative_time(dt: datetime) -> str:
+    """
+    Format datetime as relative time string.
+
+    Args:
+        dt: The datetime to format (assumed to be in UTC if timezone-naive)
+
+    Returns:
+        Relative time string like "刚刚", "5分钟前", "2小时前", "昨天", "3天前", "2024-03-30"
+    """
+    if not dt:
+        return ""
+
+    # If datetime is timezone-naive, assume it's UTC and add 8 hours for Beijing time
+    if dt.tzinfo is None:
+        # UTC to Beijing (UTC+8)
+        dt_local = dt + timedelta(hours=8)
+    else:
+        # If it has timezone, convert to local
+        from datetime import timezone
+        utc_tz = timezone.utc
+        local_offset = timedelta(hours=8)  # Beijing timezone
+        dt_local = dt.astimezone(timezone(local_offset))
+
+    # Use current time in same timezone
+    now = datetime.utcnow() + timedelta(hours=8)
+    delta = now - dt_local
+
+    # Make sure delta is not negative (future time)
+    if delta.total_seconds() < 0:
+        return "刚刚"
+
+    # Less than 1 minute
+    if delta < timedelta(minutes=1):
+        return "刚刚"
+
+    # Less than 1 hour
+    if delta < timedelta(hours=1):
+        minutes = int(delta.total_seconds() / 60)
+        return f"{minutes}分钟前"
+
+    # Less than 24 hours
+    if delta < timedelta(hours=24):
+        hours = int(delta.total_seconds() / 3600)
+        return f"{hours}小时前"
+
+    # Yesterday (within 48 hours)
+    if delta < timedelta(hours=48):
+        return "昨天"
+
+    # Within 7 days
+    if delta < timedelta(days=7):
+        days = int(delta.total_seconds() / 86400)
+        return f"{days}天前"
+
+    # Older: show date
+    return dt_local.strftime("%Y-%m-%d")

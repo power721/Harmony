@@ -9,10 +9,10 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap, QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QProgressBar, QStackedWidget,
-                               QTextEdit, QLineEdit, QWidget, QGraphicsDropShadowEffect)
+                               QTextEdit, QWidget, QGraphicsDropShadowEffect)
 
-from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
+from services.cloud.quark_service import QuarkDriveService
 from system.i18n import t
 from system.theme import ThemeManager
 
@@ -198,7 +198,8 @@ class CloudLoginDialog(QDialog):
         self._qr_label.setMaximumSize(250, 250)
         self._qr_label.setAlignment(Qt.AlignCenter)
         self._qr_label.setScaledContents(False)
-        self._qr_label.setStyleSheet(f"border: 2px solid {ThemeManager.instance().current_theme.border}; border-radius: 8px; background: white;")
+        self._qr_label.setStyleSheet(
+            f"border: 2px solid {ThemeManager.instance().current_theme.border}; border-radius: 8px; background: white;")
         layout.addWidget(self._qr_label, 0, Qt.AlignCenter)
 
         # Status label

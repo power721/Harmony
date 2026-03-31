@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from domain.cloud import CloudFile
-from services.cloud.quark_service import QuarkDriveService
 from services.cloud.baidu_service import BaiduDriveService
+from services.cloud.quark_service import QuarkDriveService
 from utils.helpers import sanitize_filename
 
 if TYPE_CHECKING:

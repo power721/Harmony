@@ -4,11 +4,11 @@ Context menu handler for cloud file operations.
 
 import logging
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QMenu
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QMenu
 
 from domain.cloud import CloudFile
 from system.i18n import t
@@ -17,7 +17,6 @@ from utils import format_duration
 if TYPE_CHECKING:
     from services.cloud import CloudFileService
     from services.metadata import CoverService
-    from system.config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +70,10 @@ class CloudFileContextMenu(QObject):
     open_in_cloud_requested = Signal(CloudFile)
 
     def __init__(
-        self,
-        cloud_file_service: "CloudFileService" = None,
-        cover_service: "CoverService" = None,
-        parent=None
+            self,
+            cloud_file_service: "CloudFileService" = None,
+            cover_service: "CoverService" = None,
+            parent=None
     ):
         """
         Initialize context menu handler.
@@ -176,10 +175,10 @@ class CloudFileContextMenu(QObject):
         menu.exec_(QCursor.pos())
 
     def _check_file_downloaded(
-        self,
-        file: CloudFile,
-        current_audio_files: list = None,
-        account_id: int = None
+            self,
+            file: CloudFile,
+            current_audio_files: list = None,
+            account_id: int = None
     ) -> bool:
         """
         Check if a file has been downloaded.

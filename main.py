@@ -177,14 +177,6 @@ def main():
         "Noto Color Emoji"
     ])
     qt_app.setFont(font)
-    qt_app.setStyleSheet("""
-        QWidget {
-            font-family: "Noto Color Emoji", "Inter", "Noto Sans SC";
-        }
-        QMenu {
-            font-family: "Noto Color Emoji", "Inter", "Noto Sans SC";
-        }
-    """)
 
     # Create application with dependency injection
     app = Application.create(qt_app)

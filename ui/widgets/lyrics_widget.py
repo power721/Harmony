@@ -2,7 +2,7 @@ import re
 from typing import List
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal
-from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics, QLinearGradient
+from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import QWidget
 
 from system.i18n import t
@@ -67,7 +67,6 @@ class LyricsWidget(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._animate)
-        self.timer.start(16)
 
         self.setMouseTracking(True)
 
@@ -81,6 +80,7 @@ class LyricsWidget(QWidget):
 
         if not self.lines:
             self.state = "no_lyrics"
+            self.timer.stop()
         else:
             self.state = "lyrics"
 
@@ -93,6 +93,7 @@ class LyricsWidget(QWidget):
     def set_error(self):
 
         self.state = "error"
+        self.timer.stop()
         self.update()
 
     def update_position(self, seconds: float):
@@ -101,6 +102,10 @@ class LyricsWidget(QWidget):
 
         if not self.lines:
             return
+
+        # Start timer if not already running
+        if not self.timer.isActive():
+            self.timer.start(16)
 
         # Handle reset to beginning (e.g., track loop)
         # When position jumps back significantly, reset to first line
@@ -131,6 +136,11 @@ class LyricsWidget(QWidget):
     def _animate(self):
 
         diff = self.target_scroll - self.scroll_y
+
+        if abs(diff) < 0.1:
+            self.scroll_y = self.target_scroll
+            self.timer.stop()
+            return
 
         self.scroll_y += diff * 0.12
 

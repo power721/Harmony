@@ -18,11 +18,11 @@ class RenameArtistWorker(BaseRenameWorker):
     """Worker thread for renaming artist."""
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        old_name: str,
-        new_name: str,
-        parent=None
+            self,
+            library_service: LibraryService,
+            old_name: str,
+            new_name: str,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service
@@ -48,10 +48,10 @@ class ArtistRenameDialog(BaseRenameDialog):
     artist_renamed = Signal(str, str)  # old_name, new_name
 
     def __init__(
-        self,
-        artist: Artist,
-        library_service: LibraryService,
-        parent=None
+            self,
+            artist: Artist,
+            library_service: LibraryService,
+            parent=None
     ):
         super().__init__(parent)
         self._artist = artist

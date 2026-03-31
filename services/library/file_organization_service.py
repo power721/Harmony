@@ -16,16 +16,18 @@ class FileOrganizationService:
     Service for organizing music files into structured directory layouts.
     """
 
-    def __init__(self, track_repo, event_bus, db_manager):
+    def __init__(self, track_repo, cloud_repo, event_bus, db_manager):
         """
         Initialize file organization service.
 
         Args:
             track_repo: Track repository instance
+            cloud_repo: Cloud repository instance
             event_bus: Global event bus
             db_manager: Database manager instance
         """
         self._track_repo = track_repo
+        self._cloud_repo = cloud_repo
         self._event_bus = event_bus
         self._db = db_manager
 
@@ -196,13 +198,10 @@ class FileOrganizationService:
 
             # 更新 cloud_files 表（如果是云下载文件）
             if cloud_file_id:
-                # Get account_id for cloud_file_id
-                conn = self._db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT account_id FROM cloud_files WHERE file_id = ?", (cloud_file_id,))
-                row = cursor.fetchone()
-                if row:
-                    self._db.update_cloud_file_local_path(cloud_file_id, row["account_id"], new_path)
+                # Get account_id for cloud_file_id using repository
+                account_id = self._cloud_repo.get_account_id_by_file_id(cloud_file_id)
+                if account_id:
+                    self._db.update_cloud_file_local_path(cloud_file_id, account_id, new_path)
                     logger.debug(f"更新 cloud_files: file_id={cloud_file_id}, 新路径={new_path}")
         except Exception as e:
             logger.error(f"更新路径失败: {e}")

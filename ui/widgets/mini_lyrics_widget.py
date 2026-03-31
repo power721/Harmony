@@ -1,5 +1,5 @@
 from PySide6.QtCore import QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QFont, QLinearGradient
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QFont
 from PySide6.QtWidgets import QWidget
 
 
@@ -73,7 +73,7 @@ class MiniLyricsWidget(QWidget):
 
         # 行切换检测 → 停顿
         if self.current_index != self._last_line_index:
-            self.pause_timer = 8   # ≈ 120ms 停顿
+            self.pause_timer = 8  # ≈ 120ms 停顿
             self._last_line_index = self.current_index
 
         # 👉 停顿阶段（网易云那种“稳一下”）

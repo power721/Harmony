@@ -4,6 +4,8 @@ Base class for rename dialogs.
 import logging
 from abc import abstractmethod
 
+from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -15,13 +17,10 @@ from PySide6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect,
 )
-from PySide6.QtGui import QColor, QPainterPath, QRegion
-
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from PySide6.QtCore import Qt, Signal, QThread
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +266,7 @@ class BaseRenameDialog(QDialog):
 
         self._worker = self._create_worker(new_name)
         self._worker.finished.connect(self._on_rename_finished)
+        self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
 
     def _on_rename_finished(self, result: dict):

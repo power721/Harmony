@@ -11,7 +11,6 @@ import logging
 
 from app import Bootstrap
 from domain.playback import PlaybackState
-from services import PlaybackService
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,28 +22,22 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSplitter,
     QStackedWidget,
-    QPushButton,
     QFileDialog,
-    QLabel,
     QMenu,
     QSystemTrayIcon,
     QStyle,
     QDialog,
-    QSizeGrip,
+    QSizeGrip, QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QSettings
+from PySide6.QtCore import Qt, Signal, QSettings
 from typing import Optional
-
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.welcome_dialog import WelcomeDialog
 from system.hotkeys import GlobalHotkeys, setup_media_key_handler
 from system.i18n import t, set_language
-from system.config import ConfigManager
 from system.event_bus import EventBus
 from system.theme import ThemeManager
-from ui.icons import IconName, IconButton, set_button_icon
-from domain.track import Track
 from domain.playlist_item import PlaylistItem
 from domain.track import TrackSource
 
@@ -396,34 +389,42 @@ class MainWindow(QMainWindow):
         if qqmusic_credential:
             try:
                 import json
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential, str) else qqmusic_credential
+                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
+                                                                         str) else qqmusic_credential
                 qqmusic_service = QQMusicService(cred_dict)
             except Exception:
                 pass
         self._online_music_view = OnlineMusicView(self._config, self._db, qqmusic_service)
 
-        self._stacked_widget.addWidget(self._library_view)       # 0
-        self._stacked_widget.addWidget(self._cloud_drive_view)   # 1
-        self._stacked_widget.addWidget(self._playlist_view)      # 2
-        self._stacked_widget.addWidget(self._queue_view)         # 3
-        self._stacked_widget.addWidget(self._albums_view)        # 4
-        self._stacked_widget.addWidget(self._artists_view)       # 5
-        self._stacked_widget.addWidget(self._artist_view)        # 6
-        self._stacked_widget.addWidget(self._album_view)         # 7
+        self._stacked_widget.addWidget(self._library_view)  # 0
+        self._stacked_widget.addWidget(self._cloud_drive_view)  # 1
+        self._stacked_widget.addWidget(self._playlist_view)  # 2
+        self._stacked_widget.addWidget(self._queue_view)  # 3
+        self._stacked_widget.addWidget(self._albums_view)  # 4
+        self._stacked_widget.addWidget(self._artists_view)  # 5
+        self._stacked_widget.addWidget(self._artist_view)  # 6
+        self._stacked_widget.addWidget(self._album_view)  # 7
         self._stacked_widget.addWidget(self._online_music_view)  # 8
-        self._stacked_widget.addWidget(self._genres_view)        # 9
-        self._stacked_widget.addWidget(self._genre_view)         # 10
+        self._stacked_widget.addWidget(self._genres_view)  # 9
+        self._stacked_widget.addWidget(self._genre_view)  # 10
 
+        self._stacked_widget.setMinimumWidth(200)
         self._splitter.addWidget(self._stacked_widget)
 
         # Lyrics panel
         self._lyrics_panel = self._create_lyrics_panel()
+        self._lyrics_panel.setMinimumWidth(250)  # Prevent lyrics panel from collapsing
+        self._lyrics_panel.setMaximumWidth(1200)
         self._splitter.addWidget(self._lyrics_panel)
 
         # Set splitter proportions
         self._splitter.setStretchFactor(0, 2)  # Library gets 2/3
         self._splitter.setStretchFactor(1, 1)  # Lyrics gets 1/3
-        self._splitter.setSizes([600, 400])  # Initial sizes
+        self._splitter.setSizes([700, 500])  # Initial sizes
+        self._splitter.setChildrenCollapsible(False)
+
+        self._stacked_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._lyrics_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         content_layout.addWidget(self._splitter, 4)
 
@@ -536,7 +537,6 @@ class MainWindow(QMainWindow):
 
         # Artist view connections
         self._artist_view.play_tracks.connect(self._play_tracks)
-        self._artist_view.track_double_clicked.connect(self._play_track)
         self._artist_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._artist_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._artist_view.add_to_playlist.connect(self._add_tracks_to_playlist)
@@ -546,11 +546,16 @@ class MainWindow(QMainWindow):
 
         # Album view connections
         self._album_view.play_tracks.connect(self._play_tracks)
-        self._album_view.track_double_clicked.connect(self._play_track)
         self._album_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
+        self._album_view.favorites_toggle_requested.connect(self._on_album_favorites_toggle)
         self._album_view.back_clicked.connect(self._on_back)
+        self._album_view.edit_info_requested.connect(self._on_album_edit_media_info)
+        self._album_view.download_cover_requested.connect(self._on_album_download_track_cover)
+        self._album_view.open_file_location_requested.connect(self._on_album_open_file_location)
+        self._album_view.remove_from_library_requested.connect(self._on_album_remove_from_library)
+        self._album_view.delete_file_requested.connect(self._on_album_delete_file)
 
         # Genres view connections
         self._genres_view.genre_clicked.connect(self._on_genre_clicked)
@@ -558,7 +563,6 @@ class MainWindow(QMainWindow):
 
         # Genre view connections
         self._genre_view.play_tracks.connect(self._play_tracks)
-        self._genre_view.track_double_clicked.connect(self._play_track)
         self._genre_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._genre_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._genre_view.add_to_playlist.connect(self._add_tracks_to_playlist)
@@ -700,6 +704,146 @@ class MainWindow(QMainWindow):
         dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()
 
+    def _on_album_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Toggle favorite status for tracks in album view."""
+        from app.bootstrap import Bootstrap
+        from system.event_bus import EventBus
+
+        bootstrap = Bootstrap.instance()
+        if not bootstrap or not hasattr(bootstrap, 'favorites_service'):
+            return
+
+        service = bootstrap.favorites_service
+        bus = EventBus.instance()
+
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if all_favorited:
+                service.remove_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, False, is_cloud=False)
+            else:
+                service.add_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+        # Refresh album view to update favorite icons
+        if self._album_view.get_album():
+            self._album_view.set_album(self._album_view.get_album())
+
+    def _on_album_edit_media_info(self, track):
+        """Edit media info for a track in album view."""
+        if not track or not track.id:
+            return
+        from ui.dialogs import EditMediaInfoDialog
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        dialog = EditMediaInfoDialog([track.id], bootstrap.library_service, self)
+        # Refresh album view when tracks are updated
+        def on_tracks_updated():
+            if self._album_view.get_album():
+                self._album_view.set_album(self._album_view.get_album())
+        dialog.tracks_updated.connect(on_tracks_updated)
+        dialog.exec()
+
+    def _on_album_download_track_cover(self, track):
+        """Download cover for a track in album view."""
+        if not track or not track.id:
+            return
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
+            [track], bootstrap.track_repo, bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, bootstrap.cover_service, self)
+        dialog.exec()
+
+    def _on_album_open_file_location(self, track):
+        """Open file location for a track in album view."""
+        from pathlib import Path
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        import platform
+        import subprocess
+        import shutil
+
+        if not track or not track.path or not track.path.strip():
+            MessageDialog.warning(self, "Error", t("no_local_file"))
+            return
+        file_path = Path(track.path)
+        if not file_path.exists():
+            MessageDialog.warning(self, "Error", t("file_not_found"))
+            return
+        try:
+            system = platform.system()
+            if system == "Windows":
+                subprocess.Popen(["explorer", f"/select,{file_path}"])
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-R", str(file_path)])
+            else:
+                file_managers = {
+                    "nautilus": ["nautilus", "--select", str(file_path)],
+                    "dolphin": ["dolphin", "--select", str(file_path)],
+                    "caja": ["caja", "--select", str(file_path)],
+                    "nemo": ["nemo", str(file_path)],
+                }
+                for fm, cmd in file_managers.items():
+                    if shutil.which(fm):
+                        subprocess.Popen(cmd)
+                        return
+                subprocess.Popen(["xdg-open", str(file_path.parent)])
+        except Exception as e:
+            logger.error(f"Failed to open file location: {e}", exc_info=True)
+            MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _on_album_remove_from_library(self, tracks: list):
+        """Remove tracks from library."""
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        from utils.dedup import format_count_message
+        from app.bootstrap import Bootstrap
+
+        track_ids = [t.id for t in tracks if t.id]
+        if not track_ids:
+            return
+        confirm_message = format_count_message("remove_from_library_confirm", len(track_ids))
+        reply = MessageDialog.question(
+            self, t("remove_from_library"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        bootstrap = Bootstrap.instance()
+        removed_count = bootstrap.library_service.delete_tracks(track_ids)
+        if removed_count > 0:
+            success_message = format_count_message("remove_from_library_success", removed_count)
+            MessageDialog.information(self, t("remove_from_library"), success_message)
+            # Refresh album view
+            if self._album_view.get_album():
+                self._album_view.set_album(self._album_view.get_album())
+
+    def _on_album_delete_file(self, tracks: list):
+        """Delete files from disk and library."""
+        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        from utils.dedup import format_count_message
+        from app.bootstrap import Bootstrap
+        import os
+
+        if not tracks:
+            return
+        confirm_message = format_count_message("delete_file_confirm", len(tracks))
+        reply = MessageDialog.question(
+            self, t("delete_file"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        bootstrap = Bootstrap.instance()
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if track.path and os.path.exists(track.path):
+                os.remove(track.path)
+            bootstrap.library_service.delete_track(track.id)
+        # Refresh album view
+        if self._album_view.get_album():
+            self._album_view.set_album(self._album_view.get_album())
+
     def _on_artist_clicked(self, artist):
         """Handle artist card click."""
         # Push current page to nav stack
@@ -829,8 +973,8 @@ class MainWindow(QMainWindow):
         dialog.album_renamed.connect(on_album_renamed)
         dialog.exec()
 
-    def _play_tracks(self, tracks):
-        """Play a list of tracks."""
+    def _play_tracks(self, tracks, start_index=0):
+        """Play a list of tracks starting from the given index."""
         if tracks:
             from domain.playlist_item import PlaylistItem
             from domain.track import TrackSource
@@ -848,7 +992,13 @@ class MainWindow(QMainWindow):
             if items:
                 self._playback.engine.clear_playlist()
                 self._playback.engine.load_playlist_items(items)
-                self._playback.engine.play_at(0)
+
+                # Handle shuffle mode
+                if self._playback.engine.is_shuffle_mode() and 0 <= start_index < len(items):
+                    self._playback.engine.shuffle_and_play(items[start_index])
+                    self._playback.engine.play_at(0)
+                else:
+                    self._playback.engine.play_at(min(start_index, len(items) - 1))
 
     def _add_music(self):
         """Add music to the library."""
@@ -1213,28 +1363,28 @@ class MainWindow(QMainWindow):
             self._title_bar.clear_accent_color()
 
     def _extract_cover_color(self, title: str, artist: str, path: str, track_dict: dict):
-        """Extract dominant color from album cover and apply to title bar."""
-        cover_path = None
-        try:
-            cover_path = self._player.get_track_cover(
-                path, title, artist,
-                track_dict.get("album", ""),
-                skip_online=track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
-            )
-            if not cover_path:
-                album = track_dict.get("album", "")
-                if album and artist:
-                    cover_path = self._get_album_cover(album, artist)
-        except Exception as e:
-            logger.debug(f"[MainWindow] Error getting cover for color extraction: {e}")
+        """Extract dominant color from album cover and apply to title bar.
 
-        if cover_path:
-            from PySide6.QtCore import QThreadPool
-            from services.metadata.color_extractor import ColorWorker
-            worker = ColorWorker(cover_path, self._cover_color_extracted)
-            QThreadPool.globalInstance().start(worker)
-        else:
-            self._title_bar.clear_accent_color()
+        Uses background thread to fetch cover (avoiding UI blocking for online covers)
+        and extract dominant color.
+        """
+        from PySide6.QtCore import QThreadPool
+        from services.metadata.color_extractor import CoverFetchWorker
+
+        skip_online = track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
+
+        # Use CoverFetchWorker to fetch cover and extract color in background thread
+        worker = CoverFetchWorker(
+            cover_fetcher=self._player.get_track_cover,
+            title=title,
+            artist=artist,
+            path=path,
+            album=track_dict.get("album", ""),
+            skip_online=skip_online,
+            result_signal=self._cover_color_extracted,
+            fallback_fetcher=self._get_album_cover
+        )
+        QThreadPool.globalInstance().start(worker)
 
     def _get_album_cover(self, album: str, artist: str) -> str | None:
         """Get cover from albums table via LibraryService."""
@@ -1462,9 +1612,17 @@ class MainWindow(QMainWindow):
             6: "artist",
             7: "album",
             8: "online",
+            9: "genres",
+            10: "genre",
         }
 
         view_type = index_to_type.get(current_index, "library")
+
+        # Special handling for library view - check if it's showing favorites or history
+        if view_type == "library":
+            current_view = self._library_view.get_current_view()
+            if current_view in ("favorites", "history"):
+                view_type = current_view
 
         # Save view-specific data
         if view_type == "album":
@@ -1479,6 +1637,12 @@ class MainWindow(QMainWindow):
             if artist:
                 view_data = {
                     "name": artist.name,
+                }
+        elif view_type == "genre":
+            genre = self._genre_view.get_genre()
+            if genre:
+                view_data = {
+                    "name": genre.name,
                 }
 
         self._config.set_view_type(view_type)
@@ -1548,11 +1712,26 @@ class MainWindow(QMainWindow):
                 self._show_page(5)
             elif view_type == "online":
                 self._show_page(8)
+            elif view_type == "genres":
+                self._show_page(9)
+            elif view_type == "genre":
+                name = view_data.get("name")
+                if name:
+                    # Find genre from library
+                    from app.bootstrap import Bootstrap
+                    bootstrap = Bootstrap.instance()
+                    genres = bootstrap.library_service.get_genres()
+                    for genre in genres:
+                        if genre.name == name:
+                            self._nav_stack.append(self._stacked_widget.currentIndex())
+                            self._genre_view.set_genre(genre)
+                            self._stacked_widget.setCurrentIndex(10)
+                            self._update_nav_buttons_for_detail_view()
+                            break
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":
                 self._show_history()
-
 
         # Delay to ensure UI is ready
         QTimer.singleShot(100, restore_view)

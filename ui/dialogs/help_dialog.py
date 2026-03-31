@@ -2,6 +2,8 @@
 Help dialog showing application info and keyboard shortcuts.
 """
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -13,14 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect,
 )
-from PySide6.QtGui import QColor, QPainterPath, QRegion
-
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 
 from system.i18n import t
-from app.bootstrap import Bootstrap
 from system.theme import ThemeManager
 
 
@@ -136,7 +132,8 @@ class HelpDialog(QDialog):
         info_layout = QVBoxLayout(info_group)
 
         app_name = QLabel("Harmony")
-        app_name.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
+        app_name.setStyleSheet(
+            f"font-size: 24px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
         app_name.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(app_name)
 
@@ -184,7 +181,8 @@ class HelpDialog(QDialog):
             row.addWidget(key_label)
 
             action_label = QLabel(action)
-            action_label.setStyleSheet(f"font-size: 13px; color: {ThemeManager.instance().current_theme.text_secondary};")
+            action_label.setStyleSheet(
+                f"font-size: 13px; color: {ThemeManager.instance().current_theme.text_secondary};")
             row.addWidget(action_label)
             row.addStretch()
 

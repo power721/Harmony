@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -19,14 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect,
 )
-from PySide6.QtGui import QColor, QPainterPath, QRegion
-
-from ui.dialogs.message_dialog import MessageDialog
 
 from services import MetadataService
-from system.i18n import t
 from system.event_bus import EventBus
+from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog
 
 logger = logging.getLogger(__name__)
 

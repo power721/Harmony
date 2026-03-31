@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainterPath, QRegion, QCursor
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -15,7 +16,6 @@ from PySide6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect,
 )
-from PySide6.QtGui import QColor, QPainterPath, QRegion, QCursor
 
 from services import LyricsService
 from system.i18n import t
@@ -75,11 +75,11 @@ class LyricsEditDialog(QDialog):
     """
 
     def __init__(
-        self,
-        track_path: str,
-        track_title: str,
-        track_artist: str,
-        parent=None
+            self,
+            track_path: str,
+            track_title: str,
+            track_artist: str,
+            parent=None
     ):
         """
         Initialize the dialog.
@@ -223,10 +223,10 @@ class LyricsEditDialog(QDialog):
 
     @staticmethod
     def show_dialog(
-        track_path: str,
-        track_title: str,
-        track_artist: str,
-        parent=None
+            track_path: str,
+            track_title: str,
+            track_artist: str,
+            parent=None
     ) -> Optional[str]:
         """
         Static method to show the dialog and get the result.

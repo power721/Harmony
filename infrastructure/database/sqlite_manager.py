@@ -3092,9 +3092,7 @@ class DatabaseManager:
             INSERT INTO genres (name, cover_path, song_count, album_count)
             SELECT
                 genre as name,
-                (SELECT cover_path FROM tracks t2
-                 WHERE t2.genre = tracks.genre AND cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT album) as album_count
             FROM tracks
@@ -3152,9 +3150,7 @@ class DatabaseManager:
             INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
             SELECT
                 artist as name,
-                (SELECT cover_path FROM tracks t2
-                 WHERE t2.artist = tracks.artist AND cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT album) as album_count,
                 LOWER(artist) as normalized_name

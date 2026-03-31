@@ -4,7 +4,7 @@ Queue service - Manages playback queue persistence.
 
 import logging
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 from domain import PlaylistItem
 from domain.playback import PlayMode
@@ -71,9 +71,9 @@ class QueueService:
         # Convert to PlaylistItem list (pure conversion, no DB access)
         items = [PlaylistItem.from_play_queue_item(item) for item in queue_items]
 
-        # Enrich metadata from track repository
+        # Enrich metadata from track repository (batch)
         if self._track_repo:
-            items = [self._enrich_metadata(item) for item in items]
+            items = self._enrich_metadata_batch(items)
 
         # Get saved index and play mode
         saved_index = self._config.get("queue_current_index", 0)
@@ -151,6 +151,66 @@ class QueueService:
             )
 
         return item
+
+    def _enrich_metadata_batch(self, items: List[PlaylistItem]) -> List[PlaylistItem]:
+        """
+        Batch-enrich multiple PlaylistItems with metadata from track repository.
+
+        Collects all IDs/paths first, fetches in 3 batch queries, then enriches.
+        """
+        if not self._track_repo:
+            return items
+
+        # Collect IDs by lookup type
+        track_ids = [item.track_id for item in items if item.track_id and item.is_local]
+        cloud_file_ids = [item.cloud_file_id for item in items if item.is_cloud and item.cloud_file_id]
+        paths = [item.local_path for item in items if item.local_path and not item.cloud_file_id]
+
+        # Batch fetch
+        id_map = {t.id: t for t in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
+        cloud_map = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) if cloud_file_ids else {}
+        path_map = self._track_repo.get_by_paths(paths) if paths else {}
+
+        # Enrich each item from the maps
+        result = []
+        for item in items:
+            track = None
+
+            if item.track_id and item.is_local:
+                track = id_map.get(item.track_id)
+            elif item.is_cloud and item.cloud_file_id:
+                track = cloud_map.get(item.cloud_file_id)
+            elif item.local_path and not item.cloud_file_id:
+                track = path_map.get(item.local_path)
+
+            if track:
+                local_path = track.path or item.local_path
+                file_exists = local_path and Path(local_path).exists()
+                needs_download = False
+
+                if item.source == TrackSource.QQ:
+                    needs_download = not file_exists
+                    if not file_exists:
+                        local_path = ""
+                elif item.source in (TrackSource.QUARK, TrackSource.BAIDU):
+                    if item.cloud_file_id and not file_exists:
+                        needs_download = True
+                        local_path = ""
+
+                item = item.with_metadata(
+                    cover_path=track.cover_path,
+                    title=track.title or item.title,
+                    artist=track.artist or item.artist,
+                    album=track.album or item.album,
+                    duration=track.duration or item.duration,
+                    local_path=local_path,
+                    track_id=track.id or item.track_id,
+                    needs_download=needs_download,
+                )
+
+            result.append(item)
+
+        return result
 
     def clear(self):
         """Clear the saved play queue from database."""

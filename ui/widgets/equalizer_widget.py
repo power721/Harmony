@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSlider,
     QLabel, QPushButton, QComboBox
 )
+
 from system.theme import ThemeManager
 
 
@@ -129,7 +130,7 @@ class EqualizerWidget(QWidget):
         preset_layout.addWidget(preset_label)
 
         self._preset_combo = QComboBox()
-        self._preset_combo.addEntries([p.name for p in self.PRESETS])
+        self._preset_combo.addItems([p.name for p in self.PRESETS])
         self._preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
         preset_layout.addWidget(self._preset_combo)
@@ -255,7 +256,6 @@ class EqualizerWidget(QWidget):
         # Update sliders
         for slider in self.findChildren(QSlider):
             slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
-
 
 
 class EqualizerDialog:

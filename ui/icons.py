@@ -6,10 +6,11 @@ instead of emojis which may not display correctly on all platforms.
 """
 import logging
 from pathlib import Path
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
-from PySide6.QtWidgets import QPushButton, QLabel
-from PySide6.QtCore import QSize, Qt, QByteArray
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import QPushButton
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,14 @@ ICONS_DIR = Path(__file__).parent.parent / "icons"
 # Icon cache: key = f"{icon_name}_{color}_{size}", value = QIcon
 _ICON_CACHE: dict = {}
 
+
 # Icon colors for different states
 class IconColor:
     """Icon colors for different states - these are defaults, actual colors come from theme."""
     DEFAULT = "#c0c0c0"  # Fallback
-    HOVER = "#1db954"    # Fallback
-    ACTIVE = "#000000"   # Black on green background
-    DISABLED = "#505050" # Fallback
+    HOVER = "#1db954"  # Fallback
+    ACTIVE = "#000000"  # Black on green background
+    DISABLED = "#505050"  # Fallback
 
     @classmethod
     def get_colors_from_theme(cls, theme):
@@ -46,6 +48,7 @@ class IconName:
     MICROPHONE = "microphone.svg"
     CLOUD = "cloud.svg"
     LIST = "list.svg"
+    GRID = "grid.svg"
     QUEUE = "queue.svg"
     STAR = "star.svg"
     CLOCK = "clock.svg"
@@ -73,6 +76,8 @@ class IconName:
     TIMES = "times.svg"
     STAR_FILLED = "star-filled.svg"
     STAR_OUTLINE = "star-outline.svg"
+    HEART_FILLED = "heart-filled.svg"
+    HEART_OUTLINE = "heart-outline.svg"
 
     # Settings & Tools
     ROBOT = "robot.svg"

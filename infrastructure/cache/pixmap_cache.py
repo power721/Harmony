@@ -22,6 +22,8 @@ class CoverPixmapCache:
     @classmethod
     def make_key(cls, artist: str, album: str) -> str:
         """Generate cache key from artist + album."""
+        artist = artist or ""
+        album = album or ""
         raw = f"{artist}:{album}".lower().strip()
         return hashlib.md5(raw.encode()).hexdigest()
 

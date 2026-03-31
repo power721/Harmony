@@ -4,18 +4,17 @@ Welcome/onboarding dialog shown on first run when the library is empty.
 Guides new users to add their first music folder.
 """
 import logging
-from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QDialog, QVBoxLayout, QLabel,
     QPushButton, QGraphicsDropShadowEffect, QWidget,
     QFileDialog,
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QRegion
 
-from system.theme import ThemeManager
 from system.i18n import t
+from system.theme import ThemeManager
 from ui.icons import IconName, get_icon
 
 logger = logging.getLogger(__name__)

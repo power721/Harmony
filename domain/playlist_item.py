@@ -160,6 +160,12 @@ class PlaylistItem:
             if data.get("cloud_file_id"):
                 source = TrackSource.QUARK
 
+        # Determine needs_metadata based on source if not provided
+        if "needs_metadata" in data:
+            needs_metadata = data["needs_metadata"]
+        else:
+            needs_metadata = source != TrackSource.LOCAL
+
         return cls(
             source=source,
             track_id=data.get("id"),
@@ -172,7 +178,7 @@ class PlaylistItem:
             duration=data.get("duration", 0.0),
             cover_path=data.get("cover_path"),
             needs_download=data.get("needs_download", False),
-            needs_metadata=data.get("needs_metadata", True),
+            needs_metadata=needs_metadata,
             download_failed=data.get("download_failed", False),
         )
 

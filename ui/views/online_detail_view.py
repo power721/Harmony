@@ -6,6 +6,8 @@ Shows details for artist, album, or playlist.
 import logging
 from typing import Optional, List, Dict, Any
 
+from PySide6.QtCore import Qt, Signal, QThread, QRect, QTimer
+from PySide6.QtGui import QColor, QPixmap, QPainter, QFont
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -19,19 +21,13 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QMenu,
-    QGridLayout,
-    QGraphicsDropShadowEffect,
-    QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QSize, QRect, QPropertyAnimation, QEasingCurve, QTimer
-from PySide6.QtGui import QCursor, QColor, QBrush, QPixmap, QPainter, QFont, QAction
 
-from ui.dialogs.message_dialog import MessageDialog
-from domain.online_music import OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist, OnlineSinger, AlbumInfo
+from domain.online_music import OnlineTrack, OnlineAlbum, OnlineSinger, AlbumInfo
 from services.online import OnlineMusicService, OnlineDownloadService
-from system.i18n import t
 from system.event_bus import EventBus
-from system.theme import ThemeManager
+from system.i18n import t
+from ui.dialogs.message_dialog import MessageDialog
 from utils import format_duration
 
 logger = logging.getLogger(__name__)
@@ -73,7 +69,8 @@ class AlbumListWorker(QThread):
 
     albums_loaded = Signal(list, int, int)  # (albums list, total count, request_id)
 
-    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0, request_id: int = 0):
+    def __init__(self, service: OnlineMusicService, singer_mid: str, number: int = 10, begin: int = 0,
+                 request_id: int = 0):
         super().__init__()
         self._service = service
         self._singer_mid = singer_mid
@@ -601,11 +598,11 @@ class OnlineDetailView(QWidget):
     """
 
     def __init__(
-        self,
-        config_manager=None,
-        db_manager=None,
-        qqmusic_service=None,
-        parent=None
+            self,
+            config_manager=None,
+            db_manager=None,
+            qqmusic_service=None,
+            parent=None
     ):
         super().__init__(parent)
 
@@ -871,7 +868,7 @@ class OnlineDetailView(QWidget):
         return section
 
     def _create_songs_section(self) -> QWidget:
-        """Create songs section with title and table."""
+        """Create songs section with title, table (for playlist) and list view (for album)."""
         section = QWidget()
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
@@ -889,9 +886,22 @@ class OnlineDetailView(QWidget):
         self._pagination_widget = self._create_pagination()
         section_layout.addWidget(self._pagination_widget)
 
-        # Songs table
+        # Songs table (for playlist / artist)
         self._songs_table = self._create_songs_table()
         section_layout.addWidget(self._songs_table, 1)
+
+        # Online tracks list view (for album)
+        from ui.views.online_tracks_list_view import OnlineTracksListView
+        self._tracks_list_view = OnlineTracksListView()
+        self._tracks_list_view.track_activated.connect(self._on_track_activated)
+        self._tracks_list_view.play_requested.connect(self._on_list_play_requested)
+        self._tracks_list_view.insert_to_queue_requested.connect(self._on_list_insert_to_queue)
+        self._tracks_list_view.add_to_queue_requested.connect(self._on_list_add_to_queue)
+        self._tracks_list_view.add_to_playlist_requested.connect(self._on_list_add_to_playlist)
+        self._tracks_list_view.favorites_toggle_requested.connect(self._on_list_favorites_toggle)
+        self._tracks_list_view.download_requested.connect(self._on_list_download_requested)
+        self._tracks_list_view.hide()
+        section_layout.addWidget(self._tracks_list_view, 1)
 
         return section
 
@@ -1138,7 +1148,8 @@ class OnlineDetailView(QWidget):
         if self._current_page == 1:
             self._total_songs = total
             self._page_size = page_size if page_size > 0 else 30
-            self._total_pages = (self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
+            self._total_pages = (
+                                            self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
 
         self._tracks = self._parse_songs(songs)
 
@@ -1482,29 +1493,36 @@ class OnlineDetailView(QWidget):
         return tracks
 
     def _display_songs(self, songs: List[OnlineTrack]):
-        """Display songs in table."""
-        try:
-            self._songs_table.setRowCount(len(songs))
-            start = (self._current_page - 1) * self._page_size
+        """Display songs — use list view for album, table for playlist/artist."""
+        if self._detail_type == "album":
+            self._songs_table.hide()
+            self._tracks_list_view.show()
+            self._tracks_list_view.load_tracks(songs)
+        else:
+            self._tracks_list_view.hide()
+            self._songs_table.show()
+            try:
+                self._songs_table.setRowCount(len(songs))
+                start = (self._current_page - 1) * self._page_size
 
-            for i, song in enumerate(songs):
-                # Index
-                self._songs_table.setItem(i, 0, QTableWidgetItem(str(start + i + 1)))
+                for i, song in enumerate(songs):
+                    # Index
+                    self._songs_table.setItem(i, 0, QTableWidgetItem(str(start + i + 1)))
 
-                # Title
-                self._songs_table.setItem(i, 1, QTableWidgetItem(song.title))
+                    # Title
+                    self._songs_table.setItem(i, 1, QTableWidgetItem(song.title))
 
-                # Artist
-                self._songs_table.setItem(i, 2, QTableWidgetItem(song.singer_name))
+                    # Artist
+                    self._songs_table.setItem(i, 2, QTableWidgetItem(song.singer_name))
 
-                # Album
-                self._songs_table.setItem(i, 3, QTableWidgetItem(song.album_name))
+                    # Album
+                    self._songs_table.setItem(i, 3, QTableWidgetItem(song.album_name))
 
-                # Duration
-                duration_str = format_duration(song.duration) if song.duration else ""
-                self._songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
-        except Exception as e:
-            logger.error(f"Failed to display songs: {e}", exc_info=True)
+                    # Duration
+                    duration_str = format_duration(song.duration) if song.duration else ""
+                    self._songs_table.setItem(i, 4, QTableWidgetItem(duration_str))
+            except Exception as e:
+                logger.error(f"Failed to display songs: {e}", exc_info=True)
 
     def _load_artist_albums(self, append: bool = False):
         """Load artist albums in background.
@@ -1533,7 +1551,8 @@ class OnlineDetailView(QWidget):
                 self._album_list_worker.wait()
             self._album_list_worker.deleteLater()
 
-        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin, request_id=current_request_id)
+        self._album_list_worker = AlbumListWorker(self._service, self._mid, number=number, begin=begin,
+                                                  request_id=current_request_id)
         self._album_list_worker.albums_loaded.connect(self._on_albums_loaded, Qt.QueuedConnection)
 
         # Clean up worker after thread has fully stopped
@@ -1711,18 +1730,17 @@ class OnlineDetailView(QWidget):
         callback(tracks)
 
     def _on_track_double_clicked(self, index):
-        """Handle track double click."""
+        """Handle track double click on table."""
         row = index.row()
         if 0 <= row < len(self._tracks):
             self._play_track(self._tracks[row])
 
     def _show_track_context_menu(self, pos):
-        """Show context menu for track."""
+        """Show context menu for track on table."""
         selected_rows = self._songs_table.selectionModel().selectedRows()
         if not selected_rows:
             return
 
-        # Get selected tracks
         selected_tracks = []
         for index in sorted(selected_rows, key=lambda x: x.row()):
             row = index.row()
@@ -1740,22 +1758,14 @@ class OnlineDetailView(QWidget):
         menu.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_MENU))
 
         play_action = menu.addAction(t("play"))
-
         insert_action = menu.addAction(t("insert_to_queue"))
         add_action = menu.addAction(t("add_to_queue"))
-
         menu.addSeparator()
-
-        # Add to favorites action
         add_to_favorites_action = menu.addAction(t("add_to_favorites"))
-        # Add to playlist action
         add_to_playlist_action = menu.addAction(t("add_to_playlist"))
-
         menu.addSeparator()
-
         download_action = menu.addAction(t("download"))
 
-        # Connect actions
         if is_single:
             play_action.triggered.connect(lambda: self._play_track(track))
             insert_action.triggered.connect(lambda: self._insert_track_to_queue(track))
@@ -1772,6 +1782,40 @@ class OnlineDetailView(QWidget):
             download_action.triggered.connect(lambda: self._download_tracks(selected_tracks))
 
         menu.exec(self._songs_table.viewport().mapToGlobal(pos))
+
+    def _on_track_activated(self, track: OnlineTrack):
+        """Handle track double click from list view."""
+        self._play_track(track)
+
+    def _on_list_play_requested(self, tracks: list):
+        """Handle play requested from list view context menu."""
+        if tracks:
+            self._play_tracks(tracks)
+
+    def _on_list_insert_to_queue(self, tracks: list):
+        """Handle insert to queue from list view context menu."""
+        self.insert_all_to_queue.emit(tracks)
+
+    def _on_list_add_to_queue(self, tracks: list):
+        """Handle add to queue from list view context menu."""
+        self.add_all_to_queue.emit(tracks)
+
+    def _on_list_add_to_playlist(self, tracks: list):
+        """Handle add to playlist from list view context menu."""
+        self._add_tracks_to_playlist(tracks)
+
+    def _on_list_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Handle favorites toggle from list view context menu."""
+        if all_favorited:
+            for track in tracks:
+                self._remove_track_from_favorites(track)
+        else:
+            self._add_tracks_to_favorites(tracks)
+
+    def _on_list_download_requested(self, tracks: list):
+        """Handle download from list view context menu."""
+        for track in tracks:
+            self._download_track(track)
 
     def _play_track(self, track: OnlineTrack):
         """Play a single track."""
@@ -1848,7 +1892,6 @@ class OnlineDetailView(QWidget):
 
     def _add_tracks_to_favorites(self, tracks: list):
         """Add multiple tracks to favorites."""
-        from app.bootstrap import Bootstrap
 
         added_count = 0
         for track in tracks:
@@ -1864,6 +1907,11 @@ class OnlineDetailView(QWidget):
                 t("success"),
                 t("added_x_tracks_to_favorites").format(count=added_count)
             )
+
+    def _remove_track_from_favorites(self, track: OnlineTrack):
+        """Remove a track from favorites."""
+        if self._db:
+            self._db.remove_favorite(cloud_file_id=track.mid)
 
     def _add_track_to_playlist(self, track: OnlineTrack):
         """Add track to playlist."""
@@ -1896,7 +1944,6 @@ class OnlineDetailView(QWidget):
     def _add_online_track_to_library(self, track: OnlineTrack):
         """Add online track to library, return track_id."""
         from app.bootstrap import Bootstrap
-        from domain.track import TrackSource
 
         bootstrap = Bootstrap.instance()
         if not bootstrap.library_service:

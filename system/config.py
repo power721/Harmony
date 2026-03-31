@@ -94,6 +94,7 @@ class ConfigManager:
             settings_repo: SettingsRepository instance for settings operations
         """
         self._settings_repo = settings_repo
+        self._cache: Dict[str, Any] = {}
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -106,7 +107,11 @@ class ConfigManager:
         Returns:
             Configuration value or default
         """
-        return self._settings_repo.get(key, default)
+        if key in self._cache:
+            return self._cache[key]
+        value = self._settings_repo.get(key, default)
+        self._cache[key] = value
+        return value
 
     def set(self, key: str, value: Any):
         """
@@ -117,18 +122,7 @@ class ConfigManager:
             value: Value to set
         """
         self._settings_repo.set(key, value)
-
-    def get_multiple(self, keys: list) -> Dict[str, Any]:
-        """
-        Get multiple configuration values.
-
-        Args:
-            keys: List of configuration keys
-
-        Returns:
-            Dict of key-value pairs
-        """
-        return self._settings_repo.get_all(keys)
+        self._cache[key] = value
 
     def delete(self, key: str):
         """
@@ -138,6 +132,7 @@ class ConfigManager:
             key: Configuration key
         """
         self._settings_repo.delete(key)
+        self._cache.pop(key, None)
 
     # ===== Player settings =====
 

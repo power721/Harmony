@@ -3,7 +3,6 @@ Base class for cover download dialogs.
 """
 import logging
 from abc import abstractmethod
-from typing import List
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QColor, QRegion
@@ -576,8 +575,8 @@ class BaseCoverDownloadDialog(QDialog):
     # ========================================================================
 
     def _fetch_qqmusic_cover_base(self, album_mid: str = None, song_mid: str = None,
-                                   singer_mid: str = None, result: dict = None,
-                                   is_artist: bool = False):
+                                  singer_mid: str = None, result: dict = None,
+                                  is_artist: bool = False):
         """Fetch QQ Music cover URL lazily and download - shared implementation.
 
         Args:
@@ -597,8 +596,10 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Stop any running download thread
         if self._download_thread and self._download_thread.isRunning():
-            self._download_thread.terminate()
-            self._download_thread.wait()
+            self._download_thread.requestInterruption()
+            if not self._download_thread.wait(1000):
+                self._download_thread.terminate()
+                self._download_thread.wait()
 
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)

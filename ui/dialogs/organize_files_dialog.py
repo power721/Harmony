@@ -2,8 +2,7 @@
 Dialog for organizing music files into structured directories.
 """
 import logging
-from pathlib import Path
-from typing import List, Dict
+from typing import List
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPainterPath, QRegion
@@ -14,12 +13,11 @@ from PySide6.QtWidgets import (
     QWidget, QGraphicsDropShadowEffect,
 )
 
-from ui.dialogs.message_dialog import MessageDialog
-
 from domain import PlaylistItem
 from domain.track import Track
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog
 
 logger = logging.getLogger(__name__)
 
@@ -383,6 +381,7 @@ class OrganizeFilesDialog(QDialog):
         )
         self.organize_thread.progress.connect(self._on_progress)
         self.organize_thread.finished.connect(self._on_finished)
+        self.organize_thread.finished.connect(self.organize_thread.deleteLater)
         self.organize_thread.start()
 
     def _on_progress(self, message: str):
@@ -458,7 +457,8 @@ class OrganizeFilesDialog(QDialog):
                     # (includes both local tracks and downloaded cloud files)
                     track = app.bootstrap.track_repo.get_by_id(item.track_id)
                     if track:
-                        logger.info(f"更新播放队列项目 {i}: track_id={item.track_id}, 旧路径={item.local_path}, 新路径={track.path}")
+                        logger.info(
+                            f"更新播放队列项目 {i}: track_id={item.track_id}, 旧路径={item.local_path}, 新路径={track.path}")
                         updated_item = PlaylistItem.from_track(track)
                         current_items[i] = updated_item
                         updated_count += 1

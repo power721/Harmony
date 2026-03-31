@@ -12,11 +12,9 @@ import logging
 import threading
 from typing import Optional
 
-from pathlib import Path
-
-from PySide6.QtCore import Qt, Signal, QSize, QThread, QTimer, QPropertyAnimation, QEasingCurve, QPoint
+from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation
 from PySide6.QtGui import (
-    QKeySequence, QShortcut, QPixmap, QPainter, QColor,
+    QKeySequence, QShortcut, QPixmap, QColor,
     QPainterPath, QRegion, QFontMetrics
 )
 from PySide6.QtWidgets import (
@@ -26,21 +24,20 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QGraphicsDropShadowEffect,
-    QApplication,
 )
-
-from services.lyrics.lyrics_loader import LyricsLoader
 from shiboken6 import isValid
 
 from domain.playback import PlaybackState, PlayMode
+from services.lyrics.lyrics_loader import LyricsLoader
 from services.playback import PlaybackService
 from system.i18n import t
-from ui.icons import IconName, IconColor, get_icon
+from ui.icons import IconName, get_icon
 from ui.widgets.mini_lyrics_widget import MiniLyricsWidget
 from ui.widgets.player_controls import ClickableSlider
 from utils import format_time
 
 logger = logging.getLogger(__name__)
+
 
 class MiniPlayer(QWidget):
     """
@@ -398,7 +395,7 @@ class MiniPlayer(QWidget):
 
     def _on_seek_end(self):
         """Handle seek end (slider released)."""
-        if hasattr(self, "_current_duration"):
+        if hasattr(self, "_current_duration") and self._current_duration > 0:
             # Calculate position in milliseconds
             position_ms = int(
                 (self._progress_slider.value() / 1000) * self._current_duration * 1000

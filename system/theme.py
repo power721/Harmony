@@ -185,14 +185,15 @@ class ThemeManager(QObject):
 
     def _load_theme(self) -> Theme:
         """Load theme from config or return default."""
-        theme_name = self._config.get('ui.theme', 'dark')
+        from system.config import SettingKey
+        theme_name = self._config.get(SettingKey.UI_THEME, 'dark')
 
         # Check if it's a preset theme
         if theme_name in PRESET_THEMES:
             return PRESET_THEMES[theme_name]
 
         # Check if it's a custom theme
-        custom_theme_data = self._config.get('ui.theme.custom')
+        custom_theme_data = self._config.get(SettingKey.UI_THEME_CUSTOM)
         if custom_theme_data:
             try:
                 return Theme(**custom_theme_data)
@@ -233,8 +234,9 @@ class ThemeManager(QObject):
             name = 'dark'
 
         self._current_theme = PRESET_THEMES[name]
-        self._config.set('ui.theme', name)
-        self._config.delete('ui.theme.custom')
+        from system.config import SettingKey
+        self._config.set(SettingKey.UI_THEME, name)
+        self._config.delete(SettingKey.UI_THEME_CUSTOM)
         logger.info(f"Theme changed to preset: {name}")
 
         self._apply_and_broadcast()
@@ -247,8 +249,9 @@ class ThemeManager(QObject):
             theme: Custom Theme instance
         """
         self._current_theme = theme
-        self._config.set('ui.theme', 'custom')
-        self._config.set('ui.theme.custom', theme.to_dict())
+        from system.config import SettingKey
+        self._config.set(SettingKey.UI_THEME, 'custom')
+        self._config.set(SettingKey.UI_THEME_CUSTOM, theme.to_dict())
         logger.info(f"Custom theme set: {theme.name}")
 
         self._apply_and_broadcast()

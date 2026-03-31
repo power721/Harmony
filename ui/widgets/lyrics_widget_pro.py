@@ -1,6 +1,6 @@
 # lyrics_widget_pro.py
-import sys
 import bisect
+import sys
 from typing import List
 
 from PySide6.QtCore import QTimer, Signal, Qt, QRectF
@@ -28,7 +28,6 @@ class LyricsEngine:
         self.current_index = 0
 
     def update(self, time_sec):
-
         if not self.lines:
             return 0
 
@@ -44,7 +43,6 @@ class LyricsEngine:
 # =========================================================
 
 class LyricsWidget(QWidget):
-
     seekRequested = Signal(int)
 
     def __init__(self, parent=None):
@@ -369,7 +367,6 @@ class LyricsWidget(QWidget):
         b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
         return QColor(r, g, b)
 
-
     # =====================================================
     # 鼠标
     # =====================================================
@@ -390,7 +387,6 @@ class LyricsWidget(QWidget):
             rect = QRectF(0, y - 30, self.width(), 60)
 
             if rect.contains(e.pos()):
-
                 self.hover_index = i
 
                 self.setCursor(Qt.PointingHandCursor)
@@ -406,7 +402,6 @@ class LyricsWidget(QWidget):
     def mousePressEvent(self, e):
 
         if e.button() == Qt.LeftButton and self.hover_index >= 0:
-
             t = self.engine.lines[self.hover_index].time * 1000
 
             self.seekRequested.emit(int(t))
@@ -450,7 +445,6 @@ class DemoWindow(QWidget):
 
 
 if __name__ == "__main__":
-
     app = QApplication(sys.argv)
 
     win = DemoWindow()

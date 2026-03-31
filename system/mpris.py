@@ -174,279 +174,284 @@ def _mpris_to_play_mode(loop_status: str, shuffle: bool):
             return PlayMode.SEQUENTIAL
 
 
-class MPRIS2Service(dbus.service.Object):
-    """
-    MPRIS v2 D-Bus service object.
-
-    Implements both org.mpris.MediaPlayer2 and
-    org.mpris.MediaPlayer2.Player interfaces.
-    """
-
-    def __init__(self, bus_name: dbus.bus.BusName, controller: "MPRISController"):
+# Only define MPRIS2Service if dbus is available
+if _AVAILABLE:
+    class MPRIS2Service(dbus.service.Object):
         """
-        Initialize the MPRIS2 D-Bus service.
+        MPRIS v2 D-Bus service object.
 
-        Args:
-            bus_name: Registered D-Bus bus name
-            controller: MPRISController that bridges to PlaybackService
+        Implements both org.mpris.MediaPlayer2 and
+        org.mpris.MediaPlayer2.Player interfaces.
         """
-        super().__init__(bus_name, MPRIS_PATH)
-        self._controller = controller
 
-    # ===== org.mpris.MediaPlayer2 =====
+        def __init__(self, bus_name: dbus.bus.BusName, controller: "MPRISController"):
+            """
+            Initialize the MPRIS2 D-Bus service.
 
-    @dbus.service.method(MPRIS_INTERFACE)
-    def Raise(self):
-        """Bring the player to the front (show window)."""
-        self._controller.raise_window()
+            Args:
+                bus_name: Registered D-Bus bus name
+                controller: MPRISController that bridges to PlaybackService
+            """
+            super().__init__(bus_name, MPRIS_PATH)
+            self._controller = controller
 
-    @dbus.service.method(MPRIS_INTERFACE)
-    def Quit(self):
-        """Quit the player."""
-        self._controller.quit_app()
+        # ===== org.mpris.MediaPlayer2 =====
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="s")
-    def Identity(self):
-        """Player name."""
-        return "Harmony"
+        @dbus.service.method(MPRIS_INTERFACE)
+        def Raise(self):
+            """Bring the player to the front (show window)."""
+            self._controller.raise_window()
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="s")
-    def DesktopEntry(self):
-        """Desktop file entry name."""
-        # Try common desktop file names
-        for name in ("harmony", "music-player", "Harmony"):
-            desktop_path = os.path.expanduser(
-                f"~/.local/share/applications/{name}.desktop"
+        @dbus.service.method(MPRIS_INTERFACE)
+        def Quit(self):
+            """Quit the player."""
+            self._controller.quit_app()
+
+        @dbus.service.property(MPRIS_INTERFACE, signature="s")
+        def Identity(self):
+            """Player name."""
+            return "Harmony"
+
+        @dbus.service.property(MPRIS_INTERFACE, signature="s")
+        def DesktopEntry(self):
+            """Desktop file entry name."""
+            # Try common desktop file names
+            for name in ("harmony", "music-player", "Harmony"):
+                desktop_path = os.path.expanduser(
+                    f"~/.local/share/applications/{name}.desktop"
+                )
+                if os.path.exists(desktop_path):
+                    return name
+            return "harmony"
+
+        @dbus.service.property(MPRIS_INTERFACE, signature="as")
+        def SupportedUriSchemes(self):
+            """Supported URI schemes (empty - we handle files internally)."""
+            return dbus.Array([], signature="s")
+
+        @dbus.service.property(MPRIS_INTERFACE, signature="as")
+        def SupportedMimeTypes(self):
+            """Supported MIME types."""
+            return dbus.Array(
+                [
+                    "audio/mpeg",
+                    "audio/flac",
+                    "audio/ogg",
+                    "audio/wav",
+                    "audio/aac",
+                    "audio/mp4",
+                    "audio/opus",
+                    "audio/x-m4a",
+                ],
+                signature="s",
             )
-            if os.path.exists(desktop_path):
-                return name
-        return "harmony"
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="as")
-    def SupportedUriSchemes(self):
-        """Supported URI schemes (empty - we handle files internally)."""
-        return dbus.Array([], signature="s")
+        @dbus.service.property(MPRIS_INTERFACE, signature="b")
+        def CanQuit(self):
+            """Whether the player can quit."""
+            return True
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="as")
-    def SupportedMimeTypes(self):
-        """Supported MIME types."""
-        return dbus.Array(
-            [
-                "audio/mpeg",
-                "audio/flac",
-                "audio/ogg",
-                "audio/wav",
-                "audio/aac",
-                "audio/mp4",
-                "audio/opus",
-                "audio/x-m4a",
-            ],
-            signature="s",
-        )
+        @dbus.service.property(MPRIS_INTERFACE, signature="b")
+        def CanRaise(self):
+            """Whether the player can be raised."""
+            return True
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="b")
-    def CanQuit(self):
-        """Whether the player can quit."""
-        return True
+        @dbus.service.property(MPRIS_INTERFACE, signature="b")
+        def HasTrackList(self):
+            """Whether the player supports track lists."""
+            return False
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="b")
-    def CanRaise(self):
-        """Whether the player can be raised."""
-        return True
+        # ===== org.mpris.MediaPlayer2.Player =====
 
-    @dbus.service.property(MPRIS_INTERFACE, signature="b")
-    def HasTrackList(self):
-        """Whether the player supports track lists."""
-        return False
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def Next(self):
+            """Skip to the next track."""
+            self._controller.play_next()
 
-    # ===== org.mpris.MediaPlayer2.Player =====
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def Previous(self):
+            """Skip to the previous track."""
+            self._controller.play_previous()
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def Next(self):
-        """Skip to the next track."""
-        self._controller.play_next()
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def Pause(self):
+            """Pause playback."""
+            self._controller.pause()
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def Previous(self):
-        """Skip to the previous track."""
-        self._controller.play_previous()
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def PlayPause(self):
+            """Toggle play/pause."""
+            self._controller.play_pause()
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def Pause(self):
-        """Pause playback."""
-        self._controller.pause()
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def Stop(self):
+            """Stop playback."""
+            self._controller.stop()
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def PlayPause(self):
-        """Toggle play/pause."""
-        self._controller.play_pause()
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE)
+        def Play(self):
+            """Start playback."""
+            self._controller.play()
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def Stop(self):
-        """Stop playback."""
-        self._controller.stop()
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="x")
+        def Seek(self, offset):
+            """
+            Seek forward or backward by offset in microseconds.
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE)
-    def Play(self):
-        """Start playback."""
-        self._controller.play()
+            Args:
+                offset: Offset in microseconds (negative = backward)
+            """
+            self._controller.seek(offset)
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="x")
-    def Seek(self, offset):
-        """
-        Seek forward or backward by offset in microseconds.
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="ox")
+        def SetPosition(self, track_id, position):
+            """
+            Set the playback position.
 
-        Args:
-            offset: Offset in microseconds (negative = backward)
-        """
-        self._controller.seek(offset)
+            Args:
+                track_id: D-Bus object path of the track
+                position: Position in microseconds
+            """
+            self._controller.set_position(track_id, position)
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="ox")
-    def SetPosition(self, track_id, position):
-        """
-        Set the playback position.
+        @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="s")
+        def OpenUri(self, uri):
+            """
+            Open a URI for playback.
 
-        Args:
-            track_id: D-Bus object path of the track
-            position: Position in microseconds
-        """
-        self._controller.set_position(track_id, position)
+            Args:
+                uri: URI to open
+            """
+            logger.debug(f"[MPRIS] OpenUri called: {uri}")
+            # Not currently supported - we handle files internally
 
-    @dbus.service.method(MPRIS_PLAYER_INTERFACE, in_signature="s")
-    def OpenUri(self, uri):
-        """
-        Open a URI for playback.
+        # ===== Player Properties =====
 
-        Args:
-            uri: URI to open
-        """
-        logger.debug(f"[MPRIS] OpenUri called: {uri}")
-        # Not currently supported - we handle files internally
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="s")
+        def PlaybackStatus(self):
+            """Current playback status."""
+            return self._controller.get_playback_status()
 
-    # ===== Player Properties =====
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="s")
+        def LoopStatus(self):
+            """Current loop status."""
+            return self._controller.get_loop_status()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="s")
-    def PlaybackStatus(self):
-        """Current playback status."""
-        return self._controller.get_playback_status()
+        @LoopStatus.setter
+        def LoopStatus(self, value):
+            """Set loop status."""
+            self._controller.set_loop_status(value)
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="s")
-    def LoopStatus(self):
-        """Current loop status."""
-        return self._controller.get_loop_status()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
+        def Rate(self):
+            """Playback rate (1.0 = normal)."""
+            return 1.0
 
-    @LoopStatus.setter
-    def LoopStatus(self, value):
-        """Set loop status."""
-        self._controller.set_loop_status(value)
+        @Rate.setter
+        def Rate(self, value):
+            """Set playback rate (not supported)."""
+            pass
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
-    def Rate(self):
-        """Playback rate (1.0 = normal)."""
-        return 1.0
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def Shuffle(self):
+            """Shuffle mode."""
+            return self._controller.get_shuffle()
 
-    @Rate.setter
-    def Rate(self, value):
-        """Set playback rate (not supported)."""
-        pass
+        @Shuffle.setter
+        def Shuffle(self, value):
+            """Set shuffle mode."""
+            self._controller.set_shuffle(value)
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def Shuffle(self):
-        """Shuffle mode."""
-        return self._controller.get_shuffle()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="a{sv}")
+        def Metadata(self):
+            """Current track metadata."""
+            return self._controller.get_metadata()
 
-    @Shuffle.setter
-    def Shuffle(self, value):
-        """Set shuffle mode."""
-        self._controller.set_shuffle(value)
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
+        def Volume(self):
+            """Current volume (0.0 - 1.0)."""
+            return self._controller.get_volume()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="a{sv}")
-    def Metadata(self):
-        """Current track metadata."""
-        return self._controller.get_metadata()
+        @Volume.setter
+        def Volume(self, value):
+            """Set volume (0.0 - 1.0)."""
+            self._controller.set_volume(value)
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
-    def Volume(self):
-        """Current volume (0.0 - 1.0)."""
-        return self._controller.get_volume()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="x")
+        def Position(self):
+            """Current position in microseconds."""
+            return self._controller.get_position()
 
-    @Volume.setter
-    def Volume(self, value):
-        """Set volume (0.0 - 1.0)."""
-        self._controller.set_volume(value)
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
+        def MinimumRate(self):
+            """Minimum playback rate."""
+            return 1.0
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="x")
-    def Position(self):
-        """Current position in microseconds."""
-        return self._controller.get_position()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
+        def MaximumRate(self):
+            """Maximum playback rate."""
+            return 1.0
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
-    def MinimumRate(self):
-        """Minimum playback rate."""
-        return 1.0
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanGoNext(self):
+            """Whether the player can go to the next track."""
+            return self._controller.can_go_next()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="d")
-    def MaximumRate(self):
-        """Maximum playback rate."""
-        return 1.0
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanGoPrevious(self):
+            """Whether the player can go to the previous track."""
+            return self._controller.can_go_previous()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanGoNext(self):
-        """Whether the player can go to the next track."""
-        return self._controller.can_go_next()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanPlay(self):
+            """Whether the player can play."""
+            return self._controller.can_play()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanGoPrevious(self):
-        """Whether the player can go to the previous track."""
-        return self._controller.can_go_previous()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanPause(self):
+            """Whether the player can pause."""
+            return self._controller.can_pause()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanPlay(self):
-        """Whether the player can play."""
-        return self._controller.can_play()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanSeek(self):
+            """Whether the player can seek."""
+            return self._controller.can_seek()
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanPause(self):
-        """Whether the player can pause."""
-        return self._controller.can_pause()
+        @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
+        def CanControl(self):
+            """Whether the player can be controlled."""
+            return True
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanSeek(self):
-        """Whether the player can seek."""
-        return self._controller.can_seek()
+        # ===== Signal emission helpers =====
 
-    @dbus.service.property(MPRIS_PLAYER_INTERFACE, signature="b")
-    def CanControl(self):
-        """Whether the player can be controlled."""
-        return True
+        def emit_properties_changed(self, interface: str, changed: dict):
+            """
+            Emit PropertiesChanged signal on D-Bus.
 
-    # ===== Signal emission helpers =====
+            Args:
+                interface: D-Bus interface name
+                changed: Dict of changed properties
+            """
+            self.PropertiesChanged(interface, changed, dbus.Array([], signature="s"))
 
-    def emit_properties_changed(self, interface: str, changed: dict):
-        """
-        Emit PropertiesChanged signal on D-Bus.
+        @dbus.service.signal(DBUS_PROPERTIES_INTERFACE, signature="sa{sv}as")
+        def PropertiesChanged(self, interface, changed, invalidated):
+            """PropertiesChanged signal."""
+            pass
 
-        Args:
-            interface: D-Bus interface name
-            changed: Dict of changed properties
-        """
-        self.PropertiesChanged(interface, changed, dbus.Array([], signature="s"))
+        @dbus.service.signal(MPRIS_PLAYER_INTERFACE, signature="x")
+        def Seeked(self, position):
+            """
+            Seeked signal - emitted when the track position changes
+            in a way that is not linear.
 
-    @dbus.service.signal(DBUS_PROPERTIES_INTERFACE, signature="sa{sv}as")
-    def PropertiesChanged(self, interface, changed, invalidated):
-        """PropertiesChanged signal."""
-        pass
+            Args:
+                position: New position in microseconds
+            """
+            pass
 
-    @dbus.service.signal(MPRIS_PLAYER_INTERFACE, signature="x")
-    def Seeked(self, position):
-        """
-        Seeked signal - emitted when the track position changes
-        in a way that is not linear.
 
-        Args:
-            position: New position in microseconds
-        """
-        pass
+# End of MPRIS2Service class and _AVAILABLE conditional block
 
 
 class MPRISController(QObject):

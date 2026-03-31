@@ -130,24 +130,26 @@ class SleepTimerService(QObject):
 
     def _on_track_finished(self):
         """Track finished handler for track count mode."""
+        # Disconnect immediately to prevent re-entry
+        try:
+            self._event_bus.track_finished.disconnect(self._on_track_finished)
+        except RuntimeError:
+            return  # Already disconnected, skip
+
         self._remaining -= 1
         self.remaining_changed.emit(self._remaining)
         logger.info(f"Track finished, remaining: {self._remaining}")
 
         if self._remaining <= 0:
-            try:
-                self._event_bus.track_finished.disconnect(self._on_track_finished)
-            except RuntimeError:
-                pass
-
             # In track mode without fade out, prevent auto-next and trigger action immediately
             if not self._config.fade_out:
                 logger.info("Track countdown finished, preventing auto-next and stopping playback")
                 # Prevent AudioEngine from auto-playing next track
                 self._playback_service._engine.set_prevent_auto_next(True)
-                self._trigger_action()
-            else:
-                self._trigger_action()
+            self._trigger_action()
+        else:
+            # Re-connect for next track
+            self._event_bus.track_finished.connect(self._on_track_finished)
 
     def _trigger_action(self):
         """Trigger the configured action."""

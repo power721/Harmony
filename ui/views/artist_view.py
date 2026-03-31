@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import List
 
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QCursor, QMouseEvent, QScreen
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -23,19 +25,17 @@ from PySide6.QtWidgets import (
     QMenu,
     QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QAction, QCursor, QMouseEvent, QScreen
 
-from domain.artist import Artist
 from domain.album import Album
+from domain.artist import Artist
 from domain.track import Track
 from services.library import LibraryService
 from services.metadata import CoverService
 from services.playback import PlaybackService
-from ui.widgets import AlbumCard
-from utils import format_duration
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.widgets import AlbumCard
+from utils import format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class ArtistView(QWidget):
 
     back_clicked = Signal()
     album_clicked = Signal(object)  # Emits Album object
-    play_tracks = Signal(list)  # Emits list of Track objects
+    play_tracks = Signal(list, int)  # Emits (list of Track objects, start_index)
     track_double_clicked = Signal(int)  # Emits track_id
     insert_to_queue = Signal(list)  # Emits list of Track objects
     add_to_queue = Signal(list)  # Emits list of Track objects
@@ -61,11 +61,11 @@ class ArtistView(QWidget):
     download_cover_requested = Signal(object)  # Emits Album object
 
     def __init__(
-        self,
-        library_service: LibraryService,
-        playback_service: PlaybackService = None,
-        cover_service: CoverService = None,
-        parent=None
+            self,
+            library_service: LibraryService,
+            playback_service: PlaybackService = None,
+            cover_service: CoverService = None,
+            parent=None
     ):
         super().__init__(parent)
         self._library = library_service
@@ -910,7 +910,7 @@ class ArtistView(QWidget):
     def _on_play_all(self):
         """Handle play all button click."""
         if self._tracks:
-            self.play_tracks.emit(self._tracks)
+            self.play_tracks.emit(self._tracks, 0)
 
     def _on_shuffle(self):
         """Handle shuffle button click."""
@@ -918,7 +918,7 @@ class ArtistView(QWidget):
             import random
             shuffled = self._tracks.copy()
             random.shuffle(shuffled)
-            self.play_tracks.emit(shuffled)
+            self.play_tracks.emit(shuffled, 0)
 
     def _on_track_double_clicked(self, index):
         """Handle track double click - play from this track."""
@@ -931,9 +931,8 @@ class ArtistView(QWidget):
                 if track.id == track_id:
                     start_index = i
                     break
-            # Play tracks starting from the clicked one
-            tracks_to_play = self._tracks[start_index:]
-            self.play_tracks.emit(tracks_to_play)
+            # Play entire track list starting from the clicked track
+            self.play_tracks.emit(self._tracks, start_index)
 
     def _show_context_menu(self, pos):
         """Show context menu for tracks."""

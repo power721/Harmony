@@ -1,17 +1,19 @@
 import logging
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QPainterPath, QRegion, QKeySequence
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QRadioButton, QButtonGroup, QSpinBox, QComboBox,
-    QCheckBox, QPushButton, QWidget, QGraphicsDropShadowEffect, QListView
+    QCheckBox, QPushButton, QWidget, QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, QTimer, QEvent
-from PySide6.QtGui import QColor, QPainterPath, QRegion, QKeySequence
 
 from services.playback.sleep_timer_service import SleepTimerConfig
-from system.theme import ThemeManager
 from system.i18n import t
+from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
+
 
 class SleepTimerDialog(QDialog):
     """生产级 Sleep Timer 对话框，支持随时打开显示当前计时状态，高 DPI，快捷键，优化 QTimer"""

@@ -2,12 +2,12 @@
 UI module - PySide6 user interface components.
 """
 
+from .dialogs.cloud_login_dialog import CloudLoginDialog
 from .views.cloud import CloudDriveView
 # Views
 from .views.library_view import LibraryView
 from .views.playlist_view import PlaylistView
 from .views.queue_view import QueueView
-from .dialogs.cloud_login_dialog import CloudLoginDialog
 from .widgets.equalizer_widget import EqualizerWidget, EqualizerPreset
 from .widgets.lyrics_widget_pro import LyricsWidget
 # Widgets

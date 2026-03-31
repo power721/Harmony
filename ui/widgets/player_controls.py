@@ -967,7 +967,15 @@ class PlayerControls(QWidget):
             self._position_timer.stop()  # Stop position updates when paused/stopped
 
     def _on_position_changed(self, position_ms: int):
-        """Handle position change."""
+        """Handle position change, throttled to ~100ms intervals."""
+        import time
+        now = time.monotonic()
+        if not hasattr(self, '_last_position_update_time'):
+            self._last_position_update_time = 0
+        if now - self._last_position_update_time < 0.1:
+            return
+        self._last_position_update_time = now
+
         if not self._is_seeking and self._current_duration > 0:
             # Convert position to seconds for display
             position_s = position_ms / 1000
@@ -1017,7 +1025,6 @@ class PlayerControls(QWidget):
             self._album_label.hide()
             self._cover_label.clear()
             # Reset favorite button style
-            self._update_favorite_button_style(False)
             self._update_favorite_button_style(False)
 
     def refresh_ui(self):
