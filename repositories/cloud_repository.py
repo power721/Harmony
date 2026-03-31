@@ -418,29 +418,31 @@ class SqliteCloudRepository(BaseRepository):
         # Delete old cache only for this folder (not the entire account)
         cursor.execute("DELETE FROM cloud_files WHERE account_id = ? AND parent_id = ?", (account_id, parent_id))
 
-        # Insert new files, preserving local_path if it existed
-        for file in files:
-            local_path = existing_paths.get(file.file_id)  # Get existing local_path
-
-            cursor.execute(
-                """
-                INSERT INTO cloud_files
-                (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    account_id,
-                    file.file_id,
-                    file.parent_id,
-                    file.name,
-                    file.file_type,
-                    file.size,
-                    file.mime_type,
-                    file.duration,
-                    file.metadata,
-                    local_path,
-                ),
+        # Insert new files in batch, preserving local_path if it existed
+        file_data = [
+            (
+                account_id,
+                file.file_id,
+                file.parent_id,
+                file.name,
+                file.file_type,
+                file.size,
+                file.mime_type,
+                file.duration,
+                file.metadata,
+                existing_paths.get(file.file_id),  # Preserve local_path
             )
+            for file in files
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO cloud_files
+            (account_id, file_id, parent_id, name, file_type, size, mime_type, duration, metadata, local_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            file_data,
+        )
 
         conn.commit()
         return True

@@ -4,7 +4,7 @@ SQLite implementation of TrackRepository.
 
 import logging
 import sqlite3
-from typing import List, Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from domain.track import Track, TrackId
 from repositories.base_repository import BaseRepository
@@ -53,6 +53,28 @@ class SqliteTrackRepository(BaseRepository):
         if row:
             return self._row_to_track(row)
         return None
+
+    def get_by_paths(self, paths: List[str]) -> Dict[str, Track]:
+        """Get multiple tracks by paths in batch. Returns dict mapping path -> Track."""
+        if not paths:
+            return {}
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(paths))
+        cursor.execute(f"SELECT * FROM tracks WHERE path IN ({placeholders})", paths)
+        rows = cursor.fetchall()
+        return {row["path"]: self._row_to_track(row) for row in rows}
+
+    def get_by_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
+        """Get multiple tracks by cloud file IDs in batch. Returns dict mapping cloud_file_id -> Track."""
+        if not cloud_file_ids:
+            return {}
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(cloud_file_ids))
+        cursor.execute(f"SELECT * FROM tracks WHERE cloud_file_id IN ({placeholders})", cloud_file_ids)
+        rows = cursor.fetchall()
+        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
 
     def get_all(self) -> List[Track]:
         """Get all tracks."""
@@ -802,7 +824,10 @@ class SqliteTrackRepository(BaseRepository):
         cursor.execute("SELECT normalized_name FROM artists")
         known_artists = {row[0] for row in cursor.fetchall() if row[0]}
 
-        count = 0
+        # Collect artist data and track-artist relationships
+        artist_upserts = []
+        track_artist_inserts = []
+
         for track in tracks:
             track_id = track["id"]
             artist_string = track["artist"]
@@ -812,19 +837,44 @@ class SqliteTrackRepository(BaseRepository):
             artist_names = split_artists_aware(artist_string, known_artists)
             for position, artist_name in enumerate(artist_names):
                 normalized = normalize_artist_name(artist_name)
-                cursor.execute("""
-                    INSERT INTO artists (name, normalized_name) VALUES (?, ?)
-                    ON CONFLICT(name) DO UPDATE SET normalized_name = ?
-                """, (artist_name, normalized, normalized))
-                cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
-                artist_row = cursor.fetchone()
-                if artist_row:
-                    artist_id = artist_row[0]
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
-                        VALUES (?, ?, ?)
-                    """, (track_id, artist_id, position))
-            count += 1
+                artist_upserts.append((artist_name, normalized, normalized))
+
+        # Batch upsert artists
+        cursor.executemany(
+            """
+            INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+            ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+            """,
+            artist_upserts,
+        )
+
+        # Build artist name -> ID map
+        cursor.execute("SELECT id, name FROM artists")
+        artist_id_map = {row["name"]: row["id"] for row in cursor.fetchall()}
+
+        # Collect track-artist relationships
+        for track in tracks:
+            track_id = track["id"]
+            artist_string = track["artist"]
+            if not artist_string:
+                continue
+
+            artist_names = split_artists_aware(artist_string, known_artists)
+            for position, artist_name in enumerate(artist_names):
+                artist_id = artist_id_map.get(artist_name)
+                if artist_id:
+                    track_artist_inserts.append((track_id, artist_id, position))
+
+        # Batch insert track-artist relationships
+        cursor.executemany(
+            """
+            INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+            VALUES (?, ?, ?)
+            """,
+            track_artist_inserts,
+        )
+
+        count = len(tracks)
 
         conn.commit()
         logger.info(f"Rebuilt track_artists junction table for {count} tracks")

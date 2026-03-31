@@ -188,18 +188,19 @@ class CacheCleanerService(QObject):
                 "newest_file": None
             }
 
-        # Sort by modification time
-        audio_files.sort(key=lambda f: f.stat().st_mtime)
+        # Cache stat results once per file
+        file_stats = [(f, f.stat()) for f in audio_files]
+        file_stats.sort(key=lambda x: x[1].st_mtime)
 
-        total_size = sum(f.stat().st_size for f in audio_files)
+        total_size = sum(s.st_size for _, s in file_stats)
 
         return {
-            "file_count": len(audio_files),
+            "file_count": len(file_stats),
             "total_size": total_size,
-            "oldest_file": str(audio_files[0]),
-            "oldest_time": audio_files[0].stat().st_mtime,
-            "newest_file": str(audio_files[-1]),
-            "newest_time": audio_files[-1].stat().st_mtime
+            "oldest_file": str(file_stats[0][0]),
+            "oldest_time": file_stats[0][1].st_mtime,
+            "newest_file": str(file_stats[-1][0]),
+            "newest_time": file_stats[-1][1].st_mtime
         }
 
     def should_cleanup(self) -> bool:
@@ -313,9 +314,9 @@ class CacheCleanerService(QObject):
                 if song_mid in protected_mids:
                     continue
 
-                file_size = audio_file.stat().st_size
-                current_size += file_size
-                audio_files.append((audio_file, audio_file.stat().st_mtime, song_mid))
+                stat = audio_file.stat()
+                current_size += stat.st_size
+                audio_files.append((audio_file, stat.st_mtime, stat.st_size, song_mid))
 
         # Check if cleanup is needed
         if current_size <= max_size_bytes:
@@ -327,11 +328,10 @@ class CacheCleanerService(QObject):
 
         # Delete oldest files until size is below threshold
         deleted_files = []
-        for audio_file, mtime, song_mid in audio_files:
+        for audio_file, mtime, file_size, song_mid in audio_files:
             if current_size <= max_size_bytes:
                 break
 
-            file_size = audio_file.stat().st_size
             deleted = self._delete_song_files(cache_dir, song_mid)
             if deleted:
                 deleted_files.extend(deleted)
@@ -360,7 +360,8 @@ class CacheCleanerService(QObject):
                 if song_mid in protected_mids:
                     continue
 
-                audio_files.append((audio_file, audio_file.stat().st_mtime, song_mid))
+                stat = audio_file.stat()
+                audio_files.append((audio_file, stat.st_mtime, song_mid))
 
         # Check if cleanup is needed
         current_count = len(audio_files)

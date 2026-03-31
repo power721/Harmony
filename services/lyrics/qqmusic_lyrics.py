@@ -307,8 +307,7 @@ class QQMusicClient:
         }
 
         try:
-            session = requests.Session()
-            r = session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
             data = r.json()
             lyric = data.get('data', {}).get('lyric')
             if lyric:
@@ -436,8 +435,7 @@ class QQMusicClient:
         }
 
         try:
-            session = requests.Session()
-            r = session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
             data = r.json()
             artists = data.get("data", {}).get("list", [])
             logger.debug(f"Artist search via remote API: {len(artists)} results")
