@@ -395,6 +395,16 @@ class LibraryView(QWidget):
 
         # History list view
         self._history_list_view.track_activated.connect(self._on_history_track_activated)
+        self._history_list_view.play_requested.connect(self._on_history_play_requested)
+        self._history_list_view.insert_to_queue_requested.connect(self._on_history_insert_to_queue)
+        self._history_list_view.add_to_queue_requested.connect(self._on_history_add_to_queue)
+        self._history_list_view.add_to_playlist_requested.connect(self._on_history_add_to_playlist)
+        self._history_list_view.favorites_toggle_requested.connect(self._on_history_favorites_toggle)
+        self._history_list_view.edit_info_requested.connect(self._on_history_edit_info)
+        self._history_list_view.download_cover_requested.connect(self._on_history_download_cover)
+        self._history_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
+        self._history_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
+        self._history_list_view.delete_file_requested.connect(self._on_history_delete_file)
 
         # Connect to player engine signals
         self._player.engine.current_track_changed.connect(
@@ -2121,9 +2131,137 @@ class LibraryView(QWidget):
 
     def _on_history_track_activated(self, track: Track):
         """Handle track activation from history list view."""
-        # Add track to queue and play
         from domain import PlaylistItem
         item = PlaylistItem(track_id=track.id)
-        # TODO:
         self._player.engine.set_playlist([item])
         self._player.engine.play()
+
+    def _on_history_play_requested(self, tracks: list):
+        """Play requested tracks from history list view."""
+        if not tracks:
+            return
+        from domain import PlaylistItem
+        items = [PlaylistItem(track_id=track.id) for track in tracks if track.id]
+        if items:
+            self._player.engine.set_playlist(items)
+            self._player.engine.play()
+
+    def _on_history_insert_to_queue(self, tracks: list):
+        """Insert tracks after current in queue."""
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            self.insert_to_queue.emit(track_ids)
+
+    def _on_history_add_to_queue(self, tracks: list):
+        """Add tracks to queue."""
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            self.add_to_queue.emit(track_ids)
+
+    def _on_history_add_to_playlist(self, tracks: list):
+        """Add tracks to playlist."""
+        from utils.playlist_utils import add_tracks_to_playlist
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            add_tracks_to_playlist(self, self._library_service, track_ids, "[HistoryListView]")
+
+    def _on_history_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Toggle favorites for tracks from history."""
+        bus = EventBus.instance()
+        for track in tracks:
+            if not track.id:
+                continue
+            if all_favorited:
+                self._favorites_service.remove_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, False, is_cloud=False)
+            else:
+                self._favorites_service.add_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+    def _on_history_edit_info(self, track):
+        """Edit media info for a history track."""
+        if not track or not track.id:
+            return
+        dialog = EditMediaInfoDialog([track.id], self._library_service, self)
+        dialog.tracks_updated.connect(self._refresh_tracks_in_table)
+        dialog.exec()
+
+    def _on_history_download_cover(self, track):
+        """Download cover for a history track."""
+        if not track or not track.id:
+            return
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
+            [track], bootstrap.track_repo, bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, self._cover_service, self)
+        dialog.exec()
+
+    def _on_history_open_file_location(self, track):
+        """Open file location for a history track."""
+        if not track or not track.path or not track.path.strip():
+            MessageDialog.warning(self, "Error", t("no_local_file"))
+            return
+        file_path = Path(track.path)
+        if not file_path.exists():
+            MessageDialog.warning(self, "Error", t("file_not_found"))
+            return
+        import platform, subprocess
+        try:
+            system = platform.system()
+            if system == "Windows":
+                subprocess.Popen(["explorer", f"/select,{file_path}"])
+            elif system == "Darwin":
+                subprocess.Popen(["open", "-R", str(file_path)])
+            else:
+                file_managers = {
+                    "nautilus": ["nautilus", "--select", str(file_path)],
+                    "dolphin": ["dolphin", "--select", str(file_path)],
+                    "caja": ["caja", "--select", str(file_path)],
+                    "nemo": ["nemo", str(file_path)],
+                }
+                for fm, cmd in file_managers.items():
+                    if shutil.which(fm):
+                        subprocess.Popen(cmd)
+                        return
+                subprocess.Popen(["xdg-open", str(file_path.parent)])
+        except Exception as e:
+            logger.error(f"Failed to open file location: {e}", exc_info=True)
+            MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _on_history_remove_from_library(self, tracks: list):
+        """Remove tracks from library."""
+        track_ids = [t.id for t in tracks if t.id]
+        if not track_ids:
+            return
+        confirm_message = format_count_message("remove_from_library_confirm", len(track_ids))
+        reply = MessageDialog.question(
+            self, t("remove_from_library"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        removed_count = self._library_service.delete_tracks(track_ids)
+        if removed_count > 0:
+            success_message = format_count_message("remove_from_library_success", removed_count)
+            MessageDialog.information(self, t("remove_from_library"), success_message)
+            self.refresh()
+
+    def _on_history_delete_file(self, tracks: list):
+        """Delete files from disk and library."""
+        if not tracks:
+            return
+        confirm_message = format_count_message("delete_file_confirm", len(tracks))
+        reply = MessageDialog.question(
+            self, t("delete_file"), confirm_message, Yes | No)
+        if reply != Yes:
+            return
+        import os
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if track.path and os.path.exists(track.path):
+                os.remove(track.path)
+            self._library_service.delete_track(track.id)
+        self.refresh()

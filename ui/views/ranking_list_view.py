@@ -15,6 +15,7 @@ from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
+from ui.widgets.context_menus import OnlineTrackContextMenu
 from utils.helpers import format_duration
 
 logger = logging.getLogger(__name__)
@@ -284,15 +285,14 @@ class RankingItemDelegate(QStyledItemDelegate):
                          Qt.AlignVCenter | Qt.AlignRight, duration_text)
 
         # Favorite icon (star)
-        star_x = rect.right() - self._padding - self._star_size
-        star_y = rect.top() + (rect.height() - self._star_size) // 2
-
-        # Use gold for filled star, gray for outline
-        star_color = "#FFD700" if is_favorite else theme.text_secondary  # Gold color
-        star_icon = get_icon(IconName.STAR_FILLED if is_favorite else IconName.STAR_OUTLINE,
-                            star_color)
-        star_pixmap = star_icon.pixmap(self._star_size, self._star_size)
-        painter.drawPixmap(star_x, star_y, star_pixmap)
+        # star_x = rect.right() - self._padding - self._star_size
+        # star_y = rect.top() + (rect.height() - self._star_size) // 2
+        #
+        # star_color = "#ff4444" if is_favorite else theme.text_secondary  # Gold color
+        # star_icon = get_icon(IconName.STAR_FILLED if is_favorite else IconName.STAR_OUTLINE,
+        #                     star_color)
+        # star_pixmap = star_icon.pixmap(self._star_size, self._star_size)
+        # painter.drawPixmap(star_x, star_y, star_pixmap)
 
         painter.restore()
 
@@ -367,6 +367,12 @@ class RankingListView(QWidget):
 
     track_activated = Signal(object)  # OnlineTrack
     favorite_toggled = Signal(object, bool)  # OnlineTrack, is_favorite
+    play_requested = Signal(list)
+    insert_to_queue_requested = Signal(list)
+    add_to_queue_requested = Signal(list)
+    add_to_playlist_requested = Signal(list)
+    add_to_favorites_requested = Signal(list)
+    download_requested = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -374,6 +380,8 @@ class RankingListView(QWidget):
         self._delegate = RankingItemDelegate(self)
         self._setup_ui()
         self._setup_connections()
+        self._context_menu = OnlineTrackContextMenu(self)
+        self._connect_context_menu()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -433,20 +441,49 @@ class RankingListView(QWidget):
 
     def _toggle_favorite(self, track: OnlineTrack, new_state: bool):
         """Toggle favorite status for online track."""
-        # TODO: Implement online track favorite logic
-        # This requires handling cloud_file_id since online tracks don't have track_id
-        logger.info(f"Toggle favorite for online track {track.mid}: {new_state}")
-        pass
+        self.favorite_toggled.emit(track, new_state)
+
+    def set_track_favorite(self, mid: str, is_favorite: bool):
+        """Update favorite status for a specific track and refresh UI."""
+        if is_favorite:
+            self._model._favorite_mids.add(mid)
+        else:
+            self._model._favorite_mids.discard(mid)
+        for i, track in enumerate(self._model._tracks):
+            if track.mid == mid:
+                idx = self._model.index(i)
+                self._model.dataChanged.emit(idx, idx, [RankingTrackModel.IsFavoriteRole])
+                break
+
+    def _connect_context_menu(self):
+        self._context_menu.play.connect(self.play_requested)
+        self._context_menu.insert_to_queue.connect(self.insert_to_queue_requested)
+        self._context_menu.add_to_queue.connect(self.add_to_queue_requested)
+        self._context_menu.add_to_playlist.connect(self.add_to_playlist_requested)
+        self._context_menu.add_to_favorites.connect(self.add_to_favorites_requested)
+        self._context_menu.download.connect(self.download_requested)
 
     def _show_context_menu(self, pos):
         """Show context menu."""
-        # TODO: Implement context menu
-        pass
+        indexes = self._list_view.selectedIndexes()
+        if not indexes:
+            return
+
+        rows = sorted(set(idx.row() for idx in indexes))
+        tracks = [self._model.get_track_at(r) for r in rows]
+        tracks = [t for t in tracks if t is not None]
+
+        if not tracks:
+            return
+
+        self._context_menu.show_menu(tracks, parent_widget=self)
 
     def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
         """Handle favorite changed event from EventBus."""
-        # TODO: Update favorites for online tracks
-        pass
+        if not is_cloud:
+            return
+        # item_id is cloud_file_id (mid) for cloud tracks
+        self.set_track_favorite(str(item_id), is_favorite)
 
     def _on_cover_ready(self, cache_key: str, cover_path: str, qimage):
         """Handle cover loaded from background worker."""

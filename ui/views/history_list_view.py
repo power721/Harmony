@@ -15,6 +15,7 @@ from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from services.library.favorites_service import FavoritesService
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
+from ui.widgets.context_menus import LocalTrackContextMenu
 from utils.helpers import format_relative_time
 
 logger = logging.getLogger(__name__)
@@ -315,7 +316,7 @@ class HistoryItemDelegate(QStyledItemDelegate):
         star_y = rect.top() + (rect.height() - self._star_size) // 2
 
         # Use gold for filled star, gray for outline
-        star_color = "#FFD700" if is_favorite else theme.text_secondary  # Gold color
+        star_color = "#ff4444" if is_favorite else theme.text_secondary  # Gold color
         star_icon = get_icon(IconName.STAR_FILLED if is_favorite else IconName.STAR_OUTLINE,
                             star_color)
         star_pixmap = star_icon.pixmap(self._star_size, self._star_size)
@@ -399,6 +400,16 @@ class HistoryListView(QWidget):
 
     track_activated = Signal(object)  # Track
     favorite_toggled = Signal(object, bool)  # Track, is_favorite
+    play_requested = Signal(list)
+    insert_to_queue_requested = Signal(list)
+    add_to_queue_requested = Signal(list)
+    add_to_playlist_requested = Signal(list)
+    favorites_toggle_requested = Signal(list, bool)  # (tracks, all_favorited)
+    edit_info_requested = Signal(object)
+    download_cover_requested = Signal(object)
+    open_file_location_requested = Signal(object)
+    remove_from_library_requested = Signal(list)
+    delete_file_requested = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -406,6 +417,8 @@ class HistoryListView(QWidget):
         self._delegate = HistoryItemDelegate(self)
         self._setup_ui()
         self._setup_connections()
+        self._context_menu = LocalTrackContextMenu(self)
+        self._connect_context_menu()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -482,10 +495,36 @@ class HistoryListView(QWidget):
             else:
                 service.remove_favorite(track_id=track.id)
 
+    def _connect_context_menu(self):
+        self._context_menu.play.connect(self.play_requested)
+        self._context_menu.insert_to_queue.connect(self.insert_to_queue_requested)
+        self._context_menu.add_to_queue.connect(self.add_to_queue_requested)
+        self._context_menu.add_to_playlist.connect(self.add_to_playlist_requested)
+        self._context_menu.favorite_toggled.connect(self.favorites_toggle_requested)
+        self._context_menu.edit_info.connect(self.edit_info_requested)
+        self._context_menu.download_cover.connect(self.download_cover_requested)
+        self._context_menu.open_file_location.connect(self.open_file_location_requested)
+        self._context_menu.remove_from_library.connect(self.remove_from_library_requested)
+        self._context_menu.delete_file.connect(self.delete_file_requested)
+
     def _show_context_menu(self, pos):
         """Show context menu."""
-        # TODO: Implement context menu with play, add to playlist, etc.
-        pass
+        indexes = self._list_view.selectedIndexes()
+        if not indexes:
+            return
+
+        rows = sorted(set(idx.row() for idx in indexes))
+        tracks = [self._model.get_track_at(r) for r in rows]
+        tracks = [t for t in tracks if t is not None]
+
+        if not tracks:
+            return
+
+        self._context_menu.show_menu(
+            tracks,
+            favorite_ids=self._model._favorite_ids,
+            parent_widget=self
+        )
 
     def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
         """Handle favorite changed event from EventBus."""

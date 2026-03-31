@@ -1123,6 +1123,13 @@ class OnlineMusicView(QWidget):
 
         self._ranking_list_view = RankingListView()
         self._ranking_list_view.track_activated.connect(self._on_ranking_track_activated)
+        self._ranking_list_view.play_requested.connect(self._play_selected_tracks)
+        self._ranking_list_view.insert_to_queue_requested.connect(self._insert_selected_to_queue)
+        self._ranking_list_view.add_to_queue_requested.connect(self._add_selected_to_queue)
+        self._ranking_list_view.add_to_playlist_requested.connect(self._add_selected_to_playlist)
+        self._ranking_list_view.add_to_favorites_requested.connect(self._add_selected_to_favorites)
+        self._ranking_list_view.download_requested.connect(self._download_selected_tracks)
+        self._ranking_list_view.favorite_toggled.connect(self._on_ranking_favorite_toggled)
         self._ranking_stacked_widget.addWidget(self._ranking_list_view)
 
         right_layout.addWidget(self._ranking_stacked_widget)
@@ -2888,6 +2895,9 @@ class OnlineMusicView(QWidget):
                 if self._db:
                     self._db.add_favorite(track_id=track_id)
                     added_count += 1
+                    # Update ranking view UI if track is visible
+                    if hasattr(self, '_ranking_list_view'):
+                        self._ranking_list_view.set_track_favorite(track.mid, True)
 
         if added_count > 0:
             logger.info(f"[OnlineMusicView] Added {added_count} tracks to favorites")
@@ -3109,6 +3119,26 @@ class OnlineMusicView(QWidget):
         """Handle track activation from ranking list view."""
         # TODO: Implement online track playback
         logger.info(f"Ranking track activated: {track.title}")
+
+    def _on_ranking_favorite_toggled(self, track, is_favorite: bool):
+        """Handle favorite toggle from ranking list view star click."""
+        if not track:
+            return
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+
+        if is_favorite:
+            # Add to library then to favorites
+            track_id = self._add_online_track_to_library(track)
+            if track_id and self._db:
+                self._db.add_favorite(track_id=track_id)
+                self._ranking_list_view.set_track_favorite(track.mid, True)
+        else:
+            # Find track in library and remove from favorites
+            library_track = bootstrap.library_service.get_track_by_cloud_file_id(track.mid)
+            if library_track:
+                self._db.remove_favorite(track_id=library_track.id)
+                self._ranking_list_view.set_track_favorite(track.mid, False)
 
 
     def refresh_ui(self):
