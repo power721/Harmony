@@ -537,7 +537,6 @@ class MainWindow(QMainWindow):
 
         # Artist view connections
         self._artist_view.play_tracks.connect(self._play_tracks)
-        self._artist_view.track_double_clicked.connect(self._play_track)
         self._artist_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._artist_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._artist_view.add_to_playlist.connect(self._add_tracks_to_playlist)
@@ -547,7 +546,6 @@ class MainWindow(QMainWindow):
 
         # Album view connections
         self._album_view.play_tracks.connect(self._play_tracks)
-        self._album_view.track_double_clicked.connect(self._play_track)
         self._album_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._album_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._album_view.add_to_playlist.connect(self._add_tracks_to_playlist)
@@ -565,7 +563,6 @@ class MainWindow(QMainWindow):
 
         # Genre view connections
         self._genre_view.play_tracks.connect(self._play_tracks)
-        self._genre_view.track_double_clicked.connect(self._play_track)
         self._genre_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._genre_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._genre_view.add_to_playlist.connect(self._add_tracks_to_playlist)
@@ -976,8 +973,8 @@ class MainWindow(QMainWindow):
         dialog.album_renamed.connect(on_album_renamed)
         dialog.exec()
 
-    def _play_tracks(self, tracks):
-        """Play a list of tracks."""
+    def _play_tracks(self, tracks, start_index=0):
+        """Play a list of tracks starting from the given index."""
         if tracks:
             from domain.playlist_item import PlaylistItem
             from domain.track import TrackSource
@@ -995,7 +992,13 @@ class MainWindow(QMainWindow):
             if items:
                 self._playback.engine.clear_playlist()
                 self._playback.engine.load_playlist_items(items)
-                self._playback.engine.play_at(0)
+
+                # Handle shuffle mode
+                if self._playback.engine.is_shuffle_mode() and 0 <= start_index < len(items):
+                    self._playback.engine.shuffle_and_play(items[start_index])
+                    self._playback.engine.play_at(0)
+                else:
+                    self._playback.engine.play_at(min(start_index, len(items) - 1))
 
     def _add_music(self):
         """Add music to the library."""

@@ -53,7 +53,7 @@ class ArtistView(QWidget):
 
     back_clicked = Signal()
     album_clicked = Signal(object)  # Emits Album object
-    play_tracks = Signal(list)  # Emits list of Track objects
+    play_tracks = Signal(list, int)  # Emits (list of Track objects, start_index)
     track_double_clicked = Signal(int)  # Emits track_id
     insert_to_queue = Signal(list)  # Emits list of Track objects
     add_to_queue = Signal(list)  # Emits list of Track objects
@@ -910,7 +910,7 @@ class ArtistView(QWidget):
     def _on_play_all(self):
         """Handle play all button click."""
         if self._tracks:
-            self.play_tracks.emit(self._tracks)
+            self.play_tracks.emit(self._tracks, 0)
 
     def _on_shuffle(self):
         """Handle shuffle button click."""
@@ -918,7 +918,7 @@ class ArtistView(QWidget):
             import random
             shuffled = self._tracks.copy()
             random.shuffle(shuffled)
-            self.play_tracks.emit(shuffled)
+            self.play_tracks.emit(shuffled, 0)
 
     def _on_track_double_clicked(self, index):
         """Handle track double click - play from this track."""
@@ -931,9 +931,8 @@ class ArtistView(QWidget):
                 if track.id == track_id:
                     start_index = i
                     break
-            # Play tracks starting from the clicked one
-            tracks_to_play = self._tracks[start_index:]
-            self.play_tracks.emit(tracks_to_play)
+            # Play entire track list starting from the clicked track
+            self.play_tracks.emit(self._tracks, start_index)
 
     def _show_context_menu(self, pos):
         """Show context menu for tracks."""

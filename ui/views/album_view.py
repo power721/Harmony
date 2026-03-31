@@ -43,7 +43,7 @@ class AlbumView(QWidget):
     """
 
     back_clicked = Signal()
-    play_tracks = Signal(list)  # Emits list of Track objects
+    play_tracks = Signal(list, int)  # Emits (list of Track objects, start_index)
     track_double_clicked = Signal(int)  # Emits track_id
     insert_to_queue = Signal(list)  # Emits list of Track objects
     add_to_queue = Signal(list)  # Emits list of Track objects
@@ -477,7 +477,7 @@ class AlbumView(QWidget):
         self._tracks_list.load_tracks(self._tracks, favorite_ids)
 
     def _on_track_activated(self, track):
-        """Handle track activation - play from this track."""
+        """Handle track activation - play entire album from this track."""
         if track and self._tracks:
             # Find the index of the clicked track
             start_index = 0
@@ -485,12 +485,11 @@ class AlbumView(QWidget):
                 if t.id == track.id:
                     start_index = i
                     break
-            # Play tracks starting from the clicked one
-            tracks_to_play = self._tracks[start_index:]
-            self.play_tracks.emit(tracks_to_play)
+            # Play entire album starting from the clicked track
+            self.play_tracks.emit(self._tracks, start_index)
 
     def _on_play_requested(self, selected_tracks: list):
-        """Handle play requested from context menu - play album from first selected track."""
+        """Handle play requested from context menu - play full album from first selected track."""
         if not selected_tracks or not self._tracks:
             return
         # Find the index of the first selected track
@@ -500,14 +499,13 @@ class AlbumView(QWidget):
             if t.id == first_track.id:
                 start_index = i
                 break
-        # Play album starting from the selected track
-        tracks_to_play = self._tracks[start_index:]
-        self.play_tracks.emit(tracks_to_play)
+        # Play entire album starting from the first selected track
+        self.play_tracks.emit(self._tracks, start_index)
 
     def _on_play_all(self):
         """Handle play all button click."""
         if self._tracks:
-            self.play_tracks.emit(self._tracks)
+            self.play_tracks.emit(self._tracks, 0)
 
     def _on_shuffle(self):
         """Handle shuffle button click."""
@@ -515,7 +513,7 @@ class AlbumView(QWidget):
             import random
             shuffled = self._tracks.copy()
             random.shuffle(shuffled)
-            self.play_tracks.emit(shuffled)
+            self.play_tracks.emit(shuffled, 0)
 
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
