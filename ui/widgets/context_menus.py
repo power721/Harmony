@@ -108,10 +108,10 @@ class OnlineTrackContextMenu(QObject):
     insert_to_queue = Signal(list)
     add_to_queue = Signal(list)
     add_to_playlist = Signal(list)
-    add_to_favorites = Signal(list)
+    favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
     download = Signal(list)
 
-    def show_menu(self, tracks: list, parent_widget=None):
+    def show_menu(self, tracks: list, favorite_mids: set = None, parent_widget=None):
         from system.theme import ThemeManager
 
         if not tracks:
@@ -131,8 +131,18 @@ class OnlineTrackContextMenu(QObject):
 
         menu.addSeparator()
 
-        a = menu.addAction(t("add_to_favorites"))
-        a.triggered.connect(lambda: self.add_to_favorites.emit(tracks))
+        all_favorited = False
+        if favorite_mids:
+            all_favorited = all(
+                getattr(track, 'mid', None) and track.mid in favorite_mids
+                for track in tracks
+            )
+
+        if all_favorited:
+            a = menu.addAction(t("remove_from_favorites"))
+        else:
+            a = menu.addAction(t("add_to_favorites"))
+        a.triggered.connect(lambda: self.favorite_toggled.emit(tracks, all_favorited))
 
         a = menu.addAction(t("add_to_playlist"))
         a.triggered.connect(lambda: self.add_to_playlist.emit(tracks))

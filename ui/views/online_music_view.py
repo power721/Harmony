@@ -1127,7 +1127,7 @@ class OnlineMusicView(QWidget):
         self._ranking_list_view.insert_to_queue_requested.connect(self._insert_selected_to_queue)
         self._ranking_list_view.add_to_queue_requested.connect(self._add_selected_to_queue)
         self._ranking_list_view.add_to_playlist_requested.connect(self._add_selected_to_playlist)
-        self._ranking_list_view.add_to_favorites_requested.connect(self._add_selected_to_favorites)
+        self._ranking_list_view.favorites_toggle_requested.connect(self._on_ranking_favorites_toggle)
         self._ranking_list_view.download_requested.connect(self._download_selected_tracks)
         self._ranking_list_view.favorite_toggled.connect(self._on_ranking_favorite_toggled)
         self._ranking_stacked_widget.addWidget(self._ranking_list_view)
@@ -3128,17 +3128,20 @@ class OnlineMusicView(QWidget):
         bootstrap = Bootstrap.instance()
 
         if is_favorite:
-            # Add to library then to favorites
             track_id = self._add_online_track_to_library(track)
             if track_id and self._db:
                 self._db.add_favorite(track_id=track_id)
                 self._ranking_list_view.set_track_favorite(track.mid, True)
         else:
-            # Find track in library and remove from favorites
             library_track = bootstrap.library_service.get_track_by_cloud_file_id(track.mid)
             if library_track:
                 self._db.remove_favorite(track_id=library_track.id)
                 self._ranking_list_view.set_track_favorite(track.mid, False)
+
+    def _on_ranking_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Handle favorite toggle from ranking list view context menu."""
+        for track in tracks:
+            self._on_ranking_favorite_toggled(track, not all_favorited)
 
 
     def refresh_ui(self):

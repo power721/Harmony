@@ -371,7 +371,7 @@ class RankingListView(QWidget):
     insert_to_queue_requested = Signal(list)
     add_to_queue_requested = Signal(list)
     add_to_playlist_requested = Signal(list)
-    add_to_favorites_requested = Signal(list)
+    favorites_toggle_requested = Signal(list, bool)  # (tracks, all_favorited)
     download_requested = Signal(list)
 
     def __init__(self, parent=None):
@@ -460,7 +460,7 @@ class RankingListView(QWidget):
         self._context_menu.insert_to_queue.connect(self.insert_to_queue_requested)
         self._context_menu.add_to_queue.connect(self.add_to_queue_requested)
         self._context_menu.add_to_playlist.connect(self.add_to_playlist_requested)
-        self._context_menu.add_to_favorites.connect(self.add_to_favorites_requested)
+        self._context_menu.favorite_toggled.connect(self.favorites_toggle_requested)
         self._context_menu.download.connect(self.download_requested)
 
     def _show_context_menu(self, pos):
@@ -476,7 +476,7 @@ class RankingListView(QWidget):
         if not tracks:
             return
 
-        self._context_menu.show_menu(tracks, parent_widget=self)
+        self._context_menu.show_menu(tracks, favorite_mids=self._model._favorite_mids, parent_widget=self)
 
     def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
         """Handle favorite changed event from EventBus."""
