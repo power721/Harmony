@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect,
 )
+from shiboken6.Shiboken import isValid
 
 from system.i18n import t
 from system.theme import ThemeManager
@@ -301,12 +302,13 @@ class BaseRenameDialog(QDialog):
             self.accept()
 
         if self._worker:
-            self._worker.deleteLater()
+            if isValid(self._worker):
+                self._worker.deleteLater()
             self._worker = None
 
     def closeEvent(self, event):
         """Handle dialog close."""
-        if self._worker and self._worker.isRunning():
+        if self._worker and isValid(self._worker) and self._worker.isRunning():
             self._worker.wait()
         super().closeEvent(event)
 

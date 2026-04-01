@@ -219,16 +219,14 @@ class AlbumCard(QWidget):
         """Download cover image asynchronously with disk caching."""
         from concurrent.futures import ThreadPoolExecutor
         from infrastructure.cache import ImageCache
-        import urllib.request
+        from infrastructure.network import HttpClient
 
         try:
+            http_client = HttpClient()
+
             def download():
                 try:
-                    req = urllib.request.Request(url, headers={
-                        'User-Agent': 'Mozilla/5.0',
-                    })
-                    response = urllib.request.urlopen(req, timeout=5)
-                    return response.read()
+                    return http_client.get_content(url, timeout=5)
                 except Exception as e:
                     logger.warning(f"Failed to download cover: {e}")
                     return None

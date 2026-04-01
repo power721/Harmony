@@ -174,8 +174,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
         """Download cover image asynchronously with disk caching."""
         from concurrent.futures import ThreadPoolExecutor
         from infrastructure.cache import ImageCache
-        import urllib.request
-        io_modules = []
+        from infrastructure.network import HttpClient
 
         try:
             # Check disk cache first
@@ -184,19 +183,13 @@ class OnlineItemDelegate(QStyledItemDelegate):
                 self._load_cached_cover(url, cached_data)
                 return
 
+            http_client = HttpClient()
+
             def download():
                 try:
-                    # Create request with headers
-                    req = urllib.request.Request(
-                        url,
-                        headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Referer': 'https://y.qq.com/'
-                        }
-                    )
-                    response = urllib.request.urlopen(req, timeout=5)
-                    image_data = response.read()
-                    return image_data
+                    return http_client.get_content(url, timeout=5, headers={
+                        'Referer': 'https://y.qq.com/'
+                    })
                 except Exception as e:
                     logger.warning(f"Failed to download cover from {url}: {e}")
                     return None
