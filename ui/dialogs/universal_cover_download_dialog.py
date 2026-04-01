@@ -377,6 +377,7 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         if self._results_list.count() > 0:
             self._results_list.setCurrentRow(0)
+            self._on_result_selected(self._results_list.item(0))
 
         self._status_label.setText(f"{t('found')} {len(results)} {t('results')}")
 
