@@ -1986,13 +1986,15 @@ class OnlineMusicView(QWidget):
                         if 'basic' in playlist_info:
                             basic = playlist_info.get('basic', {})
                             if isinstance(basic, dict):
-                                play_count = basic.get('listennum') or basic.get('play_count') or 0
+                                play_count = (basic.get('play_cnt') or basic.get('listennum') or
+                                              basic.get('play_count') or 0)
                         if not play_count and 'content' in playlist_info:
                             content = playlist_info.get('content', {})
                             if isinstance(content, dict):
-                                play_count = content.get('listennum') or content.get('play_count') or 0
+                                play_count = (content.get('play_cnt') or content.get('listennum') or
+                                              content.get('play_count') or 0)
                         if not play_count:
-                            play_count = (playlist_info.get('listennum') or
+                            play_count = (playlist_info.get('play_cnt') or playlist_info.get('listennum') or
                                           playlist_info.get('play_count') or 0)
 
                         if playlist_id:

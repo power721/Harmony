@@ -1116,6 +1116,7 @@ class OnlineDetailView(QWidget):
             self._secondary_label.setText(t("qqmusic_login_required"))
             return
 
+        print(detail_type, data)
         try:
             if detail_type == "artist":
                 self._display_artist_detail(data)
