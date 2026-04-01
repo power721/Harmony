@@ -97,7 +97,7 @@ class AlbumDelegate(QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._cover_cache = OrderedDict()  # LRU cache for loaded covers
-        self._cache_max_size = 200
+        self._cache_max_size = 500
         self._pending_downloads = set()  # Track URLs being downloaded
         self._default_cover = self._create_default_cover()
 

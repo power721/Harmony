@@ -439,6 +439,7 @@ class OnlineDetailView(QWidget):
     _STYLE_SECONDARY_LABEL = "color: %text_secondary%; font-size: 12px;"
     _STYLE_EXTRA_LABEL = "color: %text_secondary%; font-size: 11px;"
     _STYLE_STATS_LABEL = "color: %highlight%; font-size: 12px;"
+    _STYLE_DESC_LABEL = "color: %text_secondary%; font-size: 11px;"
     _STYLE_PAGE_LABEL = "color: %text_secondary%; padding: 0 10px;"
     _STYLE_ALBUMS_SECTION = "background-color: %background_alt%;"
     _STYLE_ALBUMS_TITLE = """
@@ -636,6 +637,7 @@ class OnlineDetailView(QWidget):
         self._total_pages = 1
         self._total_songs = 0
         self._page_size = 30  # QQ Music API max per page
+        self._full_description = ""  # Full description for dialog
 
         self._setup_ui()
 
@@ -724,6 +726,13 @@ class OnlineDetailView(QWidget):
         # Stats
         self._stats_label = QLabel()
         info_layout.addWidget(self._stats_label)
+
+        # Description (truncated, click to show full)
+        self._desc_label = QLabel()
+        self._desc_label.setWordWrap(True)
+        self._desc_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._desc_label.mousePressEvent = self._on_desc_clicked
+        info_layout.addWidget(self._desc_label)
 
         info_layout.addStretch()
         self._info_layout.addWidget(info_widget, 1)
@@ -946,6 +955,7 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setStyleSheet(tm.get_qss(self._STYLE_SECONDARY_LABEL))
         self._extra_label.setStyleSheet(tm.get_qss(self._STYLE_EXTRA_LABEL))
         self._stats_label.setStyleSheet(tm.get_qss(self._STYLE_STATS_LABEL))
+        self._desc_label.setStyleSheet(tm.get_qss(self._STYLE_DESC_LABEL))
 
         # Page label
         self._page_label.setStyleSheet(tm.get_qss(self._STYLE_PAGE_LABEL))
@@ -987,6 +997,7 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setText("")
         self._extra_label.setText("")
         self._stats_label.setText("")
+        self._set_description("")
 
         # Show albums section for artist
         self._albums_section.show()
@@ -1005,6 +1016,7 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setText(singer_name)
         self._extra_label.setText("")
         self._stats_label.setText("")
+        self._set_description("")
 
         # Hide albums section for album detail
         self._albums_section.hide()
@@ -1023,6 +1035,7 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setText(creator)
         self._extra_label.setText("")
         self._stats_label.setText("")
+        self._set_description("")
 
         # Hide albums section for playlist detail
         self._albums_section.hide()
@@ -1049,6 +1062,7 @@ class OnlineDetailView(QWidget):
         self._secondary_label.setText("")
         self._extra_label.setText("")
         self._stats_label.setText("")
+        self._set_description("")
 
         # Hide albums section
         self._albums_section.hide()
@@ -1116,7 +1130,6 @@ class OnlineDetailView(QWidget):
             self._secondary_label.setText(t("qqmusic_login_required"))
             return
 
-        print(detail_type, data)
         try:
             if detail_type == "artist":
                 self._display_artist_detail(data)
@@ -1127,11 +1140,38 @@ class OnlineDetailView(QWidget):
         except Exception as e:
             logger.error(f"Failed to display detail: {e}", exc_info=True)
 
+    def _set_description(self, text: str):
+        """Display truncated description. Click to show full text in dialog."""
+        if not text or not text.strip():
+            self._full_description = ""
+            self._desc_label.setText("")
+            self._desc_label.setVisible(False)
+            return
+        self._full_description = text
+        text = text.replace("\n", " ")
+        max_len = 100
+        if len(text) > max_len:
+            self._desc_label.setText(f"{text[:max_len]}...")
+        else:
+            self._desc_label.setText(text)
+        self._desc_label.setVisible(True)
+
+    def _on_desc_clicked(self, event):
+        """Show full description in a dialog."""
+        if not self._full_description:
+            return
+        MessageDialog.information(
+            self.window(),
+            self._name_label.text() or t("view_details"),
+            self._full_description,
+        )
+
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
         self._extra_label.setText("")
+        self._set_description(data.get("desc", ""))
 
         # Load artist cover
         avatar_url = data.get("avatar", "")
@@ -1374,6 +1414,9 @@ class OnlineDetailView(QWidget):
             extra_parts.append(data.get("album_type", ""))
         self._extra_label.setText(" · ".join(extra_parts))
 
+        # Description
+        self._set_description(data.get("description", ""))
+
         # Load album cover
         cover_url = data.get("cover_url", "")
         if not cover_url:
@@ -1411,6 +1454,9 @@ class OnlineDetailView(QWidget):
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("creator", ""))
         self._extra_label.setText("")
+
+        # Description
+        self._set_description(data.get("description", ""))
 
         # Load playlist cover
         cover_url = data.get("cover_url", "") or data.get("cover", "")

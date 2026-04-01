@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QLabel,
     QPushButton, QGraphicsDropShadowEffect, QWidget,
+    QScrollArea,
 )
 # Re-export QMessageBox constants so callers can keep using QMessageBox.Yes etc.
 from PySide6.QtWidgets import QMessageBox as _QMB
@@ -45,6 +46,11 @@ class MessageDialog(QDialog):
         QLabel#msgText {
             color: %text_secondary%;
             font-size: 13px;
+            background-color: transparent;
+        }
+        QScrollArea {
+            background-color: transparent;
+            border: none;
         }
         QPushButton#msgBtn {
             background-color: %background_hover%;
@@ -86,7 +92,7 @@ class MessageDialog(QDialog):
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setMinimumSize(420, 160)
+        self.setMinimumWidth(420)
         self.setMaximumWidth(520)
 
         self._setup_shadow()
@@ -130,11 +136,17 @@ class MessageDialog(QDialog):
 
         layout.addLayout(title_row)
 
-        # Message text
+        # Message text in scroll area
         self._text_label = QLabel()
         self._text_label.setObjectName("msgText")
         self._text_label.setWordWrap(True)
-        layout.addWidget(self._text_label)
+
+        scroll = QScrollArea()
+        scroll.setWidget(self._text_label)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setMaximumHeight(400)
+        layout.addWidget(scroll)
 
         layout.addStretch()
 
