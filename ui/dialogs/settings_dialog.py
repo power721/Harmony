@@ -585,6 +585,24 @@ class GeneralSettingsDialog(QDialog):
         album_covers_group.setLayout(album_covers_section)
         covers_layout.addWidget(album_covers_group)
 
+        # Fix album covers section
+        fix_covers_group = QGroupBox(t("fix_album_covers"))
+        fix_covers_section = QVBoxLayout()
+        fix_covers_section.setSpacing(8)
+
+        fix_covers_hint = QLabel(t("fix_album_covers_hint"))
+        fix_covers_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        fix_covers_hint.setWordWrap(True)
+        fix_covers_section.addWidget(fix_covers_hint)
+
+        self._fix_album_covers_btn = QPushButton(t("fix_album_covers_button"))
+        self._fix_album_covers_btn.setCursor(Qt.PointingHandCursor)
+        self._fix_album_covers_btn.clicked.connect(self._fix_album_covers)
+        fix_covers_section.addWidget(self._fix_album_covers_btn)
+
+        fix_covers_group.setLayout(fix_covers_section)
+        covers_layout.addWidget(fix_covers_group)
+
         covers_layout.addStretch()
 
         # Repair Tab
@@ -1394,7 +1412,9 @@ class GeneralSettingsDialog(QDialog):
         if missing_only:
             albums = [
                 a for a in albums
-                if not a.cover_path or not Path(a.cover_path).exists()
+                if not a.cover_path or (
+                    not a.cover_path.startswith("http") and not Path(a.cover_path).exists()
+                )
             ]
 
         if not albums:
@@ -1439,6 +1459,65 @@ class GeneralSettingsDialog(QDialog):
 
         progress.show()
         worker.start()
+
+    def _fix_album_covers(self):
+        """Fix album covers by finding tracks with covers for albums without covers."""
+        from app.bootstrap import Bootstrap
+        from ui.dialogs.progress_dialog import ProgressDialog
+
+        bootstrap = Bootstrap.instance()
+        library_service = bootstrap.library_service
+
+        # Get albums without covers
+        albums = library_service.get_albums_without_cover()
+        total = len(albums)
+
+        if total == 0:
+            MessageDialog.information(self, t("fix_album_covers"), t("fix_album_covers_no_missing"))
+            return
+
+        # Confirm with user
+        reply = MessageDialog.question(
+            self, t("fix_album_covers"),
+            t("fix_album_covers_confirm").format(count=total),
+            Yes | No,
+            No
+        )
+
+        if reply != Yes:
+            return
+
+        self._fix_album_covers_btn.setEnabled(False)
+
+        progress = ProgressDialog(
+            t("fix_album_covers"),
+            t("fix_album_covers_progress"),
+            "",
+            0, 0, self  # Indeterminate progress
+        )
+        progress.show()
+
+        try:
+            result = library_service.fix_album_covers()
+            progress.close()
+
+            message = t("fix_album_covers_success").format(
+                fixed=result['fixed'],
+                total=result['total']
+            )
+            MessageDialog.information(self, t("fix_album_covers"), message)
+
+            # Update status and notify UI
+            self._update_covers_status()
+            from system.event_bus import EventBus
+            EventBus.instance().cover_updated.emit(None, True)
+
+        except Exception as e:
+            progress.close()
+            logger.error(f"Error fixing album covers: {e}", exc_info=True)
+            MessageDialog.critical(self, t("fix_album_covers"), t("fix_album_covers_failed"))
+        finally:
+            self._fix_album_covers_btn.setEnabled(True)
 
     def _rebuild_artists(self):
         """Rebuild artists table from tracks."""

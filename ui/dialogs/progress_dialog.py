@@ -77,6 +77,11 @@ class ProgressDialog(QDialog):
 
         self._setup_shadow()
         self._setup_ui(title, label_text, cancel_text)
+
+        # Hide cancel button if no cancel text provided
+        if not cancel_text:
+            self._cancel_button.hide()
+
         ThemeManager.instance().register_widget(self)
 
     def _setup_shadow(self):

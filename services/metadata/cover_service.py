@@ -271,7 +271,7 @@ class CoverService:
                 logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
                 return None
 
-            logger.debug(f"[CoverService] Got cover URL: {cover_url}")
+            logger.debug(f"[CoverService] Got cover URL for song_mid={song_mid}, album_mid={album_mid}: {cover_url}")
 
             # 同一个专辑的歌曲封面基本一样，但是每次都要get_qqmusic_cover_url
             cache_key = hashlib.md5(cover_url.encode()).hexdigest()

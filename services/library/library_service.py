@@ -432,6 +432,10 @@ class LibraryService:
         """Get all albums in the library."""
         return self._track_repo.get_albums()
 
+    def get_albums_without_cover(self) -> List[Album]:
+        """Get all albums without covers."""
+        return self._album_repo.get_albums_without_cover()
+
     def get_album_tracks(self, album_name: str, artist: str = None) -> List[Track]:
         """Get all tracks for a specific album."""
         return self._track_repo.get_album_tracks(album_name, artist)
@@ -676,3 +680,39 @@ class LibraryService:
             True if updated successfully
         """
         return self._album_repo.update_cover_path(album_name, artist, cover_path)
+
+    def fix_album_covers(self) -> dict:
+        """
+        Fix album covers by finding tracks with covers for albums without covers.
+
+        For each album without a cover, finds the first track with a cover
+        and sets that as the album cover.
+
+        Returns:
+            Dict with 'fixed' count (albums fixed) and 'total' count (albums without covers)
+        """
+        # Get albums without covers
+        albums = self._album_repo.get_albums_without_cover()
+        total = len(albums)
+        fixed = 0
+
+        for album in albums:
+            # Get tracks for this album
+            tracks = self._track_repo.get_album_tracks(album.name, album.artist)
+            logger.info(f"{album.name} {album.artist} - {len(tracks)}")
+
+            # Find first track with a cover (local or online URL)
+            for track in tracks:
+                logger.info(f"Track {track.id} - {track.cover_path}")
+                if track.cover_path:
+                    # Update album cover
+                    logger.info(f"{album.name} {album.artist} - {track.title} {track.cover_path}")
+                    if self._album_repo.update_cover_path(album.name, album.artist, track.cover_path):
+                        fixed += 1
+                        logger.info(f"Fixed cover for album: {album.artist} - {album.name}")
+                    break
+
+        return {
+            'fixed': fixed,
+            'total': total
+        }

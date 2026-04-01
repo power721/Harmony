@@ -637,5 +637,13 @@
     "welcome_subtitle": "Your personal music player",
     "welcome_description": "Get started by adding your music folder. Harmony will scan it and organize your library automatically.",
     "add_music_folder": "Add Music Folder",
-    "skip": "Skip"
+    "skip": "Skip",
+    "fix_album_covers": "Fix Album Covers",
+    "fix_album_covers_hint": "Find the first track with a cover for albums without covers and set it as the album cover.",
+    "fix_album_covers_button": "Fix Album Covers",
+    "fix_album_covers_confirm": "Found {count} albums without covers. Set album covers for them?",
+    "fix_album_covers_progress": "Fixing album covers...",
+    "fix_album_covers_success": "Done! Fixed {fixed} / {total} albums.",
+    "fix_album_covers_no_missing": "All albums already have covers.",
+    "fix_album_covers_failed": "Failed to fix album covers."
 }

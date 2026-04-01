@@ -179,7 +179,7 @@ class SqliteAlbumRepository(BaseRepository):
     def refresh(self) -> bool:
         """
         Refresh the albums table from tracks table.
-        Preserves existing cover_path for albums that already have one.
+        Updates cover_path from tracks table for each album.
 
         Returns:
             True if successful
@@ -187,35 +187,28 @@ class SqliteAlbumRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Get existing cover paths
-        cursor.execute("""
-            SELECT name, artist, cover_path FROM albums
-        """)
-        existing_covers = {f"{row['name']}|{row['artist']}": row['cover_path'] for row in cursor.fetchall()}
-
         # Clear albums table
         cursor.execute("DELETE FROM albums")
 
-        # Rebuild from tracks
+        # Rebuild from tracks with cover_path from first track
         cursor.execute("""
             INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
             SELECT
                 album as name,
                 artist,
-                NULL as cover_path,
+                (SELECT cover_path FROM tracks t2
+                 WHERE t2.album = t.album AND t2.artist = t.artist
+                 AND t2.cover_path IS NOT NULL
+                 LIMIT 1) as cover_path,
                 COUNT(*) as song_count,
                 SUM(duration) as total_duration
-            FROM tracks
+            FROM tracks t
             WHERE album IS NOT NULL AND album != ''
             GROUP BY album, artist
         """)
 
-        # Restore cover paths
-        if existing_covers:
-            cursor.executemany(
-                "UPDATE albums SET cover_path = ? WHERE name = ? AND artist = ?",
-                [(cover, name.split("|", 1)[0], name.split("|", 1)[1]) for name, cover in existing_covers.items()]
-            )
+        conn.commit()
+        return True
 
         conn.commit()
         return True
@@ -241,3 +234,33 @@ class SqliteAlbumRepository(BaseRepository):
         """, (cover_path, album_name, artist))
         conn.commit()
         return cursor.rowcount > 0
+
+    def get_albums_without_cover(self) -> List[Album]:
+        """
+        Get all albums that don't have a cover.
+
+        Returns:
+            List of Album objects without valid cover_path
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Query albums table for albums without covers
+        cursor.execute("""
+            SELECT name, artist, cover_path, song_count, total_duration
+            FROM albums
+            WHERE cover_path IS NULL OR cover_path = ''
+            ORDER BY song_count DESC
+        """)
+        rows = cursor.fetchall()
+
+        return [
+            Album(
+                name=row["name"] or "",
+                artist=row["artist"] or "",
+                cover_path=row["cover_path"],
+                song_count=row["song_count"] or 0,
+                duration=row["total_duration"] or 0.0,
+            )
+            for row in rows
+        ]

@@ -637,5 +637,13 @@
     "welcome_subtitle": "你的专属音乐播放器",
     "welcome_description": "添加你的音乐文件夹，Harmony 会自动扫描并整理你的音乐库。",
     "add_music_folder": "添加音乐文件夹",
-    "skip": "跳过"
+    "skip": "跳过",
+    "fix_album_covers": "修复专辑封面",
+    "fix_album_covers_hint": "为没有封面的专辑查找该专辑下第一首有封面的歌曲，并将其封面设为专辑封面。",
+    "fix_album_covers_button": "修复专辑封面",
+    "fix_album_covers_confirm": "发现 {count} 张专辑没有封面，是否为其设置专辑封面？",
+    "fix_album_covers_progress": "正在修复专辑封面...",
+    "fix_album_covers_success": "修复完成！成功修复 {fixed} / {total} 张专辑。",
+    "fix_album_covers_no_missing": "所有专辑都已有封面。",
+    "fix_album_covers_failed": "修复专辑封面失败。"
 }
