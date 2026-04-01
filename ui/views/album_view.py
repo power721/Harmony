@@ -785,14 +785,18 @@ class AlbumCoverDialog(QDialog):
         Initialize cover dialog.
 
         Args:
-            cover_path: Path to the cover image
+            cover_path: Path to the cover image (local path or URL)
             album_name: Album name for window title
             parent: Parent widget
         """
         super().__init__(parent)
         self._cover_path = cover_path
         self._album_name = album_name
+        self._executor = None
         self._setup_ui()
+
+    def _is_url(self) -> bool:
+        return self._cover_path and self._cover_path.startswith(("http://", "https://"))
 
     def _setup_ui(self):
         """Setup the dialog UI."""
@@ -808,33 +812,40 @@ class AlbumCoverDialog(QDialog):
         screen_height = screen.height()
 
         # Set dialog size to 80% of screen, max 800x800
-        dialog_width = min(int(screen_width * 0.8), 800)
-        dialog_height = min(int(screen_height * 0.8), 800)
-        self.setFixedSize(dialog_width, dialog_height)
+        self._dialog_width = min(int(screen_width * 0.8), 800)
+        self._dialog_height = min(int(screen_height * 0.8), 800)
+        self.setFixedSize(self._dialog_width, self._dialog_height)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Image label
-        image_label = QLabel()
-        image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet(f"background-color: {theme.background_alt};")
+        self._image_label = QLabel()
+        self._image_label.setAlignment(Qt.AlignCenter)
+        self._image_label.setStyleSheet(f"background-color: {theme.background_alt};")
 
-        # Load and scale image to fit dialog
-        pixmap = QPixmap(self._cover_path)
-        if not pixmap.isNull():
-            # Scale image to fit within dialog while maintaining aspect ratio
-            scaled = pixmap.scaled(
-                dialog_width - 20,
-                dialog_height - 20,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            image_label.setPixmap(scaled)
+        if self._is_url():
+            # Try cache first, then download async
+            from infrastructure.cache import ImageCache
+            cached = ImageCache.get(self._cover_path)
+            if cached:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached):
+                    self._show_pixmap(pixmap)
+                else:
+                    self._image_label.setText(t("cover_load_failed"))
+            else:
+                # Show loading state and download
+                self._image_label.setText("...")
+                self._download_async()
         else:
-            image_label.setText(t("cover_load_failed"))
+            pixmap = QPixmap(self._cover_path)
+            if not pixmap.isNull():
+                self._show_pixmap(pixmap)
+            else:
+                self._image_label.setText(t("cover_load_failed"))
 
-        layout.addWidget(image_label)
+        layout.addWidget(self._image_label)
 
         # Apply dialog style
         self.setStyleSheet(f"""
@@ -842,6 +853,61 @@ class AlbumCoverDialog(QDialog):
                 background-color: {theme.background};
             }}
         """)
+
+    def _show_pixmap(self, pixmap: QPixmap):
+        """Scale and display a pixmap in the dialog."""
+        scaled = pixmap.scaled(
+            self._dialog_width - 20,
+            self._dialog_height - 20,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+        self._image_label.setPixmap(scaled)
+
+    def _download_async(self):
+        """Download online cover image asynchronously."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        from infrastructure.network import HttpClient
+
+        try:
+            http_client = HttpClient()
+
+            def download():
+                try:
+                    return http_client.get_content(self._cover_path, timeout=5)
+                except Exception as e:
+                    logger.warning(f"Failed to download cover for dialog: {e}")
+                    return None
+
+            self._executor = ThreadPoolExecutor(max_workers=1)
+            future = self._executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(self._cover_path, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            self._show_pixmap(pixmap)
+                        else:
+                            self._image_label.setText(t("cover_load_failed"))
+                    else:
+                        self._image_label.setText(t("cover_load_failed"))
+                    self._cleanup_executor()
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start cover download for dialog: {e}")
+            self._image_label.setText(t("cover_load_failed"))
+
+    def _cleanup_executor(self):
+        if self._executor:
+            self._executor.shutdown(wait=False)
+            self._executor = None
 
     def keyPressEvent(self, event):
         """Handle key press - close on Escape."""

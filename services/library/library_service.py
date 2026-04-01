@@ -60,6 +60,8 @@ class LibraryService:
             self._album_repo.refresh()
         if self._artist_repo.is_empty():
             self._artist_repo.refresh()
+        if self._genre_repo:
+            self._genre_repo.fix_covers()
 
     def refresh_albums_artists(self):
         """Refresh album, artist, and genre tables."""
@@ -812,3 +814,17 @@ class LibraryService:
             'fixed': fixed,
             'total': total
         }
+
+    def fix_genre_covers(self) -> int:
+        """
+        Fix genre covers by finding tracks with covers for genres without covers.
+
+        Returns:
+            Number of genres fixed
+        """
+        if not self._genre_repo:
+            return 0
+        fixed = self._genre_repo.fix_covers()
+        if fixed > 0:
+            self._event_bus.tracks_added.emit(0)
+        return fixed
