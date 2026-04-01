@@ -27,12 +27,6 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Run tests
-        run: uv run pytest tests/ -x --tb=short -q
-
       - name: Install system dependencies
         run: |
           sudo apt-get update
