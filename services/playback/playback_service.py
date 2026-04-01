@@ -1379,7 +1379,7 @@ class PlaybackService(QObject):
 
     def _preload_next_cloud_track(self):
         """Preload the next track in the queue (cloud or online)."""
-        from services.cloud.download_service import CloudDownloadService
+        # TODO: delay
 
         # Don't preload if stopped
         if self._engine.state == PlaybackState.STOPPED:

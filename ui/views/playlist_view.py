@@ -338,9 +338,9 @@ class PlaylistView(QWidget):
 
         # Tracks table
         self._tracks_table = QTableWidget()
-        self._tracks_table.setColumnCount(5)
+        self._tracks_table.setColumnCount(6)
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration")]
         )
 
         # Configure table
@@ -360,7 +360,8 @@ class PlaylistView(QWidget):
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
         self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
@@ -418,7 +419,7 @@ class PlaylistView(QWidget):
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("duration")]
+            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration")]
         )
 
     def _create_playlist(self):
@@ -585,10 +586,15 @@ class PlaylistView(QWidget):
             album_item.setForeground(QBrush(text_secondary_color))
             self._tracks_table.setItem(row, 3, album_item)
 
+            # Genre
+            genre_item = QTableWidgetItem(track.genre or t("unknown"))
+            genre_item.setForeground(QBrush(text_secondary_color))
+            self._tracks_table.setItem(row, 4, genre_item)
+
             # Duration
             duration_item = QTableWidgetItem(format_duration(track.duration))
             duration_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 4, duration_item)
+            self._tracks_table.setItem(row, 5, duration_item)
 
         # Re-enable updates after batch population
         self._tracks_table.setUpdatesEnabled(True)

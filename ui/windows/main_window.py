@@ -560,6 +560,7 @@ class MainWindow(QMainWindow):
         # Genres view connections
         self._genres_view.genre_clicked.connect(self._on_genre_clicked)
         self._genres_view.play_genre.connect(self._play_tracks)
+        self._genres_view.rename_genre_requested.connect(self._on_rename_genre)
 
         # Genre view connections
         self._genre_view.play_tracks.connect(self._play_tracks)
@@ -971,6 +972,26 @@ class MainWindow(QMainWindow):
             self._albums_view._list_view.viewport().update()
 
         dialog.album_renamed.connect(on_album_renamed)
+        dialog.exec()
+
+    def _on_rename_genre(self, genre):
+        """Handle rename genre request."""
+        from ui.dialogs.genre_rename_dialog import GenreRenameDialog
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        dialog = GenreRenameDialog(
+            genre,
+            bootstrap.library_service,
+            self
+        )
+
+        def on_genre_renamed(old_name, new_name):
+            self._genres_view.refresh()
+            self._genres_view._delegate.clear_cache()
+            self._genres_view._list_view.viewport().update()
+
+        dialog.genre_renamed.connect(on_genre_renamed)
         dialog.exec()
 
     def _play_tracks(self, tracks, start_index=0):

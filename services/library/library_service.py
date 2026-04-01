@@ -489,6 +489,12 @@ class LibraryService:
             return self._genre_repo.get_tracks(name)
         return []
 
+    def get_genre_by_name(self, name: str) -> Optional['Genre']:
+        """Get a specific genre by name."""
+        if self._genre_repo:
+            return self._genre_repo.get_by_name(name)
+        return None
+
     def rename_artist(self, old_name: str, new_name: str) -> dict:
         """
         Rename an artist and update all associated tracks.
@@ -643,6 +649,92 @@ class LibraryService:
         if updated_count > 0:
             self._album_repo.refresh()
             self._artist_repo.refresh()
+            # Notify UI to refresh
+            self._event_bus.tracks_added.emit(0)
+
+        return {
+            'updated_tracks': updated_count,
+            'errors': errors,
+            'merged': is_merge
+        }
+
+    # ===== Cover Update Operations =====
+
+    def rename_genre(self, old_name: str, new_name: str) -> dict:
+        """
+        Rename a genre and update all associated tracks.
+
+        This will:
+        1. Update genre metadata in all audio files
+        2. Update database records
+        3. Rebuild genres cache table
+        4. Handle merge scenario if new_name already exists
+
+        Args:
+            old_name: Current genre name
+            new_name: New genre name
+
+        Returns:
+            Dict with 'updated_tracks', 'errors', 'merged' keys
+        """
+        if not old_name or not new_name:
+            return {'updated_tracks': 0, 'errors': ['Empty name provided'], 'merged': False}
+
+        if old_name == new_name:
+            return {'updated_tracks': 0, 'errors': ['Names are identical'], 'merged': False}
+
+        # Check if new_name already exists (merge scenario)
+        existing_genre = self.get_genre_by_name(new_name)
+        is_merge = existing_genre is not None
+
+        # Get all tracks for the old genre
+        tracks = self.get_genre_tracks(old_name)
+        if not tracks:
+            return {'updated_tracks': 0, 'errors': ['Genre not found'], 'merged': False}
+
+        updated_count = 0
+        errors = []
+
+        for track in tracks:
+            try:
+                # Update file metadata
+                success = MetadataService.save_metadata(
+                    track.path,
+                    title=track.title,
+                    artist=track.artist,
+                    album=track.album,
+                    genre=new_name
+                )
+
+                if success:
+                    # Update database
+                    updated_track = Track(
+                        id=track.id,
+                        path=track.path,
+                        title=track.title,
+                        artist=track.artist,
+                        album=track.album,
+                        genre=new_name,
+                        duration=track.duration,
+                        cover_path=track.cover_path,
+                        cloud_file_id=track.cloud_file_id,
+                        source=track.source,
+                    )
+                    self._track_repo.update(updated_track)
+
+                    # Emit metadata_updated signal
+                    self._event_bus.metadata_updated.emit(track.id)
+                    updated_count += 1
+                else:
+                    errors.append(f"Failed to save metadata: {track.path}")
+            except Exception as e:
+                errors.append(f"Error processing {track.path}: {str(e)}")
+                logger.error(f"Error renaming genre for track {track.id}: {e}")
+
+        # Rebuild genre cache table
+        if updated_count > 0:
+            if self._genre_repo:
+                self._genre_repo.refresh()
             # Notify UI to refresh
             self._event_bus.tracks_added.emit(0)
 

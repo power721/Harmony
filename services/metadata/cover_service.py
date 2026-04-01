@@ -235,6 +235,7 @@ class CoverService:
             Path to downloaded cover, or None if no suitable cover found
         """
         cache_key = self._get_cache_key(artist, album or title)
+        print(f"Fetching cover from online sources: {artist} {album} {title}")
         return self._fetch_online_cover(title, artist, album, cache_key, duration)
 
     def get_online_cover(self, song_mid: str, album_mid: str = None,

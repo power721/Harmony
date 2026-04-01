@@ -244,6 +244,7 @@ class GenresView(QWidget):
 
     genre_clicked = Signal(object)  # Emits Genre object
     play_genre = Signal(list)  # Emits list of Track objects
+    rename_genre_requested = Signal(object)  # Emits Genre object
 
     MARGIN = 20
 
@@ -620,6 +621,11 @@ class GenresView(QWidget):
         play_action = QAction(t("play"), self)
         play_action.triggered.connect(lambda: self._play_genre_tracks(genre))
         menu.addAction(play_action)
+
+        # Rename action
+        rename_action = QAction(t("rename"), self)
+        rename_action.triggered.connect(lambda: self.rename_genre_requested.emit(genre))
+        menu.addAction(rename_action)
 
         menu.exec_(self._list_view.mapToGlobal(pos))
 
