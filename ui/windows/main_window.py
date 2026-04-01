@@ -1584,6 +1584,12 @@ class MainWindow(QMainWindow):
         if len(tracks) > 0:
             return
 
+        from PySide6.QtCore import QLocale
+        language = QLocale.system().language()
+        if "Chinese" in language:
+            self._config.set_language('zh')
+            set_language('zh')
+
         def _show_welcome():
             dialog = WelcomeDialog(parent=self)
             if dialog.exec() == QDialog.DialogCode.Accepted:
