@@ -384,7 +384,13 @@ class OnlineItemDelegate(QStyledItemDelegate):
             align = Qt.AlignLeft
         elif isinstance(item, OnlinePlaylist):
             from system.i18n import t
-            subtitle = f"{item.creator} • {item.song_count} {t('tracks')}"
+            play_str = self._format_play_count(item.play_count) if item.play_count else ""
+            parts = []
+            if item.song_count:
+                parts.append(f"{item.song_count} {t('tracks')}")
+            if play_str:
+                parts.append(play_str)
+            subtitle = " • ".join(parts) if parts else ""
             align = Qt.AlignLeft
         else:
             subtitle = ""
@@ -398,6 +404,16 @@ class OnlineItemDelegate(QStyledItemDelegate):
                 20
             )
             painter.drawText(subtitle_rect, align, subtitle)
+
+    def _format_play_count(self, count: int) -> str:
+        """Format play count to human-readable string."""
+        if count >= 100_000_000:
+            return f"{count / 100_000_000:.1f}亿"
+        elif count >= 10_000:
+            return f"{count / 10_000:.1f}万"
+        elif count > 0:
+            return str(count)
+        return ""
 
     def clear_cache(self):
         """Clear cover cache and pending downloads."""

@@ -1086,6 +1086,8 @@ class OnlineMusicView(QWidget):
 
         self._top_list_list = QListWidget()
         self._top_list_list.setObjectName("topListList")
+        self._top_list_list.setMouseTracking(True)
+        self._top_list_list.setCursor(Qt.PointingHandCursor)
         self._top_list_list.currentRowChanged.connect(self._on_top_list_selected)
         left_layout.addWidget(self._top_list_list)
 
@@ -1820,6 +1822,7 @@ class OnlineMusicView(QWidget):
                 cover_url=pl.get("cover_url", ""),
                 creator=pl.get("creator", ""),
                 song_count=pl.get("song_count", 0),
+                play_count=pl.get("play_count", 0),
             ))
 
         self._playlists_page.load_data(online_playlists)
@@ -1978,12 +1981,27 @@ class OnlineMusicView(QWidget):
                                           playlist_info.get('songNum') or playlist_info.get('song_cnt') or
                                           playlist_info.get('songnum') or 0)
 
+                        # Try to get play count
+                        play_count = 0
+                        if 'basic' in playlist_info:
+                            basic = playlist_info.get('basic', {})
+                            if isinstance(basic, dict):
+                                play_count = basic.get('listennum') or basic.get('play_count') or 0
+                        if not play_count and 'content' in playlist_info:
+                            content = playlist_info.get('content', {})
+                            if isinstance(content, dict):
+                                play_count = content.get('listennum') or content.get('play_count') or 0
+                        if not play_count:
+                            play_count = (playlist_info.get('listennum') or
+                                          playlist_info.get('play_count') or 0)
+
                         if playlist_id:
                             playlists.append({
                                 'id': str(playlist_id),
                                 'title': playlist_title or '',
                                 'cover_url': cover_url or '',
                                 'song_count': song_count,
+                                'play_count': play_count or 0,
                             })
 
                 logger.info(f"Showing {len(playlists)} recommended playlists")
