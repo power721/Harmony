@@ -291,6 +291,10 @@ class LibraryService:
         # Use repository to update
         return self._track_repo.update(track)
 
+    def update_track_path(self, track_id: int, path: str) -> bool:
+        """Update a track's file path."""
+        return self._track_repo.update_path(track_id, path)
+
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the library."""
         # Get track data before deletion

@@ -123,7 +123,8 @@ class CoverFetchWorker(QRunnable):
     """
 
     def __init__(self, cover_fetcher: Callable, title: str, artist: str,
-                 path: str, album: str, skip_online: bool, result_signal: Signal,
+                 path: str, album: str, source: str, cloud_file_id: str,
+                 skip_online: bool, result_signal: Signal,
                  fallback_fetcher: Callable = None):
         super().__init__()
         self.cover_fetcher = cover_fetcher
@@ -131,6 +132,8 @@ class CoverFetchWorker(QRunnable):
         self.artist = artist
         self.path = path
         self.album = album
+        self.source = source
+        self.cloud_file_id = cloud_file_id
         self.skip_online = skip_online
         self.result_signal = result_signal
         self.fallback_fetcher = fallback_fetcher
@@ -142,7 +145,7 @@ class CoverFetchWorker(QRunnable):
             # Fetch cover (may download from online sources)
             cover_path = self.cover_fetcher(
                 self.path, self.title, self.artist,
-                self.album, self.skip_online
+                self.album, self.source, self.cloud_file_id, self.skip_online
             )
 
             # Try fallback if main fetcher didn't find cover

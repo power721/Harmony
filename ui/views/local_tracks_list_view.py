@@ -441,6 +441,7 @@ class LocalTracksListView(QWidget):
     open_file_location_requested = Signal(object)
     remove_from_library_requested = Signal(list)
     delete_file_requested = Signal(list)
+    redownload_requested = Signal(object)  # Track
 
     def __init__(self, parent=None, show_index: bool = True, show_source: bool = True):
         super().__init__(parent)
@@ -540,6 +541,7 @@ class LocalTracksListView(QWidget):
         self._context_menu.open_file_location.connect(self.open_file_location_requested)
         self._context_menu.remove_from_library.connect(self.remove_from_library_requested)
         self._context_menu.delete_file.connect(self.delete_file_requested)
+        self._context_menu.redownload.connect(self.redownload_requested)
 
     def _show_context_menu(self, pos):
         """Show context menu."""

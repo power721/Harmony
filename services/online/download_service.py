@@ -105,7 +105,8 @@ class OnlineDownloadService:
         song_mid: str,
         song_title: str = "",
         quality: Optional[str] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        force: bool = False
     ) -> Optional[str]:
         """
         Download a song.
@@ -123,9 +124,9 @@ class OnlineDownloadService:
         if quality is None:
             quality = self._config.get_qqmusic_quality() if self._config else "320"
 
-        # Check cache first
+        # Check cache first (skip if force re-download)
         cached_path = self.get_cached_path(song_mid, quality)
-        if os.path.exists(cached_path):
+        if not force and os.path.exists(cached_path):
             logger.info(f"Song already cached: {cached_path}")
             return cached_path
 
@@ -163,7 +164,7 @@ class OnlineDownloadService:
         try:
             import requests
 
-            logger.info(f"Downloading: {song_mid} {song_title}")
+            logger.info(f"Downloading: {song_mid} {song_title} - {quality}")
 
             # Emit download started event
             self._event_bus.download_started.emit(song_mid)
@@ -323,6 +324,27 @@ class OnlineDownloadService:
             shutil.rmtree(self._download_dir)
             os.makedirs(self._download_dir, exist_ok=True)
             logger.info(f"Cleared cache directory: {self._download_dir}")
+
+    def delete_cached_file(self, song_mid: str) -> bool:
+        """Delete all cached files for a song (all quality variants).
+
+        Args:
+            song_mid: Song MID
+
+        Returns:
+            True if any file was deleted
+        """
+        deleted = False
+        for ext in (".flac", ".mp3", ".flac.tmp", ".mp3.tmp"):
+            path = os.path.join(self._download_dir, f"{song_mid}{ext}")
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    deleted = True
+                    logger.info(f"Deleted cached file: {path}")
+                except OSError as e:
+                    logger.warning(f"Failed to delete cached file {path}: {e}")
+        return deleted
 
     def get_cache_size(self) -> int:
         """Get total size of cached files in bytes."""

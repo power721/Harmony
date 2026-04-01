@@ -5,6 +5,7 @@ import logging
 import shutil
 from pathlib import Path
 
+from services.download import DownloadManager
 from system.theme import ThemeManager
 
 # Configure logging
@@ -426,6 +427,7 @@ class LibraryView(QWidget):
         self._history_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
         self._history_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
         self._history_list_view.delete_file_requested.connect(self._on_history_delete_file)
+        self._history_list_view.redownload_requested.connect(self._redownload_qq_track)
 
         # Connect to player engine signals
         self._player.engine.current_track_changed.connect(
@@ -1284,6 +1286,7 @@ class LibraryView(QWidget):
         is_cloud = False
         is_qq_source = False  # QQ Music source
         cloud_file_id = None
+        track_obj = None  # For re-download
         if track_id:
             if isinstance(track_id, dict):
                 is_cloud = track_id.get("type") == "cloud"
@@ -1295,14 +1298,15 @@ class LibraryView(QWidget):
                     if tid:
                         is_favorited = self._favorites_service.is_favorite(track_id=tid)
                         # Check if QQ Music source
-                        track = self._library_service.get_track(tid)
-                        if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
+                        track_obj = self._library_service.get_track(tid)
+                        if track_obj and hasattr(track_obj,
+                                                 'source') and track_obj.source and track_obj.source.value == "QQ":
                             is_qq_source = True
             else:
                 is_favorited = self._favorites_service.is_favorite(track_id=track_id)
                 # Check if QQ Music source
-                track = self._library_service.get_track(track_id)
-                if track and hasattr(track, 'source') and track.source and track.source.value == "QQ":
+                track_obj = self._library_service.get_track(track_id)
+                if track_obj and hasattr(track_obj, 'source') and track_obj.source and track_obj.source.value == "QQ":
                     is_qq_source = True
 
         menu = QMenu(self)
@@ -1363,6 +1367,11 @@ class LibraryView(QWidget):
         if not is_cloud and self._cover_service and not is_qq_source:
             download_cover_action = menu.addAction(t("download_cover_manual"))
             download_cover_action.triggered.connect(lambda: self._download_cover())
+
+        # Re-download action (only for QQ Music tracks)
+        if not is_cloud and is_qq_source and track_obj:
+            redownload_action = menu.addAction(t("redownload"))
+            redownload_action.triggered.connect(lambda: self._redownload_qq_track(track_obj))
 
         menu.addSeparator()
 
@@ -2339,6 +2348,66 @@ class LibraryView(QWidget):
         except Exception as e:
             logger.error(f"Failed to open file location: {e}", exc_info=True)
             MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _redownload_qq_track(self, track):
+        """Re-download a QQ Music track with quality selection."""
+        from ui.dialogs.redownload_dialog import RedownloadDialog
+        from services.download.download_manager import DownloadManager
+        from app.bootstrap import Bootstrap
+
+        song_mid = track.cloud_file_id
+        quality = RedownloadDialog.show_dialog(track.title, parent=self)
+        if quality is None:
+            return
+
+        bootstrap = Bootstrap.instance()
+        online_download_service = bootstrap.online_download_service
+
+        # Delete cached files for all quality variants
+        online_download_service.delete_cached_file(song_mid)
+
+        # Delete local file if exists
+        import os
+        if track.path and os.path.exists(track.path):
+            try:
+                os.remove(track.path)
+            except OSError:
+                pass
+            # Clear path in DB
+            if track.id:
+                self._library_service.update_track_path(track.id, "")
+
+        # Start re-download
+        dm = DownloadManager.instance()
+        dm.download_completed.connect(self._on_redownload_completed)
+        dm.download_failed.connect(self._on_redownload_failed)
+        dm.redownload_online_track(
+            song_mid, track.title, quality=quality, force=True
+        )
+        self._status_label.setText(
+            f"{t('downloading')}... {track.title} ({quality})"
+        )
+
+    def _on_redownload_completed(self, song_mid: str, local_path: str):
+        """Handle re-download completion."""
+        try:
+            dm = DownloadManager.instance()
+            dm.download_completed.disconnect(self._on_redownload_completed)
+            dm.download_failed.disconnect(self._on_redownload_failed)
+        except RuntimeError:
+            return
+        if local_path:
+            self._status_label.setText(t("download_complete"))
+
+    def _on_redownload_failed(self, song_mid: str):
+        """Handle re-download failure."""
+        try:
+            dm = DownloadManager.instance()
+            dm.download_completed.disconnect(self._on_redownload_completed)
+            dm.download_failed.disconnect(self._on_redownload_failed)
+        except RuntimeError:
+            return
+        self._status_label.setText(t("download_failed"))
 
     def _on_history_remove_from_library(self, tracks: list):
         """Remove tracks from library."""

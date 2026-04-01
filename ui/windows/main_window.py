@@ -260,7 +260,10 @@ class MainWindow(QMainWindow):
                 return playback.cover_service
 
             def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "",
+                                source: str = "", cloud_file_id: str = "",
                                 skip_online: bool = False):
+                if source == TrackSource.QQ.name and cloud_file_id:
+                    return playback.get_online_track_cover(source, cloud_file_id, artist, title)
                 return playback.get_track_cover(track_path, title, artist, album, skip_online=skip_online)
 
             def save_cover_from_metadata(self, track_path: str, cover_data: bytes):
@@ -1393,6 +1396,8 @@ class MainWindow(QMainWindow):
         from services.metadata.color_extractor import CoverFetchWorker
 
         skip_online = track_dict.get("needs_download", False) or (track_dict.get("is_cloud", False) and not path)
+        source = track_dict.get("source", "")
+        cloud_file_id = track_dict.get("cloud_file_id", "")
 
         # Use CoverFetchWorker to fetch cover and extract color in background thread
         worker = CoverFetchWorker(
@@ -1401,6 +1406,8 @@ class MainWindow(QMainWindow):
             artist=artist,
             path=path,
             album=track_dict.get("album", ""),
+            source=source,
+            cloud_file_id=cloud_file_id,
             skip_online=skip_online,
             result_signal=self._cover_color_extracted,
             fallback_fetcher=self._get_album_cover
@@ -1608,8 +1615,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QLocale
         language = QLocale.system().language()
         if "Chinese" in language.name:
-            self._config.set_language('zh')
-            set_language('zh')
+            self._toggle_language()
 
         def _show_welcome():
             dialog = WelcomeDialog(parent=self)

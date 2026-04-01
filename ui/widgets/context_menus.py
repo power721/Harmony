@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
+from domain.track import TrackSource
 from system.i18n import t
 
 
@@ -41,6 +42,7 @@ class LocalTrackContextMenu(QObject):
     open_file_location = Signal(object)
     remove_from_library = Signal(list)
     delete_file = Signal(list)
+    redownload = Signal(object)  # Track (QQ Music re-download)
 
     def show_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
         from system.theme import ThemeManager
@@ -84,6 +86,11 @@ class LocalTrackContextMenu(QObject):
 
             a = menu.addAction(t("download_cover_manual"))
             a.triggered.connect(lambda: self.download_cover.emit(tracks[0]))
+
+            # Re-download for QQ Music
+            if tracks[0].source == TrackSource.QQ:
+                a = menu.addAction(t("redownload"))
+                a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
 
         if len(tracks) == 1 and tracks[0].path:
             a = menu.addAction(t("open_file_location"))

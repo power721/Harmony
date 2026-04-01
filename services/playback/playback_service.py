@@ -1704,6 +1704,13 @@ class PlaybackService(QObject):
             return self._cover_service.get_cover(track_path, title, artist, album, skip_online=skip_online)
         return None
 
+
+    def get_online_track_cover(self, source: str, cloud_file_id: str, artist: str = "", title: str = "") -> Optional[str]:
+        if self._cover_service:
+            return self._cover_service.get_online_cover(cloud_file_id, "", artist, title)
+        return None
+
+
     def save_cover_from_metadata(self, track_path: str, cover_data: bytes) -> Optional[str]:
         """
         Save cover art from already extracted metadata.
@@ -1803,4 +1810,3 @@ class PlaybackService(QObject):
         """Handle batch metadata processing completion - save queue once."""
         self.save_queue()
         logger.debug(f"[PlaybackService] Batch metadata processing complete, saved queue: {len(self._engine.playlist_items)} items")
-

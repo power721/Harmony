@@ -169,6 +169,73 @@ class DownloadManager(QObject):
 
         return True
 
+    def redownload_online_track(self, song_mid: str, title: str,
+                                quality: str = None, force: bool = True) -> bool:
+        """
+        Re-download an online track with specified quality.
+
+        Similar to _download_online_track but allows explicit quality and force parameters.
+
+        Args:
+            song_mid: Song MID
+            title: Track title
+            quality: Audio quality (master/flac/320/128), None uses config default
+            force: If True, skip cache check and re-download
+
+        Returns:
+            True if download was initiated
+        """
+        from services.online import OnlineDownloadService
+        from app.bootstrap import Bootstrap
+
+        if not song_mid:
+            logger.error("[DownloadManager] redownload_online_track: missing song_mid")
+            return False
+
+        # Check if already downloading
+        if song_mid in self._download_workers:
+            worker = self._download_workers[song_mid]
+            if worker.isRunning():
+                logger.info(f"[DownloadManager] Already downloading: {song_mid}")
+                return True
+            else:
+                del self._download_workers[song_mid]
+                worker.deleteLater()
+
+        # Get download service
+        bootstrap = Bootstrap.instance()
+        service = bootstrap.online_download_service
+        if not service:
+            logger.error("[DownloadManager] Online download service not available")
+            return False
+
+        logger.info(f"[DownloadManager] Re-downloading online track: {song_mid}, quality={quality}")
+
+        # Create a minimal PlaylistItem for the worker
+        from domain.playlist_item import PlaylistItem
+        from domain.track import TrackSource
+        item = PlaylistItem(
+            cloud_file_id=song_mid,
+            title=title,
+            source=TrackSource.QQ,
+        )
+
+        worker = self._OnlineDownloadWorker(service, song_mid, title, item,
+                                             quality=quality, force=force)
+
+        def on_thread_finished():
+            if song_mid in self._download_workers:
+                worker_obj = self._download_workers.pop(song_mid)
+                worker_obj.deleteLater()
+
+        worker.download_finished.connect(self._on_online_download_finished)
+        worker.finished.connect(on_thread_finished)
+
+        self._download_workers[song_mid] = worker
+        worker.start()
+
+        return True
+
     def _download_cloud_track(self, item: "PlaylistItem") -> bool:
         """
         Download track from cloud storage (Quark, Baidu, etc.).
@@ -242,17 +309,23 @@ class DownloadManager(QObject):
         """Background worker for online music download."""
         download_finished = Signal(str, str)  # (song_mid, local_path)
 
-        def __init__(self, service, song_mid: str, title: str, item: "PlaylistItem"):
+        def __init__(self, service, song_mid: str, title: str, item: "PlaylistItem",
+                     quality: str = None, force: bool = False):
             super().__init__()
             self._service = service
             self._song_mid = song_mid
             self._title = title
             self._item = item
+            self._quality = quality
+            self._force = force
 
         def run(self):
             """Execute download in background thread."""
             logger.info(f"[DownloadManager] Worker downloading: {self._song_mid}")
-            path = self._service.download(self._song_mid, self._title)
+            path = self._service.download(
+                self._song_mid, self._title,
+                quality=self._quality, force=self._force
+            )
             # Always emit, even if path is None (failed)
             self.download_finished.emit(self._song_mid, path or "")
 
