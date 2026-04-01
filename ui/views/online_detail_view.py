@@ -638,6 +638,7 @@ class OnlineDetailView(QWidget):
         self._total_songs = 0
         self._page_size = 30  # QQ Music API max per page
         self._full_description = ""  # Full description for dialog
+        self._use_tracks_list_view = False  # Use OnlineTracksListView for recommendations
 
         self._setup_ui()
 
@@ -988,6 +989,7 @@ class OnlineDetailView(QWidget):
     def load_artist(self, mid: str, name: str = ""):
         """Load artist detail."""
         self._detail_type = "artist"
+        self._use_tracks_list_view = False
         self._mid = mid
         self._current_page = 1  # Reset to first page
 
@@ -1007,6 +1009,7 @@ class OnlineDetailView(QWidget):
     def load_album(self, mid: str, name: str = "", singer_name: str = ""):
         """Load album detail."""
         self._detail_type = "album"
+        self._use_tracks_list_view = False
         self._mid = mid
         self._current_page = 1  # Reset to first page
 
@@ -1026,6 +1029,7 @@ class OnlineDetailView(QWidget):
     def load_playlist(self, playlist_id: str, title: str = "", creator: str = ""):
         """Load playlist detail."""
         self._detail_type = "playlist"
+        self._use_tracks_list_view = False
         self._mid = playlist_id
         self._current_page = 1  # Reset to first page
 
@@ -1055,6 +1059,7 @@ class OnlineDetailView(QWidget):
         self._detail_type = "playlist"
         self._mid = ""  # No playlist ID for direct songs
         self._current_page = 1
+        self._use_tracks_list_view = True  # Use OnlineTracksListView for recommendations
 
         # Set info
         self._type_label.setText(t("playlists"))
@@ -1540,8 +1545,8 @@ class OnlineDetailView(QWidget):
         return tracks
 
     def _display_songs(self, songs: List[OnlineTrack]):
-        """Display songs — use list view for album, table for playlist/artist."""
-        if self._detail_type == "album":
+        """Display songs — use list view for album/recommendations, table for playlist/artist."""
+        if self._detail_type == "album" or self._use_tracks_list_view:
             self._songs_table.hide()
             self._tracks_list_view.show()
             self._tracks_list_view.load_tracks(songs)
