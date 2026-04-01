@@ -30,7 +30,7 @@ class AlbumCard(QWidget):
         - Album name and artist
         - Click signal for navigation
         - Right-click context menu for cover download
-        - Lazy cover loading for performance
+        - Lazy cover loading for performance (local + online URLs)
     """
 
     clicked = Signal(object)  # Emits Album object
@@ -65,6 +65,7 @@ class AlbumCard(QWidget):
         self._album = album
         self._is_hovering = False
         self._cover_loaded = False
+        self._downloading = False
 
         self._setup_ui()
         # Set default cover immediately, load actual cover lazily
@@ -164,7 +165,7 @@ class AlbumCard(QWidget):
         menu.exec_(self.mapToGlobal(pos))
 
     def _load_cover(self, force: bool = False):
-        """Load album cover image lazily.
+        """Load album cover image lazily. Supports local files and online URLs.
 
         Args:
             force: If True, reload even if already loaded
@@ -173,8 +174,33 @@ class AlbumCard(QWidget):
             return
 
         cover_path = self._album.cover_path
+        if not cover_path:
+            return
 
-        if cover_path and Path(cover_path).exists():
+        # Online URL
+        if cover_path.startswith(('http://', 'https://')):
+            from infrastructure.cache import ImageCache
+            cached_data = ImageCache.get(cover_path)
+            if cached_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached_data):
+                    scaled = pixmap.scaled(
+                        self.COVER_SIZE, self.COVER_SIZE,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_label.setPixmap(scaled)
+                    self._cover_loaded = True
+                    return
+
+            # Download async
+            if not self._downloading:
+                self._downloading = True
+                self._download_cover_async(cover_path)
+            return
+
+        # Local file
+        if Path(cover_path).exists():
             try:
                 pixmap = QPixmap(cover_path)
                 if not pixmap.isNull():
@@ -188,6 +214,51 @@ class AlbumCard(QWidget):
                     return
             except Exception as e:
                 logger.debug(f"Error loading cover: {e}")
+
+    def _download_cover_async(self, url: str):
+        """Download cover image asynchronously with disk caching."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        import urllib.request
+
+        try:
+            def download():
+                try:
+                    req = urllib.request.Request(url, headers={
+                        'User-Agent': 'Mozilla/5.0',
+                    })
+                    response = urllib.request.urlopen(req, timeout=5)
+                    return response.read()
+                except Exception as e:
+                    logger.warning(f"Failed to download cover: {e}")
+                    return None
+
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(url, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            scaled = pixmap.scaled(
+                                self.COVER_SIZE, self.COVER_SIZE,
+                                Qt.KeepAspectRatioByExpanding,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_label.setPixmap(scaled)
+                            self._cover_loaded = True
+                    self._downloading = False
+                    executor.shutdown(wait=False)
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start cover download: {e}")
+            self._downloading = False
 
     def _set_default_cover(self):
         """Set default cover when no cover is available."""

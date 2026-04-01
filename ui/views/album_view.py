@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QDialog,
 )
-
 from domain.album import Album
 from domain.track import Track
 from services.library import LibraryService
@@ -411,10 +410,36 @@ class AlbumView(QWidget):
             self._content.show()
 
     def _load_cover(self, album: Album):
-        """Load album cover."""
+        """Load album cover. Supports local files and online URLs."""
         cover_path = album.cover_path
 
-        if cover_path and Path(cover_path).exists():
+        if not cover_path:
+            self._set_default_cover()
+            return
+
+        # Online URL
+        if cover_path.startswith(('http://', 'https://')):
+            from infrastructure.cache import ImageCache
+            cached_data = ImageCache.get(cover_path)
+            if cached_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached_data):
+                    scaled = pixmap.scaled(
+                        200, 200,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_label.setPixmap(scaled)
+                    self._current_cover_path = cover_path
+                    return
+
+            # Set default and download async
+            self._set_default_cover()
+            self._download_cover_async(cover_path)
+            return
+
+        # Local file
+        if Path(cover_path).exists():
             try:
                 pixmap = QPixmap(cover_path)
                 if not pixmap.isNull():
@@ -424,14 +449,55 @@ class AlbumView(QWidget):
                         Qt.SmoothTransformation
                     )
                     self._cover_label.setPixmap(scaled)
-                    self._current_cover_path = cover_path  # Store cover path
+                    self._current_cover_path = cover_path
                     return
             except Exception as e:
                 logger.debug(f"Error loading cover: {e}")
 
-        # Default cover
         self._set_default_cover()
-        self._current_cover_path = None
+
+    def _download_cover_async(self, url: str):
+        """Download cover image asynchronously with disk caching."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        import urllib.request
+
+        try:
+            def download():
+                try:
+                    req = urllib.request.Request(url, headers={
+                        'User-Agent': 'Mozilla/5.0',
+                    })
+                    response = urllib.request.urlopen(req, timeout=5)
+                    return response.read()
+                except Exception as e:
+                    logger.warning(f"Failed to download cover: {e}")
+                    return None
+
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(url, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            scaled = pixmap.scaled(
+                                200, 200,
+                                Qt.KeepAspectRatioByExpanding,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_label.setPixmap(scaled)
+                            self._current_cover_path = url
+                    executor.shutdown(wait=False)
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start cover download: {e}")
 
     def _set_default_cover(self):
         """Set default cover."""

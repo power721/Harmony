@@ -98,6 +98,7 @@ class AlbumDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._cover_cache = OrderedDict()  # LRU cache for loaded covers
         self._cache_max_size = 200
+        self._pending_downloads = set()  # Track URLs being downloaded
         self._default_cover = self._create_default_cover()
 
     def _create_default_cover(self) -> QPixmap:
@@ -123,7 +124,7 @@ class AlbumDelegate(QStyledItemDelegate):
         return pixmap
 
     def _load_cover(self, cover_path: str) -> QPixmap:
-        """Load cover from path with LRU caching."""
+        """Load cover from path with LRU caching. Supports local files and online URLs."""
         if not cover_path:
             return self._default_cover
 
@@ -131,6 +132,30 @@ class AlbumDelegate(QStyledItemDelegate):
             self._cover_cache.move_to_end(cover_path)
             return self._cover_cache[cover_path]
 
+        # Online URL
+        if cover_path.startswith(('http://', 'https://')):
+            from infrastructure.cache import ImageCache
+            cached_data = ImageCache.get(cover_path)
+            if cached_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached_data):
+                    scaled = pixmap.scaled(
+                        self.COVER_SIZE, self.COVER_SIZE,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_cache[cover_path] = scaled
+                    if len(self._cover_cache) > self._cache_max_size:
+                        self._cover_cache.popitem(last=False)
+                    return scaled
+
+            # Start async download
+            if cover_path not in self._pending_downloads:
+                self._pending_downloads.add(cover_path)
+                self._download_cover_async(cover_path)
+            return self._default_cover
+
+        # Local file
         if Path(cover_path).exists():
             try:
                 pixmap = QPixmap(cover_path)
@@ -148,6 +173,56 @@ class AlbumDelegate(QStyledItemDelegate):
                 pass
 
         return self._default_cover
+
+    def _download_cover_async(self, url: str):
+        """Download cover image asynchronously with disk caching."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        import urllib.request
+
+        try:
+            def download():
+                try:
+                    req = urllib.request.Request(url, headers={
+                        'User-Agent': 'Mozilla/5.0',
+                    })
+                    response = urllib.request.urlopen(req, timeout=5)
+                    return response.read()
+                except Exception as e:
+                    logger.warning(f"Failed to download cover: {e}")
+                    return None
+
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(url, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            scaled = pixmap.scaled(
+                                self.COVER_SIZE, self.COVER_SIZE,
+                                Qt.KeepAspectRatioByExpanding,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_cache[url] = scaled
+                            if len(self._cover_cache) > self._cache_max_size:
+                                self._cover_cache.popitem(last=False)
+                            # Trigger viewport repaint
+                            parent = self.parent()
+                            if parent and hasattr(parent, 'viewport'):
+                                parent.viewport().update()
+                    self._pending_downloads.discard(url)
+                    executor.shutdown(wait=False)
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start cover download: {e}")
+            self._pending_downloads.discard(url)
 
     def sizeHint(self, option, index):
         return QSize(self.CARD_WIDTH, self.CARD_HEIGHT)
@@ -228,6 +303,7 @@ class AlbumDelegate(QStyledItemDelegate):
     def clear_cache(self):
         """Clear cover cache."""
         self._cover_cache.clear()
+        self._pending_downloads.clear()
 
     def refresh_theme(self):
         """Refresh default cover when theme changes."""
