@@ -505,6 +505,10 @@ class MainWindow(QMainWindow):
         self._library_view.insert_to_queue.connect(self._insert_to_queue)
         self._library_view.add_to_queue.connect(self._add_to_queue)
         self._playlist_view.playlist_track_double_clicked.connect(self._play_playlist_track)
+        self._playlist_view.insert_to_queue.connect(self._insert_to_queue)
+        self._playlist_view.add_to_queue.connect(self._add_to_queue)
+        self._playlist_view.download_cover_requested.connect(self._on_playlist_download_cover)
+        self._playlist_view.redownload_requested.connect(self._on_playlist_redownload)
         self._queue_view.play_track.connect(self._play_track)
         self._queue_view.queue_reordered.connect(self._on_queue_reordered)
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
@@ -1142,6 +1146,48 @@ class MainWindow(QMainWindow):
     def _play_playlist_track(self, playlist_id: int, track_id: int):
         """Play a track from a specific playlist."""
         self._playback.play_playlist_track(playlist_id, track_id)
+
+    def _on_playlist_download_cover(self, track):
+        """Download cover for a playlist track."""
+        if not track or not track.id:
+            return
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.track_search_strategy import TrackSearchStrategy
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        strategy = TrackSearchStrategy(
+            [track], bootstrap.track_repo, bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(strategy, bootstrap.cover_service, self)
+        dialog.exec()
+
+    def _on_playlist_redownload(self, track):
+        """Re-download a QQ Music track from playlist."""
+        from ui.dialogs.redownload_dialog import RedownloadDialog
+        from app.bootstrap import Bootstrap
+
+        song_mid = track.cloud_file_id
+        quality = RedownloadDialog.show_dialog(track.title, parent=self)
+        if quality is None:
+            return
+
+        bootstrap = Bootstrap.instance()
+        online_download_service = bootstrap.online_download_service
+        online_download_service.delete_cached_file(song_mid)
+
+        import os
+        if track.path and os.path.exists(track.path):
+            try:
+                os.remove(track.path)
+            except OSError:
+                pass
+
+        online_download_service.download_track(
+            song_mid=song_mid,
+            quality=quality,
+            track_id=track.id,
+        )
+        self._status_label.setText(t("downloading"))
 
     def _play_cloud_favorite(self, cloud_file_id: str, account_id: int):
         """Play a cloud file from favorites."""

@@ -44,11 +44,12 @@ class LocalTrackContextMenu(QObject):
     delete_file = Signal(list)
     redownload = Signal(object)  # Track (QQ Music re-download)
 
-    def show_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
+    def build_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
+        """Build and return the context menu (without showing)."""
         from system.theme import ThemeManager
 
         if not tracks:
-            return
+            return None
 
         menu = QMenu(parent_widget)
         menu.setStyleSheet(ThemeManager.instance().get_qss(_CONTEXT_MENU_STYLE))
@@ -105,7 +106,13 @@ class LocalTrackContextMenu(QObject):
             a = menu.addAction(t("delete_file"))
             a.triggered.connect(lambda: self.delete_file.emit(tracks))
 
-        menu.exec_(QCursor.pos())
+        return menu
+
+    def show_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
+        """Build and show the context menu."""
+        menu = self.build_menu(tracks, favorite_ids, parent_widget)
+        if menu:
+            menu.exec_(QCursor.pos())
 
 
 class OnlineTrackContextMenu(QObject):
@@ -158,5 +165,23 @@ class OnlineTrackContextMenu(QObject):
 
         a = menu.addAction(t("download"))
         a.triggered.connect(lambda: self.download.emit(tracks))
+
+        menu.exec_(QCursor.pos())
+
+
+class PlaylistTrackContextMenu(LocalTrackContextMenu):
+    """Context menu for playlist tracks. Extends local track menu with remove from playlist."""
+
+    remove_from_playlist = Signal(list)
+
+    def show_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
+        menu = self.build_menu(tracks, favorite_ids, parent_widget)
+        if not menu:
+            return
+
+        menu.addSeparator()
+
+        a = menu.addAction(t("remove_from_playlist"))
+        a.triggered.connect(lambda: self.remove_from_playlist.emit(tracks))
 
         menu.exec_(QCursor.pos())

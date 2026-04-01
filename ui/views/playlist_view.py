@@ -5,7 +5,7 @@ Playlist view widget for managing playlists.
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QColor
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
-    QMenu,
     QFileDialog,
 )
 
@@ -31,6 +30,7 @@ from system.i18n import t
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
+from ui.widgets.context_menus import PlaylistTrackContextMenu
 from utils import format_duration
 
 
@@ -157,24 +157,14 @@ class PlaylistView(QWidget):
             background-color: %background_hover%;
         }
     """
-    _CONTEXT_MENU_STYLE = """
-        QMenu {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-        }
-        QMenu::item {
-            padding: 8px 20px;
-        }
-        QMenu::item:selected {
-            background-color: %highlight%;
-            color: %background%;
-        }
-    """
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)
     playlist_track_double_clicked = Signal(int,
                                            int)  # Signal when playlist track is double-clicked (playlist_id, track_id)
+    insert_to_queue = Signal(list)  # track IDs
+    add_to_queue = Signal(list)  # track IDs
+    download_cover_requested = Signal(object)  # Track
+    redownload_requested = Signal(object)  # Track
 
     def __init__(
             self,
@@ -200,12 +190,15 @@ class PlaylistView(QWidget):
         self._library_service = library_service
         self._player = player
         self._current_playlist_id: Optional[int] = None
+        self._tracks: List[Track] = []
 
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
 
         self._setup_ui()
         self._setup_connections()
+        self._context_menu = PlaylistTrackContextMenu(self)
+        self._connect_context_menu()
         self._refresh_playlists()
 
     def _setup_ui(self):
@@ -345,7 +338,7 @@ class PlaylistView(QWidget):
 
         # Configure table
         self._tracks_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._tracks_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._tracks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._tracks_table.setAlternatingRowColors(True)
         self._tracks_table.verticalHeader().setVisible(False)
         self._tracks_table.horizontalHeader().setStretchLastSection(True)
@@ -526,6 +519,7 @@ class PlaylistView(QWidget):
         self._rename_playlist_btn.setEnabled(True)
         self._export_playlist_btn.setEnabled(True)
         tracks = self._playlist_service.get_playlist_tracks(playlist_id)
+        self._tracks = tracks
         self._play_playlist_btn.setEnabled(len(tracks) > 0)
 
         # Load tracks
@@ -623,94 +617,147 @@ class PlaylistView(QWidget):
 
     def _show_context_menu(self, pos):
         """Show context menu for tracks."""
-        item = self._tracks_table.itemAt(pos)
-        if not item:
+        rows = self._tracks_table.selectionModel().selectedRows()
+        if not rows:
             return
 
-        menu = QMenu(self)
-        from system.theme import ThemeManager
-        menu.setStyleSheet(ThemeManager.instance().get_qss(self._CONTEXT_MENU_STYLE))
+        tracks = [self._tracks[r.row()] for r in rows if r.row() < len(self._tracks)]
 
-        remove_action = QAction(t("remove_from_playlist"), self)
-        remove_action.triggered.connect(lambda: self._remove_track(item))
-        menu.addAction(remove_action)
-
-        favorite_action = QAction(t("add_to_favorites"), self)
-        favorite_action.triggered.connect(lambda: self._toggle_favorite_selected())
-        menu.addAction(favorite_action)
-
-        menu.addSeparator()
-
-        edit_action = QAction(t("edit_media_info"), self)
-        edit_action.triggered.connect(lambda: self._edit_media_info())
-        menu.addAction(edit_action)
-
-        menu.exec_(self._tracks_table.mapToGlobal(pos))
-
-    def _remove_track(self, item: QTableWidgetItem):
-        """Remove a track from the playlist."""
-        if self._current_playlist_id is None:
+        if not tracks:
             return
 
-        row = item.row()
-        source_item = self._tracks_table.item(row, 0)
-        if source_item:
-            track_id = source_item.data(Qt.UserRole)
-            self._playlist_service.remove_track_from_playlist(self._current_playlist_id, track_id)
-            self._load_playlist(self._current_playlist_id)
+        favorite_ids = self._favorite_service.get_all_favorite_track_ids()
+        self._context_menu.show_menu(tracks, favorite_ids, parent_widget=self)
 
-    def _toggle_favorite_selected(self):
-        """Toggle favorite status for selected tracks."""
-        selected_items = self._tracks_table.selectedItems()
-        if not selected_items:
+    def _get_selected_tracks(self) -> List[Track]:
+        """Get currently selected tracks."""
+        rows = self._tracks_table.selectionModel().selectedRows()
+        return [self._tracks[r.row()] for r in rows if r.row() < len(self._tracks)]
+
+    def _connect_context_menu(self):
+        self._context_menu.play.connect(self._on_ctx_play)
+        self._context_menu.insert_to_queue.connect(self._on_ctx_insert_to_queue)
+        self._context_menu.add_to_queue.connect(self._on_ctx_add_to_queue)
+        self._context_menu.add_to_playlist.connect(self._on_ctx_add_to_playlist)
+        self._context_menu.favorite_toggled.connect(self._on_ctx_favorite_toggle)
+        self._context_menu.edit_info.connect(self._on_ctx_edit_info)
+        self._context_menu.download_cover.connect(self._on_ctx_download_cover)
+        self._context_menu.open_file_location.connect(self._on_ctx_open_file_location)
+        self._context_menu.remove_from_library.connect(self._on_ctx_remove_from_library)
+        self._context_menu.delete_file.connect(self._on_ctx_delete_file)
+        self._context_menu.redownload.connect(self._on_ctx_redownload)
+        self._context_menu.remove_from_playlist.connect(self._on_ctx_remove_from_playlist)
+
+    def _on_ctx_play(self, tracks: list):
+        from domain import PlaylistItem
+        items = [PlaylistItem(track_id=track.id) for track in tracks if track.id]
+        if items:
+            self._player.engine.set_playlist(items)
+            self._player.engine.play()
+
+    def _on_ctx_insert_to_queue(self, tracks: list):
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            self.insert_to_queue.emit(track_ids)
+
+    def _on_ctx_add_to_queue(self, tracks: list):
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            self.add_to_queue.emit(track_ids)
+
+    def _on_ctx_add_to_playlist(self, tracks: list):
+        from utils.playlist_utils import add_tracks_to_playlist
+        track_ids = [t.id for t in tracks if t.id]
+        if track_ids:
+            add_tracks_to_playlist(self, self._library_service, track_ids, "[PlaylistView]")
+
+    def _on_ctx_favorite_toggle(self, tracks: list, all_favorited: bool):
+        bus = EventBus.instance()
+        for track in tracks:
+            if not track.id:
+                continue
+            if all_favorited:
+                self._favorite_service.remove_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, False, is_cloud=False)
+            else:
+                self._favorite_service.add_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+    def _on_ctx_edit_info(self, track):
+        if not track or not track.id:
             return
+        dialog = EditMediaInfoDialog([track.id], self._library_service, self)
+        dialog.tracks_updated.connect(self._on_tracks_updated)
+        dialog.exec()
 
-        track_ids = []
-        for item in selected_items:
-            if item.column() == 0:
-                track_id = item.data(Qt.UserRole)
-                if track_id:
-                    track_ids.append(track_id)
+    def _on_ctx_download_cover(self, track):
+        if not track or not track.id:
+            return
+        self.download_cover_requested.emit(track)
 
+    def _on_ctx_open_file_location(self, track):
+        if not track or not track.path or not track.path.strip():
+            MessageDialog.warning(self, "Error", t("no_local_file"))
+            return
+        from pathlib import Path
+        import subprocess
+        import sys
+        file_path = Path(track.path)
+        if not file_path.exists():
+            MessageDialog.warning(self, "Error", t("file_not_found"))
+            return
+        if sys.platform == 'darwin':
+            subprocess.Popen(['open', '-R', str(file_path)])
+        elif sys.platform == 'win32':
+            subprocess.Popen(f'explorer /select,"{file_path}"')
+        else:
+            subprocess.Popen(['xdg-open', str(file_path.parent)])
+
+    def _on_ctx_remove_from_library(self, tracks: list):
+        from utils import format_count_message
+        track_ids = [t.id for t in tracks if t.id]
         if not track_ids:
             return
+        confirm_message = format_count_message("remove_from_library_confirm", len(track_ids))
+        reply = MessageDialog.question(self, t("remove_from_library"), confirm_message)
+        if reply == Yes:
+            removed_count = 0
+            for track_id in track_ids:
+                if self._library_service.remove_track(track_id):
+                    removed_count += 1
+            if removed_count > 0:
+                success_message = format_count_message("remove_from_library_success", removed_count)
+                MessageDialog.information(self, t("remove_from_library"), success_message)
+                self._load_playlist(self._current_playlist_id)
 
-        added_count = 0
-        removed_count = 0
-        for track_id in track_ids:
-            if self._favorite_service.is_favorite(track_id=track_id):
-                self._favorite_service.remove_favorite(track_id=track_id)
-                removed_count += 1
-            else:
-                self._favorite_service.add_favorite(track_id=track_id)
-                added_count += 1
-
-        if added_count > 0 and removed_count == 0:
-            from utils import format_count_message
-            message = format_count_message("added_x_tracks_to_favorites", added_count)
-            MessageDialog.information(
-                self,
-                t("added_to_favorites"),
-                message,
-            )
-        elif removed_count > 0 and added_count == 0:
-            from utils import format_count_message
-            message = format_count_message("removed_x_tracks_from_favorites", removed_count)
-            MessageDialog.information(
-                self,
-                t("removed_from_favorites"),
-                message,
-            )
-        else:
-            message = t("added_x_removed_y").format(added=added_count, removed=removed_count)
-            MessageDialog.information(
-                self,
-                t("updated_favorites"),
-                message,
-            )
-
-        if self._current_playlist_id:
+    def _on_ctx_delete_file(self, tracks: list):
+        from utils import format_count_message
+        from pathlib import Path
+        confirm_message = format_count_message("delete_file_confirm", len(tracks))
+        reply = MessageDialog.question(self, t("delete_file"), confirm_message)
+        if reply == Yes:
+            for track in tracks:
+                if track.path and Path(track.path).exists():
+                    try:
+                        Path(track.path).unlink()
+                        if track.id:
+                            self._library_service.remove_track(track.id)
+                    except OSError as e:
+                        MessageDialog.warning(self, "Error", str(e))
             self._load_playlist(self._current_playlist_id)
+
+    def _on_ctx_redownload(self, track):
+        if not track or not track.id:
+            return
+        self.redownload_requested.emit(track)
+
+    def _on_ctx_remove_from_playlist(self, tracks: list):
+        if self._current_playlist_id is None:
+            return
+        for track in tracks:
+            if track.id:
+                self._playlist_service.remove_track_from_playlist(self._current_playlist_id, track.id)
+        self._load_playlist(self._current_playlist_id)
 
     def add_track_to_playlist(self, track_id: int):
         """Add a track to the current playlist."""
@@ -723,7 +770,6 @@ class PlaylistView(QWidget):
         success = self._playlist_service.add_track_to_playlist(self._current_playlist_id, track_id)
         if success:
             self._load_playlist(self._current_playlist_id)
-            # Get playlist name for message
             playlist = self._playlist_service.get_playlist(self._current_playlist_id)
             playlist_name = playlist.name if playlist else ""
             MessageDialog.information(
@@ -731,26 +777,6 @@ class PlaylistView(QWidget):
             )
         else:
             MessageDialog.warning(self, "Error", t("track_already_in_playlist"))
-
-    def _edit_media_info(self):
-        """Edit media information for selected track."""
-        selected_items = self._tracks_table.selectedItems()
-        if not selected_items:
-            return
-
-        track_ids = []
-        for item in selected_items:
-            if item.column() == 0:
-                track_id = item.data(Qt.UserRole)
-                if track_id:
-                    track_ids.append(track_id)
-
-        if not track_ids:
-            return
-
-        dialog = EditMediaInfoDialog(track_ids, self._library_service, self)
-        dialog.tracks_updated.connect(self._on_tracks_updated)
-        dialog.exec()
 
     def _on_tracks_updated(self, track_ids: List[int]):
         """Handle tracks updated event from EditMediaInfoDialog."""
