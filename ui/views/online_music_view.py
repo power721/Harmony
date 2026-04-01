@@ -249,6 +249,8 @@ class FavWorker(QThread):
                 result = self._qqmusic_service.get_my_fav_songlists(page=self._page, num=self._num)
             elif self._fav_type == "fav_albums":
                 result = self._qqmusic_service.get_my_fav_albums(page=self._page, num=self._num)
+            elif self._fav_type == "followed_singers":
+                result = self._qqmusic_service.get_followed_singers(page=self._page, size=self._num)
             self.fav_ready.emit(self._fav_type, result)
         except Exception as e:
             logger.error(f"Get favorites {self._fav_type} failed: {e}")
@@ -1468,7 +1470,7 @@ class OnlineMusicView(QWidget):
         self._favorites_section.show_loading()
         self._fav_data = {}  # Store data for click handling
 
-        for fav_type in ["fav_songs", "created_playlists", "fav_playlists", "fav_albums"]:
+        for fav_type in ["fav_songs", "created_playlists", "fav_playlists", "fav_albums", "followed_singers"]:
             worker = FavWorker(self._qqmusic_service, fav_type)
             worker.fav_ready.connect(self._on_fav_ready)
             self._fav_workers.append(worker)
@@ -1478,8 +1480,8 @@ class OnlineMusicView(QWidget):
         """Handle favorites data ready - store for later use."""
         self._fav_data[fav_type] = data
 
-        # Check if all 4 types loaded
-        if len(self._fav_data) == 4:
+        # Check if all 5 types loaded (initial load)
+        if len(self._fav_data) == 5:
             self._display_favorites_cards()
 
     def _get_random_cover(self, items: list) -> str:
@@ -1637,6 +1639,16 @@ class OnlineMusicView(QWidget):
             "card_type": "fav_albums",
         })
 
+        # Card 5: 关注歌手
+        followed_singers = self._fav_data.get("followed_singers", [])
+        cards.append({
+            "id": "followed_singers",
+            "title": t("followed_singers"),
+            "subtitle": f"{len(followed_singers)} {t('singers')}",
+            "cover_url": self._get_random_cover(followed_singers),
+            "card_type": "followed_singers",
+        })
+
         self._favorites_section.load_recommendations(cards)
 
     def _parse_recommendation(self, recommend_type: str, data: Any) -> Optional[Dict[str, Any]]:
@@ -1777,6 +1789,9 @@ class OnlineMusicView(QWidget):
         elif card_type == "fav_albums":
             albums = self._fav_data.get("fav_albums", [])
             self._show_album_list_in_detail(t("fav_albums"), albums)
+        elif card_type == "followed_singers":
+            singers = self._fav_data.get("followed_singers", [])
+            self._show_singer_list_in_detail(t("followed_singers"), singers)
 
     def _show_fav_songs_in_table(self, tracks: list):
         """Show favorite songs in the detail view with play all / add to queue buttons."""
@@ -1871,6 +1886,37 @@ class OnlineMusicView(QWidget):
             'page': 'albums',
             'title': title,
             'data': albums
+        })
+
+    def _show_singer_list_in_detail(self, title: str, singers: list):
+        """Show a list of followed singers in the grid view."""
+        from domain.online_music import OnlineArtist
+
+        # Clear previous data
+        self._singers_page.clear()
+
+        # Convert dicts to OnlineArtist objects
+        artists = []
+        for singer in singers:
+            artists.append(OnlineArtist(
+                mid=singer.get("mid", ""),
+                name=singer.get("name", ""),
+                avatar_url=singer.get("cover_url", ""),
+                fan_count=singer.get("fan_count", 0),
+            ))
+
+        self._singers_page.load_data(artists)
+        self._results_info.setText(title)
+        self._tabs.hide()
+        self._is_top_list_view = False
+        self._results_stack.setCurrentWidget(self._singers_page)
+        self._stack.setCurrentWidget(self._results_page)
+
+        # Push navigation state
+        self._navigation_stack.append({
+            'page': 'singers',
+            'title': title,
+            'data': singers
         })
 
     def _on_recommendation_clicked(self, data: Dict[str, Any]):

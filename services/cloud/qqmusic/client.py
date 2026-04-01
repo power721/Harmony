@@ -760,6 +760,11 @@ class QQMusicClient:
         params = {"euin": euin, "offset": (page - 1) * num, "size": num}
         return self._make_request("music.musicasset.AlbumFavRead", "CgiGetAlbumFavInfo", params)
 
+    def get_followed_singers(self, host_uin: str, from_idx: int = 0, size: int = 10) -> Dict:
+        """Get user's followed singers."""
+        params = {"From": from_idx, "Size": size, "HostUin": host_uin}
+        return self._make_request("music.concern.RelationList", "GetFollowSingerList", params)
+
     def get_euin(self) -> str:
         """
         Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.

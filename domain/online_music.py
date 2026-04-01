@@ -74,6 +74,7 @@ class OnlineArtist:
     avatar_url: Optional[str] = None
     song_count: int = 0
     album_count: int = 0
+    fan_count: int = 0
 
 
 @dataclass

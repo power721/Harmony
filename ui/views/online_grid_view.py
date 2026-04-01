@@ -370,7 +370,15 @@ class OnlineItemDelegate(QStyledItemDelegate):
 
         if isinstance(item, OnlineArtist):
             from system.i18n import t
-            subtitle = f"{item.song_count} {t('tracks')} • {item.album_count} {t('albums')}"
+            if item.song_count or item.album_count:
+                subtitle = f"{item.song_count} {t('tracks')} • {item.album_count} {t('albums')}"
+            elif item.fan_count:
+                if item.fan_count >= 10000:
+                    subtitle = f"{item.fan_count / 10000:.1f}{t('ten_thousand')} {t('fans')}"
+                else:
+                    subtitle = f"{item.fan_count:,} {t('fans')}"
+            else:
+                subtitle = ""
             align = Qt.AlignHCenter
         elif isinstance(item, OnlineAlbum):
             subtitle = item.singer_name

@@ -848,6 +848,35 @@ class QQMusicService:
             logger.error(f"Get favorite albums failed: {e}", exc_info=True)
             return []
 
+    def get_followed_singers(self, page: int = 1, size: int = 10) -> List[Dict[str, Any]]:
+        """Get current user's followed singers."""
+        try:
+            euin = self._get_euin()
+            logger.debug(f"=== {euin} ===")
+            if not euin:
+                return []
+            result = self.client.get_followed_singers(euin, from_idx=(page - 1) * size, size=size)
+            logger.debug(f"====== get_followed_singers: {result}")
+            if not result:
+                return []
+            singers = result.get("List", []) or []
+            items = []
+            for singer in singers:
+                if not isinstance(singer, dict):
+                    continue
+                mid = singer.get("MID", "")
+                items.append({
+                    "mid": mid,
+                    "name": singer.get("Name", ""),
+                    "desc": singer.get("Desc", ""),
+                    "cover_url": singer.get("AvatarUrl", ""),
+                    "fan_count": singer.get("FanNum", 0),
+                })
+            return items
+        except Exception as e:
+            logger.error(f"Get followed singers failed: {e}", exc_info=True)
+            return []
+
     def set_credential(self, credential: Dict[str, Any]):
         """
         Update credential for authenticated requests.
