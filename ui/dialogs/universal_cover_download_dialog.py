@@ -227,7 +227,8 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
     def _load_items(self):
         """Load items into UI."""
         if len(self._items) <= 1:
-            # Single item - auto search
+            # Single item - display existing cover, then auto search
+            self._display_existing_cover(self._items[0])
             self._search_covers()
             return
 
