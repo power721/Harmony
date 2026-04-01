@@ -1586,7 +1586,7 @@ class MainWindow(QMainWindow):
 
         from PySide6.QtCore import QLocale
         language = QLocale.system().language()
-        if "Chinese" in language:
+        if "Chinese" in language.name:
             self._config.set_language('zh')
             set_language('zh')
 
