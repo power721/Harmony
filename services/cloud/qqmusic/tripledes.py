@@ -12,7 +12,10 @@
 
 from __future__ import annotations
 
+import logging
 import zlib
+
+logger = logging.getLogger(__name__)
 
 ENCRYPT = 1
 DECRYPT = 0
@@ -442,5 +445,5 @@ def qrc_decrypt(encrypted_qrc_hex: str) -> str:
             return zlib.decompress(bytes(decrypted), -15).decode('utf-8')
 
     except Exception as e:
-        print(f"QRC decryption failed: {e}")
+        logger.debug(f"QRC decryption failed: {e}")
         return ""

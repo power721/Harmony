@@ -163,22 +163,25 @@ class PlaylistService:
         tracks = self._playlist_repo.get_tracks(playlist_id)
         count = 0
         skipped = 0
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write("#EXTM3U\n")
-            for track in tracks:
-                # 导出有本地路径的歌曲（本地歌曲或已下载的云端歌曲）
-                if track.path:
-                    duration = int(track.duration)
-                    artist_title = f"{track.artist} - {track.title}" if track.artist else track.title
-                    f.write(f"#EXTINF:{duration},{artist_title}\n")
-                    f.write(f"{track.path}\n")
-                    count += 1
-                else:
-                    skipped += 1
-                    logger.debug(f"Skipped track {track.id} ({track.title}): no local path")
-        logger.info(f"Exported {count} tracks from playlist {playlist_id} to {file_path}")
-        if skipped > 0:
-            logger.info(f"Skipped {skipped} tracks without local path")
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write("#EXTM3U\n")
+                for track in tracks:
+                    # 导出有本地路径的歌曲（本地歌曲或已下载的云端歌曲）
+                    if track.path:
+                        duration = int(track.duration)
+                        artist_title = f"{track.artist} - {track.title}" if track.artist else track.title
+                        f.write(f"#EXTINF:{duration},{artist_title}\n")
+                        f.write(f"{track.path}\n")
+                        count += 1
+                    else:
+                        skipped += 1
+                        logger.debug(f"Skipped track {track.id} ({track.title}): no local path")
+            logger.info(f"Exported {count} tracks from playlist {playlist_id} to {file_path}")
+            if skipped > 0:
+                logger.info(f"Skipped {skipped} tracks without local path")
+        except OSError as e:
+            logger.error(f"Failed to export M3U to {file_path}: {e}")
         return count
 
     def import_m3u(self, file_path: str, playlist_name: str) -> int:
@@ -196,8 +199,12 @@ class PlaylistService:
         playlist_id = self.create_playlist(playlist)
 
         imported = 0
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except OSError as e:
+            logger.error(f"Failed to import M3U from {file_path}: {e}")
+            return 0
 
         for line in lines:
             line = line.strip()

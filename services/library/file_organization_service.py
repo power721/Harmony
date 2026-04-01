@@ -16,7 +16,7 @@ class FileOrganizationService:
     Service for organizing music files into structured directory layouts.
     """
 
-    def __init__(self, track_repo, cloud_repo, event_bus, db_manager):
+    def __init__(self, track_repo, cloud_repo, event_bus, db_manager=None, queue_repo=None):
         """
         Initialize file organization service.
 
@@ -24,12 +24,14 @@ class FileOrganizationService:
             track_repo: Track repository instance
             cloud_repo: Cloud repository instance
             event_bus: Global event bus
-            db_manager: Database manager instance
+            db_manager: Database manager instance (deprecated, for backward compat)
+            queue_repo: Queue repository instance
         """
         self._track_repo = track_repo
         self._cloud_repo = cloud_repo
         self._event_bus = event_bus
         self._db = db_manager
+        self._queue_repo = queue_repo
 
     def _get_all_lyrics_paths(self, audio_path: Path) -> List[Path]:
         """
@@ -193,7 +195,7 @@ class FileOrganizationService:
         """
         try:
             # 更新 play_queue 表
-            self._db.update_play_queue_local_path(track_id, new_path)
+            self._queue_repo.update_local_path(track_id, new_path)
             logger.debug(f"更新 play_queue: track_id={track_id}, 新路径={new_path}")
 
             # 更新 cloud_files 表（如果是云下载文件）
@@ -201,7 +203,7 @@ class FileOrganizationService:
                 # Get account_id for cloud_file_id using repository
                 account_id = self._cloud_repo.get_account_id_by_file_id(cloud_file_id)
                 if account_id:
-                    self._db.update_cloud_file_local_path(cloud_file_id, account_id, new_path)
+                    self._cloud_repo.update_file_local_path(cloud_file_id, account_id, new_path)
                     logger.debug(f"更新 cloud_files: file_id={cloud_file_id}, 新路径={new_path}")
         except Exception as e:
             logger.error(f"更新路径失败: {e}")

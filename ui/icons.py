@@ -227,7 +227,7 @@ class IconButton(QPushButton):
             self._hover_color = colors['hover']
             self._active_color = colors['active']
             self._disabled_color = colors['disabled']
-        except:
+        except Exception:
             # Fallback to defaults
             self._default_color = IconColor.DEFAULT
             self._hover_color = IconColor.HOVER

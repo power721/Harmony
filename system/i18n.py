@@ -4,6 +4,7 @@ Supports English and Chinese languages.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -26,16 +27,24 @@ def load_translations():
     # Load English
     en_file = translations_dir / "en.json"
     if en_file.exists():
-        with open(en_file, "r", encoding="utf-8") as f:
-            _translations["en"] = json.load(f)
+        try:
+            with open(en_file, "r", encoding="utf-8") as f:
+                _translations["en"] = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logging.warning(f"Failed to load English translations: {e}")
+            _translations["en"] = {}
     else:
         _translations["en"] = {}
 
     # Load Chinese
     zh_file = translations_dir / "zh.json"
     if zh_file.exists():
-        with open(zh_file, "r", encoding="utf-8") as f:
-            _translations["zh"] = json.load(f)
+        try:
+            with open(zh_file, "r", encoding="utf-8") as f:
+                _translations["zh"] = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logging.warning(f"Failed to load Chinese translations: {e}")
+            _translations["zh"] = {}
     else:
         _translations["zh"] = {}
 

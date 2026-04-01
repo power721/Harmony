@@ -1867,8 +1867,8 @@ class MainWindow(QMainWindow):
         current_index = self._player.engine.current_index
         current_volume = self._player.volume
 
-        print(
-            f"[DEBUG] closeEvent: index={current_index}, playing={is_playing}, position={current_position}, volume={current_volume}")
+        logger.debug(
+            f"closeEvent: index={current_index}, playing={is_playing}, position={current_position}, volume={current_volume}")
 
         # Save volume
         self._config.set_volume(current_volume)

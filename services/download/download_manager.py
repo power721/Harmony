@@ -58,7 +58,8 @@ class DownloadManager(QObject):
 
     def set_dependencies(self, config: Optional["ConfigManager"] = None,
                         db_manager: Optional["DatabaseManager"] = None,
-                        playback_service = None):
+                        playback_service = None,
+                        cloud_repo = None):
         """
         Set dependencies for download services.
 
@@ -66,10 +67,12 @@ class DownloadManager(QObject):
             config: ConfigManager instance
             db_manager: DatabaseManager instance
             playback_service: PlaybackService instance (for callbacks)
+            cloud_repo: Cloud repository
         """
         self._config = config
         self._db = db_manager
         self._playback_service = playback_service
+        self._cloud_repo = cloud_repo
         logger.debug("[DownloadManager] Dependencies set")
 
     def download_track(self, item: "PlaylistItem") -> bool:
@@ -184,7 +187,7 @@ class DownloadManager(QObject):
             return False
 
         # Find cloud file
-        cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+        cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
         if not cloud_file:
             logger.error(f"[DownloadManager] CloudFile not found: {item.cloud_file_id}")
             return False
@@ -192,7 +195,7 @@ class DownloadManager(QObject):
         # Get cloud account
         cloud_account = None
         if item.cloud_account_id:
-            cloud_account = self._db.get_cloud_account(item.cloud_account_id)
+            cloud_account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
         if not cloud_account:
             logger.error("[DownloadManager] No cloud account for download")
             return False

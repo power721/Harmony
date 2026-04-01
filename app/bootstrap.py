@@ -216,6 +216,12 @@ class Bootstrap:
                 online_download_service=self.online_download_service,
                 event_bus=self.event_bus,
                 track_repo=self.track_repo,
+                favorite_repo=self.favorite_repo,
+                queue_repo=self.queue_repo,
+                cloud_repo=self.cloud_repo,
+                history_repo=self.history_repo,
+                album_repo=self.album_repo,
+                artist_repo=self.artist_repo,
             )
         return self._playback_service
 
@@ -315,6 +321,7 @@ class Bootstrap:
                 cloud_repo=self.cloud_repo,
                 event_bus=self.event_bus,
                 db_manager=self.db,
+                queue_repo=self.queue_repo,
             )
         return self._file_org_service
 

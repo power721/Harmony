@@ -22,7 +22,6 @@ from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
 from domain.track import Track, TrackSource
 from infrastructure.audio import PlayerEngine
-from infrastructure.database import DatabaseManager
 from system.config import ConfigManager
 from system.event_bus import EventBus
 from utils.helpers import get_cache_dir
@@ -32,6 +31,12 @@ if TYPE_CHECKING:
     from services.cloud.download_service import CloudDownloadService
     from services.online import OnlineDownloadService
     from repositories.track_repository import SqliteTrackRepository
+    from repositories.favorite_repository import SqliteFavoriteRepository
+    from repositories.queue_repository import SqliteQueueRepository
+    from repositories.cloud_repository import SqliteCloudRepository
+    from repositories.history_repository import SqliteHistoryRepository
+    from repositories.album_repository import SqliteAlbumRepository
+    from repositories.artist_repository import SqliteArtistRepository
 
 logger = logging.getLogger(__name__)
 
@@ -60,24 +65,36 @@ class PlaybackService(QObject):
 
     def __init__(
             self,
-            db_manager: DatabaseManager,
-            config_manager: ConfigManager,
+            db_manager: 'DatabaseManager' = None,
+            config_manager: ConfigManager = None,
             cover_service: 'CoverService' = None,
             online_download_service: 'OnlineDownloadService' = None,
             event_bus: EventBus = None,
             track_repo: 'SqliteTrackRepository' = None,
+            favorite_repo: 'SqliteFavoriteRepository' = None,
+            queue_repo: 'SqliteQueueRepository' = None,
+            cloud_repo: 'SqliteCloudRepository' = None,
+            history_repo: 'SqliteHistoryRepository' = None,
+            album_repo: 'SqliteAlbumRepository' = None,
+            artist_repo: 'SqliteArtistRepository' = None,
             parent=None
     ):
         """
         Initialize the playback service.
 
         Args:
-            db_manager: Database manager for track data
+            db_manager: Database manager (deprecated, for backward compat)
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
             online_download_service: Service for downloading online tracks (QQ Music)
             event_bus: Event bus for event publishing (defaults to singleton)
-            track_repo: Track repository for metadata enrichment
+            track_repo: Track repository
+            favorite_repo: Favorite repository
+            queue_repo: Queue repository
+            cloud_repo: Cloud repository
+            history_repo: History repository
+            album_repo: Album repository
+            artist_repo: Artist repository
             parent: Optional parent QObject
         """
         super().__init__(parent)
@@ -87,6 +104,12 @@ class PlaybackService(QObject):
         self._cover_service = cover_service
         self._online_download_service = online_download_service
         self._track_repo = track_repo
+        self._favorite_repo = favorite_repo
+        self._queue_repo = queue_repo
+        self._cloud_repo = cloud_repo
+        self._history_repo = history_repo
+        self._album_repo = album_repo
+        self._artist_repo = artist_repo
         self._engine = PlayerEngine()
         self._event_bus = event_bus or EventBus.instance()
 
@@ -165,7 +188,7 @@ class PlaybackService(QObject):
     def _on_metadata_updated(self, track_id: int):
         """Handle metadata update from manual edit - update play_queue."""
         # Get updated track from database
-        track = self._db.get_track(track_id)
+        track = self._track_repo.get_by_id(track_id)
         if not track:
             return
 
@@ -402,7 +425,7 @@ class PlaybackService(QObject):
         Args:
             track_id: Database track ID
         """
-        track = self._db.get_track(track_id)
+        track = self._track_repo.get_by_id(track_id)
         if not track:
             logger.error(f"[PlaybackService] Track not found: {track_id}")
             return
@@ -421,7 +444,7 @@ class PlaybackService(QObject):
         self._engine.clear_playlist()
         self._engine.cleanup_temp_files()
 
-        tracks = self._db.get_all_tracks()
+        tracks = self._track_repo.get_all()
 
         # Build items and find start index
         items = []
@@ -464,7 +487,7 @@ class PlaybackService(QObject):
         self._engine.clear_playlist()
 
         # Batch-load all tracks at once
-        tracks = self._db.get_tracks_by_ids(track_ids)
+        tracks = self._track_repo.get_by_ids(track_ids)
         items = self._filter_and_convert_tracks(tracks)
 
         self._engine.load_playlist_items(items)
@@ -482,7 +505,7 @@ class PlaybackService(QObject):
         """Play all tracks in the library."""
         self._set_source("local")
 
-        tracks = self._db.get_all_tracks()
+        tracks = self._track_repo.get_all()
         items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
@@ -503,7 +526,7 @@ class PlaybackService(QObject):
 
         # self._set_source("local")
 
-        tracks = self._db.get_playlist_tracks(playlist_id)
+        tracks = self._track_repo.get_playlist_tracks(playlist_id)
         items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
@@ -522,7 +545,7 @@ class PlaybackService(QObject):
         """
         self._set_source("local")
 
-        tracks = self._db.get_playlist_tracks(playlist_id)
+        tracks = self._track_repo.get_playlist_tracks(playlist_id)
         items = self._filter_and_convert_tracks(tracks)
         start_index = 0
         for i, item in enumerate(items):
@@ -544,7 +567,7 @@ class PlaybackService(QObject):
 
     def load_favorites(self):
         """Load all favorite tracks."""
-        tracks = self._db.get_favorites()
+        tracks = self._favorite_repo.get_favorites()
         items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
@@ -619,7 +642,7 @@ class PlaybackService(QObject):
 
         # Batch-load all tracks by cloud file IDs
         cloud_file_ids = [cf.file_id for cf in cloud_files]
-        tracks_by_cloud_id = self._db.get_tracks_by_cloud_file_ids(cloud_file_ids)
+        tracks_by_cloud_id = self._track_repo.get_by_cloud_file_ids(cloud_file_ids)
 
         # Build playlist items - fast path, no blocking operations
         items = []
@@ -697,7 +720,7 @@ class PlaybackService(QObject):
 
         # Update cloud_files table with local_path (fast DB operation)
         if self._cloud_account:
-            self._db.update_cloud_file_local_path(
+            self._cloud_repo.update_file_local_path(
                 cloud_file_id, self._cloud_account.id, local_path
             )
 
@@ -739,21 +762,21 @@ class PlaybackService(QObject):
             return False
 
         if track_id:
-            if self._db.is_favorite(track_id=track_id):
-                self._db.remove_favorite(track_id=track_id)
+            if self._favorite_repo.is_favorite(track_id=track_id):
+                self._favorite_repo.remove_favorite(track_id=track_id)
                 self._event_bus.emit_favorite_change(track_id, False, is_cloud=False)
                 return False
             else:
-                self._db.add_favorite(track_id=track_id)
+                self._favorite_repo.add_favorite(track_id=track_id)
                 self._event_bus.emit_favorite_change(track_id, True, is_cloud=False)
                 return True
         else:
-            if self._db.is_favorite(cloud_file_id=cloud_file_id):
-                self._db.remove_favorite(cloud_file_id=cloud_file_id)
+            if self._favorite_repo.is_favorite(cloud_file_id=cloud_file_id):
+                self._favorite_repo.remove_favorite(cloud_file_id=cloud_file_id)
                 self._event_bus.emit_favorite_change(cloud_file_id, False, is_cloud=True)
                 return False
             else:
-                self._db.add_favorite(
+                self._favorite_repo.add_favorite(
                     cloud_file_id=cloud_file_id,
                     cloud_account_id=cloud_account_id
                 )
@@ -777,7 +800,7 @@ class PlaybackService(QObject):
         if track_id is None and cloud_file_id is None:
             return False
 
-        return self._db.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        return self._favorite_repo.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
 
     # ===== Queue Persistence =====
 
@@ -824,7 +847,7 @@ class PlaybackService(QObject):
             queue_items.append(queue_item)
 
         # DBWriteWorker handles serialization
-        self._db.save_play_queue(queue_items)
+        self._queue_repo.save(queue_items)
 
         # Save current index and play mode
         self._config.set("queue_current_index", current_idx)
@@ -839,7 +862,7 @@ class PlaybackService(QObject):
         Returns:
             True if queue was restored successfully
         """
-        queue_items = self._db.load_play_queue()
+        queue_items = self._queue_repo.load()
         if not queue_items:
             return False
 
@@ -866,7 +889,7 @@ class PlaybackService(QObject):
         if target_item.is_cloud:
             self._set_source("cloud")
             if target_item.cloud_account_id:
-                self._cloud_account = self._db.get_cloud_account(target_item.cloud_account_id)
+                self._cloud_account = self._cloud_repo.get_account_by_id(target_item.cloud_account_id)
         else:
             self._set_source("local")
 
@@ -946,7 +969,7 @@ class PlaybackService(QObject):
 
     def clear_saved_queue(self):
         """Clear the saved play queue from database."""
-        self._db.clear_play_queue()
+        self._queue_repo.clear()
         self._config.delete("queue_current_index")
         self._config.delete("queue_play_mode")
 
@@ -978,7 +1001,7 @@ class PlaybackService(QObject):
         total = len(audio_files)
 
         for i, file_path in enumerate(audio_files):
-            existing = self._db.get_track_by_path(str(file_path))
+            existing = self._track_repo.get_by_path(str(file_path))
             if existing:
                 continue
 
@@ -1003,7 +1026,7 @@ class PlaybackService(QObject):
                 cover_path=metadata.get("cover_path"),
             )
 
-            self._db.add_track(track)
+            self._track_repo.add(track)
             added_count += 1
 
             if progress_callback:
@@ -1037,14 +1060,14 @@ class PlaybackService(QObject):
 
             # Record play history
             if item.is_local and item.track_id:
-                self._db.add_play_history(item.track_id)
+                self._history_repo.add(item.track_id)
             elif item.is_cloud and item.local_path:
-                track = self._db.get_track_by_path(item.local_path)
+                track = self._track_repo.get_by_path(item.local_path)
                 if not track:
-                    track = self._db.get_track_by_cloud_file_id(item.cloud_file_id)
+                    track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
 
                 if track and track.id:
-                    self._db.add_play_history(track.id)
+                    self._history_repo.add(track.id)
                     # Update PlaylistItem with track_id if not set
                     if not item.track_id:
                         item.track_id = track.id
@@ -1060,10 +1083,10 @@ class PlaybackService(QObject):
                         cloud_file_id=item.cloud_file_id,
                         source=item.source,  # Already TrackSource
                     )
-                    track_id = self._db.add_track(new_track)
+                    track_id = self._track_repo.add(new_track)
 
                     if track_id:
-                        self._db.add_play_history(track_id)
+                        self._history_repo.add(track_id)
                         # Update PlaylistItem with track_id and save queue
                         item.track_id = track_id
                         self.save_queue()
@@ -1193,7 +1216,7 @@ class PlaybackService(QObject):
         if not self._cloud_account:
             logger.error("[PlaybackService] No cloud account for download")
             if item.cloud_account_id:
-                self._cloud_account = self._db.get_cloud_account(item.cloud_account_id)
+                self._cloud_account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
                 if not self._cloud_account:
                     return
             else:
@@ -1206,7 +1229,7 @@ class PlaybackService(QObject):
         cloud_file = self._cloud_files_by_id.get(item.cloud_file_id)
 
         if not cloud_file:
-            cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+            cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
             if not cloud_file:
                 logger.error(f"[PlaybackService] CloudFile not found: {item.cloud_file_id}")
                 return
@@ -1265,7 +1288,7 @@ class PlaybackService(QObject):
         # Update playlist item in engine
         track = None
         if track_id:
-            track = self._db.get_track(track_id)
+            track = self._track_repo.get_by_id(track_id)
 
         if track:
             updated_index = self._engine.update_playlist_item(
@@ -1318,10 +1341,10 @@ class PlaybackService(QObject):
             return None
 
         # Check if track already exists by cloud_file_id (song_mid)
-        existing = self._db.get_track_by_cloud_file_id(song_mid)
+        existing = self._track_repo.get_by_cloud_file_id(song_mid)
         if existing:
             # Update existing track with local path
-            self._db.update_track_path(existing.id, local_path)
+            self._track_repo.update_path(existing.id, local_path)
             logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
             return existing.id
 
@@ -1334,7 +1357,7 @@ class PlaybackService(QObject):
         duration = metadata.get("duration") or 0.0
 
         # Check if track already exists (by path)
-        existing = self._db.get_track_by_path(local_path)
+        existing = self._track_repo.get_by_path(local_path)
         if existing:
             return existing.id
 
@@ -1351,7 +1374,7 @@ class PlaybackService(QObject):
         )
 
         # DBWriteWorker handles serialization
-        track_id = self._db.add_track(track)
+        track_id = self._track_repo.add(track)
         return track_id
 
     def _preload_next_cloud_track(self):
@@ -1419,7 +1442,7 @@ class PlaybackService(QObject):
                 break
 
         if not cloud_file:
-            cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+            cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
 
         if not cloud_file:
             return
@@ -1427,7 +1450,7 @@ class PlaybackService(QObject):
         # Get cloud account if needed
         account = self._cloud_account
         if not account and item.cloud_account_id:
-            account = self._db.get_cloud_account(item.cloud_account_id)
+            account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
 
         if not account:
             return
@@ -1483,11 +1506,11 @@ class PlaybackService(QObject):
         new_duration = metadata.get("duration", 0)
 
         # Check if track already exists
-        existing = self._db.get_track_by_cloud_file_id(file_id)
+        existing = self._track_repo.get_by_cloud_file_id(file_id)
         if existing:
             # Update path if it's empty or different
             if not existing.path or existing.path != local_path:
-                self._db.update_track_path(existing.id, local_path)
+                self._track_repo.update_path(existing.id, local_path)
                 logger.info(f"[PlaybackService] Updated track {existing.id} path: {local_path}")
 
             # Check if existing metadata needs update (e.g., title looks like filename or artist is empty)
@@ -1497,7 +1520,7 @@ class PlaybackService(QObject):
 
             if needs_update and (new_artist or not is_filename_like(new_title)):
                 # Update existing track with better metadata
-                self._db.update_track(
+                self._track_repo.update_fields(
                     existing.id,
                     title=new_title if not is_filename_like(new_title) else None,
                     artist=new_artist if new_artist else None,
@@ -1514,20 +1537,20 @@ class PlaybackService(QObject):
             if not existing.cover_path and self._cover_service:
                 cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
                 if cover_path:
-                    self._db.update_track_cover_path(existing.id, cover_path)
+                    self._track_repo.update_cover_path(existing.id, cover_path)
                     logger.info(f"[PlaybackService] Updated track {existing.id} cover: {cover_path}")
                     return cover_path
 
             return existing.cover_path
 
-        existing_by_path = self._db.get_track_by_path(local_path)
+        existing_by_path = self._track_repo.get_by_path(local_path)
         if existing_by_path:
-            self._db.update_track(existing_by_path.id, cloud_file_id=file_id)
+            self._track_repo.update_fields(existing_by_path.id, cloud_file_id=file_id)
 
             # Also update metadata if needed
             if is_filename_like(existing_by_path.title) or not existing_by_path.artist:
                 if new_artist or not is_filename_like(new_title):
-                    self._db.update_track(
+                    self._track_repo.update_fields(
                         existing_by_path.id,
                         title=new_title if not is_filename_like(new_title) else None,
                         artist=new_artist if new_artist else None,
@@ -1543,7 +1566,7 @@ class PlaybackService(QObject):
             if not existing_by_path.cover_path and self._cover_service:
                 cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
                 if cover_path:
-                    self._db.update_track_cover_path(existing_by_path.id, cover_path)
+                    self._track_repo.update_cover_path(existing_by_path.id, cover_path)
                     logger.info(f"[PlaybackService] Updated track {existing_by_path.id} cover: {cover_path}")
                     return cover_path
 
@@ -1579,9 +1602,10 @@ class PlaybackService(QObject):
             source=source,  # Use determined source (QUARK, BAIDU, or QQ)
         )
 
-        self._db.add_track(track)
+        self._track_repo.add(track)
 
         # Update albums and artists tables
+        # TODO: Move to album_repo/artist_repo incremental update methods
         self._db.update_albums_on_track_added(album, artist, cover_path, duration)
         self._db.update_artists_on_track_added(artist, album, cover_path)
 
@@ -1717,7 +1741,7 @@ class PlaybackService(QObject):
                     cover_path = self._save_cloud_track_to_library(file_id, local_path, source)
 
                     # Get track from database
-                    track = self._db.get_track_by_cloud_file_id(file_id)
+                    track = self._track_repo.get_by_cloud_file_id(file_id)
 
                     # Emit signal to update UI in main thread (skip_save=True)
                     if track:

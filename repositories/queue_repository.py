@@ -112,3 +112,22 @@ class SqliteQueueRepository(BaseRepository):
         cursor.execute("DELETE FROM play_queue")
         conn.commit()
         return True
+
+    def update_local_path(self, track_id: int, local_path: str) -> bool:
+        """Update local_path for all play_queue entries with the given track_id."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE play_queue SET local_path = ? WHERE track_id = ?",
+            (local_path, track_id)
+        )
+        conn.commit()
+        return True
+
+    def count(self) -> int:
+        """Get the number of items in the play queue."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM play_queue")
+        row = cursor.fetchone()
+        return row["count"] if row else 0
