@@ -50,6 +50,9 @@ class LoadTracksWorker(QThread):
     """Background worker to load tracks from database."""
 
     finished = Signal(list)
+    progress = Signal(list, int)  # (remaining_tracks, total_count)
+
+    FIRST_BATCH = 50
 
     def __init__(self, library_service, search_text="", source_filter="all", parent=None):
         super().__init__(parent)
@@ -60,16 +63,34 @@ class LoadTracksWorker(QThread):
     def run(self):
         if self._search_text:
             tracks = self._library.search_tracks(self._search_text)
+            # Apply source filter
+            if self._source_filter and self._source_filter != "all":
+                from domain.track import TrackSource
+                source_enum = TrackSource(self._source_filter)
+                tracks = [t for t in tracks if t.source == source_enum]
+            self.finished.emit(tracks)
         else:
-            tracks = self._library.get_all_tracks()
+            # First batch: load 50 tracks quickly
+            first_batch = self._library.get_all_tracks(limit=self.FIRST_BATCH)
+            # Apply source filter to first batch
+            if self._source_filter and self._source_filter != "all":
+                from domain.track import TrackSource
+                source_enum = TrackSource(self._source_filter)
+                first_batch = [t for t in first_batch if t.source == source_enum]
 
-        # Filter by source if needed
-        if self._source_filter and self._source_filter != "all":
-            from domain.track import TrackSource
-            source_enum = TrackSource(self._source_filter)
-            tracks = [t for t in tracks if t.source == source_enum]
+            total = self._library.get_track_count()
+            if total <= self.FIRST_BATCH:
+                self.finished.emit(first_batch)
+                return
 
-        self.finished.emit(tracks)
+            # Emit first batch for immediate display
+            self.finished.emit(first_batch)
+
+            # Load remaining tracks
+            remaining = self._library.get_all_tracks(limit=0, offset=self.FIRST_BATCH)
+            if self._source_filter and self._source_filter != "all":
+                remaining = [t for t in remaining if t.source == source_enum]
+            self.progress.emit(remaining, total)
 
 
 class LibraryView(QWidget):
@@ -571,15 +592,102 @@ class LibraryView(QWidget):
             self._library_service, search_text=search_text, source_filter=source_filter, parent=self
         )
         self._load_worker.finished.connect(self._on_tracks_loaded)
+        self._load_worker.progress.connect(self._on_tracks_remaining)
         self._load_worker.start()
 
     def _on_tracks_loaded(self, tracks):
-        """Handle tracks loaded from background thread."""
+        """Handle first batch of tracks loaded from background thread."""
         self._populate_table(tracks)
         self._status_label.setText(f"{len(tracks)} {t('tracks')}")
 
         self._loading_label.setVisible(False)
         self._tracks_table.setVisible(True)
+
+    def _on_tracks_remaining(self, remaining_tracks, total_count):
+        """Handle remaining tracks loaded after first batch."""
+        if not remaining_tracks:
+            return
+        # Append remaining tracks to the table
+        from PySide6.QtGui import QBrush, QColor
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
+        text_secondary_color = QColor(theme.text_secondary)
+        text_color = QColor(theme.text)
+
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+
+        start_row = self._tracks_table.rowCount()
+        self._tracks_table.setUpdatesEnabled(False)
+        self._tracks_table.setRowCount(start_row + len(remaining_tracks))
+        try:
+            for i, track in enumerate(remaining_tracks):
+                row = start_row + i
+                self._track_id_to_row[track.id] = row
+
+                # Source
+                source_value = track.source.value if hasattr(track, 'source') and track.source else "Local"
+                source_key_map = {"Local": "source_local", "QUARK": "source_quark", "BAIDU": "source_baidu",
+                                  "QQ": "source_qq"}
+                source_text = t(source_key_map.get(source_value, "source_local"))
+                source_item = QTableWidgetItem(source_text)
+                source_item.setForeground(QBrush(text_secondary_color))
+                source_item.setData(Qt.UserRole, track.id)
+                self._tracks_table.setItem(row, 0, source_item)
+
+                # Title
+                is_currently_playing = track.id == self._current_playing_track_id
+                icon_prefix = ""
+                if is_currently_playing:
+                    if self._player.engine.state == PlaybackState.PLAYING:
+                        icon_prefix = "▶️ "
+                    else:
+                        icon_prefix = "⏸️ "
+                title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
+                title_item = QTableWidgetItem(title_text)
+                title_item.setForeground(QBrush(text_color))
+                if is_currently_playing:
+                    from PySide6.QtGui import QFont
+                    font = title_item.font()
+                    font.setBold(True)
+                    title_item.setFont(font)
+                    title_item.setForeground(QBrush(QColor(theme.highlight)))
+                self._tracks_table.setItem(row, 1, title_item)
+
+                # Artist
+                artist_item = QTableWidgetItem(track.artist or t("unknown"))
+                artist_item.setForeground(QBrush(text_secondary_color))
+                self._tracks_table.setItem(row, 2, artist_item)
+
+                # Album
+                album_item = QTableWidgetItem(track.album or t("unknown"))
+                album_item.setForeground(QBrush(text_secondary_color))
+                self._tracks_table.setItem(row, 3, album_item)
+
+                # Genre
+                genre_item = QTableWidgetItem(track.genre or t("unknown"))
+                genre_item.setForeground(QBrush(text_secondary_color))
+                self._tracks_table.setItem(row, 4, genre_item)
+
+                # Duration
+                duration_item = QTableWidgetItem(format_duration(track.duration))
+                duration_item.setForeground(QBrush(text_secondary_color))
+                self._tracks_table.setItem(row, 5, duration_item)
+
+                # Favorite
+                is_fav = track.id in favorite_ids
+                fav_text = "★" if is_fav else ""
+                fav_item = QTableWidgetItem(fav_text)
+                fav_item.setForeground(
+                    QBrush(QColor(theme.highlight if is_fav else theme.border))
+                )
+                self._tracks_table.setItem(row, 6, fav_item)
+        finally:
+            self._tracks_table.setUpdatesEnabled(True)
+
+        # Update status with total count
+        total_rows = self._tracks_table.rowCount()
+        self._status_label.setText(f"{total_rows} {t('tracks')}")
 
     def _load_favorites(self):
         """Load favorite tracks and cloud files."""

@@ -76,13 +76,23 @@ class SqliteTrackRepository(BaseRepository):
         rows = cursor.fetchall()
         return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
 
-    def get_all(self) -> List[Track]:
-        """Get all tracks."""
+    def get_all(self, limit: int = 0, offset: int = 0) -> List[Track]:
+        """Get all tracks. If limit > 0, returns only limit tracks starting from offset."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tracks ORDER BY id DESC")
+        if limit > 0:
+            cursor.execute("SELECT * FROM tracks ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+        else:
+            cursor.execute("SELECT * FROM tracks ORDER BY id DESC")
         rows = cursor.fetchall()
         return [self._row_to_track(row) for row in rows]
+
+    def get_track_count(self) -> int:
+        """Get total track count."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tracks")
+        return cursor.fetchone()[0]
 
     def search(self, query: str, limit: int = 100) -> List[Track]:
         """Search tracks by query using FTS5 or LIKE fallback."""

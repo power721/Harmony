@@ -120,9 +120,13 @@ class LibraryService:
         """Get a track by cloud file ID."""
         return self._track_repo.get_by_cloud_file_id(cloud_file_id)
 
-    def get_all_tracks(self) -> List[Track]:
-        """Get all tracks in the library."""
-        return self._track_repo.get_all()
+    def get_all_tracks(self, limit: int = 0, offset: int = 0) -> List[Track]:
+        """Get all tracks in the library. If limit > 0, returns only limit tracks."""
+        return self._track_repo.get_all(limit, offset)
+
+    def get_track_count(self) -> int:
+        """Get total track count."""
+        return self._track_repo.get_track_count()
 
     def search_tracks(self, query: str, limit: int = 100) -> List[Track]:
         """Search tracks by query."""

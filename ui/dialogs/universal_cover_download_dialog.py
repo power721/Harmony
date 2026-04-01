@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QProgressBar, QSplitter, QWidget, QScrollArea
 )
 
+from infrastructure.cache import ImageCache
 from services.metadata import CoverService
 from system.i18n import t
 from system.theme import ThemeManager
@@ -298,6 +299,20 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         cover_path = getattr(item, 'cover_path', None)
         if cover_path:
             try:
+                if cover_path.startswith('http'):
+                    cached_data = ImageCache.get(cover_path)
+                    if cached_data:
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(cached_data):
+                            scaled_pixmap = pixmap.scaled(
+                                400, 400,
+                                Qt.KeepAspectRatio,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_label.setPixmap(scaled_pixmap)
+                            self._status_label.setText(t("cover_already_exists"))
+                            return
+
                 pixmap = QPixmap(cover_path)
                 if not pixmap.isNull():
                     scaled_pixmap = pixmap.scaled(
