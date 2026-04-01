@@ -728,6 +728,16 @@ class OnlineDetailView(QWidget):
         self._stats_label = QLabel()
         info_layout.addWidget(self._stats_label)
 
+        # Follow button (for artist detail)
+        self._follow_btn = QPushButton(t("follow"))
+        self._follow_btn.setFixedHeight(28)
+        self._follow_btn.setCursor(Qt.PointingHandCursor)
+        self._follow_btn.hide()
+        self._follow_btn.clicked.connect(self._on_follow_clicked)
+        info_layout.addWidget(self._follow_btn)
+
+        self._is_followed = False
+
         # Description (truncated, click to show full)
         self._desc_label = QLabel()
         self._desc_label.setWordWrap(True)
@@ -958,6 +968,9 @@ class OnlineDetailView(QWidget):
         self._stats_label.setStyleSheet(tm.get_qss(self._STYLE_STATS_LABEL))
         self._desc_label.setStyleSheet(tm.get_qss(self._STYLE_DESC_LABEL))
 
+        # Follow button
+        self._update_follow_btn_style()
+
         # Page label
         self._page_label.setStyleSheet(tm.get_qss(self._STYLE_PAGE_LABEL))
 
@@ -1004,6 +1017,11 @@ class OnlineDetailView(QWidget):
         # Show albums section for artist
         self._albums_section.show()
 
+        # Show follow button for artist
+        self._follow_btn.show()
+        self._is_followed = False
+        self._update_follow_btn_style()
+
         self._load_detail()
 
     def load_album(self, mid: str, name: str = "", singer_name: str = ""):
@@ -1012,6 +1030,9 @@ class OnlineDetailView(QWidget):
         self._use_tracks_list_view = False
         self._mid = mid
         self._current_page = 1  # Reset to first page
+
+        # Hide follow button for non-artist views
+        self._follow_btn.hide()
 
         # Set placeholder info
         self._type_label.setText(t("album"))
@@ -1032,6 +1053,9 @@ class OnlineDetailView(QWidget):
         self._use_tracks_list_view = False
         self._mid = playlist_id
         self._current_page = 1  # Reset to first page
+
+        # Hide follow button for non-artist views
+        self._follow_btn.hide()
 
         # Set placeholder info
         self._type_label.setText(t("playlists"))
@@ -1060,6 +1084,9 @@ class OnlineDetailView(QWidget):
         self._mid = ""  # No playlist ID for direct songs
         self._current_page = 1
         self._use_tracks_list_view = True  # Use OnlineTracksListView for recommendations
+
+        # Hide follow button for non-artist views
+        self._follow_btn.hide()
 
         # Set info
         self._type_label.setText(t("playlists"))
@@ -1683,6 +1710,60 @@ class OnlineDetailView(QWidget):
         """Handle album card click."""
         self.album_clicked.emit(album)
 
+    def set_followed(self, is_followed: bool):
+        """Set follow state and update button."""
+        self._is_followed = is_followed
+        self._update_follow_btn_style()
+
+    def _update_follow_btn_style(self):
+        """Update follow button text and style."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        if self._is_followed:
+            self._follow_btn.setText(t("followed"))
+            self._follow_btn.setStyleSheet(tm.get_qss("""
+                QPushButton {
+                    background: transparent;
+                    color: %text_secondary%;
+                    border: 1px solid %border%;
+                    border-radius: 14px;
+                    font-size: 12px;
+                    padding: 4px 16px;
+                }
+                QPushButton:hover {
+                    color: %danger%;
+                    border-color: %danger%;
+                }
+            """))
+        else:
+            self._follow_btn.setText(t("follow"))
+            self._follow_btn.setStyleSheet(tm.get_qss("""
+                QPushButton {
+                    background: %highlight%;
+                    color: %background%;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 4px 16px;
+                }
+                QPushButton:hover {
+                    background: %highlight_hover%;
+                }
+            """))
+
+    def _on_follow_clicked(self):
+        """Handle follow/unfollow button click."""
+        if self._detail_type != "artist" or not self._mid:
+            return
+        if self._is_followed:
+            success = self._service.unfollow_singer(self._mid)
+        else:
+            success = self._service.follow_singer(self._mid)
+        if success:
+            self._is_followed = not self._is_followed
+            self._update_follow_btn_style()
+
     def _on_play_current(self):
         """Play current page tracks."""
         if self._tracks:
@@ -2035,6 +2116,10 @@ class OnlineDetailView(QWidget):
             self._insert_all_queue_btn.setText(t("insert_all_to_queue"))
         if hasattr(self, '_add_all_queue_btn'):
             self._add_all_queue_btn.setText(t("add_all_to_queue"))
+
+        # Update follow button
+        if hasattr(self, '_follow_btn'):
+            self._follow_btn.setText(t("followed") if self._is_followed else t("follow"))
 
         # Update pagination buttons
         if hasattr(self, '_prev_page_btn'):

@@ -852,11 +852,9 @@ class QQMusicService:
         """Get current user's followed singers."""
         try:
             euin = self._get_euin()
-            logger.debug(f"=== {euin} ===")
             if not euin:
                 return []
             result = self.client.get_followed_singers(euin, from_idx=(page - 1) * size, size=size)
-            logger.debug(f"====== get_followed_singers: {result}")
             if not result:
                 return []
             singers = result.get("List", []) or []
@@ -876,6 +874,28 @@ class QQMusicService:
         except Exception as e:
             logger.error(f"Get followed singers failed: {e}", exc_info=True)
             return []
+
+    def follow_singer(self, singer_mid: str) -> bool:
+        """Follow a singer. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.follow_singer(singer_mid)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Follow singer failed: {e}", exc_info=True)
+            return False
+
+    def unfollow_singer(self, singer_mid: str) -> bool:
+        """Unfollow a singer. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.unfollow_singer(singer_mid)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Unfollow singer failed: {e}", exc_info=True)
+            return False
 
     def set_credential(self, credential: Dict[str, Any]):
         """

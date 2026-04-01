@@ -655,6 +655,18 @@ class OnlineMusicService:
 
         return None
 
+    def follow_singer(self, singer_mid: str) -> bool:
+        """Follow a singer."""
+        if self._qqmusic:
+            return self._qqmusic.follow_singer(singer_mid)
+        return False
+
+    def unfollow_singer(self, singer_mid: str) -> bool:
+        """Unfollow a singer."""
+        if self._qqmusic:
+            return self._qqmusic.unfollow_singer(singer_mid)
+        return False
+
     def _get_song_detail_ygking(self, song_mid: str) -> Optional[Dict[str, Any]]:
         """Get song detail using YGKing remote API."""
         try:

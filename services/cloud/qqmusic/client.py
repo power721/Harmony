@@ -765,6 +765,16 @@ class QQMusicClient:
         params = {"From": from_idx, "Size": size, "HostUin": host_uin}
         return self._make_request("music.concern.RelationList", "GetFollowSingerList", params)
 
+    def follow_singer(self, singer_mid: str) -> Dict:
+        """Follow a singer."""
+        params = {"opertype": 0, "source": 0, "userinfo": {"usertype": 1, "userid": singer_mid}, "encrypt_singerid": 1}
+        return self._make_request("Concern.ConcernSystemServer", "cgi_concern_user_v2", params)
+
+    def unfollow_singer(self, singer_mid: str) -> Dict:
+        """Unfollow a singer."""
+        params = {"opertype": 1, "source": 0, "userinfo": {"usertype": 1, "userid": singer_mid}, "encrypt_singerid": 1}
+        return self._make_request("Concern.ConcernSystemServer", "cgi_concern_user_v2", params)
+
     def get_euin(self) -> str:
         """
         Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.
