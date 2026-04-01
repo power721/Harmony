@@ -775,6 +775,40 @@ class QQMusicClient:
         params = {"opertype": 1, "source": 0, "userinfo": {"usertype": 1, "userid": singer_mid}, "encrypt_singerid": 1}
         return self._make_request("Concern.ConcernSystemServer", "cgi_concern_user_v2", params)
 
+    def fav_song(self, song_id: int) -> Dict:
+        """Add a song to favorites (dirId=201 is favorites folder)."""
+        params = {"dirId": 201, "v_songInfo": [{"songType": 0, "songId": song_id}]}
+        return self._make_request("music.musicasset.PlaylistDetailWrite", "AddSonglist", params)
+
+    def unfav_song(self, song_id: int) -> Dict:
+        """Remove a song from favorites."""
+        params = {"dirId": 201, "v_songInfo": [{"songType": 0, "songId": song_id}]}
+        return self._make_request("music.musicasset.PlaylistDetailWrite", "DelSonglist", params)
+
+    def fav_album(self, album_mid: str) -> Dict:
+        """Favorite an album."""
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_albumMid": [album_mid], "opertype": 1}
+        return self._make_request("music.musicasset.AlbumFavWrite", "FavAlbum", params)
+
+    def unfav_album(self, album_mid: str) -> Dict:
+        """Unfavorite an album."""
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_albumMid": [album_mid], "opertype": 2}
+        return self._make_request("music.musicasset.AlbumFavWrite", "FavAlbum", params)
+
+    def fav_playlist(self, playlist_id) -> Dict:
+        """Favorite a playlist."""
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_playlistId": [playlist_id], "opertype": 1}
+        return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
+
+    def unfav_playlist(self, playlist_id) -> Dict:
+        """Unfavorite a playlist."""
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_playlistId": [playlist_id], "opertype": 2}
+        return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
+
     def get_euin(self) -> str:
         """
         Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.

@@ -667,6 +667,42 @@ class OnlineMusicService:
             return self._qqmusic.unfollow_singer(singer_mid)
         return False
 
+    def fav_song(self, song_id: int) -> bool:
+        """Add a song to favorites."""
+        if self._qqmusic:
+            return self._qqmusic.fav_song(song_id)
+        return False
+
+    def unfav_song(self, song_id: int) -> bool:
+        """Remove a song from favorites."""
+        if self._qqmusic:
+            return self._qqmusic.unfav_song(song_id)
+        return False
+
+    def fav_album(self, album_mid: str) -> bool:
+        """Favorite an album."""
+        if self._qqmusic:
+            return self._qqmusic.fav_album(album_mid)
+        return False
+
+    def unfav_album(self, album_mid: str) -> bool:
+        """Unfavorite an album."""
+        if self._qqmusic:
+            return self._qqmusic.unfav_album(album_mid)
+        return False
+
+    def fav_playlist(self, playlist_id) -> bool:
+        """Favorite a playlist."""
+        if self._qqmusic:
+            return self._qqmusic.fav_playlist(playlist_id)
+        return False
+
+    def unfav_playlist(self, playlist_id) -> bool:
+        """Unfavorite a playlist."""
+        if self._qqmusic:
+            return self._qqmusic.unfav_playlist(playlist_id)
+        return False
+
     def _get_song_detail_ygking(self, song_mid: str) -> Optional[Dict[str, Any]]:
         """Get song detail using YGKing remote API."""
         try:

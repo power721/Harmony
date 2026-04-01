@@ -355,6 +355,7 @@ class OnlineTracksListView(QWidget):
     add_to_queue_requested = Signal(list)
     add_to_playlist_requested = Signal(list)
     favorites_toggle_requested = Signal(list, bool)  # (tracks, all_favorited)
+    qq_fav_toggle_requested = Signal(list, bool)  # (tracks, all_favorited) - QQ Music remote
     download_requested = Signal(list)
 
     def __init__(self, parent=None):
@@ -445,6 +446,7 @@ class OnlineTracksListView(QWidget):
         self._context_menu.add_to_queue.connect(self.add_to_queue_requested)
         self._context_menu.add_to_playlist.connect(self.add_to_playlist_requested)
         self._context_menu.favorite_toggled.connect(self.favorites_toggle_requested)
+        self._context_menu.qq_fav_toggled.connect(self.qq_fav_toggle_requested)
         self._context_menu.download.connect(self.download_requested)
 
     def _show_context_menu(self, pos):

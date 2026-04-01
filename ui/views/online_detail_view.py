@@ -631,6 +631,7 @@ class OnlineDetailView(QWidget):
         self._albums_loaded = 0  # Track how many albums have been loaded
         self._albums_total = 0  # Total album count from API
         self._albums_append = False  # Flag for append mode
+        self._is_faved = False
 
         # Pagination state
         self._current_page = 1
@@ -731,12 +732,24 @@ class OnlineDetailView(QWidget):
         # Follow button (for artist detail)
         self._follow_btn = QPushButton(t("follow"))
         self._follow_btn.setFixedHeight(28)
+        self._follow_btn.setFixedWidth(80)
         self._follow_btn.setCursor(Qt.PointingHandCursor)
         self._follow_btn.hide()
         self._follow_btn.clicked.connect(self._on_follow_clicked)
         info_layout.addWidget(self._follow_btn)
 
         self._is_followed = False
+
+        # Favorite button (for album/playlist detail)
+        self._fav_btn = QPushButton(t("add_to_qq_favorites"))
+        self._fav_btn.setFixedHeight(28)
+        self._fav_btn.setFixedWidth(120)
+        self._fav_btn.setCursor(Qt.PointingHandCursor)
+        self._fav_btn.hide()
+        self._fav_btn.clicked.connect(self._on_fav_clicked)
+        info_layout.addWidget(self._fav_btn)
+
+        self._is_faved = False
 
         # Description (truncated, click to show full)
         self._desc_label = QLabel()
@@ -919,6 +932,7 @@ class OnlineDetailView(QWidget):
         self._tracks_list_view.add_to_queue_requested.connect(self._on_list_add_to_queue)
         self._tracks_list_view.add_to_playlist_requested.connect(self._on_list_add_to_playlist)
         self._tracks_list_view.favorites_toggle_requested.connect(self._on_list_favorites_toggle)
+        self._tracks_list_view.qq_fav_toggle_requested.connect(self._on_list_qq_fav_toggle)
         self._tracks_list_view.download_requested.connect(self._on_list_download_requested)
         self._tracks_list_view.hide()
         section_layout.addWidget(self._tracks_list_view, 1)
@@ -970,6 +984,8 @@ class OnlineDetailView(QWidget):
 
         # Follow button
         self._update_follow_btn_style()
+        # Favorite button
+        self._update_fav_btn_style()
 
         # Page label
         self._page_label.setStyleSheet(tm.get_qss(self._STYLE_PAGE_LABEL))
@@ -1018,6 +1034,7 @@ class OnlineDetailView(QWidget):
         self._albums_section.show()
 
         # Show follow button for artist
+        self._fav_btn.hide()
         self._follow_btn.show()
         self._is_followed = False
         self._update_follow_btn_style()
@@ -1045,6 +1062,11 @@ class OnlineDetailView(QWidget):
         # Hide albums section for album detail
         self._albums_section.hide()
 
+        # Show favorite button for album
+        self._fav_btn.show()
+        self._follow_btn.hide()
+        self._update_fav_btn_style()
+
         self._load_detail()
 
     def load_playlist(self, playlist_id: str, title: str = "", creator: str = ""):
@@ -1056,6 +1078,11 @@ class OnlineDetailView(QWidget):
 
         # Hide follow button for non-artist views
         self._follow_btn.hide()
+
+        # Show favorite button for playlist
+        self._fav_btn.show()
+        self._is_faved = False
+        self._update_fav_btn_style()
 
         # Set placeholder info
         self._type_label.setText(t("playlists"))
@@ -1085,8 +1112,9 @@ class OnlineDetailView(QWidget):
         self._current_page = 1
         self._use_tracks_list_view = True  # Use OnlineTracksListView for recommendations
 
-        # Hide follow button for non-artist views
+        # Hide follow/fav buttons for recommendation song lists
         self._follow_btn.hide()
+        self._fav_btn.hide()
 
         # Set info
         self._type_label.setText(t("playlists"))
@@ -1764,6 +1792,64 @@ class OnlineDetailView(QWidget):
             self._is_followed = not self._is_followed
             self._update_follow_btn_style()
 
+    def _update_fav_btn_style(self):
+        """Update favorite button text and style for album/playlist."""
+        from system.theme import ThemeManager
+        tm = ThemeManager.instance()
+        if self._is_faved:
+            self._fav_btn.setText(t("remove_from_qq_favorites"))
+            self._fav_btn.setStyleSheet(tm.get_qss("""
+                QPushButton {
+                    background: transparent;
+                    color: %text_secondary%;
+                    border: 1px solid %border%;
+                    border-radius: 14px;
+                    font-size: 12px;
+                    padding: 4px 16px;
+                }
+                QPushButton:hover {
+                    color: %danger%;
+                    border-color: %danger%;
+                }
+            """))
+        else:
+            self._fav_btn.setText(t("add_to_qq_favorites"))
+            self._fav_btn.setStyleSheet(tm.get_qss("""
+                QPushButton {
+                    background: %highlight%;
+                    color: %background%;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 4px 16px;
+                }
+                QPushButton:hover {
+                    background: %highlight_hover%;
+                }
+            """))
+
+    def _on_fav_clicked(self):
+        """Handle favorite/unfavorite button click for album/playlist."""
+        if not self._mid:
+            return
+        if self._detail_type == "album":
+            if self._is_faved:
+                success = self._service.unfav_album(self._mid)
+            else:
+                success = self._service.fav_album(self._mid)
+        elif self._detail_type == "playlist":
+            playlist_id = int(self._mid) if self._mid.isdigit() else self._mid
+            if self._is_faved:
+                success = self._service.unfav_playlist(playlist_id)
+            else:
+                success = self._service.fav_playlist(playlist_id)
+        else:
+            return
+        if success:
+            self._is_faved = not self._is_faved
+            self._update_fav_btn_style()
+
     def _on_play_current(self):
         """Play current page tracks."""
         if self._tracks:
@@ -1945,6 +2031,17 @@ class OnlineDetailView(QWidget):
         else:
             self._add_tracks_to_favorites(tracks)
 
+    def _on_list_qq_fav_toggle(self, tracks: list, all_favorited: bool):
+        """Handle QQ Music favorites toggle from list view context menu."""
+        for track in tracks:
+            if not track.id:
+                logger.warning(f"Cannot toggle QQ favorite for track without id: {track.title}")
+                continue
+            if all_favorited:
+                self._service.unfav_song(track.id)
+            else:
+                self._service.fav_song(track.id)
+
     def _on_list_download_requested(self, tracks: list):
         """Handle download from list view context menu."""
         for track in tracks:
@@ -2120,6 +2217,9 @@ class OnlineDetailView(QWidget):
         # Update follow button
         if hasattr(self, '_follow_btn'):
             self._follow_btn.setText(t("followed") if self._is_followed else t("follow"))
+        # Update favorite button
+        if hasattr(self, '_fav_btn'):
+            self._fav_btn.setText(t("remove_from_qq_favorites") if self._is_faved else t("add_to_qq_favorites"))
 
         # Update pagination buttons
         if hasattr(self, '_prev_page_btn'):

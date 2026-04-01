@@ -897,6 +897,72 @@ class QQMusicService:
             logger.error(f"Unfollow singer failed: {e}", exc_info=True)
             return False
 
+    def fav_song(self, song_id: int) -> bool:
+        """Add a song to favorites. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.fav_song(song_id)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Favorite song failed: {e}", exc_info=True)
+            return False
+
+    def unfav_song(self, song_id: int) -> bool:
+        """Remove a song from favorites. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.unfav_song(song_id)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Unfavorite song failed: {e}", exc_info=True)
+            return False
+
+    def fav_album(self, album_mid: str) -> bool:
+        """Favorite an album. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.fav_album(album_mid)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Favorite album failed: {e}", exc_info=True)
+            return False
+
+    def unfav_album(self, album_mid: str) -> bool:
+        """Unfavorite an album. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.unfav_album(album_mid)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Unfavorite album failed: {e}", exc_info=True)
+            return False
+
+    def fav_playlist(self, playlist_id) -> bool:
+        """Favorite a playlist. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.fav_playlist(playlist_id)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Favorite playlist failed: {e}", exc_info=True)
+            return False
+
+    def unfav_playlist(self, playlist_id) -> bool:
+        """Unfavorite a playlist. Returns True on success."""
+        try:
+            if not self._credential:
+                return False
+            result = self.client.unfav_playlist(playlist_id)
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Unfavorite playlist failed: {e}", exc_info=True)
+            return False
+
     def set_credential(self, credential: Dict[str, Any]):
         """
         Update credential for authenticated requests.

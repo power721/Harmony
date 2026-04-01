@@ -123,6 +123,7 @@ class OnlineTrackContextMenu(QObject):
     add_to_queue = Signal(list)
     add_to_playlist = Signal(list)
     favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
+    qq_fav_toggled = Signal(list, bool)  # (tracks, all_favorited) - QQ Music remote favorite
     download = Signal(list)
 
     def show_menu(self, tracks: list, favorite_mids: set = None, parent_widget=None):
@@ -157,6 +158,12 @@ class OnlineTrackContextMenu(QObject):
         else:
             a = menu.addAction(t("add_to_favorites"))
         a.triggered.connect(lambda: self.favorite_toggled.emit(tracks, all_favorited))
+
+        if all_favorited:
+            a = menu.addAction(t("remove_from_qq_favorites"))
+        else:
+            a = menu.addAction(t("add_to_qq_favorites"))
+        a.triggered.connect(lambda: self.qq_fav_toggled.emit(tracks, all_favorited))
 
         a = menu.addAction(t("add_to_playlist"))
         a.triggered.connect(lambda: self.add_to_playlist.emit(tracks))
