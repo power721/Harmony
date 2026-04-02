@@ -358,7 +358,7 @@ class MiniPlayer(QWidget):
         QShortcut(QKeySequence("Ctrl+M"), self, self.close)
 
         # Ctrl/Cmd + F - Switch to now playing window
-        QShortcut(QKeySequence("Ctrl+F"), self, self._switch_to_now_playing)
+        QShortcut(QKeySequence("Ctrl+P"), self, self._switch_to_now_playing)
 
         # Ctrl/Cmd + Q - Quit application
         QShortcut(QKeySequence("Ctrl+Q"), self, self._quit_application)

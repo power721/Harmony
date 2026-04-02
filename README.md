@@ -177,7 +177,22 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 - `Ctrl + ←` - Previous track
 - `Ctrl + ↑` - Volume up
 - `Ctrl + ↓` - Volume down
+- `Ctrl + F` - Toggle favorite
+- `Ctrl + P` - Toggle now playing / main window
 - `Ctrl + M` - Toggle mini mode
+- `Esc` - Toggle now playing / main window
+- `Ctrl + Q` - Quit application
+- `F1` - Show help
+
+**Now Playing Shortcuts:**
+- `Space` - Play/Pause
+- `Ctrl + →` - Next track
+- `Ctrl + ←` - Previous track
+- `Ctrl + ↑` - Volume up
+- `Ctrl + ↓` - Volume down
+- `Ctrl + M` - Switch to mini player
+- `Ctrl + P` - Back to main window
+- `Ctrl + Q` - Quit application
 
 **Mini Player Shortcuts:**
 - `Space` - Play/Pause
@@ -186,6 +201,8 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 - `Ctrl + ↑` - Volume up
 - `Ctrl + ↓` - Volume down
 - `Ctrl + M` - Close mini player
+- `Ctrl + P` - Switch to now playing
+- `Ctrl + Q` - Quit application
 
 ## Architecture
 

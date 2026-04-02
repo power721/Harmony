@@ -79,8 +79,10 @@ class GlobalHotkeys(QObject):
         # Ctrl/Cmd + Down - Volume down
         self._add_shortcut("Ctrl+Down", self._volume_down)
 
-        # Ctrl/Cmd + F - Toggle now playing window
-        self._add_shortcut("Ctrl+F", self._toggle_now_playing)
+        # Ctrl/Cmd + F - Toggle favorite
+        self._add_shortcut("Ctrl+F", self._toggle_favorite)
+        # Ctrl/Cmd + P - Toggle now playing window
+        self._add_shortcut("Ctrl+P", self._toggle_now_playing)
         # Esc - Toggle now playing window
         self._add_shortcut(Qt.Key_Escape, self._toggle_now_playing)
 

@@ -458,8 +458,9 @@ class NowPlayingWindow(QWidget):
         self._add_shortcut("Ctrl+Right", self._playback.engine.play_next)
         self._add_shortcut("Ctrl+Up", self._volume_up)
         self._add_shortcut("Ctrl+Down", self._volume_down)
+        self._add_shortcut("Ctrl+F", self._toggle_favorite)
         self._add_shortcut("Ctrl+M", self._switch_to_mini_player)
-        self._add_shortcut("Ctrl+F", self.close)
+        self._add_shortcut("Ctrl+P", self.close)
         self._add_shortcut("Ctrl+Q", self._quit_application)
 
     def _quit_application(self):
