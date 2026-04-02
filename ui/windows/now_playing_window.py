@@ -1,0 +1,774 @@
+"""
+Now playing window with large cover and synchronized lyrics.
+"""
+import logging
+import threading
+from pathlib import Path
+from typing import Optional
+
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QColor, QPixmap, QShortcut
+from PySide6.QtWidgets import (
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QApplication,
+    QSizeGrip,
+    QSizePolicy,
+)
+from shiboken6 import isValid
+
+from domain.playback import PlaybackState, PlayMode
+from services.lyrics.lyrics_loader import LyricsLoader
+from services.playback import PlaybackService
+from system.event_bus import EventBus
+from system.i18n import t
+from ui.icons import IconName, get_icon
+from ui.widgets.player_controls import ClickableSlider
+from ui.widgets.lyrics_widget_pro import LyricsWidget
+from utils import format_time
+from PySide6.QtGui import QKeySequence
+
+logger = logging.getLogger(__name__)
+
+
+class NowPlayingWindow(QWidget):
+    """Standalone now-playing window."""
+
+    closed = Signal()
+    _cover_loaded = Signal(str, int)
+
+    _STYLE_WINDOW = """
+        QWidget#nowPlayingRoot {
+            background-color: %background%;
+        }
+        QLabel#nowPlayingTitle {
+            color: %text%;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        QLabel#nowPlayingArtist {
+            color: %text_secondary%;
+            font-size: 14px;
+        }
+        QLabel#nowPlayingAlbum {
+            color: %text_secondary%;
+            font-size: 13px;
+        }
+        QPushButton#nowPlayingClose {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+            padding: 6px;
+            border-radius: 14px;
+        }
+        QPushButton#nowPlayingMaximize {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+            padding: 6px;
+            border-radius: 14px;
+        }
+        QPushButton#nowPlayingMaximize:hover {
+            background-color: %selection%;
+            color: %text%;
+        }
+        QPushButton#nowPlayingClose:hover {
+            background-color: %selection%;
+            color: %text%;
+        }
+        QLabel#nowPlayingCover {
+            background-color: %background_alt%;
+            border: 1px solid %border%;
+            border-radius: 12px;
+        }
+        QPushButton#nowPlayingControl {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+            border-radius: 16px;
+            padding: 4px;
+        }
+        QPushButton#nowPlayingControl:hover {
+            background-color: %selection%;
+            color: %text%;
+        }
+        QPushButton#nowPlayingControl[active="true"] {
+            color: %highlight%;
+            background-color: %text%;
+            border-radius: 16px;
+        }
+        QPushButton#nowPlayingControl[active="true"]:hover {
+            color: %highlight_hover%;
+            background-color: %text%;
+        }
+        QPushButton#nowPlayingPrimaryBtn {
+            background-color: %highlight%;
+            border: none;
+            color: %background%;
+            border-radius: 24px;
+            padding: 8px;
+        }
+        QPushButton#nowPlayingPrimaryBtn:hover {
+            background-color: %highlight_hover%;
+        }
+        QSlider#nowPlayingProgress::groove:horizontal {
+            height: 4px;
+            background: %border%;
+            border-radius: 2px;
+        }
+        QSlider#nowPlayingProgress::handle:horizontal {
+            width: 12px;
+            height: 12px;
+            background: %text%;
+            border-radius: 6px;
+            margin: -4px 0;
+        }
+        QSlider#nowPlayingProgress::handle:horizontal:hover {
+            background: %highlight%;
+        }
+        QSlider#nowPlayingVolume::groove:horizontal {
+            height: 4px;
+            background: %border%;
+            border-radius: 2px;
+        }
+        QSlider#nowPlayingVolume::handle:horizontal {
+            width: 10px;
+            height: 10px;
+            background: %text_secondary%;
+            border-radius: 5px;
+            margin: -3px 0;
+        }
+        QLabel#nowPlayingTime {
+            color: %text_secondary%;
+            font-size: 12px;
+            font-family: monospace;
+        }
+    """
+
+    def __init__(self, playback: PlaybackService, parent=None):
+        super().__init__(parent)
+        self._playback = playback
+        self._cover_load_version = 0
+        self._current_cover_path = ""
+        self._lyrics_thread: Optional[LyricsLoader] = None
+        self._cover_thread: Optional[threading.Thread] = None
+        self._current_duration = 0.0
+        self._is_seeking = False
+        self._previous_volume = 70
+        self._dragging = False
+        self._drag_start_pos = None
+        self._drag_window_pos = None
+        self._shortcuts: list[QShortcut] = []
+
+        self._setup_ui()
+        self._setup_connections()
+
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
+
+        self._cover_loaded.connect(self._on_cover_loaded)
+        self._initialize_from_current_track()
+
+        self._resize_grip = QSizeGrip(self)
+        self._resize_grip.setFixedSize(16, 16)
+        self._resize_grip.setStyleSheet("background: transparent;")
+        self._resize_grip.raise_()
+
+    def _setup_ui(self):
+        """Build now playing layout."""
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+        self.setObjectName("nowPlayingRoot")
+        self.setWindowTitle(t("app_title"))
+        self.setMinimumSize(1000, 650)
+        self.resize(1300, 820)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(12)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+
+        self._track_title = QLabel(t("not_playing"))
+        self._track_title.setObjectName("nowPlayingTitle")
+        header.addWidget(self._track_title, 1)
+
+        self._max_btn = QPushButton()
+        self._max_btn.setObjectName("nowPlayingMaximize")
+        self._max_btn.setFixedSize(34, 34)
+        self._max_btn.setIcon(get_icon(IconName.MAXIMIZE, None))
+        self._max_btn.setIconSize(QSize(16, 16))
+        self._max_btn.setCursor(Qt.PointingHandCursor)
+        header.addWidget(self._max_btn)
+
+        self._close_btn = QPushButton()
+        self._close_btn.setObjectName("nowPlayingClose")
+        self._close_btn.setFixedSize(34, 34)
+        self._close_btn.setIcon(get_icon(IconName.TIMES, None))
+        self._close_btn.setIconSize(QSize(18, 18))
+        self._close_btn.setCursor(Qt.PointingHandCursor)
+        header.addWidget(self._close_btn)
+        root.addLayout(header)
+
+        self._track_artist = QLabel("")
+        self._track_artist.setObjectName("nowPlayingArtist")
+        root.addWidget(self._track_artist)
+
+        self._track_album = QLabel("")
+        self._track_album.setObjectName("nowPlayingAlbum")
+        root.addWidget(self._track_album)
+
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 6, 0, 0)
+        body.setSpacing(6)
+        body.addStretch(1)
+
+        self._cover_label = QLabel()
+        self._cover_label.setObjectName("nowPlayingCover")
+        self._cover_label.setMinimumSize(420, 420)
+        self._cover_label.setMaximumSize(560, 560)
+        self._cover_label.setAlignment(Qt.AlignCenter)
+        self._cover_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        body.addWidget(self._cover_label, 0, Qt.AlignVCenter)
+
+        self._lyrics_widget = LyricsWidget()
+        self._lyrics_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        body.addWidget(self._lyrics_widget, 2)
+        body.addStretch(1)
+
+        root.addLayout(body, 1)
+
+        self._progress_slider = ClickableSlider(Qt.Horizontal)
+        self._progress_slider.setObjectName("nowPlayingProgress")
+        self._progress_slider.setRange(0, 1000)
+        self._progress_slider.setValue(0)
+        self._progress_slider.setCursor(Qt.PointingHandCursor)
+        root.addWidget(self._progress_slider)
+
+        time_row = QHBoxLayout()
+        time_row.setContentsMargins(0, 0, 0, 0)
+        self._current_time = QLabel("0:00")
+        self._current_time.setObjectName("nowPlayingTime")
+        self._current_time.setFixedWidth(44)
+        time_row.addWidget(self._current_time)
+        time_row.addStretch()
+        self._total_time = QLabel("0:00")
+        self._total_time.setObjectName("nowPlayingTime")
+        self._total_time.setFixedWidth(44)
+        time_row.addWidget(self._total_time)
+        root.addLayout(time_row)
+
+        controls = QHBoxLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(12)
+        controls.addStretch()
+
+        self._shuffle_btn = self._create_control_button(IconName.SHUFFLE, 30)
+        self._shuffle_btn.setToolTip(t("shuffle"))
+        self._shuffle_btn.setCheckable(True)
+        controls.addWidget(self._shuffle_btn)
+
+        self._prev_btn = self._create_control_button(IconName.PREVIOUS, 34)
+        self._prev_btn.setToolTip(t("previous"))
+        controls.addWidget(self._prev_btn)
+
+        self._play_pause_btn = self._create_control_button(IconName.PLAY, 48)
+        self._play_pause_btn.setObjectName("nowPlayingPrimaryBtn")
+        self._play_pause_btn.setIconSize(QSize(24, 24))
+        self._play_pause_btn.setToolTip(t("play_pause"))
+        controls.addWidget(self._play_pause_btn)
+
+        self._next_btn = self._create_control_button(IconName.NEXT, 34)
+        self._next_btn.setToolTip(t("next"))
+        controls.addWidget(self._next_btn)
+
+        self._repeat_btn = self._create_control_button(IconName.REPEAT, 30)
+        self._repeat_btn.setToolTip(t("repeat"))
+        self._repeat_btn.setCheckable(True)
+        controls.addWidget(self._repeat_btn)
+
+        self._favorite_btn = self._create_control_button(IconName.STAR_OUTLINE, 30)
+        self._favorite_btn.setToolTip(t("favorite"))
+        controls.addWidget(self._favorite_btn)
+
+        controls.addStretch()
+        root.addLayout(controls)
+
+        volume_row = QHBoxLayout()
+        volume_row.setContentsMargins(0, 0, 0, 0)
+        volume_row.addStretch()
+        self._volume_btn = self._create_control_button(IconName.VOLUME_HIGH, 30)
+        self._volume_btn.setToolTip(t("volume"))
+        volume_row.addWidget(self._volume_btn)
+
+        self._volume_slider = QSlider(Qt.Horizontal)
+        self._volume_slider.setObjectName("nowPlayingVolume")
+        self._volume_slider.setRange(0, 100)
+        self._volume_slider.setValue(70)
+        self._volume_slider.setFixedWidth(140)
+        self._volume_slider.setCursor(Qt.PointingHandCursor)
+        volume_row.addWidget(self._volume_slider)
+        root.addLayout(volume_row)
+
+        self._set_default_cover()
+        self.refresh_theme()
+
+    def _create_control_button(self, icon_name: str, size: int) -> QPushButton:
+        btn = QPushButton()
+        btn.setObjectName("nowPlayingControl")
+        btn.setFixedSize(size, size)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setIcon(get_icon(icon_name, None, 20))
+        btn.setIconSize(QSize(20, 20))
+        return btn
+
+    def _setup_connections(self):
+        """Connect playback and widget signals."""
+        self._close_btn.clicked.connect(self.close)
+        self._max_btn.clicked.connect(self._toggle_maximized)
+        self._lyrics_widget.seekRequested.connect(self._playback.seek)
+        self._setup_shortcuts()
+
+        self._play_pause_btn.clicked.connect(self._toggle_play_pause)
+        self._prev_btn.clicked.connect(self._playback.engine.play_previous)
+        self._next_btn.clicked.connect(self._playback.engine.play_next)
+        self._shuffle_btn.clicked.connect(self._toggle_shuffle)
+        self._repeat_btn.clicked.connect(self._toggle_repeat)
+        self._favorite_btn.clicked.connect(self._toggle_favorite)
+
+        self._progress_slider.sliderPressed.connect(self._on_seek_start)
+        self._progress_slider.sliderReleased.connect(self._on_seek_end)
+        self._progress_slider.clicked_value.connect(self._on_slider_clicked)
+        self._progress_slider.valueChanged.connect(self._on_seek_value_changed)
+
+        self._volume_btn.clicked.connect(self._toggle_mute)
+        self._volume_slider.valueChanged.connect(self._on_volume_changed)
+
+        engine = self._playback.engine
+        engine.current_track_changed.connect(self._on_track_changed)
+        engine.position_changed.connect(self._on_position_changed)
+        engine.duration_changed.connect(self._on_duration_changed)
+        engine.state_changed.connect(self._on_state_changed)
+        engine.play_mode_changed.connect(self._on_play_mode_changed)
+        engine.volume_changed.connect(self._on_volume_changed_from_engine)
+
+        EventBus.instance().favorite_changed.connect(self._on_favorite_changed)
+
+    def _add_shortcut(self, key: str | int, callback):
+        shortcut = QShortcut(QKeySequence(key), self)
+        shortcut.activated.connect(callback)
+        self._shortcuts.append(shortcut)
+
+    def _setup_shortcuts(self):
+        """Now playing shortcuts (aligned with mini player behavior)."""
+        self._add_shortcut(Qt.Key_Space, self._toggle_play_pause)
+        self._add_shortcut("Ctrl+Left", self._playback.engine.play_previous)
+        self._add_shortcut("Ctrl+Right", self._playback.engine.play_next)
+        self._add_shortcut("Ctrl+Up", self._volume_up)
+        self._add_shortcut("Ctrl+Down", self._volume_down)
+        self._add_shortcut("Ctrl+M", self._switch_to_mini_player)
+        self._add_shortcut("Ctrl+F", self.close)
+        self._add_shortcut("Ctrl+Q", self._quit_application)
+
+    def _quit_application(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "request_quit"):
+            parent.request_quit()
+            return
+        if parent and hasattr(parent, "_quit_from_now_playing"):
+            parent._quit_from_now_playing()
+            return
+        app = QApplication.instance()
+        if app:
+            app.quit()
+
+    def _switch_to_mini_player(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "_switch_now_playing_to_mini"):
+            parent._switch_now_playing_to_mini()
+            return
+        self.close()
+
+    def _initialize_from_current_track(self):
+        """Sync initial state from playback engine."""
+        current_track = self._playback.engine.current_track
+        self._on_track_changed(current_track if current_track else None)
+        if current_track:
+            self._on_position_changed(self._playback.engine.position())
+        duration_ms = self._playback.engine.duration()
+        if duration_ms > 0:
+            self._on_duration_changed(duration_ms)
+        self._on_state_changed(self._playback.engine.state)
+        self._sync_play_mode_buttons()
+        self._on_volume_changed_from_engine(self._playback.engine.volume)
+
+    def _on_track_changed(self, track_dict: dict):
+        """Update cover/lyrics when track changes."""
+        if not track_dict:
+            self._track_title.setText(t("not_playing"))
+            self._track_artist.setText("")
+            self._track_album.setText("")
+            self._lyrics_widget.set_lyrics("")
+            self._current_cover_path = ""
+            self._set_default_cover()
+            return
+
+        title = track_dict.get("title", t("unknown"))
+        artist = track_dict.get("artist", "")
+        album = track_dict.get("album", "")
+        self._track_title.setText(title)
+        self._track_artist.setText(artist)
+        self._track_album.setText(album if album else "")
+
+        window_title = f"{title} - {artist}" if artist else title
+        self.setWindowTitle(window_title if self._playback.state == PlaybackState.PLAYING else t("app_title"))
+
+        self._load_cover_async(track_dict)
+        self._load_lyrics_async(track_dict)
+        self._update_favorite_state()
+
+    def _on_position_changed(self, position_ms: int):
+        """Sync lyric highlight position."""
+        if self._current_duration > 0 and not self._is_seeking:
+            value = int((position_ms / (self._current_duration * 1000)) * 1000)
+            self._progress_slider.setValue(value)
+            self._current_time.setText(format_time(position_ms / 1000))
+        self._lyrics_widget.update_position(position_ms / 1000)
+
+    def _on_duration_changed(self, duration_ms: int):
+        self._current_duration = duration_ms / 1000
+        self._total_time.setText(format_time(self._current_duration))
+
+    def _on_state_changed(self, state: PlaybackState):
+        if state == PlaybackState.PLAYING:
+            self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 20))
+        else:
+            self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 20))
+
+    def _toggle_play_pause(self):
+        if self._playback.engine.state == PlaybackState.PLAYING:
+            self._playback.engine.pause()
+        else:
+            self._playback.engine.play()
+
+    def _on_seek_start(self):
+        self._is_seeking = True
+
+    def _on_seek_end(self):
+        if self._current_duration > 0:
+            position_ms = int((self._progress_slider.value() / 1000) * self._current_duration * 1000)
+            self._playback.engine.seek(position_ms)
+        self._is_seeking = False
+
+    def _on_seek_value_changed(self, value: int):
+        if self._is_seeking and self._current_duration > 0:
+            position_s = (value / 1000) * self._current_duration
+            self._current_time.setText(format_time(position_s))
+
+    def _on_slider_clicked(self, value: int):
+        if self._current_duration > 0:
+            position_ms = int((value / 1000) * self._current_duration * 1000)
+            self._playback.engine.seek(position_ms)
+
+    def _on_volume_changed(self, value: int):
+        self._playback.engine.set_volume(value)
+        self._update_volume_button(value)
+
+    def _on_volume_changed_from_engine(self, value: int):
+        self._volume_slider.blockSignals(True)
+        self._volume_slider.setValue(value)
+        self._volume_slider.blockSignals(False)
+        self._update_volume_button(value)
+
+    def _update_volume_button(self, value: int):
+        if value == 0:
+            icon = IconName.VOLUME_OFF
+        elif value < 50:
+            icon = IconName.VOLUME_LOW
+        else:
+            icon = IconName.VOLUME_HIGH
+        self._volume_btn.setIcon(get_icon(icon, None, 20))
+
+    def _toggle_mute(self):
+        current = self._volume_slider.value()
+        if current > 0:
+            self._previous_volume = current
+            self._volume_slider.setValue(0)
+        else:
+            self._volume_slider.setValue(self._previous_volume or 70)
+
+    def _volume_up(self):
+        current = self._playback.engine.volume
+        self._playback.engine.set_volume(min(100, current + 5))
+
+    def _volume_down(self):
+        current = self._playback.engine.volume
+        self._playback.engine.set_volume(max(0, current - 5))
+
+    def _toggle_favorite(self):
+        self._playback.toggle_favorite()
+
+    def _update_favorite_state(self):
+        track = self._playback.engine.current_track
+        if not track:
+            self._set_favorite_icon(False)
+            return
+        is_fav = self._playback.is_favorite(track.get("id"), track.get("cloud_file_id"))
+        self._set_favorite_icon(is_fav)
+
+    def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool = False):
+        track = self._playback.engine.current_track
+        if not track:
+            return
+        if track.get("id") == item_id or (is_cloud and track.get("cloud_file_id") == item_id):
+            self._set_favorite_icon(is_favorite)
+
+    def _set_favorite_icon(self, is_favorite: bool):
+        """Set favorite icon style consistent with player controls."""
+        if is_favorite:
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_FILLED, "#ff4444", 20))
+        else:
+            from system.theme import ThemeManager
+            outline_color = ThemeManager.instance().current_theme.text_secondary
+            self._favorite_btn.setIcon(get_icon(IconName.STAR_OUTLINE, outline_color, 20))
+
+    def _on_play_mode_changed(self, mode: PlayMode):
+        self._sync_play_mode_buttons()
+
+    def _sync_play_mode_buttons(self):
+        mode = self._playback.engine.play_mode
+
+        shuffle_on = mode in (PlayMode.RANDOM, PlayMode.RANDOM_LOOP, PlayMode.RANDOM_TRACK_LOOP)
+        self._shuffle_btn.setChecked(shuffle_on)
+        self._shuffle_btn.setProperty("active", shuffle_on)
+        self._shuffle_btn.style().unpolish(self._shuffle_btn)
+        self._shuffle_btn.style().polish(self._shuffle_btn)
+
+        repeat_on = mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP, PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP)
+        self._repeat_btn.setChecked(repeat_on)
+        self._repeat_btn.setProperty("active", repeat_on)
+        self._repeat_btn.style().unpolish(self._repeat_btn)
+        self._repeat_btn.style().polish(self._repeat_btn)
+
+        if mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            self._repeat_btn.setIcon(get_icon(IconName.REPEAT_ONCE, None, 20))
+        else:
+            self._repeat_btn.setIcon(get_icon(IconName.REPEAT, None, 20))
+
+    def _toggle_shuffle(self):
+        mode = self._playback.engine.play_mode
+        if self._shuffle_btn.isChecked():
+            if mode == PlayMode.PLAYLIST_LOOP:
+                self._playback.engine.set_play_mode(PlayMode.RANDOM_LOOP)
+            elif mode == PlayMode.LOOP:
+                self._playback.engine.set_play_mode(PlayMode.RANDOM_TRACK_LOOP)
+            elif mode == PlayMode.SEQUENTIAL:
+                self._playback.engine.set_play_mode(PlayMode.RANDOM)
+        else:
+            if mode == PlayMode.RANDOM_LOOP:
+                self._playback.engine.set_play_mode(PlayMode.PLAYLIST_LOOP)
+            elif mode == PlayMode.RANDOM_TRACK_LOOP:
+                self._playback.engine.set_play_mode(PlayMode.LOOP)
+            elif mode == PlayMode.RANDOM:
+                self._playback.engine.set_play_mode(PlayMode.SEQUENTIAL)
+
+    def _toggle_repeat(self):
+        mode = self._playback.engine.play_mode
+        if mode == PlayMode.SEQUENTIAL:
+            self._playback.engine.set_play_mode(PlayMode.PLAYLIST_LOOP)
+        elif mode == PlayMode.PLAYLIST_LOOP:
+            self._playback.engine.set_play_mode(PlayMode.LOOP)
+        elif mode == PlayMode.LOOP:
+            self._playback.engine.set_play_mode(PlayMode.SEQUENTIAL)
+        elif mode == PlayMode.RANDOM:
+            self._playback.engine.set_play_mode(PlayMode.RANDOM_LOOP)
+        elif mode == PlayMode.RANDOM_LOOP:
+            self._playback.engine.set_play_mode(PlayMode.RANDOM_TRACK_LOOP)
+        elif mode == PlayMode.RANDOM_TRACK_LOOP:
+            self._playback.engine.set_play_mode(PlayMode.RANDOM)
+
+    def _load_cover_async(self, track_dict: dict):
+        """Load current track cover in worker thread."""
+        self._cover_load_version += 1
+        version = self._cover_load_version
+
+        def load_cover() -> str:
+            cover_path = track_dict.get("cover_path")
+            if cover_path and Path(cover_path).exists():
+                return cover_path
+
+            source = track_dict.get("source", "") or track_dict.get("source_type", "")
+            cloud_file_id = track_dict.get("cloud_file_id", "")
+            is_online = source in ("QQ", "online")
+            if is_online and cloud_file_id and self._playback.cover_service:
+                try:
+                    online_cover = self._playback.cover_service.get_online_cover(
+                        song_mid=cloud_file_id,
+                        album_mid=None,
+                        artist=track_dict.get("artist", ""),
+                        title=track_dict.get("title", ""),
+                    )
+                    if online_cover:
+                        return online_cover
+                except Exception as exc:
+                    logger.debug(f"[NowPlayingWindow] Online cover load failed: {exc}")
+
+            path = track_dict.get("path", "")
+            title = track_dict.get("title", "")
+            artist = track_dict.get("artist", "")
+            album = track_dict.get("album", "")
+            needs_download = track_dict.get("needs_download", False)
+            is_cloud = track_dict.get("is_cloud", False)
+            skip_online = needs_download or (is_cloud and not path)
+            return self._playback.get_track_cover(path, title, artist, album, skip_online=skip_online) or ""
+
+        def worker():
+            self._cover_loaded.emit(load_cover(), version)
+
+        self._cover_thread = threading.Thread(target=worker, daemon=True)
+        self._cover_thread.start()
+
+    def _on_cover_loaded(self, cover_path: str, version: int):
+        """Apply cover if result is still current."""
+        if version != self._cover_load_version:
+            return
+        self._current_cover_path = cover_path
+        if not cover_path:
+            self._set_default_cover()
+            return
+        pixmap = QPixmap(cover_path)
+        if pixmap.isNull():
+            self._set_default_cover()
+            return
+        scaled = pixmap.scaled(
+            self._cover_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        self._cover_label.setPixmap(scaled)
+
+    def _set_default_cover(self):
+        """Set fallback cover when missing."""
+        width = max(420, self._cover_label.width() or 420)
+        height = max(420, self._cover_label.height() or 420)
+        pixmap = QPixmap(width, height)
+        pixmap.fill(QColor("#303030"))
+        self._cover_label.setPixmap(pixmap)
+
+    def _load_lyrics_async(self, track_dict: dict):
+        """Load lyrics using existing LyricsLoader."""
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                if not self._lyrics_thread.wait(500):
+                    self._lyrics_thread.terminate()
+                    self._lyrics_thread.wait(100)
+            try:
+                self._lyrics_thread.finished.disconnect()
+                self._lyrics_thread.lyrics_ready.disconnect()
+            except RuntimeError:
+                pass
+            self._lyrics_thread.deleteLater()
+            self._lyrics_thread = None
+
+        path = track_dict.get("path", "")
+        title = track_dict.get("title", "")
+        artist = track_dict.get("artist", "")
+        source = track_dict.get("source", "") or track_dict.get("source_type", "")
+        cloud_file_id = track_dict.get("cloud_file_id", "")
+        is_online = source in ("QQ", "online")
+
+        self._lyrics_thread = LyricsLoader(
+            path,
+            title,
+            artist,
+            song_mid=cloud_file_id,
+            is_online=is_online,
+        )
+        self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
+        self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)
+        self._lyrics_thread.start()
+
+    def _on_lyrics_ready(self, lyrics: str):
+        """Apply loaded lyrics to widget."""
+        self._lyrics_widget.set_lyrics(lyrics or "")
+
+    def _on_lyrics_thread_finished(self):
+        sender = self.sender()
+        if sender and sender == self._lyrics_thread:
+            self._lyrics_thread = None
+
+    def keyPressEvent(self, event):
+        """Esc closes now playing view."""
+        if event.key() == Qt.Key_Escape:
+            self.close()
+            return
+        super().keyPressEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and event.position().y() <= 72 and not self.isMaximized():
+            self._dragging = True
+            self._drag_start_pos = event.globalPosition().toPoint()
+            self._drag_window_pos = self.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and self._drag_start_pos is not None and self._drag_window_pos is not None:
+            delta = event.globalPosition().toPoint() - self._drag_start_pos
+            self.move(self._drag_window_pos + delta)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._dragging = False
+            self._drag_start_pos = None
+            self._drag_window_pos = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton and event.position().y() <= 72:
+            self._toggle_maximized()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def _toggle_maximized(self):
+        if self.isMaximized():
+            self.showNormal()
+            self._max_btn.setIcon(get_icon(IconName.MAXIMIZE, None))
+        else:
+            self.showMaximized()
+            self._max_btn.setIcon(get_icon(IconName.MINIMIZE, None))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_resize_grip") and self._resize_grip:
+            self._resize_grip.move(self.width() - 16, self.height() - 16)
+
+    def closeEvent(self, event):
+        """Cleanup and notify main window to restore."""
+        if self._lyrics_thread and isValid(self._lyrics_thread):
+            if self._lyrics_thread.isRunning():
+                self._lyrics_thread.requestInterruption()
+                self._lyrics_thread.quit()
+                if not self._lyrics_thread.wait(800):
+                    self._lyrics_thread.terminate()
+                    if not self._lyrics_thread.wait(1000):
+                        logger.warning("[NowPlayingWindow] Lyrics thread still running after terminate timeout")
+            self._lyrics_thread = None
+
+        self.closed.emit()
+        event.accept()
+
+    def refresh_theme(self):
+        """Apply theme tokens."""
+        from system.theme import ThemeManager
+        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_WINDOW))

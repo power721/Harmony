@@ -45,6 +45,7 @@ class SettingKey:
     UI_SPLITTER = "ui.splitter"
     UI_VIEW_TYPE = "ui.view_type"  # "library", "album", "artist", etc.
     UI_VIEW_DATA = "ui.view_data"  # JSON data for view-specific state
+    UI_START_IN_NOW_PLAYING = "ui.start_in_now_playing"  # Restore now playing window on next launch
     UI_HIGHLIGHT_COLOR = "ui.highlight_color"  # DEPRECATED: Highlight color (hex format)
     UI_THEME = "ui.theme"  # Theme name: "dark", "gold", "ocean", "purple", "sunset", or "custom"
     UI_THEME_CUSTOM = "ui.theme.custom"  # Custom theme colors dict (only if ui.theme is "custom")
@@ -417,6 +418,24 @@ class ConfigManager:
             data: JSON string with view-specific data
         """
         self.set(SettingKey.UI_VIEW_DATA, data)
+
+    def get_start_in_now_playing(self) -> bool:
+        """
+        Get whether app should restore to now playing window on startup.
+
+        Returns:
+            True if now playing should be shown after launch
+        """
+        return self.get(SettingKey.UI_START_IN_NOW_PLAYING, False)
+
+    def set_start_in_now_playing(self, enabled: bool):
+        """
+        Set whether app should restore to now playing window on startup.
+
+        Args:
+            enabled: True to show now playing after launch
+        """
+        self.set(SettingKey.UI_START_IN_NOW_PLAYING, enabled)
 
     def get_highlight_color(self) -> str:
         """

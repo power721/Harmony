@@ -11,6 +11,7 @@ import logging
 
 from app import Bootstrap
 from domain.playback import PlaybackState
+from utils import format_count_message
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -28,8 +29,9 @@ from PySide6.QtWidgets import (
     QStyle,
     QDialog,
     QSizeGrip, QSizePolicy,
+    QApplication,
 )
-from PySide6.QtCore import Qt, Signal, QSettings
+from PySide6.QtCore import Qt, Signal, QSettings, QTimer
 from typing import Optional
 
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
@@ -43,6 +45,7 @@ from domain.track import TrackSource
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
+from .now_playing_window import NowPlayingWindow
 from .components import Sidebar, LyricsPanel, LyricsController, OnlineMusicHandler, ScanDialog
 from ui.views.library_view import LibraryView
 from ui.views.playlist_view import PlaylistView
@@ -276,6 +279,9 @@ class MainWindow(QMainWindow):
 
         # Mini player (hidden by default)
         self._mini_player: Optional[MiniPlayer] = None
+        self._now_playing_window: Optional[NowPlayingWindow] = None
+        self._is_closing = False
+        self._force_quit_requested = False
 
         # Lyrics controller (will be initialized in _setup_ui)
         self._lyrics_controller: Optional[LyricsController] = None
@@ -579,6 +585,7 @@ class MainWindow(QMainWindow):
         # Player controls connections
         self._player_controls.artist_clicked.connect(self._on_player_artist_clicked)
         self._player_controls.album_clicked.connect(self._on_player_album_clicked)
+        self._player_controls.now_playing_requested.connect(self._show_now_playing)
 
     def _setup_system_tray(self):
         """Setup system tray icon."""
@@ -803,7 +810,6 @@ class MainWindow(QMainWindow):
     def _on_album_remove_from_library(self, tracks: list):
         """Remove tracks from library."""
         from ui.dialogs.message_dialog import MessageDialog, Yes, No
-        from utils.dedup import format_count_message
         from app.bootstrap import Bootstrap
 
         track_ids = [t.id for t in tracks if t.id]
@@ -826,7 +832,6 @@ class MainWindow(QMainWindow):
     def _on_album_delete_file(self, tracks: list):
         """Delete files from disk and library."""
         from ui.dialogs.message_dialog import MessageDialog, Yes, No
-        from utils.dedup import format_count_message
         from app.bootstrap import Bootstrap
         import os
 
@@ -1605,10 +1610,17 @@ class MainWindow(QMainWindow):
         self._hotkeys = GlobalHotkeys(self._player, self)
         setup_media_key_handler(self._player)
 
+    def _toggle_now_playing_view(self):
+        """Toggle between main window and now-playing window."""
+        if self._now_playing_window is not None and self._now_playing_window.isVisible():
+            self._now_playing_window.close()
+            return
+        self._show_now_playing()
+
     def toggle_mini_mode(self):
         """Toggle mini player mode."""
         if self._mini_player is None:
-            self._mini_player = MiniPlayer(self._player)
+            self._mini_player = MiniPlayer(self._player, self)
             self._mini_player.closed.connect(self._on_mini_player_closed)
             self._mini_player.show()
             self.hide()
@@ -1620,6 +1632,78 @@ class MainWindow(QMainWindow):
         """Handle mini player close."""
         self._mini_player = None
         self.show()
+        self.activateWindow()
+
+    def _show_now_playing(self):
+        """Open now-playing view and hide the main window."""
+        if self._now_playing_window is None:
+            self._now_playing_window = NowPlayingWindow(self._playback, self)
+            self._now_playing_window.closed.connect(self._on_now_playing_closed)
+
+        self._now_playing_window.show()
+        self._now_playing_window.raise_()
+        self._now_playing_window.activateWindow()
+        self._config.set_start_in_now_playing(True)
+        self.hide()
+
+    def _switch_now_playing_to_mini(self):
+        """Switch from now-playing window directly to mini player."""
+        if self._now_playing_window is not None and self._now_playing_window.isVisible():
+            try:
+                self._now_playing_window.closed.disconnect(self._on_now_playing_closed)
+            except Exception:
+                pass
+            self._now_playing_window.close()
+            self._now_playing_window.closed.connect(self._on_now_playing_closed)
+
+        if self._mini_player is None:
+            self._mini_player = MiniPlayer(self._player, self)
+            self._mini_player.closed.connect(self._on_mini_player_closed)
+
+        self._config.set_start_in_now_playing(False)
+        self._mini_player.show()
+        self._mini_player.raise_()
+        self._mini_player.activateWindow()
+        self.hide()
+
+    def _switch_mini_to_now_playing(self):
+        """Switch from mini player directly to now-playing window."""
+        if self._mini_player is not None:
+            try:
+                self._mini_player.closed.disconnect(self._on_mini_player_closed)
+            except Exception:
+                pass
+            self._mini_player.close()
+            self._mini_player = None
+
+        self._show_now_playing()
+
+    def _quit_from_now_playing(self):
+        """Quit app while persisting now-playing restore state."""
+        self._config.set_start_in_now_playing(True)
+        self._force_quit_requested = True
+        self.close()
+
+    def request_quit(self):
+        """Request app quit from any window/shortcut path."""
+        self._force_quit_requested = True
+        self.close()
+
+    def _on_now_playing_closed(self):
+        """Restore main window when now-playing view is closed."""
+        if self._is_closing:
+            return
+        self._config.set_start_in_now_playing(False)
+        # Defer restoration until the now-playing window is fully closed.
+        QTimer.singleShot(0, self._restore_main_window_foreground)
+
+    def _restore_main_window_foreground(self):
+        """Bring main window to the foreground after now-playing closes."""
+        if self._is_closing:
+            return
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.show()
+        self.raise_()
         self.activateWindow()
 
     def _restore_settings(self):
@@ -1645,6 +1729,10 @@ class MainWindow(QMainWindow):
 
         # Show welcome dialog on first run (empty library)
         self._check_first_run()
+
+        # Restore now-playing window visibility state from previous session.
+        if self._config.get_start_in_now_playing():
+            QTimer.singleShot(150, self._show_now_playing)
 
     def _check_first_run(self):
         """Show welcome dialog if the library is empty (first run)."""
@@ -1927,6 +2015,16 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close."""
+        self._is_closing = True
+        is_now_playing_visible = self._now_playing_window is not None and self._now_playing_window.isVisible()
+        self._config.set_start_in_now_playing(bool(is_now_playing_visible))
+        if self._now_playing_window is not None and self._now_playing_window.isVisible():
+            try:
+                self._now_playing_window.closed.disconnect(self._on_now_playing_closed)
+            except Exception:
+                pass
+            self._now_playing_window.close()
+
         # Save window settings using QSettings (Qt native format)
         self._settings.setValue("geometry", self.saveGeometry())
         self._settings.setValue("splitter", self._splitter.saveState())
@@ -1998,6 +2096,13 @@ class MainWindow(QMainWindow):
                     self._config.clear_cloud_account_id()
         except Exception as e:
             logger.error(f"Error saving playback state: {e}")
+
+        if self._force_quit_requested:
+            event.accept()
+            app = QApplication.instance()
+            if app:
+                app.quit()
+            return
 
         # Stop playback AFTER saving state
         self._player.engine.stop()

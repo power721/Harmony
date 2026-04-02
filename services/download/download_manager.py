@@ -337,7 +337,8 @@ class DownloadManager(QObject):
                 worker.requestInterruption()
                 worker.quit()
                 if not worker.wait(1000):
+                    logger.warning(f"[DownloadManager] Worker did not stop in time, terminating: {song_mid}")
                     worker.terminate()
-                    worker.wait()
+                    if not worker.wait(1000):
+                        logger.error(f"[DownloadManager] Worker still running after terminate timeout: {song_mid}")
         self._download_workers.clear()
-

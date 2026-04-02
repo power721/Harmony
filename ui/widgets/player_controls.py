@@ -37,6 +37,8 @@ class PlayerControls(QWidget):
     artist_clicked = Signal(str)  # Emits artist name
     # Signal for album link clicked
     album_clicked = Signal(str, str)  # Emits album name and artist name
+    # Signal for requesting now-playing view
+    now_playing_requested = Signal()
 
     # QSS templates with theme tokens
     _STYLE_COVER = """
@@ -1223,13 +1225,8 @@ class PlayerControls(QWidget):
             self._current_cover_path = None
 
     def _on_cover_clicked(self):
-        """Handle cover art click - show large image dialog."""
-        if self._current_cover_path:
-            try:
-                dialog = CoverDialog(self._current_cover_path, self)
-                dialog.exec()
-            except Exception as e:
-                logger.error(f"Error showing cover dialog: {e}")
+        """Handle cover click - request now-playing view."""
+        self.now_playing_requested.emit()
 
     def _on_album_label_clicked(self):
         """Handle album label click - emit signal to navigate to album view."""

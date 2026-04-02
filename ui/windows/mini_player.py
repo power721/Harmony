@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QGraphicsDropShadowEffect,
+    QApplication,
 )
 from shiboken6 import isValid
 
@@ -356,6 +357,26 @@ class MiniPlayer(QWidget):
         # Ctrl/Cmd + M - Toggle mini mode (close mini player)
         QShortcut(QKeySequence("Ctrl+M"), self, self.close)
 
+        # Ctrl/Cmd + F - Switch to now playing window
+        QShortcut(QKeySequence("Ctrl+F"), self, self._switch_to_now_playing)
+
+        # Ctrl/Cmd + Q - Quit application
+        QShortcut(QKeySequence("Ctrl+Q"), self, self._quit_application)
+
+    def _quit_application(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "request_quit"):
+            parent.request_quit()
+            return
+        app = QApplication.instance()
+        if app:
+            app.quit()
+
+    def _switch_to_now_playing(self):
+        parent = self.parent()
+        if parent and hasattr(parent, "_switch_mini_to_now_playing"):
+            parent._switch_mini_to_now_playing()
+
     def _volume_up(self):
         """Increase volume."""
         current_volume = self._player.engine.volume
@@ -661,7 +682,8 @@ class MiniPlayer(QWidget):
                 self._lyrics_thread.quit()
                 if not self._lyrics_thread.wait(1000):
                     self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait()
+                    if not self._lyrics_thread.wait(1000):
+                        logger.warning("[MiniPlayer] Lyrics thread still running after terminate timeout")
 
         self.closed.emit()
         event.accept()

@@ -52,76 +52,49 @@ class GlobalHotkeys(QObject):
 
         self._player = player
         self._window = window
+        self._shortcuts: list[QShortcut] = []
 
         self._setup_shortcuts()
+
+    def _add_shortcut(self, key: QKeySequence | str | int, callback):
+        """Create and keep a strong reference to shortcuts."""
+        shortcut = QShortcut(QKeySequence(key), self._window)
+        shortcut.activated.connect(callback)
+        self._shortcuts.append(shortcut)
 
     def _setup_shortcuts(self):
         """Setup keyboard shortcuts."""
         # Space - Play/Pause
-        QShortcut(QKeySequence(Qt.Key_Space), self._window, self._toggle_play_pause)
+        self._add_shortcut(Qt.Key_Space, self._toggle_play_pause)
 
         # Ctrl/Cmd + Left - Previous track
-        QShortcut(
-            QKeySequence("Ctrl+Left"),
-            self._window,
-            self._player.engine.play_previous
-        )
+        self._add_shortcut("Ctrl+Left", self._player.engine.play_previous)
 
         # Ctrl/Cmd + Right - Next track
-        QShortcut(
-            QKeySequence("Ctrl+Right"),
-            self._window,
-            self._player.engine.play_next
-        )
+        self._add_shortcut("Ctrl+Right", self._player.engine.play_next)
 
         # Ctrl/Cmd + Up - Volume up
-        QShortcut(
-            QKeySequence("Ctrl+Up"),
-            self._window,
-            self._volume_up
-        )
+        self._add_shortcut("Ctrl+Up", self._volume_up)
 
         # Ctrl/Cmd + Down - Volume down
-        QShortcut(
-            QKeySequence("Ctrl+Down"),
-            self._window,
-            self._volume_down
-        )
+        self._add_shortcut("Ctrl+Down", self._volume_down)
 
-        # Ctrl/Cmd + F - Toggle favorite
-        QShortcut(
-            QKeySequence("Ctrl+F"),
-            self._window,
-            self._toggle_favorite
-        )
+        # Ctrl/Cmd + F - Toggle now playing window
+        self._add_shortcut("Ctrl+F", self._toggle_now_playing)
+        # Esc - Toggle now playing window
+        self._add_shortcut(Qt.Key_Escape, self._toggle_now_playing)
 
         # Ctrl/Cmd + M - Toggle mini mode
-        QShortcut(
-            QKeySequence("Ctrl+M"),
-            self._window,
-            self._toggle_mini_mode
-        )
+        self._add_shortcut("Ctrl+M", self._toggle_mini_mode)
 
         # Ctrl/Cmd + Q - Quit
-        QShortcut(
-            QKeySequence("Ctrl+Q"),
-            self._window,
-            self._window.close
-        )
+        self._add_shortcut("Ctrl+Q", self._quit_application)
 
         # Ctrl/Cmd + N - New playlist
-        QShortcut(
-            QKeySequence("Ctrl+N"),
-            self._window,
-            self._new_playlist
-        )
+        self._add_shortcut("Ctrl+N", self._new_playlist)
 
         # F1 - Help
-        QShortcut(
-            QKeySequence(Qt.Key_F1),
-            self._window,
-            self._show_help
-        )
+        self._add_shortcut(Qt.Key_F1, self._show_help)
 
     def _toggle_play_pause(self):
         """Toggle play/pause."""
@@ -146,6 +119,11 @@ class GlobalHotkeys(QObject):
         """Toggle favorite for current track."""
         self._player.toggle_favorite()
 
+    def _toggle_now_playing(self):
+        """Toggle now playing window and main window."""
+        if hasattr(self._window, '_toggle_now_playing_view'):
+            self._window._toggle_now_playing_view()
+
     def _toggle_mini_mode(self):
         """Toggle mini player mode."""
         # This would be connected to the main window's mini mode toggle
@@ -162,6 +140,13 @@ class GlobalHotkeys(QObject):
         """Show help dialog."""
         if hasattr(self._window, 'show_help'):
             self._window.show_help()
+
+    def _quit_application(self):
+        """Quit application from main window shortcut."""
+        if hasattr(self._window, 'request_quit'):
+            self._window.request_quit()
+        else:
+            self._window.close()
 
 
 def setup_media_key_handler(player: "PlaybackService"):

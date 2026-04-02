@@ -338,7 +338,8 @@ class LyricsController(QObject):
             self._lyrics_download_thread.quit()
             if not self._lyrics_download_thread.wait(100):
                 self._lyrics_download_thread.terminate()
-                self._lyrics_download_thread.wait()
+                if not self._lyrics_download_thread.wait(500):
+                    logger.warning("[LyricsController] Existing lyrics download thread did not stop after terminate")
 
         self._lyrics_download_thread = LyricsDownloadWorker(
             self._lyrics_download_path,
@@ -565,7 +566,8 @@ class LyricsController(QObject):
                 if not self._lyrics_thread.wait(1000):
                     logger.warning("[LyricsController] Lyrics thread did not stop gracefully, terminating")
                     self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait()
+                    if not self._lyrics_thread.wait(1000):
+                        logger.warning("[LyricsController] Lyrics thread still running after terminate timeout")
             try:
                 self._lyrics_thread.finished.disconnect()
                 self._lyrics_thread.lyrics_ready.disconnect()
@@ -582,7 +584,8 @@ class LyricsController(QObject):
                 if not self._lyrics_download_thread.wait(1000):
                     logger.warning("[LyricsController] Lyrics download thread did not stop gracefully, terminating")
                     self._lyrics_download_thread.terminate()
-                    self._lyrics_download_thread.wait()
+                    if not self._lyrics_download_thread.wait(1000):
+                        logger.warning("[LyricsController] Lyrics download thread still running after terminate timeout")
             try:
                 self._lyrics_download_thread.finished.disconnect()
                 self._lyrics_download_thread.lyrics_downloaded.disconnect()
