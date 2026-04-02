@@ -357,6 +357,7 @@ class GenresView(QWidget):
     genre_clicked = Signal(object)  # Emits Genre object
     play_genre = Signal(list)  # Emits list of Track objects
     rename_genre_requested = Signal(object)  # Emits Genre object
+    download_cover_requested = Signal(object)  # Emits Genre object
 
     MARGIN = 20
 
@@ -741,6 +742,13 @@ class GenresView(QWidget):
         rename_action.triggered.connect(lambda: self.rename_genre_requested.emit(genre))
         menu.addAction(rename_action)
 
+        menu.addSeparator()
+
+        # Download cover action
+        download_action = QAction(t("download_cover_manual"), self)
+        download_action.triggered.connect(lambda: self.download_cover_requested.emit(genre))
+        menu.addAction(download_action)
+
         menu.exec_(self._list_view.mapToGlobal(pos))
 
     def _play_genre_tracks(self, genre: Genre):
@@ -797,7 +805,7 @@ class GenresView(QWidget):
             self._load_worker.deleteLater()
             self._load_worker = None
 
-        self._fill_missing_covers_async()
+        # self._fill_missing_covers_async()
 
     def _fill_missing_covers_async(self):
         """Fill missing genre covers in background and refresh when done."""

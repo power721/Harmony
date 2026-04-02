@@ -855,6 +855,21 @@ class LibraryService:
         """
         return self._album_repo.update_cover_path(album_name, artist, cover_path)
 
+    def update_genre_cover(self, genre_name: str, cover_path: str) -> bool:
+        """
+        Update cover path for a genre.
+
+        Args:
+            genre_name: Genre name
+            cover_path: Path to cover image
+
+        Returns:
+            True if updated successfully
+        """
+        if not self._genre_repo:
+            return False
+        return self._genre_repo.update_cover_path(genre_name, cover_path)
+
     def fix_album_covers(self) -> dict:
         """
         Fix album covers by finding tracks with covers for albums without covers.

@@ -95,3 +95,45 @@ def test_get_all_uses_random_track_cover_when_cached_cover_missing():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_update_cover_path_works_without_updated_at_column():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE genres (
+                name TEXT,
+                cover_path TEXT,
+                song_count INTEGER,
+                album_count INTEGER,
+                total_duration REAL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', NULL, 1, 1, 180.0)
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteGenreRepository(db_path)
+        assert repo.update_cover_path("Rock", "/covers/rock-new.jpg") is True
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT cover_path FROM genres WHERE name = 'Rock'")
+        row = cursor.fetchone()
+        conn.close()
+        assert row[0] == "/covers/rock-new.jpg"
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass

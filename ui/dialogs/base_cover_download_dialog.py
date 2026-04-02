@@ -9,7 +9,7 @@ from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath, QColor, QRegi
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QScrollArea, QWidget,
-    QListWidget, QListWidgetItem, QSplitter, QGraphicsDropShadowEffect
+    QListWidget, QListWidgetItem, QSplitter, QGraphicsDropShadowEffect, QLineEdit
 )
 
 from services.metadata import CoverService
@@ -326,6 +326,52 @@ class BaseCoverDownloadDialog(QDialog):
         results_label = QLabel(t("search_results") + ":")
         results_label.setStyleSheet("font-weight: bold;")
         left_layout.addWidget(results_label)
+
+        query_layout = QHBoxLayout()
+        query_label = QLabel(t("search") + ":")
+        query_label.setStyleSheet("font-weight: bold;")
+        query_layout.addWidget(query_label)
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText(t("search"))
+        self._search_input.setClearButtonEnabled(True)
+        theme = ThemeManager.instance().current_theme
+        self._search_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 2px solid {theme.border};
+                border-radius: 20px;
+                padding: 10px 15px;
+                font-size: 14px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {theme.highlight};
+                background-color: {theme.background_hover};
+            }}
+            QLineEdit::placeholder {{
+                color: {theme.text_secondary};
+            }}
+            QLineEdit::clear-button {{
+                subcontrol-origin: padding;
+                subcontrol-position: right;
+                width: 18px;
+                height: 18px;
+                margin-right: 8px;
+                border-radius: 9px;
+                background-color: {theme.border};
+            }}
+            QLineEdit::clear-button:hover {{
+                background-color: {theme.background_hover};
+                border: 1px solid {theme.border};
+            }}
+            QLineEdit::clear-button:pressed {{
+                background-color: {theme.background_alt};
+            }}
+        """)
+        self._search_input.returnPressed.connect(self._search_covers)
+        query_layout.addWidget(self._search_input)
+        left_layout.addLayout(query_layout)
 
         self._results_list = QListWidget()
         self._results_list.setMinimumWidth(300)

@@ -47,6 +47,11 @@ class ArtistSearchStrategy(CoverSearchStrategy):
         """Search for artist covers."""
         return cover_service.search_artist_covers(artist.name, limit=10)
 
+    def search_with_query(self, cover_service: CoverService, artist, query: str) -> List[dict]:
+        """Search artist covers with an optional query override."""
+        keyword = (query or "").strip() or artist.name
+        return cover_service.search_artist_covers(keyword, limit=10)
+
     def format_result(self, result: dict) -> str:
         """Format artist search result for display."""
         name = result.get('name', '')
@@ -115,3 +120,6 @@ class ArtistSearchStrategy(CoverSearchStrategy):
         if hasattr(artist, 'song_count'):
             info['song_count'] = artist.song_count
         return info
+
+    def get_default_search_term(self, artist) -> str:
+        return artist.name or ""

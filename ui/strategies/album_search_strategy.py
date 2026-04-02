@@ -51,6 +51,18 @@ class AlbumSearchStrategy(CoverSearchStrategy):
             duration=None
         )
 
+    def search_with_query(self, cover_service: CoverService, album, query: str) -> List[dict]:
+        """Search album covers with an optional query override."""
+        keyword = (query or "").strip()
+        if not keyword:
+            return self.search(cover_service, album)
+        return cover_service.search_covers(
+            title=keyword,
+            artist=album.artist,
+            album=keyword,
+            duration=None
+        )
+
     def format_result(self, result: dict) -> str:
         """Format album search result for display."""
         title = result.get('title', '')
@@ -114,3 +126,6 @@ class AlbumSearchStrategy(CoverSearchStrategy):
         except Exception as e:
             logger.error(f"Error saving album cover: {e}", exc_info=True)
             return False
+
+    def get_default_search_term(self, album) -> str:
+        return album.name or ""

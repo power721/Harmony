@@ -53,6 +53,13 @@ class CoverSearchStrategy(ABC):
         """
         pass
 
+    def search_with_query(self, cover_service: CoverService, item, query: str) -> List[dict]:
+        """Search using an optional user-provided query.
+
+        Default behavior delegates to ``search`` to preserve backwards compatibility.
+        """
+        return self.search(cover_service, item)
+
     @abstractmethod
     def format_result(self, result: dict) -> str:
         """Format search result for display in results list.
@@ -134,3 +141,11 @@ class CoverSearchStrategy(ABC):
             Dictionary with info to display (e.g., duration, album count)
         """
         return {}
+
+    def get_default_search_term(self, item) -> str:
+        """Return default query text shown in the dialog's search input."""
+        if hasattr(item, "title") and getattr(item, "title"):
+            return item.title
+        if hasattr(item, "name") and getattr(item, "name"):
+            return item.name
+        return ""

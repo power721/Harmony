@@ -329,13 +329,26 @@ class SqliteGenreRepository(BaseRepository):
 
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE genres
-            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE name = ?
-            """,
-            (cover_path, genre_name),
-        )
+        try:
+            cursor.execute(
+                """
+                UPDATE genres
+                SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
+                """,
+                (cover_path, genre_name),
+            )
+        except Exception as e:
+            # Backward compatibility: older databases may not have genres.updated_at.
+            if "no such column: updated_at" not in str(e):
+                raise
+            cursor.execute(
+                """
+                UPDATE genres
+                SET cover_path = ?
+                WHERE name = ?
+                """,
+                (cover_path, genre_name),
+            )
         conn.commit()
         return cursor.rowcount > 0

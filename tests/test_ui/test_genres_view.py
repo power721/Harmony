@@ -4,13 +4,15 @@ import os
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPoint, Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMenu
 
+from domain.genre import Genre
 from infrastructure.cache.image_cache import ImageCache
 from system.theme import ThemeManager
-from ui.views.genres_view import GenreDelegate
+from system.i18n import t
+from ui.views.genres_view import GenreDelegate, GenresView
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -73,3 +75,38 @@ def test_genre_delegate_normalizes_qq_cover_url(qapp, mock_theme_config):
 
     assert url == "https://y.gtimg.cn/music/photo_new/T002R300x300M000abc.jpg"
     assert headers == {"Referer": "https://y.qq.com/"}
+
+
+def test_genres_view_context_menu_includes_download_cover_action(
+    qapp, mock_theme_config, monkeypatch
+):
+    ThemeManager.instance(mock_theme_config)
+
+    library_service = Mock()
+    view = GenresView(library_service=library_service)
+    genre = Genre(name="Rock", song_count=10, album_count=3, cover_path="")
+    view._model.set_genres([genre])
+
+    # Avoid geometry-dependent hit-testing in headless tests.
+    monkeypatch.setattr(
+        view._list_view, "indexAt", lambda _pos: view._model.index(0, 0)
+    )
+
+    triggered = []
+    view.download_cover_requested.connect(triggered.append)
+    menu_texts = []
+
+    def fake_exec(menu, *_args):
+        for action in menu.actions():
+            if action.isSeparator():
+                continue
+            menu_texts.append(action.text())
+            if action.text() == t("download_cover_manual"):
+                action.trigger()
+
+    monkeypatch.setattr(QMenu, "exec_", fake_exec)
+
+    view._show_context_menu(QPoint(0, 0))
+
+    assert t("download_cover_manual") in menu_texts
+    assert triggered == [genre]

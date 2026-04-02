@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QListWidgetItem, QListWidget, QComboBox, QLabel, QHBoxLayout, QVBoxLayout, QPushButton,
-    QProgressBar, QSplitter, QWidget, QScrollArea
+    QProgressBar, QSplitter, QWidget, QScrollArea, QLineEdit
 )
 
 from infrastructure.cache import ImageCache
@@ -147,6 +147,53 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         results_label.setStyleSheet("font-weight: bold;")
         left_layout.addWidget(results_label)
 
+        # Search query override
+        query_layout = QHBoxLayout()
+        query_label = QLabel(t("search") + ":")
+        query_label.setStyleSheet("font-weight: bold;")
+        query_layout.addWidget(query_label)
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText(t("search"))
+        self._search_input.setClearButtonEnabled(True)
+        theme = ThemeManager.instance().current_theme
+        self._search_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {theme.background_hover};
+                color: {theme.text};
+                border: 2px solid {theme.border};
+                border-radius: 20px;
+                padding: 10px 15px;
+                font-size: 14px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {theme.highlight};
+                background-color: {theme.background_hover};
+            }}
+            QLineEdit::placeholder {{
+                color: {theme.text_secondary};
+            }}
+            QLineEdit::clear-button {{
+                subcontrol-origin: padding;
+                subcontrol-position: right;
+                width: 18px;
+                height: 18px;
+                margin-right: 8px;
+                border-radius: 9px;
+                background-color: {theme.border};
+            }}
+            QLineEdit::clear-button:hover {{
+                background-color: {theme.background_hover};
+                border: 1px solid {theme.border};
+            }}
+            QLineEdit::clear-button:pressed {{
+                background-color: {theme.background_alt};
+            }}
+        """)
+        self._search_input.returnPressed.connect(self._search_covers)
+        query_layout.addWidget(self._search_input)
+        left_layout.addLayout(query_layout)
+
         self._results_list = QListWidget()
         self._results_list.setMinimumWidth(350)
         self._results_list.setFocusPolicy(Qt.NoFocus)
@@ -237,7 +284,9 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         """Load items into UI."""
         if len(self._items) <= 1:
             # Single item - display existing cover, then auto search
-            self._display_existing_cover(self._items[0])
+            item = self._items[0]
+            self._set_default_search_query(item)
+            self._display_existing_cover(item)
             self._search_covers()
             return
 
@@ -248,6 +297,14 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         self._combo.setCurrentIndex(0)
         self._on_item_changed(0)
+
+    def _set_default_search_query(self, item):
+        """Set initial query text for current item if input exists."""
+        if not hasattr(self, "_search_input"):
+            return
+        default_text = self._strategy.get_default_search_term(item)
+        self._search_input.setText(default_text)
+        self._search_input.selectAll()
 
     def _on_item_changed(self, index: int):
         """Handle item selection change."""
@@ -275,6 +332,7 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Display existing cover
         self._display_existing_cover(item)
+        self._set_default_search_query(item)
 
         # Auto search
         self._search_covers()
@@ -340,12 +398,16 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
     def _search_covers(self):
         """Search for covers for current item."""
         item = self._items[self._current_index]
+        query = ""
+        if hasattr(self, "_search_input"):
+            query = self._search_input.text().strip()
 
         # Generate unique key for deduplication
         search_info = self._strategy.get_search_info(item)
         artist = search_info.get('artist', '')
         title = search_info.get('title', '')
-        key = f"{artist}-{title}"
+        name = getattr(item, "name", "")
+        key = f"{artist}-{title}-{name}-{query}"
 
         self._search_btn.setEnabled(False)
         self._progress.setVisible(True)
@@ -356,7 +418,7 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Create search task
         def task():
-            return self._strategy.search(self._cover_service, item)
+            return self._strategy.search_with_query(self._cover_service, item, query)
 
         # Store token to track current search
         self._current_token = self._controller.search(key, task)
@@ -553,6 +615,7 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Use strategy to save
         if self._strategy.save(item, self._current_cover_data, cover_path):
+            self.cover_saved.emit(cover_path)
             self.accept()
         else:
             MessageDialog.warning(self, t("error"), t("cover_save_failed"))

@@ -574,6 +574,7 @@ class MainWindow(QMainWindow):
         self._genres_view.genre_clicked.connect(self._on_genre_clicked)
         self._genres_view.play_genre.connect(self._play_tracks)
         self._genres_view.rename_genre_requested.connect(self._on_rename_genre)
+        self._genres_view.download_cover_requested.connect(self._on_download_genre_cover)
 
         # Genre view connections
         self._genre_view.play_tracks.connect(self._play_tracks)
@@ -1000,6 +1001,40 @@ class MainWindow(QMainWindow):
             self._genres_view._list_view.viewport().update()
 
         dialog.genre_renamed.connect(on_genre_renamed)
+        dialog.exec()
+
+    def _on_download_genre_cover(self, genre):
+        """Handle download genre cover request."""
+        from ui.dialogs.universal_cover_download_dialog import UniversalCoverDownloadDialog
+        from ui.strategies.genre_search_strategy import GenreSearchStrategy
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        strategy = GenreSearchStrategy(
+            genre,
+            bootstrap.library_service,
+            bootstrap.event_bus
+        )
+        dialog = UniversalCoverDownloadDialog(
+            strategy,
+            bootstrap.cover_service,
+            self
+        )
+
+        def on_cover_saved(_cover_path):
+            # Refresh genres grid cards
+            self._genres_view.refresh()
+            self._genres_view._delegate.clear_cache()
+            self._genres_view._list_view.viewport().update()
+
+            # Refresh genre detail header if current detail matches.
+            current_genre = self._genre_view.get_genre()
+            if current_genre and current_genre.name == genre.name:
+                latest = bootstrap.library_service.get_genre_by_name(genre.name)
+                if latest:
+                    self._genre_view.set_genre(latest)
+
+        dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()
 
     def _play_tracks(self, tracks, start_index=0):

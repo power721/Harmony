@@ -57,6 +57,17 @@ class TrackSearchStrategy(CoverSearchStrategy):
             duration
         )
 
+    def search_with_query(self, cover_service: CoverService, track, query: str) -> List[dict]:
+        """Search track covers with an optional query override."""
+        duration = getattr(track, 'duration', None)
+        keyword = (query or "").strip() or track.title
+        return cover_service.search_covers(
+            keyword,
+            track.artist,
+            track.album,
+            duration
+        )
+
     def format_result(self, result: dict) -> str:
         """Format track search result for display."""
         title = result.get('title', '')
@@ -133,3 +144,6 @@ class TrackSearchStrategy(CoverSearchStrategy):
         if hasattr(track, 'duration') and track.duration:
             info['duration'] = track.duration
         return info
+
+    def get_default_search_term(self, track) -> str:
+        return track.title or ""
