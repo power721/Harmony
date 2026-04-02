@@ -120,7 +120,7 @@ class AudioBackend(QObject):
 
     def supports_visualizer(self) -> bool:
         """Whether backend can emit realtime visualizer frames."""
-        raise NotImplementedError
+        return False
 
     def cleanup(self):
         """Release resources."""
