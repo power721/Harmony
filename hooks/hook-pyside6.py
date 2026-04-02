@@ -3,6 +3,8 @@ PyInstaller hook for PySide6 optimization.
 Reduces bundle size by excluding unused Qt modules.
 """
 
+import os
+
 from PyInstaller.utils.hooks import collect_submodules
 
 # Only include core Qt modules
@@ -12,11 +14,16 @@ hiddenimports = collect_submodules("PySide6.QtCore")
 hiddenimports += [
     "PySide6.QtGui",
     "PySide6.QtWidgets",
-    "PySide6.QtMultimedia",
-    "PySide6.QtMultimediaWidgets",
     "PySide6.QtNetwork",
     "PySide6.QtSvg",
 ]
+
+# For mpv-only bundles we intentionally skip QtMultimedia stack.
+if os.environ.get("HARMONY_MPV_ONLY", "1") != "1":
+    hiddenimports += [
+        "PySide6.QtMultimedia",
+        "PySide6.QtMultimediaWidgets",
+    ]
 
 # Exclude heavy unused Qt modules
 excludedimports = [

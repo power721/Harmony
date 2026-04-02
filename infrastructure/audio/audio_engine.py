@@ -1,6 +1,8 @@
 """Audio playback engine with pluggable backends (Qt or mpv)."""
+import os
 import logging
 import threading
+import importlib
 from pathlib import Path
 from typing import Optional, List, Union
 
@@ -9,7 +11,6 @@ from PySide6.QtCore import QObject, Signal
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
 from .mpv_backend import MpvAudioBackend
-from .qt_backend import QtAudioBackend
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -84,16 +85,31 @@ class PlayerEngine(QObject):
         """Create audio backend and fallback to Qt if mpv is unavailable."""
         if backend_type == self.BACKEND_QT:
             logger.info("[PlayerEngine] Using Qt audio backend")
-            return QtAudioBackend(parent=self)
+            return self._create_qt_backend()
         try:
             logger.info("[PlayerEngine] Using mpv audio backend")
             return MpvAudioBackend(parent=self)
         except Exception as exc:
+            if not self._qt_fallback_enabled():
+                raise RuntimeError(
+                    "mpv backend initialization failed and Qt fallback is disabled "
+                    "(set HARMONY_ENABLE_QT_FALLBACK=1 to enable fallback)."
+                ) from exc
             logger.warning(
                 "[PlayerEngine] Failed to init mpv backend (%s), falling back to Qt backend",
                 exc,
             )
-            return QtAudioBackend(parent=self)
+            return self._create_qt_backend()
+
+    @staticmethod
+    def _qt_fallback_enabled() -> bool:
+        """Whether mpv failures should fall back to QtMultimedia backend."""
+        return os.environ.get("HARMONY_ENABLE_QT_FALLBACK", "1") == "1"
+
+    def _create_qt_backend(self):
+        """Import Qt backend lazily so mpv-only builds can exclude QtMultimedia."""
+        qt_module = importlib.import_module("infrastructure.audio.qt_backend")
+        return qt_module.QtAudioBackend(parent=self)
 
     def _rebuild_cloud_file_id_index(self):
         """Rebuild the cloud_file_id -> index mapping."""

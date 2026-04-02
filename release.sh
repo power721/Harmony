@@ -6,6 +6,7 @@ APP_VERSION="${APP_VERSION:-1.0.0}"
 ENTRY="main.py"
 APPDIR="AppDir"
 WHITELIST_FILE="build_analysis/qt_plugins_whitelist.txt"
+HARMONY_MPV_ONLY="${HARMONY_MPV_ONLY:-1}"
 
 echo "==> [1/6] Syncing dependencies with uv"
 uv sync --frozen
@@ -39,7 +40,10 @@ prune_qt_plugins() {
         done
     else
         echo "  Using safe-list fallback"
-        SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts multimedia mediaservice audio xcbglintegrations wayland)
+        SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts xcbglintegrations wayland)
+        if [ "$HARMONY_MPV_ONLY" != "1" ]; then
+            SAFE_DIRS+=(multimedia mediaservice audio)
+        fi
         for dir in "$PLUGIN_DIR"/*; do
             name=$(basename "$dir")
             keep=false
@@ -58,10 +62,37 @@ prune_qt_plugins() {
 # -------------------------
 dep_already_packaged() {
     local base=$1
+    local stem
+    stem="$(echo "$base" | sed -E 's/\.so(\..*)?$/\.so/')"
 
     [ -f "$LIB_DIR/$base" ] && return 0
     [ -f "$INTERNAL_DIR/$base" ] && return 0
     [ -f "$INTERNAL_DIR/PySide6/Qt/lib/$base" ] && return 0
+
+    # Consider different SONAME versions as the same family.
+    # Example: libicudata.so.73 (Qt bundled) vs libicudata.so.74 (system).
+    ls "$LIB_DIR"/"$stem"* >/dev/null 2>&1 && return 0
+    ls "$INTERNAL_DIR"/"$stem"* >/dev/null 2>&1 && return 0
+    ls "$INTERNAL_DIR"/PySide6/Qt/lib/"$stem"* >/dev/null 2>&1 && return 0
+
+    return 1
+}
+
+should_skip_dep() {
+    local base=$1
+
+    # Do not bundle core runtime/loader and libc family from build host.
+    [[ "$base" =~ ^ld-linux.*\.so ]] && return 0
+    [[ "$base" =~ ^lib(c|m|dl|pthread|rt|util|resolv|nsl|anl)\.so(\..*)?$ ]] && return 0
+    [[ "$base" =~ ^lib(stdc\+\+|gcc_s)\.so(\..*)?$ ]] && return 0
+
+    # Prefer Qt-bundled copies, avoid mixing host Qt/ICU/codec stacks.
+    [[ "$base" =~ ^libQt6.*\.so(\..*)?$ ]] && return 0
+    [[ "$base" =~ ^libicu(data|uc|i18n)\.so(\..*)?$ ]] && return 0
+
+    # Avoid pulling an extra host ffmpeg codec stack transitively.
+    [[ "$base" =~ ^lib(avcodec|avfilter|avformat|avutil|swresample|swscale|postproc|x26[45]|codec2|placebo|zimg)\.so(\..*)?$ ]] && return 0
+
     return 1
 }
 
@@ -73,6 +104,10 @@ collect_deps_recursive() {
         [ -f "$dep" ] || continue
 
         base=$(basename "$dep")
+        if should_skip_dep "$base"; then
+            continue
+        fi
+
         if dep_already_packaged "$base"; then
             continue
         fi
@@ -137,18 +172,30 @@ build_app() {
 
     rm -rf dist *.spec
 
-    uv run pyinstaller \
-      --name "$APP_NAME" \
-      --noconfirm --windowed --clean --onedir \
-      --additional-hooks-dir=hooks \
-      --collect-all certifi \
-      --collect-all qqmusic_api \
-      --add-data "ui:ui" \
-      --add-data "translations:translations" \
-      --add-data "fonts:fonts" \
-      --add-data "icons:icons" \
-      --add-data "icon.png:." \
-      "$ENTRY"
+    local -a PYI_ARGS=(
+      --name "$APP_NAME"
+      --noconfirm --windowed --clean --onedir
+      --additional-hooks-dir=hooks
+      --collect-all certifi
+      --collect-all qqmusic_api
+      --add-data "ui:ui"
+      --add-data "translations:translations"
+      --add-data "fonts:fonts"
+      --add-data "icons:icons"
+      --add-data "icon.png:."
+    )
+
+    if [ "$HARMONY_MPV_ONLY" = "1" ]; then
+        echo "==> mpv-only build: excluding QtMultimedia fallback"
+        PYI_ARGS+=(--exclude-module PySide6.QtMultimedia)
+        PYI_ARGS+=(--exclude-module PySide6.QtMultimediaWidgets)
+        PYI_ARGS+=(--exclude-module infrastructure.audio.qt_backend)
+        export HARMONY_ENABLE_QT_FALLBACK=0
+    else
+        export HARMONY_ENABLE_QT_FALLBACK=1
+    fi
+
+    HARMONY_MPV_ONLY="$HARMONY_MPV_ONLY" uv run pyinstaller "${PYI_ARGS[@]}" "$ENTRY"
 
     prune_qt_plugins "$MODE"
     collect_runtime_deps
@@ -194,6 +241,7 @@ export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
 
 export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
+export HARMONY_ENABLE_QT_FALLBACK=0
 
 # OpenGL fallback
 export QT_XCB_GL_INTEGRATION=none
