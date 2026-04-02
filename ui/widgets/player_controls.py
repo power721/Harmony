@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QDialog,
     QVBoxLayout,
+    QSizePolicy,
 )
 
 from domain.playback import PlaybackState, PlayMode
@@ -39,6 +40,8 @@ class PlayerControls(QWidget):
     album_clicked = Signal(str, str)  # Emits album name and artist name
     # Signal for requesting now-playing view
     now_playing_requested = Signal()
+    # Signal for requesting playlist/queue dialog
+    queue_requested = Signal()
 
     # QSS templates with theme tokens
     _STYLE_COVER = """
@@ -187,6 +190,8 @@ class PlayerControls(QWidget):
         self._is_seeking = False
         self._current_cover_path = None  # Store current cover path
         self._cover_load_version = 0  # Version counter for cover loading
+        self._queue_placement = "volume"
+        self._queue_visible = False
 
         self._setup_ui()
         self._setup_connections()
@@ -218,24 +223,29 @@ class PlayerControls(QWidget):
         self.setObjectName("playerControls")
         self.setFixedHeight(90)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 10, 15, 10)
-        layout.setSpacing(15)
+        self._root_layout = QHBoxLayout(self)
+        self._root_layout.setContentsMargins(15, 10, 15, 10)
+        self._root_layout.setSpacing(15)
 
         # Current track info (left side)
-        info_widget = self._create_info_widget()
-        layout.addWidget(info_widget, 2)
+        self._info_placeholder = QWidget()
+        self._info_placeholder.setVisible(False)
+        self._info_placeholder.setFixedWidth(0)
+        self._root_layout.addWidget(self._info_placeholder, 0)
+
+        self._info_widget = self._create_info_widget()
+        self._root_layout.addWidget(self._info_widget, 2)
 
         # Playback controls (center)
-        controls_widget = self._create_playback_controls()
-        layout.addWidget(controls_widget, 3)
+        self._controls_widget = self._create_playback_controls()
+        self._root_layout.addWidget(self._controls_widget, 3)
 
-        sleep_timer_widget = self.create_sleep_timer_widget()
-        layout.addWidget(sleep_timer_widget)
+        self._sleep_timer_widget = self.create_sleep_timer_widget()
+        self._root_layout.addWidget(self._sleep_timer_widget)
 
         # Volume and extra controls (right side)
-        volume_widget = self._create_volume_widget()
-        layout.addWidget(volume_widget, 1)
+        self._volume_widget = self._create_volume_widget()
+        self._root_layout.addWidget(self._volume_widget, 1)
 
         # Apply styles
         self.refresh_theme()
@@ -256,7 +266,10 @@ class PlayerControls(QWidget):
         self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label)
 
-        layout.addSpacing(10)
+        self._cover_gap = QWidget()
+        self._cover_gap.setFixedWidth(10)
+        self._cover_gap.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(self._cover_gap)
 
         # Track info
         info_layout = QVBoxLayout()
@@ -322,6 +335,15 @@ class PlayerControls(QWidget):
         progress_layout.addWidget(self._current_time_label)
         progress_layout.addWidget(self._progress_slider)
         progress_layout.addWidget(self._total_time_label)
+        self._queue_progress_btn = QPushButton()
+        self._queue_progress_btn.setObjectName("queueBtn")
+        self._queue_progress_btn.setIcon(get_icon(IconName.LIST, None))
+        self._queue_progress_btn.setIconSize(QSize(18, 18))
+        self._queue_progress_btn.setFixedSize(30, 30)
+        self._queue_progress_btn.setCursor(Qt.PointingHandCursor)
+        self._queue_progress_btn.setToolTip(t("queue"))
+        self._queue_progress_btn.setVisible(False)
+        progress_layout.addWidget(self._queue_progress_btn)
 
         layout.addLayout(progress_layout)
 
@@ -420,12 +442,15 @@ class PlayerControls(QWidget):
         self._volume_slider.setCursor(Qt.PointingHandCursor)
         layout.addWidget(self._volume_slider)
 
-        # Queue button (placeholder)
-        # self._queue_btn = QPushButton('📋')
-        # self._queue_btn.setObjectName('queueBtn')
-        # self._queue_btn.setFixedSize(35, 35)
-        # self._queue_btn.setCursor(Qt.PointingHandCursor)
-        # layout.addWidget(self._queue_btn)
+        self._queue_btn = QPushButton()
+        self._queue_btn.setObjectName("queueBtn")
+        self._queue_btn.setIcon(get_icon(IconName.LIST, None))
+        self._queue_btn.setIconSize(QSize(20, 20))
+        self._queue_btn.setFixedSize(35, 35)
+        self._queue_btn.setCursor(Qt.PointingHandCursor)
+        self._queue_btn.setToolTip(t("queue"))
+        self._queue_btn.setVisible(False)
+        layout.addWidget(self._queue_btn)
 
         return widget
 
@@ -498,6 +523,8 @@ class PlayerControls(QWidget):
         # Volume controls
         self._volume_slider.valueChanged.connect(self._on_volume_changed)
         self._volume_btn.clicked.connect(self._toggle_mute)
+        self._queue_btn.clicked.connect(self.queue_requested.emit)
+        self._queue_progress_btn.clicked.connect(self.queue_requested.emit)
 
         # Favorite button
         self._favorite_btn.clicked.connect(self._toggle_favorite)
@@ -540,6 +567,8 @@ class PlayerControls(QWidget):
 
             self._volume_slider.valueChanged.disconnect(self._on_volume_changed)
             self._volume_btn.clicked.disconnect(self._toggle_mute)
+            self._queue_btn.clicked.disconnect(self.queue_requested.emit)
+            self._queue_progress_btn.clicked.disconnect(self.queue_requested.emit)
 
             self._favorite_btn.clicked.disconnect(self._toggle_favorite)
 
@@ -587,6 +616,52 @@ class PlayerControls(QWidget):
         # Initialize display if timer is already active
         if sleep_timer_service.is_active:
             self._on_sleep_timer_started()
+
+    def set_info_visible(self, visible: bool):
+        """Show/hide left info block (cover + track text + favorite)."""
+        self._info_widget.setVisible(visible)
+
+    def set_info_placeholder_width(self, width: int):
+        """Keep left side as blank placeholder with a fixed width."""
+        if width <= 0:
+            self._info_placeholder.setVisible(False)
+            self._info_placeholder.setFixedWidth(0)
+            self._info_widget.setVisible(True)
+            return
+
+        self._info_widget.setVisible(False)
+        self._info_placeholder.setVisible(True)
+        self._info_placeholder.setFixedWidth(width)
+
+    def set_cover_visible(self, visible: bool):
+        """Show/hide only the cover area in the left info block."""
+        self._cover_label.setVisible(visible)
+        self._cover_gap.setVisible(visible)
+
+    def set_sleep_timer_visible(self, visible: bool):
+        """Show/hide sleep timer block."""
+        self._sleep_timer_widget.setVisible(visible)
+
+    def set_queue_visible(self, visible: bool):
+        """Show/hide queue button in right-side controls."""
+        self._queue_visible = visible
+        if self._queue_placement == "progress":
+            self._queue_btn.setVisible(False)
+            self._queue_progress_btn.setVisible(visible)
+        else:
+            self._queue_progress_btn.setVisible(False)
+            self._queue_btn.setVisible(visible)
+
+    def set_queue_placement(self, placement: str):
+        """Set queue button placement: 'volume' or 'progress'."""
+        if placement == "progress":
+            self._queue_placement = "progress"
+            self._queue_btn.setVisible(False)
+            self._queue_progress_btn.setVisible(self._queue_visible)
+        else:
+            self._queue_placement = "volume"
+            self._queue_progress_btn.setVisible(False)
+            self._queue_btn.setVisible(self._queue_visible)
 
     def _on_sleep_timer_started(self):
         """Handle sleep timer started."""

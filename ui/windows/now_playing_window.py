@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QPushButton,
-    QSlider,
     QApplication,
     QSizeGrip,
     QSizePolicy,
@@ -30,7 +29,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.icons import IconName, get_icon
-from ui.widgets.player_controls import ClickableSlider
+from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
 from utils import format_time
 from PySide6.QtGui import QKeySequence
@@ -296,122 +295,36 @@ class NowPlayingWindow(QWidget):
 
         root.addLayout(body, 1)
 
-        self._progress_slider = ClickableSlider(Qt.Horizontal)
-        self._progress_slider.setObjectName("nowPlayingProgress")
-        self._progress_slider.setRange(0, 1000)
-        self._progress_slider.setValue(0)
-        self._progress_slider.setCursor(Qt.PointingHandCursor)
-        root.addWidget(self._progress_slider)
+        # Reuse main PlayerControls and hide the left info/cover section.
+        self._player_controls = PlayerControls(self._playback, self)
+        self._player_controls.setFixedHeight(116)
+        self._player_controls.set_info_placeholder_width(180)
+        self._player_controls.set_sleep_timer_visible(False)
+        self._player_controls.set_queue_placement("progress")
+        self._player_controls.set_queue_visible(True)
+        root.addWidget(self._player_controls)
 
-        time_row = QHBoxLayout()
-        time_row.setContentsMargins(0, 0, 0, 0)
-        self._current_time = QLabel("0:00")
-        self._current_time.setObjectName("nowPlayingTime")
-        self._current_time.setFixedWidth(44)
-        time_row.addWidget(self._current_time)
-        time_row.addStretch()
-        self._total_time = QLabel("0:00")
-        self._total_time.setObjectName("nowPlayingTime")
-        self._total_time.setFixedWidth(44)
-        time_row.addWidget(self._total_time)
-        root.addLayout(time_row)
+        # Keep backward-compatible attribute references used by existing logic.
+        self._progress_slider = self._player_controls._progress_slider
+        self._current_time = self._player_controls._current_time_label
+        self._total_time = self._player_controls._total_time_label
+        self._favorite_btn = self._player_controls._favorite_btn
+        self._shuffle_btn = self._player_controls._shuffle_btn
+        self._play_pause_btn = self._player_controls._play_pause_btn
+        self._prev_btn = self._player_controls._prev_btn
+        self._next_btn = self._player_controls._next_btn
+        self._repeat_btn = self._player_controls._repeat_btn
+        self._queue_btn = self._player_controls._queue_btn
+        self._volume_btn = self._player_controls._volume_btn
+        self._volume_slider = self._player_controls._volume_slider
 
-        controls = QHBoxLayout()
-        controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(0)
-
-        left_controls = QHBoxLayout()
-        left_controls.setSpacing(12)
-        self._favorite_btn = self._create_control_button(IconName.STAR_OUTLINE, 36)
-        self._favorite_btn.setToolTip(t("favorite"))
-        left_controls.addWidget(self._favorite_btn)
-        self._shuffle_btn = self._create_control_button(IconName.SHUFFLE, 36)
-        self._shuffle_btn.setToolTip(t("shuffle"))
-        self._shuffle_btn.setCheckable(True)
-        left_controls.addWidget(self._shuffle_btn)
-
-        center_controls = QHBoxLayout()
-        center_controls.setSpacing(14)
-        self._prev_btn = self._create_control_button(IconName.PREVIOUS, 36)
-        self._prev_btn.setToolTip(t("previous"))
-        center_controls.addWidget(self._prev_btn)
-
-        self._play_pause_btn = self._create_control_button(IconName.PLAY, 48)
+        # Emphasize play/pause in now-playing mode.
         self._play_pause_btn.setObjectName("nowPlayingPrimaryBtn")
+        self._play_pause_btn.setFixedSize(48, 48)
         self._play_pause_btn.setIconSize(QSize(32, 32))
-        self._play_pause_btn.setToolTip(t("play_pause"))
-        center_controls.addWidget(self._play_pause_btn)
-
-        self._next_btn = self._create_control_button(IconName.NEXT, 36)
-        self._next_btn.setToolTip(t("next"))
-        center_controls.addWidget(self._next_btn)
-
-        right_controls = QHBoxLayout()
-        right_controls.setSpacing(12)
-        self._repeat_btn = self._create_control_button(IconName.REPEAT, 36)
-        self._repeat_btn.setToolTip(t("repeat"))
-        self._repeat_btn.setCheckable(True)
-        self._repeat_btn.setFixedSize(36, 36)
-        self._repeat_btn.setIconSize(QSize(26, 26))
-        right_controls.addWidget(self._repeat_btn)
-        self._queue_btn = self._create_control_button(IconName.LIST, 36)
-        self._queue_btn.setToolTip(t("queue"))
-        right_controls.addWidget(self._queue_btn)
-
-        left_container = QWidget()
-        left_container.setLayout(left_controls)
-        center_container = QWidget()
-        center_container.setLayout(center_controls)
-        right_container = QWidget()
-        right_container.setLayout(right_controls)
-
-        middle_group_layout = QHBoxLayout()
-        middle_group_layout.setContentsMargins(0, 0, 0, 0)
-        middle_group_layout.setSpacing(34)
-        middle_group_layout.addWidget(left_container, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        middle_group_layout.addWidget(center_container, 0, Qt.AlignCenter)
-        middle_group_layout.addWidget(right_container, 0, Qt.AlignRight | Qt.AlignVCenter)
-
-        middle_group = QWidget()
-        middle_group.setLayout(middle_group_layout)
-        middle_group.setMaximumWidth(760)
-        middle_group.setMinimumWidth(600)
-        middle_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-
-        controls.addStretch()
-        controls.addWidget(middle_group, 0, Qt.AlignCenter)
-        controls.addStretch()
-
-        root.addLayout(controls)
-
-        volume_row = QHBoxLayout()
-        volume_row.setContentsMargins(0, 0, 0, 0)
-        volume_row.addStretch()
-        self._volume_btn = self._create_control_button(IconName.VOLUME_HIGH, 30)
-        self._volume_btn.setToolTip(t("volume"))
-        volume_row.addWidget(self._volume_btn)
-
-        self._volume_slider = QSlider(Qt.Horizontal)
-        self._volume_slider.setObjectName("nowPlayingVolume")
-        self._volume_slider.setRange(0, 100)
-        self._volume_slider.setValue(70)
-        self._volume_slider.setFixedWidth(140)
-        self._volume_slider.setCursor(Qt.PointingHandCursor)
-        volume_row.addWidget(self._volume_slider)
-        root.addLayout(volume_row)
 
         self._set_default_cover()
         self.refresh_theme()
-
-    def _create_control_button(self, icon_name: str, size: int) -> QPushButton:
-        btn = QPushButton()
-        btn.setObjectName("nowPlayingControl")
-        btn.setFixedSize(size, size)
-        btn.setCursor(Qt.PointingHandCursor)
-        icon_size = 30 if icon_name in (IconName.PLAY, IconName.PAUSE) else 26
-        btn.setIcon(get_icon(icon_name, None, icon_size))
-        btn.setIconSize(QSize(icon_size, icon_size))
-        return btn
 
     def _setup_connections(self):
         """Connect playback and widget signals."""
@@ -419,22 +332,7 @@ class NowPlayingWindow(QWidget):
         self._max_btn.clicked.connect(self._toggle_maximized)
         self._lyrics_widget.seekRequested.connect(self._playback.seek)
         self._setup_shortcuts()
-
-        self._play_pause_btn.clicked.connect(self._toggle_play_pause)
-        self._prev_btn.clicked.connect(self._playback.engine.play_previous)
-        self._next_btn.clicked.connect(self._playback.engine.play_next)
-        self._shuffle_btn.clicked.connect(self._toggle_shuffle)
-        self._repeat_btn.clicked.connect(self._toggle_repeat)
-        self._favorite_btn.clicked.connect(self._toggle_favorite)
-        self._queue_btn.clicked.connect(self._show_playlist_dialog)
-
-        self._progress_slider.sliderPressed.connect(self._on_seek_start)
-        self._progress_slider.sliderReleased.connect(self._on_seek_end)
-        self._progress_slider.clicked_value.connect(self._on_slider_clicked)
-        self._progress_slider.valueChanged.connect(self._on_seek_value_changed)
-
-        self._volume_btn.clicked.connect(self._toggle_mute)
-        self._volume_slider.valueChanged.connect(self._on_volume_changed)
+        self._player_controls.queue_requested.connect(self._show_playlist_dialog)
 
         engine = self._playback.engine
         engine.current_track_changed.connect(self._on_track_changed)
