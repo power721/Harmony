@@ -36,9 +36,35 @@ class SqliteGenreRepository(BaseRepository):
             cursor.execute("SELECT 1 FROM genres LIMIT 1")
             if cursor.fetchone() is not None:
                 cursor.execute("""
-                    SELECT name, cover_path, song_count, album_count, total_duration
-                    FROM genres
-                    ORDER BY song_count DESC
+                    SELECT
+                        g.name,
+                        COALESCE(
+                            (
+                                SELECT t.cover_path
+                                FROM tracks t
+                                WHERE t.genre = g.name
+                                  AND t.cover_path IS NOT NULL
+                                  AND t.cover_path != ''
+                                ORDER BY RANDOM()
+                                LIMIT 1
+                            ),
+                            (
+                                SELECT a.cover_path
+                                FROM tracks t
+                                JOIN albums a ON a.name = t.album
+                                WHERE t.genre = g.name
+                                  AND a.cover_path IS NOT NULL
+                                  AND a.cover_path != ''
+                                ORDER BY RANDOM()
+                                LIMIT 1
+                            ),
+                            g.cover_path
+                        ) AS cover_path,
+                        g.song_count,
+                        g.album_count,
+                        g.total_duration
+                    FROM genres g
+                    ORDER BY g.song_count DESC
                 """)
                 rows = cursor.fetchall()
                 return [
@@ -56,7 +82,25 @@ class SqliteGenreRepository(BaseRepository):
         cursor.execute("""
             SELECT
                 t.genre as name,
-                MAX(CASE WHEN t.cover_path IS NOT NULL THEN t.cover_path END) as cover_path,
+                (
+                    SELECT t2.cover_path
+                    FROM tracks t2
+                    WHERE t2.genre = t.genre
+                      AND t2.cover_path IS NOT NULL
+                      AND t2.cover_path != ''
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) as track_cover_path,
+                (
+                    SELECT a.cover_path
+                    FROM tracks t3
+                    JOIN albums a ON a.name = t3.album
+                    WHERE t3.genre = t.genre
+                      AND a.cover_path IS NOT NULL
+                      AND a.cover_path != ''
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) as album_cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT t.album) as album_count,
                 SUM(t.duration) as total_duration
@@ -71,7 +115,7 @@ class SqliteGenreRepository(BaseRepository):
         for row in rows:
             genres.append(Genre(
                 name=row["name"] or "",
-                cover_path=row["cover_path"],
+                cover_path=row["track_cover_path"] or row["album_cover_path"],
                 song_count=row["song_count"] or 0,
                 album_count=row["album_count"] or 0,
                 duration=row["total_duration"] or 0.0,
@@ -95,9 +139,35 @@ class SqliteGenreRepository(BaseRepository):
         cursor.execute("SELECT 1 FROM genres LIMIT 1")
         if cursor.fetchone() is not None:
             cursor.execute("""
-                SELECT name, cover_path, song_count, album_count, total_duration
-                FROM genres
-                WHERE name = ?
+                SELECT
+                    g.name,
+                    COALESCE(
+                        (
+                            SELECT t.cover_path
+                            FROM tracks t
+                            WHERE t.genre = g.name
+                              AND t.cover_path IS NOT NULL
+                              AND t.cover_path != ''
+                            ORDER BY RANDOM()
+                            LIMIT 1
+                        ),
+                        (
+                            SELECT a.cover_path
+                            FROM tracks t
+                            JOIN albums a ON a.name = t.album
+                            WHERE t.genre = g.name
+                              AND a.cover_path IS NOT NULL
+                              AND a.cover_path != ''
+                            ORDER BY RANDOM()
+                            LIMIT 1
+                        ),
+                        g.cover_path
+                    ) AS cover_path,
+                    g.song_count,
+                    g.album_count,
+                    g.total_duration
+                FROM genres g
+                WHERE g.name = ?
             """, (name,))
             row = cursor.fetchone()
             if row:
@@ -114,7 +184,25 @@ class SqliteGenreRepository(BaseRepository):
         cursor.execute("""
             SELECT
                 t.genre as name,
-                MAX(CASE WHEN t.cover_path IS NOT NULL THEN t.cover_path END) as cover_path,
+                (
+                    SELECT t2.cover_path
+                    FROM tracks t2
+                    WHERE t2.genre = t.genre
+                      AND t2.cover_path IS NOT NULL
+                      AND t2.cover_path != ''
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) as track_cover_path,
+                (
+                    SELECT a.cover_path
+                    FROM tracks t3
+                    JOIN albums a ON a.name = t3.album
+                    WHERE t3.genre = t.genre
+                      AND a.cover_path IS NOT NULL
+                      AND a.cover_path != ''
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) as album_cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT t.album) as album_count,
                 SUM(t.duration) as total_duration
@@ -128,7 +216,7 @@ class SqliteGenreRepository(BaseRepository):
 
         return Genre(
             name=row["name"] or "",
-            cover_path=row["cover_path"],
+            cover_path=row["track_cover_path"] or row["album_cover_path"],
             song_count=row["song_count"] or 0,
             album_count=row["album_count"] or 0,
             duration=row["total_duration"] or 0.0,
@@ -177,11 +265,19 @@ class SqliteGenreRepository(BaseRepository):
             INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
             SELECT
                 genre as name,
-                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
+                (
+                    SELECT t2.cover_path
+                    FROM tracks t2
+                    WHERE t2.genre = t.genre
+                      AND t2.cover_path IS NOT NULL
+                      AND t2.cover_path != ''
+                    ORDER BY RANDOM()
+                    LIMIT 1
+                ) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT album) as album_count,
                 SUM(duration) as total_duration
-            FROM tracks
+            FROM tracks t
             WHERE genre IS NOT NULL AND genre != ''
             GROUP BY genre
         """)
@@ -216,3 +312,30 @@ class SqliteGenreRepository(BaseRepository):
 
         conn.commit()
         return fixed
+
+    def update_cover_path(self, genre_name: str, cover_path: str) -> bool:
+        """
+        Update cover path for a genre.
+
+        Args:
+            genre_name: Genre name
+            cover_path: Cover path or URL
+
+        Returns:
+            True if a row was updated
+        """
+        if not genre_name or not cover_path:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE genres
+            SET cover_path = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE name = ?
+            """,
+            (cover_path, genre_name),
+        )
+        conn.commit()
+        return cursor.rowcount > 0

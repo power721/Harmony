@@ -82,6 +82,8 @@ class GenreView(QWidget):
         self._genre: Genre = None
         self._tracks: List[Track] = []
         self._current_cover_path: str = None
+        self._cover_downloading = False
+        self._cover_executor = None
 
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
@@ -482,6 +484,27 @@ class GenreView(QWidget):
         """Load genre cover."""
         cover_path = genre.cover_path
 
+        if cover_path and cover_path.startswith(("http://", "https://")):
+            from infrastructure.cache import ImageCache
+            cached_data = ImageCache.get(cover_path)
+            if cached_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached_data):
+                    scaled = pixmap.scaled(
+                        200, 200,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_label.setPixmap(scaled)
+                    self._current_cover_path = cover_path
+                    return
+
+            if not self._cover_downloading:
+                self._cover_downloading = True
+                self._download_cover_async(cover_path)
+            self._set_default_cover()
+            return
+
         if cover_path and Path(cover_path).exists():
             try:
                 pixmap = QPixmap(cover_path)
@@ -500,6 +523,67 @@ class GenreView(QWidget):
         # Default cover
         self._set_default_cover()
         self._current_cover_path = None
+
+    def _download_cover_async(self, url: str):
+        """Download online cover asynchronously and update header when ready."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        from infrastructure.network import HttpClient
+
+        try:
+            http_client = HttpClient()
+            request_url, request_headers = self._prepare_cover_request(url)
+
+            def download():
+                try:
+                    return http_client.get_content(request_url, headers=request_headers, timeout=5)
+                except Exception as e:
+                    logger.warning(f"Failed to download genre cover: {e}")
+                    return None
+
+            if self._cover_executor is None:
+                self._cover_executor = ThreadPoolExecutor(max_workers=1)
+
+            future = self._cover_executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(url, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            scaled = pixmap.scaled(
+                                200, 200,
+                                Qt.KeepAspectRatioByExpanding,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_label.setPixmap(scaled)
+                            self._current_cover_path = url
+                    self._cover_downloading = False
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start genre cover download: {e}")
+            self._cover_downloading = False
+
+    def _prepare_cover_request(self, url: str) -> tuple[str, dict | None]:
+        """Prepare URL/headers for cover hosts with special requirements."""
+        request_url = url
+        request_headers = None
+
+        if url.startswith("https://y.qq.com/music/photo_new/"):
+            request_url = url.replace("https://y.qq.com/music/photo_new/", "https://y.gtimg.cn/music/photo_new/", 1)
+            request_headers = {"Referer": "https://y.qq.com/"}
+        elif url.startswith("http://y.qq.com/music/photo_new/"):
+            request_url = url.replace("http://y.qq.com/music/photo_new/", "https://y.gtimg.cn/music/photo_new/", 1)
+            request_headers = {"Referer": "https://y.qq.com/"}
+        elif "y.gtimg.cn" in url:
+            request_headers = {"Referer": "https://y.qq.com/"}
+
+        return request_url, request_headers
 
     def _set_default_cover(self):
         """Set default cover."""

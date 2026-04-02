@@ -5,6 +5,7 @@ Tests for LibraryService.
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
+from domain.genre import Genre
 from domain.track import Track
 from domain.playlist import Playlist
 from services.library.library_service import LibraryService
@@ -935,3 +936,54 @@ class TestLibraryService:
 
         assert result == 15
         mock_track_repo.rebuild_track_artists.assert_called_once()
+
+    # ===== Genre Cover Fill Tests =====
+
+    def test_fill_missing_genre_covers_fetches_and_updates(self):
+        track_repo = Mock()
+        playlist_repo = Mock()
+        album_repo = Mock()
+        artist_repo = Mock()
+        genre_repo = Mock()
+        cover_service = Mock()
+        event_bus = Mock()
+
+        service = LibraryService(
+            track_repo=track_repo,
+            playlist_repo=playlist_repo,
+            album_repo=album_repo,
+            artist_repo=artist_repo,
+            genre_repo=genre_repo,
+            event_bus=event_bus,
+            cover_service=cover_service,
+        )
+
+        genre_repo.get_all.return_value = [
+            Genre(name="Rock", cover_path=None, song_count=2, album_count=1),
+            Genre(name="Pop", cover_path="/covers/pop.jpg", song_count=1, album_count=1),
+        ]
+        genre_repo.get_tracks.return_value = [
+            Track(id=1, title="Song", artist="Artist", album="Album", duration=180.0)
+        ]
+        cover_service.fetch_online_cover.return_value = "/covers/rock.jpg"
+        genre_repo.update_cover_path.return_value = True
+
+        filled = service.fill_missing_genre_covers(max_tracks_per_genre=3)
+
+        assert filled == 1
+        genre_repo.get_tracks.assert_called_once_with("Rock")
+        cover_service.fetch_online_cover.assert_called_once_with("Song", "Artist", "Album", 180.0)
+        genre_repo.update_cover_path.assert_called_once_with("Rock", "/covers/rock.jpg")
+
+    def test_fill_missing_genre_covers_returns_zero_without_dependencies(self):
+        service = LibraryService(
+            track_repo=Mock(),
+            playlist_repo=Mock(),
+            album_repo=Mock(),
+            artist_repo=Mock(),
+            genre_repo=None,
+            event_bus=Mock(),
+            cover_service=None,
+        )
+
+        assert service.fill_missing_genre_covers() == 0

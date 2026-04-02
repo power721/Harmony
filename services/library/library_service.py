@@ -535,6 +535,48 @@ class LibraryService:
             return self._genre_repo.get_by_name(name)
         return None
 
+    def fill_missing_genre_covers(self, max_tracks_per_genre: int = 10) -> int:
+        """
+        Fill missing genre covers by fetching online covers from sample tracks.
+
+        Args:
+            max_tracks_per_genre: Maximum number of tracks to try for each genre
+
+        Returns:
+            Number of genres successfully filled
+        """
+        if not self._genre_repo or not self._cover_service:
+            return 0
+
+        filled = 0
+        genres = self._genre_repo.get_all()
+        missing_genres = [g for g in genres if not g.cover_path]
+
+        for genre in missing_genres:
+            tracks = self._genre_repo.get_tracks(genre.name)
+            if not tracks:
+                continue
+
+            for track in tracks[:max_tracks_per_genre]:
+                title = track.title or ""
+                artist = track.artist or ""
+                album = track.album or ""
+                if not title and not album:
+                    continue
+
+                cover_path = self._cover_service.fetch_online_cover(
+                    title,
+                    artist,
+                    album,
+                    track.duration
+                )
+                if cover_path:
+                    if self._genre_repo.update_cover_path(genre.name, cover_path):
+                        filled += 1
+                    break
+
+        return filled
+
     def rename_artist(self, old_name: str, new_name: str) -> dict:
         """
         Rename an artist and update all associated tracks.

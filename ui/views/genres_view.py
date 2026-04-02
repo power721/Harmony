@@ -50,6 +50,22 @@ class LoadGenresWorker(QThread):
         self.finished.emit(genres)
 
 
+class FillGenreCoversWorker(QThread):
+    """Background worker to fill missing genre covers."""
+    finished = Signal(int)
+
+    def __init__(self, library_service: LibraryService, parent=None):
+        super().__init__(parent)
+        self._library = library_service
+
+    def run(self):
+        try:
+            filled = self._library.fill_missing_genre_covers()
+        except Exception:
+            filled = 0
+        self.finished.emit(filled)
+
+
 class GenreModel(QAbstractListModel):
     """Model for genre data."""
 
@@ -98,6 +114,8 @@ class GenreDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._cover_cache = OrderedDict()  # LRU cache for loaded covers
         self._cache_max_size = 500
+        self._pending_downloads = set()  # Track URLs being downloaded
+        self._executor = None  # ThreadPoolExecutor for async downloads
         self._default_cover = self._create_default_cover()
 
     def _create_default_cover(self) -> QPixmap:
@@ -123,13 +141,36 @@ class GenreDelegate(QStyledItemDelegate):
         return pixmap
 
     def _load_cover(self, cover_path: str) -> QPixmap:
-        """Load cover from path with LRU caching."""
+        """Load cover from path with LRU caching. Supports local files and online URLs."""
         if not cover_path:
             return self._default_cover
 
         if cover_path in self._cover_cache:
             self._cover_cache.move_to_end(cover_path)
             return self._cover_cache[cover_path]
+
+        # Online URL
+        if cover_path.startswith(('http://', 'https://')):
+            from infrastructure.cache import ImageCache
+            cached_data = ImageCache.get(cover_path)
+            if cached_data:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(cached_data):
+                    scaled = pixmap.scaled(
+                        self.COVER_SIZE, self.COVER_SIZE,
+                        Qt.KeepAspectRatioByExpanding,
+                        Qt.SmoothTransformation
+                    )
+                    self._cover_cache[cover_path] = scaled
+                    if len(self._cover_cache) > self._cache_max_size:
+                        self._cover_cache.popitem(last=False)
+                    return scaled
+
+            # Start async download
+            if cover_path not in self._pending_downloads:
+                self._pending_downloads.add(cover_path)
+                self._download_cover_async(cover_path)
+            return self._default_cover
 
         if Path(cover_path).exists():
             try:
@@ -148,6 +189,77 @@ class GenreDelegate(QStyledItemDelegate):
                 pass
 
         return self._default_cover
+
+    def _download_cover_async(self, url: str):
+        """Download cover image asynchronously with disk caching."""
+        from concurrent.futures import ThreadPoolExecutor
+        from infrastructure.cache import ImageCache
+        from infrastructure.network import HttpClient
+
+        try:
+            http_client = HttpClient()
+
+            request_url, request_headers = self._prepare_cover_request(url)
+
+            def download():
+                try:
+                    return http_client.get_content(
+                        request_url,
+                        headers=request_headers,
+                        timeout=5
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to download cover: {e}")
+                    return None
+
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=1)
+
+            future = self._executor.submit(download)
+
+            def check_download():
+                if future.done():
+                    image_data = future.result()
+                    if image_data:
+                        ImageCache.set(url, image_data)
+                        pixmap = QPixmap()
+                        if pixmap.loadFromData(image_data):
+                            scaled = pixmap.scaled(
+                                self.COVER_SIZE, self.COVER_SIZE,
+                                Qt.KeepAspectRatioByExpanding,
+                                Qt.SmoothTransformation
+                            )
+                            self._cover_cache[url] = scaled
+                            if len(self._cover_cache) > self._cache_max_size:
+                                self._cover_cache.popitem(last=False)
+                            parent = self.parent()
+                            if parent and hasattr(parent, 'viewport'):
+                                parent.viewport().update()
+                    self._pending_downloads.discard(url)
+                else:
+                    QTimer.singleShot(100, check_download)
+
+            QTimer.singleShot(100, check_download)
+        except Exception as e:
+            logger.warning(f"Failed to start cover download: {e}")
+            self._pending_downloads.discard(url)
+
+    def _prepare_cover_request(self, url: str) -> tuple[str, dict | None]:
+        """Prepare request URL/headers for cover hosts with special requirements."""
+        request_url = url
+        request_headers = None
+
+        # Legacy QQ URLs in database should use y.gtimg.cn for stable image access.
+        if url.startswith("https://y.qq.com/music/photo_new/"):
+            request_url = url.replace("https://y.qq.com/music/photo_new/", "https://y.gtimg.cn/music/photo_new/", 1)
+            request_headers = {"Referer": "https://y.qq.com/"}
+        elif url.startswith("http://y.qq.com/music/photo_new/"):
+            request_url = url.replace("http://y.qq.com/music/photo_new/", "https://y.gtimg.cn/music/photo_new/", 1)
+            request_headers = {"Referer": "https://y.qq.com/"}
+        elif "y.gtimg.cn" in url:
+            request_headers = {"Referer": "https://y.qq.com/"}
+
+        return request_url, request_headers
 
     def sizeHint(self, option, index):
         return QSize(self.CARD_WIDTH, self.CARD_HEIGHT)
@@ -261,6 +373,8 @@ class GenresView(QWidget):
         self._filtered_genres: List[Genre] = []
         self._data_loaded = False
         self._load_worker = None
+        self._fill_worker = None
+        self._is_filling_covers = False
         self._hovered_index = -1
 
         self._setup_ui()
@@ -682,6 +796,40 @@ class GenresView(QWidget):
         if self._load_worker:
             self._load_worker.deleteLater()
             self._load_worker = None
+
+        self._fill_missing_covers_async()
+
+    def _fill_missing_covers_async(self):
+        """Fill missing genre covers in background and refresh when done."""
+        if not self._cover_service or self._is_filling_covers:
+            return
+
+        if not any(not g.cover_path for g in self._genres):
+            return
+
+        self._is_filling_covers = True
+
+        if self._fill_worker and isValid(self._fill_worker):
+            if self._fill_worker.isRunning():
+                return
+            self._fill_worker.deleteLater()
+            self._fill_worker = None
+
+        self._fill_worker = FillGenreCoversWorker(self._library, self)
+        self._fill_worker.finished.connect(self._on_fill_covers_finished)
+        self._fill_worker.start()
+
+    def _on_fill_covers_finished(self, filled_count: int):
+        """Handle completion of missing cover fill task."""
+        self._is_filling_covers = False
+
+        if self._fill_worker:
+            self._fill_worker.deleteLater()
+            self._fill_worker = None
+
+        if filled_count > 0:
+            self._delegate.clear_cache()
+            self._load_genres(force=True)
 
     def _update_count_label(self):
         """Update the genre count label."""
