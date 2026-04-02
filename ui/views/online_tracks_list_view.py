@@ -5,8 +5,8 @@ Online tracks list view for displaying online music tracks.
 import logging
 from typing import List
 
-from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
-from PySide6.QtGui import QColor, QPainter, QImage
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QPoint, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
+from PySide6.QtGui import QColor, QPainter, QImage, QCursor
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
 from domain import TrackSource
@@ -14,10 +14,32 @@ from domain.online_music import OnlineTrack
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from system import t
 from system.event_bus import EventBus
+from ui.views.cover_hover_popup import CoverHoverPopup
 from ui.widgets.context_menus import OnlineTrackContextMenu
 from utils.helpers import format_duration
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_online_cover_path(track: OnlineTrack) -> str | None:
+    """Resolve online cover for QQ music track."""
+    if not track:
+        return None
+
+    try:
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        if bootstrap and hasattr(bootstrap, 'cover_service'):
+            return bootstrap.cover_service.get_online_cover(
+                song_mid=track.mid,
+                album_mid=None,
+                artist=track.singer_name,
+                title=track.title,
+            )
+    except Exception:
+        pass
+
+    return None
 
 
 class OnlineTracksModel(QAbstractListModel):
@@ -123,23 +145,7 @@ class OnlineCoverLoadWorker(QRunnable):
 
     def _resolve_online_cover(self) -> str | None:
         """Resolve online cover for QQ music track."""
-        if not self.track:
-            return None
-
-        try:
-            from app.bootstrap import Bootstrap
-            bootstrap = Bootstrap.instance()
-            if bootstrap and hasattr(bootstrap, 'cover_service'):
-                return bootstrap.cover_service.get_online_cover(
-                    song_mid=self.track.mid,
-                    album_mid=None,
-                    artist=self.track.singer_name,
-                    title=self.track.title,
-                )
-        except Exception:
-            pass
-
-        return None
+        return _resolve_online_cover_path(self.track)
 
 
 class OnlineTracksDelegate(QStyledItemDelegate):
@@ -341,6 +347,11 @@ class OnlineTracksDelegate(QStyledItemDelegate):
         """Generate cache key for an online track."""
         return f"{TrackSource.QQ.name}:{track.mid}"
 
+    def cover_rect_for_item(self, item_rect: QRect) -> QRect:
+        """Return the clickable cover rectangle for an item."""
+        x = item_rect.left() + self._padding + self._rank_width
+        return QRect(x + 2, item_rect.top() + 9, self._cover_size, self._cover_size)
+
     @staticmethod
     def _elided_text(painter, text: str, max_width: int) -> str:
         """Return elided text if too wide."""
@@ -367,6 +378,12 @@ class OnlineTracksListView(QWidget):
         super().__init__(parent)
         self._model = OnlineTracksModel(self)
         self._delegate = OnlineTracksDelegate(self)
+        self._cover_popup = CoverHoverPopup()
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.timeout.connect(self._show_cover_popup)
+        self._hovered_row = -1
+        self._last_cover_pos = QPoint()
         self._setup_ui()
         self._setup_connections()
         self._context_menu = OnlineTrackContextMenu(self)
@@ -385,6 +402,7 @@ class OnlineTracksListView(QWidget):
         self._list_view.setSelectionBehavior(QListView.SelectionBehavior.SelectRows)
         self._list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list_view.setMouseTracking(True)
+        self._list_view.viewport().installEventFilter(self)
         self._list_view.setUniformItemSizes(True)
         self._list_view.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
 
@@ -398,6 +416,67 @@ class OnlineTracksListView(QWidget):
         # Event bus
         bus = EventBus.instance()
         bus.favorite_changed.connect(self._on_favorite_changed)
+
+    def closeEvent(self, event):
+        """Clean up event bus connections before closing."""
+        try:
+            EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
+        except RuntimeError:
+            pass
+        self._hover_timer.stop()
+        self._cover_popup.hide()
+        super().closeEvent(event)
+
+    def eventFilter(self, obj, event):
+        """Filter viewport events to drive cover hover popup."""
+        if obj == self._list_view.viewport():
+            if event.type() == event.Type.MouseMove:
+                self._handle_mouse_move(event)
+            elif event.type() == event.Type.Leave:
+                self._handle_mouse_leave()
+        return super().eventFilter(obj, event)
+
+    def _handle_mouse_move(self, event):
+        """Handle mouse move to detect cover hover."""
+        pos = event.pos()
+        index = self._list_view.indexAt(pos)
+
+        if not index.isValid():
+            self._handle_mouse_leave()
+            return
+
+        row = index.row()
+        item_rect = self._list_view.visualRect(index)
+        cover_rect = self._delegate.cover_rect_for_item(item_rect)
+
+        if cover_rect.contains(pos):
+            if self._hovered_row != row:
+                self._hovered_row = row
+                self._last_cover_pos = QCursor.pos()
+                self._hover_timer.start(500)
+            else:
+                self._cover_popup.cancel_hide()
+        else:
+            self._handle_mouse_leave()
+
+    def _handle_mouse_leave(self):
+        """Handle mouse leaving cover hover area."""
+        self._hover_timer.stop()
+        self._hovered_row = -1
+        self._cover_popup.schedule_hide()
+
+    def _show_cover_popup(self):
+        """Show cover popup for the currently hovered row."""
+        if self._hovered_row < 0 or self._hovered_row >= self._model.rowCount():
+            return
+
+        track = self._model.get_track_at(self._hovered_row)
+        if not track:
+            return
+
+        cache_key = self._delegate._get_cover_cache_key(track)
+        cover_path = _resolve_online_cover_path(track)
+        self._cover_popup.show_cover(cover_path, cache_key, self._last_cover_pos)
 
     def _on_item_activated(self, index):
         track = index.data(OnlineTracksModel.TrackRole)

@@ -10,6 +10,8 @@ from PySide6.QtCore import (
     Qt,
     Signal,
     QSize,
+    QTimer,
+    QPoint,
     QAbstractListModel,
     QModelIndex,
     QRunnable,
@@ -32,10 +34,60 @@ from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from system import t
 from system.event_bus import EventBus
 from ui.icons import IconName, get_icon
+from ui.views.cover_hover_popup import CoverHoverPopup
 from ui.widgets.context_menus import LocalTrackContextMenu
 from utils.helpers import format_duration
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_local_cover_path(track: Track) -> str | None:
+    """Resolve cover path for a local track (can run on worker or UI thread)."""
+    if not track:
+        return None
+
+    from pathlib import Path
+
+    source = track.source
+    cloud_file_id = track.cloud_file_id
+    is_online = source == TrackSource.QQ
+
+    if is_online and cloud_file_id:
+        try:
+            from app.bootstrap import Bootstrap
+            bootstrap = Bootstrap.instance()
+            if bootstrap and hasattr(bootstrap, 'cover_service'):
+                cover_path = bootstrap.cover_service.get_online_cover(
+                    song_mid=cloud_file_id,
+                    album_mid=None,
+                    artist=track.artist,
+                    title=track.title,
+                )
+                if cover_path:
+                    return cover_path
+        except Exception:
+            pass
+
+    cover_path = track.cover_path
+    if cover_path and Path(cover_path).exists():
+        return cover_path
+
+    path = track.path
+    if path and Path(path).exists():
+        try:
+            from app.bootstrap import Bootstrap
+            bootstrap = Bootstrap.instance()
+            if bootstrap and hasattr(bootstrap, 'cover_service'):
+                cover_path = bootstrap.cover_service.get_cover(
+                    path, track.title, track.artist,
+                    track.album, skip_online=True,
+                )
+                if cover_path:
+                    return cover_path
+        except Exception:
+            pass
+
+    return None
 
 
 class LocalTrackModel(QAbstractListModel):
@@ -195,53 +247,7 @@ class CoverLoadWorker(QRunnable):
 
     def _resolve_cover_path(self) -> str | None:
         """Resolve cover path for a track (runs in worker thread)."""
-        if not self.track:
-            return None
-
-        from pathlib import Path
-
-        source = self.track.source
-        cloud_file_id = self.track.cloud_file_id
-        is_online = source == TrackSource.QQ
-
-        if is_online and cloud_file_id:
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_online_cover(
-                        song_mid=cloud_file_id,
-                        album_mid=None,
-                        artist=self.track.artist,
-                        title=self.track.title,
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        # Try cover_path first
-        cover_path = self.track.cover_path
-        if cover_path and Path(cover_path).exists():
-            return cover_path
-
-        # Try extracting from file
-        path = self.track.path
-        if path and Path(path).exists():
-            try:
-                from app.bootstrap import Bootstrap
-                bootstrap = Bootstrap.instance()
-                if bootstrap and hasattr(bootstrap, 'cover_service'):
-                    cover_path = bootstrap.cover_service.get_cover(
-                        path, self.track.title, self.track.artist,
-                        self.track.album, skip_online=True,
-                    )
-                    if cover_path:
-                        return cover_path
-            except Exception:
-                pass
-
-        return None
+        return _resolve_local_cover_path(self.track)
 
 
 class LocalTrackDelegate(QStyledItemDelegate):
@@ -471,6 +477,13 @@ class LocalTrackDelegate(QStyledItemDelegate):
         path = track.path or track.cover_path or ""
         return CoverPixmapCache.make_key_from_path(path)
 
+    def cover_rect_for_item(self, item_rect: QRect) -> QRect:
+        """Return the clickable cover rectangle for an item."""
+        x = item_rect.left() + self._padding
+        if self._show_index:
+            x += self._index_width
+        return QRect(x + 2, item_rect.top() + 9, self._cover_size, self._cover_size)
+
     @staticmethod
     def _elided_text(painter, text: str, max_width: int) -> str:
         """Return elided text if too wide."""
@@ -501,6 +514,12 @@ class LocalTracksListView(QWidget):
         super().__init__(parent)
         self._model = LocalTrackModel(self)
         self._delegate = LocalTrackDelegate(self, show_index=show_index, show_source=show_source)
+        self._cover_popup = CoverHoverPopup()
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.timeout.connect(self._show_cover_popup)
+        self._hovered_row = -1
+        self._last_cover_pos = QPoint()
         self._setup_ui()
         self._setup_connections()
         self._context_menu = LocalTrackContextMenu(self)
@@ -518,6 +537,7 @@ class LocalTracksListView(QWidget):
         self._list_view.setSelectionBehavior(QListView.SelectionBehavior.SelectRows)
         self._list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list_view.setMouseTracking(True)
+        self._list_view.viewport().installEventFilter(self)
         self._list_view.setUniformItemSizes(True)
         self._list_view.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
 
@@ -548,7 +568,72 @@ class LocalTracksListView(QWidget):
             self._delegate._cover_loaded_signal.disconnect(self._delegate._on_cover_loaded)
         except RuntimeError:
             pass
+        self._hover_timer.stop()
+        self._cover_popup.hide()
         super().closeEvent(event)
+
+    def eventFilter(self, obj, event):
+        """Filter viewport events to drive cover hover popup."""
+        if obj == self._list_view.viewport():
+            if event.type() == event.Type.MouseMove:
+                self._handle_mouse_move(event)
+            elif event.type() == event.Type.Leave:
+                self._handle_mouse_leave()
+        return super().eventFilter(obj, event)
+
+    def _handle_mouse_move(self, event):
+        """Handle mouse move to detect cover hover."""
+        pos = event.pos()
+        index = self._list_view.indexAt(pos)
+
+        if not index.isValid():
+            self._handle_mouse_leave()
+            return
+
+        row = index.row()
+        item_rect = self._list_view.visualRect(index)
+        cover_rect = self._cover_rect_for_item(item_rect)
+
+        if cover_rect.contains(pos):
+            if self._hovered_row != row:
+                self._hovered_row = row
+                self._last_cover_pos = QCursor.pos()
+                self._hover_timer.start(500)
+            else:
+                self._cover_popup.cancel_hide()
+        else:
+            self._handle_mouse_leave()
+
+    def _handle_mouse_leave(self):
+        """Handle mouse leaving cover hover area."""
+        self._hover_timer.stop()
+        self._hovered_row = -1
+        self._cover_popup.schedule_hide()
+
+    def _show_cover_popup(self):
+        """Show cover popup for the currently hovered row."""
+        if self._hovered_row < 0 or self._hovered_row >= self._model.rowCount():
+            return
+
+        track = self._model.get_track_at(self._hovered_row)
+        if not track:
+            return
+
+        cache_key = self._delegate._get_cover_cache_key(track)
+        cover_path = _resolve_local_cover_path(track)
+        self._cover_popup.show_cover(cover_path, cache_key, self._last_cover_pos)
+
+    def _cover_rect_for_item(self, item_rect: QRect) -> QRect:
+        """Get cover hit-rect for the current delegate, with compatibility fallback."""
+        if hasattr(self._delegate, "cover_rect_for_item"):
+            return self._delegate.cover_rect_for_item(item_rect)
+
+        padding = int(getattr(self._delegate, "_padding", 10))
+        index_width = int(getattr(self._delegate, "_index_width", 50))
+        cover_size = int(getattr(self._delegate, "_cover_size", 64))
+        x = item_rect.left() + padding + index_width + 2
+        y = item_rect.top() + 9
+        return QRect(x, y, cover_size, cover_size)
 
     def _on_item_activated(self, index):
         track = index.data(LocalTrackModel.TrackRole)
