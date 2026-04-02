@@ -432,10 +432,10 @@ class NowPlayingWindow(QWidget):
 
     def _on_state_changed(self, state: PlaybackState):
         if state == PlaybackState.PLAYING:
-            self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 20))
+            self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 32))
             self._update_cover_animation_state()
         else:
-            self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 20))
+            self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 32))
             self._update_cover_animation_state()
 
     def _toggle_play_pause(self):
@@ -630,7 +630,13 @@ class NowPlayingWindow(QWidget):
                 font = current_item.font()
                 font.setBold(True)
                 current_item.setFont(font)
-                queue_list.scrollToItem(current_item, QListWidget.PositionAtCenter)
+                # Defer scrolling until popup is visible; otherwise Qt may reset to top.
+                QTimer.singleShot(
+                    0,
+                    lambda item=current_item: queue_list.scrollToItem(
+                        item, QListWidget.PositionAtCenter
+                    ),
+                )
 
         def _play_selected(selected_item: QListWidgetItem):
             index = selected_item.data(Qt.UserRole)
