@@ -287,23 +287,28 @@ class DatabaseManager:
                            ON play_history(played_at DESC)
                        """)
         # Additional indexes for common queries
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
-                           ON tracks(cloud_file_id)
-                       """)
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_tracks_source
-                           ON tracks(source)
-                       """)
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_tracks_created_at
-                           ON tracks(created_at DESC)
-                       """)
-        # Index for genre queries
-        cursor.execute("""
-                       CREATE INDEX IF NOT EXISTS idx_tracks_genre
-                           ON tracks(genre)
-                       """)
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = {col[1] for col in cursor.fetchall()}
+        if "cloud_file_id" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
+                               ON tracks(cloud_file_id)
+                           """)
+        if "source" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_source
+                               ON tracks(source)
+                           """)
+        if "created_at" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_created_at
+                               ON tracks(created_at DESC)
+                           """)
+        if "genre" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_genre
+                               ON tracks(genre)
+                           """)
 
         # H-02: Indexes for favorites table
         cursor.execute("""
@@ -665,6 +670,30 @@ class DatabaseManager:
 
         # Run migrations for existing databases
         self._run_migrations(conn, cursor)
+
+        # Create indexes for columns that may be added by migrations.
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = {col[1] for col in cursor.fetchall()}
+        if "cloud_file_id" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
+                               ON tracks(cloud_file_id)
+                           """)
+        if "source" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_source
+                               ON tracks(source)
+                           """)
+        if "created_at" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_created_at
+                               ON tracks(created_at DESC)
+                           """)
+        if "genre" in track_columns:
+            cursor.execute("""
+                           CREATE INDEX IF NOT EXISTS idx_tracks_genre
+                               ON tracks(genre)
+                           """)
 
         conn.commit()
 
