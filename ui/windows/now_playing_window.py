@@ -6,8 +6,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QColor, QPixmap, QShortcut
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QEvent
+from PySide6.QtGui import QColor, QPixmap, QShortcut, QPainter, QPainterPath, QTransform
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -88,6 +88,11 @@ class NowPlayingWindow(QWidget):
             border: 1px solid %border%;
             border-radius: 12px;
         }
+        QLabel#nowPlayingCover[circleMode="true"] {
+            background-color: transparent;
+            border: none;
+            border-radius: 0px;
+        }
         QPushButton#nowPlayingControl {
             background: transparent;
             border: none;
@@ -112,8 +117,12 @@ class NowPlayingWindow(QWidget):
             background-color: %highlight%;
             border: none;
             color: %background%;
-            border-radius: 20px;
+            border-radius: 24px;
             padding: 0px;
+            min-width: 48px;
+            min-height: 48px;
+            max-width: 48px;
+            max-height: 48px;
         }
         QPushButton#nowPlayingPrimaryBtn:hover {
             background-color: %highlight_hover%;
@@ -199,6 +208,12 @@ class NowPlayingWindow(QWidget):
         self._drag_start_pos = None
         self._drag_window_pos = None
         self._shortcuts: list[QShortcut] = []
+        self._cover_mode = "square"  # square | circle_rotate
+        self._cover_angle = 0.0
+        self._cover_source_pixmap: Optional[QPixmap] = None
+        self._cover_anim_timer = QTimer(self)
+        self._cover_anim_timer.setInterval(33)
+        self._cover_anim_timer.timeout.connect(self._update_cover_rotation)
 
         self._setup_ui()
         self._setup_connections()
@@ -268,13 +283,16 @@ class NowPlayingWindow(QWidget):
         self._cover_label.setMinimumSize(420, 420)
         self._cover_label.setMaximumSize(560, 560)
         self._cover_label.setAlignment(Qt.AlignCenter)
+        self._cover_label.setCursor(Qt.PointingHandCursor)
+        self._cover_label.installEventFilter(self)
         self._cover_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         body.addWidget(self._cover_label, 0, Qt.AlignVCenter)
+        self._apply_cover_mode_style()
 
         self._lyrics_widget = LyricsWidget()
         self._lyrics_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        body.addWidget(self._lyrics_widget, 2)
-        body.addStretch(1)
+        body.addWidget(self._lyrics_widget, 3)
+        body.addStretch(0)
 
         root.addLayout(body, 1)
 
@@ -516,8 +534,10 @@ class NowPlayingWindow(QWidget):
     def _on_state_changed(self, state: PlaybackState):
         if state == PlaybackState.PLAYING:
             self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 20))
+            self._update_cover_animation_state()
         else:
             self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 20))
+            self._update_cover_animation_state()
 
     def _toggle_play_pause(self):
         if self._playback.engine.state == PlaybackState.PLAYING:
@@ -775,12 +795,9 @@ class NowPlayingWindow(QWidget):
         if pixmap.isNull():
             self._set_default_cover()
             return
-        scaled = pixmap.scaled(
-            self._cover_label.size(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation,
-        )
-        self._cover_label.setPixmap(scaled)
+        self._cover_source_pixmap = pixmap
+        self._cover_angle = 0.0
+        self._render_cover()
 
     def _set_default_cover(self):
         """Set fallback cover when missing."""
@@ -788,7 +805,80 @@ class NowPlayingWindow(QWidget):
         height = max(420, self._cover_label.height() or 420)
         pixmap = QPixmap(width, height)
         pixmap.fill(QColor("#303030"))
-        self._cover_label.setPixmap(pixmap)
+        self._cover_source_pixmap = pixmap
+        self._render_cover()
+
+    def _render_cover(self):
+        """Render current cover according to display mode."""
+        if not self._cover_source_pixmap or self._cover_source_pixmap.isNull():
+            return
+
+        target_size = self._cover_label.size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return
+
+        if self._cover_mode == "square":
+            rendered = self._cover_source_pixmap.scaled(
+                target_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+            self._cover_label.setPixmap(rendered)
+            return
+
+        # circle_rotate mode
+        diameter = min(target_size.width(), target_size.height())
+        square = self._cover_source_pixmap.scaled(
+            diameter,
+            diameter,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+
+        circle_pm = QPixmap(diameter, diameter)
+        circle_pm.fill(Qt.transparent)
+        painter = QPainter(circle_pm)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        path = QPainterPath()
+        path.addEllipse(0, 0, diameter, diameter)
+        painter.setClipPath(path)
+        painter.translate(diameter / 2, diameter / 2)
+        painter.rotate(self._cover_angle)
+        painter.drawPixmap(-diameter / 2, -diameter / 2, square)
+        painter.end()
+
+        self._cover_label.setPixmap(circle_pm)
+
+    def _update_cover_animation_state(self):
+        """Start/stop cover animation based on mode and playback state."""
+        should_rotate = self._cover_mode == "circle_rotate" and self._playback.engine.state == PlaybackState.PLAYING
+        if should_rotate and not self._cover_anim_timer.isActive():
+            self._cover_anim_timer.start()
+        elif not should_rotate and self._cover_anim_timer.isActive():
+            self._cover_anim_timer.stop()
+
+    def _update_cover_rotation(self):
+        """Advance rotation animation frame."""
+        self._cover_angle = (self._cover_angle + 1.0) % 360.0
+        self._render_cover()
+
+    def _toggle_cover_mode(self):
+        """Switch between square static and circular rotating cover."""
+        if self._cover_mode == "square":
+            self._cover_mode = "circle_rotate"
+        else:
+            self._cover_mode = "square"
+        self._apply_cover_mode_style()
+        self._update_cover_animation_state()
+        self._render_cover()
+
+    def _apply_cover_mode_style(self):
+        """Update cover container style based on current mode."""
+        is_circle = self._cover_mode == "circle_rotate"
+        self._cover_label.setProperty("circleMode", is_circle)
+        self._cover_label.style().unpolish(self._cover_label)
+        self._cover_label.style().polish(self._cover_label)
 
     def _load_lyrics_async(self, track_dict: dict):
         """Load lyrics using existing LyricsLoader."""
@@ -871,6 +961,13 @@ class NowPlayingWindow(QWidget):
             return
         super().mouseDoubleClickEvent(event)
 
+    def eventFilter(self, obj, event):
+        if obj == self._cover_label and event.type() == QEvent.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                self._toggle_cover_mode()
+                return True
+        return super().eventFilter(obj, event)
+
     def _toggle_maximized(self):
         if self.isMaximized():
             self.showNormal()
@@ -883,6 +980,7 @@ class NowPlayingWindow(QWidget):
         super().resizeEvent(event)
         if hasattr(self, "_resize_grip") and self._resize_grip:
             self._resize_grip.move(self.width() - 16, self.height() - 16)
+        self._render_cover()
 
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
@@ -903,3 +1001,4 @@ class NowPlayingWindow(QWidget):
         """Apply theme tokens."""
         from system.theme import ThemeManager
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_WINDOW))
+        self._apply_cover_mode_style()
