@@ -54,8 +54,17 @@ prune_qt_plugins() {
 }
 
 # -------------------------
-# 递归收集依赖（核心修复）
+# 递归收集依赖（避免重复拷贝）
 # -------------------------
+dep_already_packaged() {
+    local base=$1
+
+    [ -f "$LIB_DIR/$base" ] && return 0
+    [ -f "$INTERNAL_DIR/$base" ] && return 0
+    [ -f "$INTERNAL_DIR/PySide6/Qt/lib/$base" ] && return 0
+    return 1
+}
+
 collect_deps_recursive() {
     local file=$1
     local TARGET_DIR=$2
@@ -64,16 +73,18 @@ collect_deps_recursive() {
         [ -f "$dep" ] || continue
 
         base=$(basename "$dep")
-        if [ ! -f "$TARGET_DIR/$base" ]; then
-            echo "  + $base"
-            cp -L "$dep" "$TARGET_DIR/"
-            collect_deps_recursive "$dep" "$TARGET_DIR"
+        if dep_already_packaged "$base"; then
+            continue
         fi
+
+        echo "  + $base"
+        cp -L "$dep" "$TARGET_DIR/"
+        collect_deps_recursive "$dep" "$TARGET_DIR"
     done
 }
 
 # -------------------------
-# 收集 Qt + xcb + ffmpeg
+# 收集 Qt + xcb 运行依赖
 # -------------------------
 collect_runtime_deps() {
     echo "==> Collecting runtime dependencies"
@@ -93,19 +104,26 @@ collect_runtime_deps() {
     # 🔥 2. OpenGL
     collect_deps_recursive "$(ldconfig -p | grep libGL.so.1 | head -n1 | awk '{print $NF}')" "$LIB_DIR"
 
-    # 🔥 3. Qt Multimedia → ffmpeg
-    echo "==> Collecting ffmpeg"
-
-    for lib in libavcodec.so libavformat.so libavutil.so libswresample.so libswscale.so; do
-        path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
-        if [ -f "$path" ]; then
-            echo "  + $lib"
-            cp -L "$path" "$LIB_DIR/"
-            collect_deps_recursive "$path" "$LIB_DIR"
-        else
-            echo "  ⚠ Missing $lib"
-        fi
-    done
+    # 🔥 3. 可选：显式收集 FFmpeg（默认关闭，避免与 Qt/mpv 重复）
+    if [ "${HARMONY_BUNDLE_FFMPEG:-0}" = "1" ]; then
+        echo "==> Collecting ffmpeg (forced)"
+        for lib in libavcodec.so libavformat.so libavutil.so libswresample.so libswscale.so; do
+            path=$(ldconfig -p | grep "$lib" | head -n1 | awk '{print $NF}')
+            if [ -f "$path" ]; then
+                base=$(basename "$path")
+                if dep_already_packaged "$base"; then
+                    continue
+                fi
+                echo "  + $lib"
+                cp -L "$path" "$LIB_DIR/"
+                collect_deps_recursive "$path" "$LIB_DIR"
+            else
+                echo "  ⚠ Missing $lib"
+            fi
+        done
+    else
+        echo "==> Skipping explicit ffmpeg bundling (HARMONY_BUNDLE_FFMPEG=0)"
+    fi
 
     echo "==> Runtime deps done"
 }
@@ -123,10 +141,8 @@ build_app() {
       --name "$APP_NAME" \
       --noconfirm --windowed --clean --onedir \
       --additional-hooks-dir=hooks \
-      --collect-all PySide6.QtMultimedia \
       --collect-all certifi \
       --collect-all qqmusic_api \
-      --hidden-import=PySide6.QtMultimedia \
       --add-data "ui:ui" \
       --add-data "translations:translations" \
       --add-data "fonts:fonts" \

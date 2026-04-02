@@ -461,6 +461,9 @@ class OnlineTracksListView(QWidget):
 
     def _handle_mouse_leave(self):
         """Handle mouse leaving cover hover area."""
+        # Fast-path: avoid repeated hide scheduling when already idle.
+        if self._hovered_row == -1 and not self._hover_timer.isActive():
+            return
         self._hover_timer.stop()
         self._hovered_row = -1
         self._cover_popup.schedule_hide()

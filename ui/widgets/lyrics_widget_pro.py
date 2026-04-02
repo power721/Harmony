@@ -80,7 +80,6 @@ class LyricsWidget(QWidget):
         # 动画
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._animate)
-        self.timer.start(16)
 
         self.setMouseTracking(True)
 
@@ -122,6 +121,7 @@ class LyricsWidget(QWidget):
         lines = detect_and_parse(lrc_text)
 
         self.engine.set_lyrics(lines)
+        self._set_animation_enabled(bool(lines))
 
         self.scroll_y = 0
         self.target_scroll = 0
@@ -141,6 +141,15 @@ class LyricsWidget(QWidget):
     # =====================================================
     # 动画
     # =====================================================
+
+    def _set_animation_enabled(self, enabled: bool):
+        if enabled:
+            if not self.timer.isActive():
+                self.timer.start(16)
+            return
+
+        if self.timer.isActive():
+            self.timer.stop()
 
     def _animate(self):
 

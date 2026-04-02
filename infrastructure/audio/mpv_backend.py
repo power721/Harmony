@@ -57,7 +57,6 @@ class MpvAudioBackend(AudioBackend):
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(100)
         self._poll_timer.timeout.connect(self._poll_position)
-        self._poll_timer.start()
 
     def set_source(self, file_path: str):
         self._source_path = file_path or ""
@@ -65,6 +64,7 @@ class MpvAudioBackend(AudioBackend):
         self._media_ready = False
         self._pending_seek_ms = None
         self._end_notified = False
+        self._set_polling_enabled(False)
         self._player.command("loadfile", self._source_path, "replace", "pause=yes")
 
     def play(self):
@@ -82,6 +82,7 @@ class MpvAudioBackend(AudioBackend):
     def stop(self):
         self._explicit_stop = True
         self._pending_seek_ms = None
+        self._set_polling_enabled(False)
         self._player.command("stop")
         self._emit_state_if_changed(force=self.STATE_STOPPED)
 
@@ -137,7 +138,7 @@ class MpvAudioBackend(AudioBackend):
         return True
 
     def cleanup(self):
-        self._poll_timer.stop()
+        self._set_polling_enabled(False)
         try:
             self._player.command("stop")
         except Exception:
@@ -181,6 +182,15 @@ class MpvAudioBackend(AudioBackend):
             self._last_state = state
             self.state_changed.emit(state)
 
+    def _set_polling_enabled(self, enabled: bool):
+        if enabled:
+            if not self._poll_timer.isActive():
+                self._poll_timer.start()
+            return
+
+        if self._poll_timer.isActive():
+            self._poll_timer.stop()
+
     def _poll_position(self):
         self.position_changed.emit(self.position())
         self._emit_state_if_changed()
@@ -215,6 +225,7 @@ class MpvAudioBackend(AudioBackend):
         elif is_idle and self._media_ready and not self._explicit_stop:
             # Fallback for environments where eof-reached callback is unreliable.
             self._emit_end_of_media_once()
+        self._set_polling_enabled(not is_idle)
         self._emit_state_if_changed()
 
     def _on_eof_observed(self, value):

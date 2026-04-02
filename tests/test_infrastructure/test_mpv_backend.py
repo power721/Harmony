@@ -32,6 +32,9 @@ class _FakeTimer:
     def stop(self):
         self.started = False
 
+    def isActive(self):
+        return self.started
+
 
 class _FakeMPV:
     def __init__(self, **_kwargs):
@@ -150,3 +153,22 @@ def test_mpv_backend_idle_fallback_and_play_restart_from_eof(monkeypatch):
     backend.play()
     seek_calls = [c for c in player._commands if c and c[0] == "seek"]
     assert seek_calls
+
+
+def test_mpv_backend_poll_timer_only_runs_when_active_media(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    # No media active -> no polling loop.
+    assert backend._poll_timer.started is False
+
+    # Media becomes active -> polling starts.
+    player.trigger("idle-active", False)
+    assert backend._poll_timer.started is True
+
+    # Explicit stop should stop polling immediately.
+    backend.stop()
+    assert backend._poll_timer.started is False
