@@ -5,7 +5,6 @@ Playlist view widget for managing playlists.
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -15,10 +14,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QLabel,
-    QAbstractItemView,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
     QFileDialog,
 )
 
@@ -30,8 +25,7 @@ from system.i18n import t
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
-from ui.widgets.context_menus import PlaylistTrackContextMenu
-from utils import format_duration
+from ui.views.playlist_tracks_list_view import PlaylistTracksListView
 
 
 class PlaylistView(QWidget):
@@ -98,64 +92,6 @@ class PlaylistView(QWidget):
             background-color: %highlight_hover%;
             color: %background%;
         }
-        QTableWidget {
-            background-color: %background%;
-            border: none;
-            border-radius: 8px;
-            gridline-color: %background_hover%;
-        }
-        QTableWidget::item {
-            padding: 12px 8px;
-            color: %text%;
-            border: none;
-            border-bottom: 1px solid %background_hover%;
-        }
-        QTableWidget::item:alternate {
-            background-color: %background_alt%;
-        }
-        QTableWidget::item:!alternate {
-            background-color: %background%;
-        }
-        QTableWidget::item:selected {
-            background-color: %highlight%;
-            color: %background%;
-            font-weight: 500;
-        }
-        QTableWidget::item:selected:!alternate {
-            background-color: %highlight%;
-        }
-        QTableWidget::item:selected:alternate {
-            background-color: %highlight_hover%;
-        }
-        QTableWidget::item:hover {
-            background-color: %background_hover%;
-        }
-        QTableWidget::item:selected:hover {
-            background-color: %highlight_hover%;
-        }
-        QTableWidget QHeaderView::section {
-            background-color: %background_hover%;
-            color: %highlight%;
-            padding: 14px 12px;
-            border: none;
-            border-bottom: 2px solid %highlight%;
-            font-weight: bold;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-        }
-        QTableWidget QScrollBar:vertical {
-            background-color: %background%;
-            width: 12px;
-            border-radius: 6px;
-        }
-        QTableWidget QScrollBar::handle:vertical {
-            background-color: %border%;
-            border-radius: 6px;
-            min-height: 40px;
-        }
-        QTableWidget QScrollBar::handle:vertical:hover {
-            background-color: %background_hover%;
-        }
     """
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked (from library view, plays all)
@@ -190,15 +126,12 @@ class PlaylistView(QWidget):
         self._library_service = library_service
         self._player = player
         self._current_playlist_id: Optional[int] = None
-        self._tracks: List[Track] = []
 
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
 
         self._setup_ui()
         self._setup_connections()
-        self._context_menu = PlaylistTrackContextMenu(self)
-        self._connect_context_menu()
         self._refresh_playlists()
 
     def _setup_ui(self):
@@ -329,37 +262,9 @@ class PlaylistView(QWidget):
 
         layout.addLayout(header_layout)
 
-        # Tracks table
-        self._tracks_table = QTableWidget()
-        self._tracks_table.setColumnCount(6)
-        self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration")]
-        )
-
-        # Configure table
-        self._tracks_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._tracks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._tracks_table.setAlternatingRowColors(True)
-        self._tracks_table.verticalHeader().setVisible(False)
-        self._tracks_table.horizontalHeader().setStretchLastSection(True)
-        # Disable editing
-        self._tracks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # Remove focus outline
-        self._tracks_table.setFocusPolicy(Qt.NoFocus)
-
-        # Set column widths
-        header = self._tracks_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-
-        self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
-
-        layout.addWidget(self._tracks_table)
+        # Tracks list view
+        self._tracks_list_view = PlaylistTracksListView()
+        layout.addWidget(self._tracks_list_view)
 
         # Status
         self._status_label = QLabel("")
@@ -374,7 +279,19 @@ class PlaylistView(QWidget):
         # _rename_playlist_btn already connected in _create_playlist_content
         self._playlist_list.itemClicked.connect(self._on_playlist_selected)
         self._playlist_list.itemDoubleClicked.connect(self._on_playlist_double_clicked)
-        self._tracks_table.itemDoubleClicked.connect(self._on_track_double_clicked)
+        self._tracks_list_view.track_activated.connect(self._on_track_activated)
+        self._tracks_list_view.play_requested.connect(self._on_ctx_play)
+        self._tracks_list_view.insert_to_queue_requested.connect(self._on_ctx_insert_to_queue)
+        self._tracks_list_view.add_to_queue_requested.connect(self._on_ctx_add_to_queue)
+        self._tracks_list_view.add_to_playlist_requested.connect(self._on_ctx_add_to_playlist)
+        self._tracks_list_view.favorites_toggle_requested.connect(self._on_ctx_favorite_toggle)
+        self._tracks_list_view.edit_info_requested.connect(self._on_ctx_edit_info)
+        self._tracks_list_view.download_cover_requested.connect(self._on_ctx_download_cover)
+        self._tracks_list_view.open_file_location_requested.connect(self._on_ctx_open_file_location)
+        self._tracks_list_view.remove_from_library_requested.connect(self._on_ctx_remove_from_library)
+        self._tracks_list_view.delete_file_requested.connect(self._on_ctx_delete_file)
+        self._tracks_list_view.redownload_requested.connect(self._on_ctx_redownload)
+        self._tracks_list_view.remove_from_playlist_requested.connect(self._on_ctx_remove_from_playlist)
 
         # Listen for playlist events from other views
         EventBus.instance().playlist_created.connect(self._on_playlist_created)
@@ -393,6 +310,21 @@ class PlaylistView(QWidget):
         # Update UI texts
         self._update_ui_texts()
 
+    def refresh_playlists(self):
+        """Public wrapper for refreshing playlist list data."""
+        self._refresh_playlists()
+
+    def ensure_default_playlist_selected(self):
+        """Select and load the first playlist if none is currently selected."""
+        if self._current_playlist_id is not None:
+            return
+        if self._playlist_list.count() <= 0:
+            return
+        self._playlist_list.setCurrentRow(0)
+        first_item = self._playlist_list.item(0)
+        if first_item:
+            self._load_playlist(first_item.data(Qt.UserRole))
+
     def _update_ui_texts(self):
         """Update UI texts after language change."""
         # Update playlist list title
@@ -409,11 +341,6 @@ class PlaylistView(QWidget):
         self._delete_playlist_btn.setText("🗑️ " + t("delete_playlist"))
         self._export_playlist_btn.setText(t("export_playlist"))
         self._import_playlist_btn.setText(t("import_playlist"))
-
-        # Update table headers
-        self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration")]
-        )
 
     def _create_playlist(self):
         """Create a new playlist."""
@@ -519,11 +446,10 @@ class PlaylistView(QWidget):
         self._rename_playlist_btn.setEnabled(True)
         self._export_playlist_btn.setEnabled(True)
         tracks = self._playlist_service.get_playlist_tracks(playlist_id)
-        self._tracks = tracks
         self._play_playlist_btn.setEnabled(len(tracks) > 0)
 
-        # Load tracks
-        self._populate_table(tracks)
+        favorite_ids = self._favorite_service.get_all_favorite_track_ids()
+        self._tracks_list_view.load_tracks(tracks, favorite_ids)
         self._status_label.setText(f"{len(tracks)} {t('tracks')}")
 
     def _play_current_playlist(self):
@@ -537,116 +463,17 @@ class PlaylistView(QWidget):
     def _clear_playlist_content(self):
         """Clear the playlist content view."""
         self._playlist_title.setText(t("select_playlist_placeholder"))
-        self._tracks_table.setRowCount(0)
+        self._tracks_list_view.clear()
         self._status_label.setText("")
         self._delete_playlist_btn.setEnabled(False)
         self._rename_playlist_btn.setEnabled(False)
         self._play_playlist_btn.setEnabled(False)
         self._export_playlist_btn.setEnabled(False)
 
-    def _populate_table(self, tracks: List[Track]):
-        """Populate the table with tracks."""
-        from system.theme import ThemeManager
-
-        # Get theme colors
-        theme = ThemeManager.instance().current_theme
-        text_secondary_color = QColor(theme.text_secondary)
-        text_color = QColor(theme.text)
-
-        # Disable updates during batch population
-        self._tracks_table.setUpdatesEnabled(False)
-        self._tracks_table.setRowCount(len(tracks))
-
-        for row, track in enumerate(tracks):
-            # Source
-            source_text = self._get_source_display_name(track.source)
-            source_item = QTableWidgetItem(source_text)
-            source_item.setData(Qt.UserRole, track.id)
-            source_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 0, source_item)
-
-            # Title
-            title_item = QTableWidgetItem(track.title or track.path.split("/")[-1])
-            title_item.setForeground(QBrush(text_color))
-            self._tracks_table.setItem(row, 1, title_item)
-
-            # Artist
-            artist_item = QTableWidgetItem(track.artist or t("unknown"))
-            artist_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 2, artist_item)
-
-            # Album
-            album_item = QTableWidgetItem(track.album or t("unknown"))
-            album_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 3, album_item)
-
-            # Genre
-            genre_item = QTableWidgetItem(track.genre or t("unknown"))
-            genre_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 4, genre_item)
-
-            # Duration
-            duration_item = QTableWidgetItem(format_duration(track.duration))
-            duration_item.setForeground(QBrush(text_secondary_color))
-            self._tracks_table.setItem(row, 5, duration_item)
-
-        # Re-enable updates after batch population
-        self._tracks_table.setUpdatesEnabled(True)
-
-    def _get_source_display_name(self, source) -> str:
-        """Get display name for track source."""
-        from domain.track import TrackSource
-
-        source_map = {
-            TrackSource.LOCAL: t("source_local"),
-            TrackSource.QUARK: t("source_quark"),
-            TrackSource.BAIDU: t("source_baidu"),
-            TrackSource.QQ: t("source_qq"),
-        }
-        return source_map.get(source, t("source_local"))
-
-    def _on_track_double_clicked(self, item: QTableWidgetItem):
-        """Handle track double click."""
-        row = item.row()
-        source_item = self._tracks_table.item(row, 0)
-        if source_item:
-            track_id = source_item.data(Qt.UserRole)
-            if track_id and self._current_playlist_id:
-                # Emit playlist-specific signal
-                self.playlist_track_double_clicked.emit(self._current_playlist_id, track_id)
-
-    def _show_context_menu(self, pos):
-        """Show context menu for tracks."""
-        rows = self._tracks_table.selectionModel().selectedRows()
-        if not rows:
-            return
-
-        tracks = [self._tracks[r.row()] for r in rows if r.row() < len(self._tracks)]
-
-        if not tracks:
-            return
-
-        favorite_ids = self._favorite_service.get_all_favorite_track_ids()
-        self._context_menu.show_menu(tracks, favorite_ids, parent_widget=self)
-
-    def _get_selected_tracks(self) -> List[Track]:
-        """Get currently selected tracks."""
-        rows = self._tracks_table.selectionModel().selectedRows()
-        return [self._tracks[r.row()] for r in rows if r.row() < len(self._tracks)]
-
-    def _connect_context_menu(self):
-        self._context_menu.play.connect(self._on_ctx_play)
-        self._context_menu.insert_to_queue.connect(self._on_ctx_insert_to_queue)
-        self._context_menu.add_to_queue.connect(self._on_ctx_add_to_queue)
-        self._context_menu.add_to_playlist.connect(self._on_ctx_add_to_playlist)
-        self._context_menu.favorite_toggled.connect(self._on_ctx_favorite_toggle)
-        self._context_menu.edit_info.connect(self._on_ctx_edit_info)
-        self._context_menu.download_cover.connect(self._on_ctx_download_cover)
-        self._context_menu.open_file_location.connect(self._on_ctx_open_file_location)
-        self._context_menu.remove_from_library.connect(self._on_ctx_remove_from_library)
-        self._context_menu.delete_file.connect(self._on_ctx_delete_file)
-        self._context_menu.redownload.connect(self._on_ctx_redownload)
-        self._context_menu.remove_from_playlist.connect(self._on_ctx_remove_from_playlist)
+    def _on_track_activated(self, track: Track):
+        """Handle track activation from list view."""
+        if track and track.id and self._current_playlist_id:
+            self.playlist_track_double_clicked.emit(self._current_playlist_id, track.id)
 
     def _on_ctx_play(self, tracks: list):
         from domain import PlaylistItem
@@ -780,6 +607,7 @@ class PlaylistView(QWidget):
 
     def _on_tracks_updated(self, track_ids: List[int]):
         """Handle tracks updated event from EditMediaInfoDialog."""
+        del track_ids
         if self._current_playlist_id:
             self._load_playlist(self._current_playlist_id)
 

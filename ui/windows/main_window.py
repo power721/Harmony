@@ -631,12 +631,8 @@ class MainWindow(QMainWindow):
         # Auto-select first playlist when showing playlists
         if index == 2:  # Playlists is now at index 2
             playlist_view = self._stacked_widget.widget(2)
-            if playlist_view and playlist_view._playlist_list.count() > 0:
-                if playlist_view._current_playlist_id is None:
-                    playlist_view._playlist_list.setCurrentRow(0)
-                    first_item = playlist_view._playlist_list.item(0)
-                    if first_item:
-                        playlist_view._load_playlist(first_item.data(Qt.UserRole))
+            if playlist_view and hasattr(playlist_view, "ensure_default_playlist_selected"):
+                playlist_view.ensure_default_playlist_selected()
 
         # Reset library view mode when showing library (delayed to avoid blocking)
         if index == 0:
@@ -1112,7 +1108,7 @@ class MainWindow(QMainWindow):
         # Refresh views
         self._library_view.refresh()
         self._cloud_drive_view.refresh_ui()  # Refresh cloud drive view
-        self._playlist_view._refresh_playlists()
+        self._playlist_view.refresh_playlists()
         self._queue_view.refresh_queue()
         self._albums_view.refresh_ui()
         self._artists_view.refresh_ui()
