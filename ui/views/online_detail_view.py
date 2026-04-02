@@ -1278,8 +1278,13 @@ class OnlineDetailView(QWidget):
 
     def _update_pagination(self):
         """Update pagination controls visibility and state."""
+        show_all_actions = self._total_pages > 1
+        self._play_all_btn.setVisible(show_all_actions)
+        self._insert_all_queue_btn.setVisible(show_all_actions)
+        self._add_all_queue_btn.setVisible(show_all_actions)
+
         # Show pagination for any detail type with multiple pages
-        if self._total_pages > 1:
+        if show_all_actions:
             self._pagination_widget.show()
             self._page_label.setText(f"{self._current_page} / {self._total_pages}")
             self._prev_page_btn.setEnabled(self._current_page > 1)
