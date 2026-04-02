@@ -21,6 +21,7 @@ from PySide6.QtCore import QObject, Signal, Qt, QTimer
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
 from domain.track import Track, TrackSource
+from infrastructure.audio.audio_backend import AudioEffectsState
 from infrastructure.audio import PlayerEngine
 from system.config import ConfigManager
 from system.event_bus import EventBus
@@ -298,6 +299,29 @@ class PlaybackService(QObject):
         self._engine.set_volume(saved_volume)
 
         self._current_source = self._config.get_playback_source()
+        self.apply_audio_effects(self._config.get_audio_effects())
+
+    def apply_audio_effects(self, effects: dict):
+        """Apply and persist global audio effects settings."""
+        state = AudioEffectsState(
+            enabled=bool(effects.get("enabled", True)),
+            eq_bands=list(effects.get("eq_bands", [])),
+            bass_boost=float(effects.get("bass_boost", 0.0)),
+            treble_boost=float(effects.get("treble_boost", 0.0)),
+            reverb_level=float(effects.get("reverb_level", 0.0)),
+            stereo_enhance=float(effects.get("stereo_enhance", 0.0)),
+        )
+        self._engine.backend.set_audio_effects(state)
+        self._config.set_audio_effects(
+            {
+                "enabled": state.enabled,
+                "eq_bands": state.eq_bands,
+                "bass_boost": state.bass_boost,
+                "treble_boost": state.treble_boost,
+                "reverb_level": state.reverb_level,
+                "stereo_enhance": state.stereo_enhance,
+            }
+        )
 
     # ===== Properties =====
 

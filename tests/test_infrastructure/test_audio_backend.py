@@ -1,6 +1,7 @@
 """Tests for the audio backend abstraction."""
 
 from infrastructure.audio.audio_backend import AudioBackend
+from infrastructure.audio.audio_backend import AudioEffectCapabilities, AudioEffectsState
 
 
 class _DummyBackend(AudioBackend):
@@ -46,6 +47,15 @@ class _DummyBackend(AudioBackend):
     def supports_eq(self) -> bool:
         return False
 
+    def set_audio_effects(self, effects: AudioEffectsState):
+        self._effects = effects
+
+    def supports_audio_effects(self) -> bool:
+        return False
+
+    def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
+        return AudioEffectCapabilities.none()
+
     def cleanup(self):
         return None
 
@@ -57,8 +67,16 @@ def test_audio_backend_contract_can_be_implemented():
     backend.seek(1234)
     backend.set_volume(55)
     backend.set_eq_bands([0.0] * 10)
+    backend.set_audio_effects(AudioEffectsState())
 
     assert backend.get_source_path() == "/tmp/a.mp3"
     assert backend.position() == 1234
     assert backend.get_volume() == 55
     assert backend.supports_eq() is False
+    assert backend.supports_audio_effects() is False
+    caps = backend.get_audio_effect_capabilities()
+    assert caps.eq is False
+    assert caps.bass_boost is False
+    assert caps.treble_boost is False
+    assert caps.reverb is False
+    assert caps.stereo_enhance is False

@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from .audio_backend import AudioBackend
+from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 
 
 class QtAudioBackend(AudioBackend):
@@ -72,6 +72,15 @@ class QtAudioBackend(AudioBackend):
 
     def supports_eq(self) -> bool:
         return False
+
+    def set_audio_effects(self, effects: AudioEffectsState):
+        _ = effects
+
+    def supports_audio_effects(self) -> bool:
+        return False
+
+    def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
+        return AudioEffectCapabilities.none()
 
     def cleanup(self):
         self._player.stop()

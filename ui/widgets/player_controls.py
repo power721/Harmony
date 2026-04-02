@@ -873,6 +873,7 @@ class PlayerControls(QWidget):
             self._equalizer_dialog = EqualizerDialog(
                 backend=self._player.engine.backend,
                 parent=self,
+                config_manager=getattr(self._player, "_config", None),
             )
         else:
             # Re-bind backend in case engine instance changes in future.

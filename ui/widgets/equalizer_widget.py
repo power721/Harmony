@@ -7,10 +7,11 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSlider,
-    QLabel, QPushButton, QComboBox, QDialog,
+    QLabel, QPushButton, QComboBox, QDialog, QCheckBox,
     QGraphicsDropShadowEffect
 )
 
+from infrastructure.audio.audio_backend import AudioEffectCapabilities, AudioEffectsState
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.icons import IconName, get_icon
@@ -64,6 +65,33 @@ class EqualizerWidget(QWidget):
         EqualizerPreset('hip_hop', "eq_preset_hip_hop", [5, 4, 2, 0, -1, 0, 2, 4, 5, 5]),
     ]
 
+    EFFECT_PRESETS = {
+        "effects_off": {
+            "bass_boost": 0.0,
+            "treble_boost": 0.0,
+            "reverb_level": 0.0,
+            "stereo_enhance": 0.0,
+        },
+        "effects_live": {
+            "bass_boost": 22.0,
+            "treble_boost": 12.0,
+            "reverb_level": 25.0,
+            "stereo_enhance": 28.0,
+        },
+        "effects_theater": {
+            "bass_boost": 30.0,
+            "treble_boost": 16.0,
+            "reverb_level": 40.0,
+            "stereo_enhance": 35.0,
+        },
+        "effects_wide": {
+            "bass_boost": 10.0,
+            "treble_boost": 14.0,
+            "reverb_level": 10.0,
+            "stereo_enhance": 55.0,
+        },
+    }
+
     _PRESET_LABEL_STYLE = "color: %text_secondary%;"
 
     _COMBO_STYLE = ThemeManager.get_combobox_style()
@@ -109,18 +137,27 @@ class EqualizerWidget(QWidget):
         }
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, config_manager=None):
         """Initialize equalizer widget."""
         super().__init__(parent)
 
         self._bands = [0.0] * len(self.FREQUENCY_BANDS)
         self._current_preset = 'flat'
         self._backend: Optional["AudioBackend"] = None
+        self._capabilities = AudioEffectCapabilities.all_supported()
+        self._config = config_manager
         self._sliders: list[QSlider] = []
         self._value_labels: list[QLabel] = []
+        self._updating_controls = False
+        self._effects_enabled = True
+        self._bass_boost = 0.0
+        self._treble_boost = 0.0
+        self._reverb_level = 0.0
+        self._stereo_enhance = 0.0
 
         self._setup_ui()
-        self._apply_preset('flat')
+        self._load_state()
+        self._apply_to_backend()
 
         # Register with theme manager
         from system.theme import ThemeManager
@@ -167,6 +204,63 @@ class EqualizerWidget(QWidget):
             bands_layout.addWidget(band_widget)
 
         layout.addLayout(bands_layout)
+
+        # Effects section
+        effects_layout = QVBoxLayout()
+        effects_layout.setSpacing(8)
+
+        top_row = QHBoxLayout()
+        self._effects_enabled_checkbox = QCheckBox(t("audio_effects_enabled"))
+        self._effects_enabled_checkbox.setChecked(True)
+        self._effects_enabled_checkbox.stateChanged.connect(self._on_effects_enabled_changed)
+        top_row.addWidget(self._effects_enabled_checkbox)
+
+        self._effects_preset_combo = QComboBox()
+        self._effects_preset_combo.addItem(t("effects_preset_off"), "effects_off")
+        self._effects_preset_combo.addItem(t("effects_preset_live"), "effects_live")
+        self._effects_preset_combo.addItem(t("effects_preset_theater"), "effects_theater")
+        self._effects_preset_combo.addItem(t("effects_preset_wide"), "effects_wide")
+        self._effects_preset_combo.currentIndexChanged.connect(self._on_effects_preset_changed)
+        self._effects_preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
+        top_row.addWidget(self._effects_preset_combo)
+        top_row.addStretch()
+        effects_layout.addLayout(top_row)
+
+        self._bass_slider = self._create_effect_slider(
+            t("audio_effects_bass_boost"),
+            lambda v: self._set_effect_value("bass_boost", v),
+            "_bass_row",
+            "_bass_value_label",
+        )
+        self._treble_slider = self._create_effect_slider(
+            t("audio_effects_treble_boost"),
+            lambda v: self._set_effect_value("treble_boost", v),
+            "_treble_row",
+            "_treble_value_label",
+        )
+        self._reverb_slider = self._create_effect_slider(
+            t("audio_effects_reverb"),
+            lambda v: self._set_effect_value("reverb_level", v),
+            "_reverb_row",
+            "_reverb_value_label",
+        )
+        self._stereo_slider = self._create_effect_slider(
+            t("audio_effects_stereo_enhance"),
+            lambda v: self._set_effect_value("stereo_enhance", v),
+            "_stereo_row",
+            "_stereo_value_label",
+        )
+
+        effects_layout.addLayout(self._bass_row)
+        effects_layout.addLayout(self._treble_row)
+        effects_layout.addLayout(self._reverb_row)
+        effects_layout.addLayout(self._stereo_row)
+
+        self._effects_support_label = QLabel("")
+        self._effects_support_label.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
+        effects_layout.addWidget(self._effects_support_label)
+
+        layout.addLayout(effects_layout)
 
         # Apply container style
         self.setStyleSheet(ThemeManager.instance().get_qss(self._WIDGET_STYLE))
@@ -228,6 +322,25 @@ class EqualizerWidget(QWidget):
                 self._apply_to_backend()
                 break
 
+    def _create_effect_slider(self, label_text: str, on_change, row_attr: str, value_attr: str):
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        label = QLabel(label_text)
+        label.setMinimumWidth(110)
+        row.addWidget(label)
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(0, 100)
+        slider.setValue(0)
+        slider.valueChanged.connect(on_change)
+        row.addWidget(slider, 1)
+        value_label = QLabel("0")
+        value_label.setFixedWidth(28)
+        value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row.addWidget(value_label)
+        setattr(self, row_attr, row)
+        setattr(self, value_attr, value_label)
+        return slider
+
     def _on_preset_changed(self, _index: int):
         """Handle preset selection change."""
         preset_key = self._preset_combo.currentData()
@@ -243,6 +356,48 @@ class EqualizerWidget(QWidget):
         self._current_preset = 'custom'
 
         self.band_changed.emit(band_index, float(value))
+        self._persist_state()
+        self._apply_to_backend()
+
+    def _on_effects_enabled_changed(self, _state: int):
+        self._effects_enabled = self._effects_enabled_checkbox.isChecked()
+        self._refresh_effect_controls_enabled()
+        self._persist_state()
+        self._apply_to_backend()
+
+    def _on_effects_preset_changed(self, _index: int):
+        key = self._effects_preset_combo.currentData()
+        if not key or key not in self.EFFECT_PRESETS:
+            return
+        values = self.EFFECT_PRESETS[key]
+        self._updating_controls = True
+        self._bass_slider.setValue(int(values["bass_boost"]))
+        self._treble_slider.setValue(int(values["treble_boost"]))
+        self._reverb_slider.setValue(int(values["reverb_level"]))
+        self._stereo_slider.setValue(int(values["stereo_enhance"]))
+        self._updating_controls = False
+        self._set_effect_value("bass_boost", int(values["bass_boost"]))
+        self._set_effect_value("treble_boost", int(values["treble_boost"]))
+        self._set_effect_value("reverb_level", int(values["reverb_level"]))
+        self._set_effect_value("stereo_enhance", int(values["stereo_enhance"]))
+
+    def _set_effect_value(self, key: str, value: int):
+        numeric = float(value)
+        if key == "bass_boost":
+            self._bass_boost = numeric
+            self._bass_value_label.setText(str(value))
+        elif key == "treble_boost":
+            self._treble_boost = numeric
+            self._treble_value_label.setText(str(value))
+        elif key == "reverb_level":
+            self._reverb_level = numeric
+            self._reverb_value_label.setText(str(value))
+        elif key == "stereo_enhance":
+            self._stereo_enhance = numeric
+            self._stereo_value_label.setText(str(value))
+        if self._updating_controls:
+            return
+        self._persist_state()
         self._apply_to_backend()
 
     def get_bands(self) -> List[float]:
@@ -259,6 +414,11 @@ class EqualizerWidget(QWidget):
     def apply_to_backend(self, backend: "AudioBackend"):
         """Bind equalizer changes to an audio backend."""
         self._backend = backend
+        if hasattr(self._backend, "get_audio_effect_capabilities"):
+            self._capabilities = self._backend.get_audio_effect_capabilities()
+        else:
+            self._capabilities = AudioEffectCapabilities(eq=True)
+        self._refresh_capability_ui()
         self._apply_to_backend()
 
     def _apply_to_backend(self):
@@ -267,6 +427,16 @@ class EqualizerWidget(QWidget):
             return
         try:
             self._backend.set_eq_bands(self._bands.copy())
+            self._backend.set_audio_effects(
+                AudioEffectsState(
+                    enabled=self._effects_enabled,
+                    eq_bands=self._bands.copy(),
+                    bass_boost=self._bass_boost,
+                    treble_boost=self._treble_boost,
+                    reverb_level=self._reverb_level,
+                    stereo_enhance=self._stereo_enhance,
+                )
+            )
         except Exception:
             # EQ is best-effort and should not break UI interaction.
             pass
@@ -306,6 +476,55 @@ class EqualizerWidget(QWidget):
         for slider in self.findChildren(QSlider):
             slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
 
+    def _load_state(self):
+        self._apply_preset("flat")
+        if self._config is None or not hasattr(self._config, "get_audio_effects"):
+            return
+        saved = self._config.get_audio_effects()
+        self._effects_enabled = bool(saved.get("enabled", True))
+        self._bands = list(saved.get("eq_bands", self._bands))
+        self._bass_boost = float(saved.get("bass_boost", 0.0))
+        self._treble_boost = float(saved.get("treble_boost", 0.0))
+        self._reverb_level = float(saved.get("reverb_level", 0.0))
+        self._stereo_enhance = float(saved.get("stereo_enhance", 0.0))
+        self._sync_sliders_from_bands()
+        self._effects_enabled_checkbox.setChecked(self._effects_enabled)
+        self._bass_slider.setValue(int(self._bass_boost))
+        self._treble_slider.setValue(int(self._treble_boost))
+        self._reverb_slider.setValue(int(self._reverb_level))
+        self._stereo_slider.setValue(int(self._stereo_enhance))
+        self._refresh_effect_controls_enabled()
+
+    def _persist_state(self):
+        if self._config is None or not hasattr(self._config, "set_audio_effects"):
+            return
+        self._config.set_audio_effects(
+            {
+                "enabled": self._effects_enabled,
+                "eq_bands": self._bands.copy(),
+                "bass_boost": self._bass_boost,
+                "treble_boost": self._treble_boost,
+                "reverb_level": self._reverb_level,
+                "stereo_enhance": self._stereo_enhance,
+            }
+        )
+
+    def _refresh_effect_controls_enabled(self):
+        enabled = self._effects_enabled and self._capabilities.eq
+        self._bass_slider.setEnabled(enabled and self._capabilities.bass_boost)
+        self._treble_slider.setEnabled(enabled and self._capabilities.treble_boost)
+        self._reverb_slider.setEnabled(enabled and self._capabilities.reverb)
+        self._stereo_slider.setEnabled(enabled and self._capabilities.stereo_enhance)
+
+    def _refresh_capability_ui(self):
+        self._effects_enabled_checkbox.setEnabled(self._capabilities.eq)
+        self._effects_preset_combo.setEnabled(self._capabilities.eq)
+        if self._capabilities.eq:
+            self._effects_support_label.setText("")
+        else:
+            self._effects_support_label.setText(t("audio_effects_not_supported"))
+        self._refresh_effect_controls_enabled()
+
 
 class EqualizerDialog:
     """Standalone themed equalizer dialog with custom title bar."""
@@ -340,10 +559,10 @@ class EqualizerDialog:
         }
     """
 
-    def __init__(self, backend=None, parent=None):
+    def __init__(self, backend=None, parent=None, config_manager=None):
         self._dialog = QDialog(parent)
         self._drag_pos = None
-        self._setup_dialog(backend)
+        self._setup_dialog(backend, config_manager)
 
     @property
     def widget(self) -> QDialog:
@@ -354,7 +573,7 @@ class EqualizerDialog:
         self._dialog.raise_()
         self._dialog.activateWindow()
 
-    def _setup_dialog(self, backend):
+    def _setup_dialog(self, backend, config_manager):
         dialog = self._dialog
         dialog.setWindowTitle(t("equalizer"))
         dialog.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
@@ -399,7 +618,7 @@ class EqualizerDialog:
 
         layout.addWidget(title_bar)
 
-        eq_widget = EqualizerWidget(dialog)
+        eq_widget = EqualizerWidget(dialog, config_manager=config_manager)
         if backend is not None:
             eq_widget.apply_to_backend(backend)
         layout.addWidget(eq_widget)

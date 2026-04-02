@@ -3,6 +3,7 @@
 import sys
 
 from infrastructure.audio import mpv_backend
+from infrastructure.audio.audio_backend import AudioEffectsState
 
 
 class _FakeSignal:
@@ -104,6 +105,15 @@ def test_mpv_backend_basic_flow(monkeypatch):
     backend.seek(4200)
     backend.set_volume(66)
     backend.set_eq_bands([1.0] * 10)
+    backend.set_audio_effects(
+        AudioEffectsState(
+            enabled=True,
+            bass_boost=25.0,
+            treble_boost=35.0,
+            reverb_level=40.0,
+            stereo_enhance=30.0,
+        )
+    )
 
     player = backend._player
     player.trigger("idle-active", False)
@@ -116,7 +126,10 @@ def test_mpv_backend_basic_flow(monkeypatch):
     assert backend.position() == 4200
     assert backend.get_volume() == 66
     assert backend.supports_eq() is True
+    assert backend.supports_audio_effects() is True
     assert "equalizer" in backend._player.af
+    assert "aecho" in backend._player.af
+    assert "extrastereo" in backend._player.af
     assert loaded == [True]
     assert ended == [True]
     assert positions and positions[-1] == 4200
@@ -130,6 +143,18 @@ def test_mpv_backend_basic_flow(monkeypatch):
     backend.cleanup()
     assert backend._poll_timer.started is False
     assert backend._player.terminated is True
+
+
+def test_mpv_backend_can_disable_all_audio_effects(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    backend.set_eq_bands([3.0] * 10)
+    assert "equalizer" in backend._player.af
+
+    backend.set_audio_effects(AudioEffectsState(enabled=False))
+    assert backend._player.af == ""
 
 
 def test_mpv_backend_idle_fallback_and_play_restart_from_eof(monkeypatch):

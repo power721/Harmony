@@ -2,11 +2,18 @@
 Infrastructure audio module.
 """
 
-from .audio_backend import AudioBackend
+from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 from .audio_engine import PlayerEngine
 from .mpv_backend import MpvAudioBackend
 
-__all__ = ["AudioBackend", "QtAudioBackend", "MpvAudioBackend", "PlayerEngine"]
+__all__ = [
+    "AudioBackend",
+    "AudioEffectsState",
+    "AudioEffectCapabilities",
+    "QtAudioBackend",
+    "MpvAudioBackend",
+    "PlayerEngine",
+]
 
 
 def __getattr__(name: str):

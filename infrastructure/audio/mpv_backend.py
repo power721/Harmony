@@ -6,7 +6,7 @@ import logging
 
 from PySide6.QtCore import QTimer, Signal
 
-from .audio_backend import AudioBackend
+from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,10 @@ class MpvAudioBackend(AudioBackend):
         self._media_ready = False
         self._pending_seek_ms: int | None = None
         self._end_notified = False
+        self._effects_state = AudioEffectsState(
+            enabled=True,
+            eq_bands=[0.0] * len(self.FREQUENCY_BANDS),
+        )
 
         self._position_observed.connect(self._on_position_observed)
         self._duration_observed.connect(self._on_duration_observed)
@@ -125,19 +129,30 @@ class MpvAudioBackend(AudioBackend):
         gains = [float(v) for v in bands]
         if len(gains) < len(self.FREQUENCY_BANDS):
             gains += [0.0] * (len(self.FREQUENCY_BANDS) - len(gains))
-        gains = gains[:len(self.FREQUENCY_BANDS)]
-
-        if all(abs(v) < 0.01 for v in gains):
-            self._player.af = ""
-            return
-
-        filters = []
-        for freq, gain in zip(self.FREQUENCY_BANDS, gains):
-            filters.append(f"equalizer=f={freq}:width_type=o:w=1:g={gain:.2f}")
-        self._player.af = ",".join(filters)
+        self._effects_state.eq_bands = gains[:len(self.FREQUENCY_BANDS)]
+        self._rebuild_audio_filter_chain()
 
     def supports_eq(self) -> bool:
         return True
+
+    def set_audio_effects(self, effects: AudioEffectsState):
+        self._effects_state.enabled = bool(effects.enabled)
+        self._effects_state.bass_boost = self._clamp_effect(effects.bass_boost)
+        self._effects_state.treble_boost = self._clamp_effect(effects.treble_boost)
+        self._effects_state.reverb_level = self._clamp_effect(effects.reverb_level)
+        self._effects_state.stereo_enhance = self._clamp_effect(effects.stereo_enhance)
+        if effects.eq_bands:
+            gains = [float(v) for v in effects.eq_bands]
+            if len(gains) < len(self.FREQUENCY_BANDS):
+                gains += [0.0] * (len(self.FREQUENCY_BANDS) - len(gains))
+            self._effects_state.eq_bands = gains[:len(self.FREQUENCY_BANDS)]
+        self._rebuild_audio_filter_chain()
+
+    def supports_audio_effects(self) -> bool:
+        return True
+
+    def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
+        return AudioEffectCapabilities.all_supported()
 
     def cleanup(self):
         self._set_polling_enabled(False)
@@ -273,3 +288,47 @@ class MpvAudioBackend(AudioBackend):
             return
         self._end_notified = True
         self.end_of_media.emit()
+
+    @staticmethod
+    def _clamp_effect(value: float) -> float:
+        try:
+            as_float = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(100.0, as_float))
+
+    def _rebuild_audio_filter_chain(self):
+        if not self._effects_state.enabled:
+            self._player.af = ""
+            return
+
+        filters: list[str] = []
+
+        gains = [float(v) for v in self._effects_state.eq_bands]
+        if len(gains) < len(self.FREQUENCY_BANDS):
+            gains += [0.0] * (len(self.FREQUENCY_BANDS) - len(gains))
+        gains = gains[:len(self.FREQUENCY_BANDS)]
+        if any(abs(v) >= 0.01 for v in gains):
+            for freq, gain in zip(self.FREQUENCY_BANDS, gains):
+                filters.append(f"equalizer=f={freq}:width_type=o:w=1:g={gain:.2f}")
+
+        bass_gain = self._effects_state.bass_boost * 0.12
+        if bass_gain >= 0.01:
+            filters.append(f"equalizer=f=100:width_type=o:w=2:g={bass_gain:.2f}")
+
+        treble_gain = self._effects_state.treble_boost * 0.12
+        if treble_gain >= 0.01:
+            filters.append(f"equalizer=f=10000:width_type=o:w=1:g={treble_gain:.2f}")
+
+        reverb_level = self._effects_state.reverb_level
+        if reverb_level >= 0.01:
+            delay_ms = 40 + reverb_level * 2.6
+            decay = 0.05 + reverb_level * 0.008
+            filters.append(f"lavfi=[aecho=0.8:0.88:{delay_ms:.0f}:{decay:.2f}]")
+
+        stereo_level = self._effects_state.stereo_enhance
+        if stereo_level >= 0.01:
+            width = 1.0 + stereo_level * 0.015
+            filters.append(f"lavfi=[extrastereo={width:.2f}]")
+
+        self._player.af = ",".join(filters)

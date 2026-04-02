@@ -136,3 +136,10 @@ def test_qt_backend_control_and_signal_mapping(monkeypatch):
     assert ended == [True]
     assert errors == ["decode error"]
     assert backend.supports_eq() is False
+    assert backend.supports_audio_effects() is False
+    caps = backend.get_audio_effect_capabilities()
+    assert caps.eq is False
+    assert caps.bass_boost is False
+    assert caps.treble_boost is False
+    assert caps.reverb is False
+    assert caps.stereo_enhance is False

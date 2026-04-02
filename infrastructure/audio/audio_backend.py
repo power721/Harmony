@@ -2,7 +2,40 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from PySide6.QtCore import QObject, Signal
+
+
+@dataclass
+class AudioEffectCapabilities:
+    """Backend capability flags for audio effects."""
+
+    eq: bool = False
+    bass_boost: bool = False
+    treble_boost: bool = False
+    reverb: bool = False
+    stereo_enhance: bool = False
+
+    @classmethod
+    def none(cls) -> "AudioEffectCapabilities":
+        return cls()
+
+    @classmethod
+    def all_supported(cls) -> "AudioEffectCapabilities":
+        return cls(eq=True, bass_boost=True, treble_boost=True, reverb=True, stereo_enhance=True)
+
+
+@dataclass
+class AudioEffectsState:
+    """Unified audio effects state."""
+
+    enabled: bool = True
+    eq_bands: list[float] = field(default_factory=list)
+    bass_boost: float = 0.0
+    treble_boost: float = 0.0
+    reverb_level: float = 0.0
+    stereo_enhance: float = 0.0
 
 
 class AudioBackend(QObject):
@@ -70,6 +103,18 @@ class AudioBackend(QObject):
 
     def supports_eq(self) -> bool:
         """Whether backend supports EQ."""
+        raise NotImplementedError
+
+    def set_audio_effects(self, effects: AudioEffectsState):
+        """Apply advanced audio effects state."""
+        raise NotImplementedError
+
+    def supports_audio_effects(self) -> bool:
+        """Whether backend supports advanced audio effects."""
+        raise NotImplementedError
+
+    def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
+        """Get backend support matrix for effect controls."""
         raise NotImplementedError
 
     def cleanup(self):
