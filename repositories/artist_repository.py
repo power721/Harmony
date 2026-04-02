@@ -50,15 +50,13 @@ class SqliteArtistRepository(BaseRepository):
                     for row in rows
                 ]
 
-        # Fallback to direct query with subquery for cover (single query, no N+1)
+        # Fallback to direct query with aggregate cover lookup
         cursor.execute("""
             SELECT
                 t.artist as name,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT t.album) as album_count,
-                (SELECT cover_path FROM tracks t2
-                 WHERE t2.artist = t.artist AND t2.cover_path IS NOT NULL
-                 LIMIT 1) as cover_path
+                MAX(CASE WHEN t.cover_path IS NOT NULL THEN t.cover_path END) as cover_path
             FROM tracks t
             WHERE t.artist IS NOT NULL AND t.artist != ''
             GROUP BY t.artist
