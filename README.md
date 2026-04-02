@@ -176,7 +176,19 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 - **Skip**: Use previous/next track buttons
 - **Progress Control**: Drag the progress bar or click on the progress bar position
 - **Volume Control**: Drag the volume slider
+- **Equalizer (EQ)**: Click the EQ button next to the volume slider to open the equalizer dialog
 - **Playback Mode**: Click the playback mode button to switch
+
+### Audio Engine Selection
+
+1. Open `Settings -> Playback`
+2. Select `Audio Engine` (`mpv` or `Qt Multimedia`)
+3. Save settings and restart the app
+
+Notes:
+- Default engine is `mpv`
+- If `mpv` runtime is unavailable, the app falls back to `Qt Multimedia`
+- EQ processing is effective with `mpv` backend (Qt backend is UI-only placeholder)
 
 ### Keyboard Shortcuts
 
@@ -416,7 +428,7 @@ All data is stored uniformly in an SQLite database.
 Application configuration (playback mode, volume, AI settings, etc.) is stored in the `settings` table:
 
 **Stored Content**:
-- Player settings: Volume, playback mode, playback source
+- Player settings: Volume, playback mode, playback source, audio engine (`mpv`/`qt`)
 - Playback state: Current track ID, playback position
 - Cloud settings: Account ID, download directory
 - UI settings: Language, window geometry, view type

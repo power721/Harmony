@@ -87,7 +87,7 @@ class HelpDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.setWindowTitle(t("help"))
-        self.setMinimumSize(500, 550)
+        self.setMinimumSize(500, 590)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         self._setup_shadow()
@@ -163,8 +163,6 @@ class HelpDialog(QDialog):
             ("Ctrl + F", t("shortcut_favorite")),
             ("Ctrl + P", t("shortcut_now_playing_toggle")),
             ("Ctrl + M", t("shortcut_mini")),
-            ("Ctrl + M (Now Playing)", t("shortcut_now_playing_to_mini")),
-            ("Ctrl + P (Mini)", t("shortcut_mini_to_now_playing")),
             ("Ctrl + N", t("shortcut_new_playlist")),
             ("Ctrl + Q", t("shortcut_quit")),
             ("F1", t("shortcut_help")),
