@@ -1,16 +1,15 @@
-"""
-Audio playback engine using Qt Multimedia.
-"""
+"""Audio playback engine with pluggable backends (Qt or mpv)."""
 import logging
 import threading
 from pathlib import Path
 from typing import Optional, List, Union
 
-from PySide6.QtCore import QUrl, QObject, Signal
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtCore import QObject, Signal
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
+from .mpv_backend import MpvAudioBackend
+from .qt_backend import QtAudioBackend
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class PlayerEngine(QObject):
     """
-    Audio playback engine using QMediaPlayer.
+    Audio playback engine with playlist management + pluggable audio backend.
 
     Signals:
         position_changed: Emitted when playback position changes (position_ms)
@@ -41,13 +40,15 @@ class PlayerEngine(QObject):
     track_needs_download = Signal(object)  # Emitted when cloud track needs download (PlaylistItem)
     playlist_changed = Signal()  # Emitted when playlist is modified (add/remove/reorder)
 
-    def __init__(self, parent=None):
+    BACKEND_QT = "qt"
+    BACKEND_MPV = "mpv"
+
+    def __init__(self, backend_type: str = BACKEND_MPV, parent=None):
         """Initialize the player engine."""
         super().__init__(parent)
 
-        self._player = QMediaPlayer()
-        self._audio_output = QAudioOutput()
-        self._player.setAudioOutput(self._audio_output)
+        self._backend_type = backend_type or self.BACKEND_MPV
+        self._backend = self._create_backend(self._backend_type)
 
         self._playlist_lock = threading.RLock()  # Lock for playlist state
         self._playlist: List[PlaylistItem] = []  # Current playlist (may be shuffled)
@@ -61,11 +62,12 @@ class PlayerEngine(QObject):
         self._prevent_auto_next: bool = False  # Flag to prevent auto-play next track
 
         # Connect signals
-        self._player.positionChanged.connect(self._on_position_changed)
-        self._player.durationChanged.connect(self._on_duration_changed)
-        self._player.playbackStateChanged.connect(self._on_state_changed)
-        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
-        self._player.errorOccurred.connect(self._on_error)
+        self._backend.position_changed.connect(self._on_position_changed)
+        self._backend.duration_changed.connect(self._on_duration_changed)
+        self._backend.state_changed.connect(self._on_backend_state_changed)
+        self._backend.media_loaded.connect(self._on_media_loaded)
+        self._backend.end_of_media.connect(self._on_end_of_media)
+        self._backend.error_occurred.connect(self._on_error)
 
         # Set initial volume
         self.set_volume(70)
@@ -73,9 +75,25 @@ class PlayerEngine(QObject):
     def __del__(self):
         """Ensure cleanup on destruction."""
         try:
+            self._backend.cleanup()
             self.cleanup_temp_files()
         except Exception:
             pass  # Ignore errors during destruction
+
+    def _create_backend(self, backend_type: str):
+        """Create audio backend and fallback to Qt if mpv is unavailable."""
+        if backend_type == self.BACKEND_QT:
+            logger.info("[PlayerEngine] Using Qt audio backend")
+            return QtAudioBackend(parent=self)
+        try:
+            logger.info("[PlayerEngine] Using mpv audio backend")
+            return MpvAudioBackend(parent=self)
+        except Exception as exc:
+            logger.warning(
+                "[PlayerEngine] Failed to init mpv backend (%s), falling back to Qt backend",
+                exc,
+            )
+            return QtAudioBackend(parent=self)
 
     def _rebuild_cloud_file_id_index(self):
         """Rebuild the cloud_file_id -> index mapping."""
@@ -126,19 +144,23 @@ class PlayerEngine(QObject):
         return self._play_mode
 
     @property
+    def backend(self):
+        """Expose current audio backend instance."""
+        return self._backend
+
+    @property
     def state(self) -> PlaybackState:
         """Get the current player state."""
-        state = self._player.playbackState()
-        if state == QMediaPlayer.PlaybackState.PlayingState:
+        if self._backend.is_playing():
             return PlaybackState.PLAYING
-        elif state == QMediaPlayer.PlaybackState.PausedState:
+        elif self._backend.is_paused():
             return PlaybackState.PAUSED
         return PlaybackState.STOPPED
 
     @property
     def volume(self) -> int:
         """Get the current volume (0-100)."""
-        return int(self._audio_output.volume() * 100)
+        return self._backend.get_volume()
 
     def load_playlist(self, tracks: Union[List[dict], List[PlaylistItem]]):
         """
@@ -529,19 +551,19 @@ class PlayerEngine(QObject):
                 return
 
         # Load track if not already loaded (outside lock)
-        current_source = self._player.source()
-        if not current_source.isValid() or current_source.toLocalFile() != local_path:
+        current_source = self._backend.get_source_path()
+        if current_source != local_path:
             self._load_track(current_index)
 
-        self._player.play()
+        self._backend.play()
 
     def pause(self):
         """Pause playback."""
-        self._player.pause()
+        self._backend.pause()
 
     def stop(self):
         """Stop playback."""
-        self._player.stop()
+        self._backend.stop()
 
     def set_prevent_auto_next(self, prevent: bool):
         """Set whether to prevent auto-playing next track."""
@@ -579,7 +601,7 @@ class PlayerEngine(QObject):
             return
 
         self._load_track(index)
-        self._player.play()
+        self._backend.play()
 
     def play_at_with_position(self, index: int, position_ms: int):
         """
@@ -648,17 +670,15 @@ class PlayerEngine(QObject):
             item_copy = item
 
         if is_current:
-            url = QUrl.fromLocalFile(local_path)
-            self._player.setSource(url)
-            # Reset position to 0 when loading a new track
-            self._player.setPosition(0)
+            self._backend.set_source(local_path)
+            self._backend.seek(0)
 
             # Use pending seek if available
             if self._pending_seek and self._pending_seek > 0:
                 # Will seek after media is loaded
                 self._pending_play = True
             else:
-                self._player.play()
+                self._backend.play()
 
             self.current_track_changed.emit(item_copy.to_dict())
 
@@ -705,7 +725,7 @@ class PlayerEngine(QObject):
             item.needs_download = True
             self.track_needs_download.emit(item)
         elif item.local_path and Path(item.local_path).exists():
-            self._player.play()
+            self._backend.play()
 
     def play_previous(self):
         """Play the previous track. Manual skip ignores single track loop mode."""
@@ -719,19 +739,19 @@ class PlayerEngine(QObject):
         # Check if we should go to previous track or restart current
         # Manual skip ignores single track loop mode
         # Only restart if we have a valid position and it's > 3 seconds
-        current_pos = self._player.position()
+        current_pos = self._backend.position()
         should_restart = current_pos > 3000
 
         if should_restart:
-            self._player.setPosition(0)
+            self._backend.seek(0)
             # Ensure playback continues if it was playing
-            if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            if self._backend.is_playing():
                 pass  # Already playing, position change won't stop it
-            elif self._player.playbackState() == QMediaPlayer.PlaybackState.PausedState:
+            elif self._backend.is_paused():
                 pass  # Stay paused at beginning
             else:
                 # Stopped state - need to play
-                self._player.play()
+                self._backend.play()
         else:
             with self._playlist_lock:
                 self._current_index -= 1
@@ -757,7 +777,7 @@ class PlayerEngine(QObject):
                 item.needs_download = True
                 self.track_needs_download.emit(item)
             elif item.local_path and Path(item.local_path).exists():
-                self._player.play()
+                self._backend.play()
 
     def seek(self, position_ms: int):
         """
@@ -766,7 +786,7 @@ class PlayerEngine(QObject):
         Args:
             position_ms: Position in milliseconds
         """
-        self._player.setPosition(position_ms)
+        self._backend.seek(position_ms)
 
     def position(self) -> int:
         """
@@ -775,7 +795,7 @@ class PlayerEngine(QObject):
         Returns:
             Current position in milliseconds
         """
-        return self._player.position()
+        return self._backend.position()
 
     def duration(self) -> int:
         """
@@ -784,7 +804,7 @@ class PlayerEngine(QObject):
         Returns:
             Duration in milliseconds
         """
-        return self._player.duration()
+        return self._backend.duration()
 
     def set_volume(self, volume: int):
         """
@@ -793,9 +813,17 @@ class PlayerEngine(QObject):
         Args:
             volume: Volume level (0-100)
         """
-        volume = max(0, min(100, volume))
-        self._audio_output.setVolume(volume / 100.0)
+        volume = max(0, min(100, int(volume)))
+        self._backend.set_volume(volume)
         self.volume_changed.emit(volume)
+
+    def set_eq_bands(self, bands: List[float]):
+        """Apply equalizer settings to current backend (if supported)."""
+        self._backend.set_eq_bands(bands)
+
+    def supports_eq(self) -> bool:
+        """Return whether current backend supports equalizer processing."""
+        return self._backend.supports_eq()
 
     def set_play_mode(self, mode: PlayMode):
         """
@@ -1038,11 +1066,10 @@ class PlayerEngine(QObject):
             local_path = item.local_path
             item_dict = item.to_dict()
 
-        url = QUrl.fromLocalFile(local_path)
-        self._player.setSource(url)
-        # Reset position to 0 when loading a new track
-        # This ensures position() returns correct value for play_previous logic
-        self._player.setPosition(0)
+        self._backend.set_source(local_path)
+        # Reset position to 0 when loading a new track.
+        # This ensures position() returns correct value for play_previous logic.
+        self._backend.seek(0)
         self.current_track_changed.emit(item_dict)
 
     def _on_position_changed(self, position_ms: int):
@@ -1053,49 +1080,50 @@ class PlayerEngine(QObject):
         """Handle duration change."""
         self.duration_changed.emit(duration_ms)
 
-    def _on_state_changed(self, state):
+    def _on_backend_state_changed(self, state: int):
         """Handle state change."""
-        if state == QMediaPlayer.PlaybackState.PlayingState:
+        if state == 1:
             self.state_changed.emit(PlaybackState.PLAYING)
-        elif state == QMediaPlayer.PlaybackState.PausedState:
+        elif state == 2:
             self.state_changed.emit(PlaybackState.PAUSED)
         else:
             self.state_changed.emit(PlaybackState.STOPPED)
 
-    def _on_media_status_changed(self, status):
-        """Handle media status change."""
+    def _on_media_loaded(self):
+        """Handle media loaded event from backend."""
+        logger.debug("[PlayerEngine] Media loaded, checking pending seek")
+        if self._pending_seek > 0:
+            logger.debug(f"[PlayerEngine] Pending seek: {self._pending_seek}ms")
+            self._backend.seek(self._pending_seek)
+            self._pending_seek = 0
+            if self._pending_play:
+                self._pending_play = False
+                self._backend.play()
 
-        logger.debug(f"[PlayerEngine] _on_media_status_changed: status={status}")
+    def _on_end_of_media(self):
+        """Handle end-of-media event from backend."""
+        self.track_finished.emit()
 
-        if status == QMediaPlayer.MediaStatus.LoadedMedia:
-            logger.debug("[PlayerEngine] Media loaded, checking pending seek")
-            # Media is loaded and ready - now we can seek if needed
-            if self._pending_seek > 0:
-                logger.debug(f"[PlayerEngine] Pending seek: {self._pending_seek}ms")
-                self._player.setPosition(self._pending_seek)
-                self._pending_seek = 0
-                if self._pending_play:
-                    self._pending_play = False
-                    self._player.play()
-        elif status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.track_finished.emit()
+        # Check if auto-next is prevented
+        if self._prevent_auto_next:
+            logger.info("[PlayerEngine] Auto-next prevented by sleep timer")
+            self._prevent_auto_next = False  # Reset flag
+            return
 
-            # Check if auto-next is prevented
-            if self._prevent_auto_next:
-                logger.info("[PlayerEngine] Auto-next prevented by sleep timer")
-                self._prevent_auto_next = False  # Reset flag
-                return
+        # Auto-play next based on mode
+        if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
+            # Track loop modes
+            self.seek(0)
+            self.play()
+        elif self._play_mode in (
+            PlayMode.SEQUENTIAL,
+            PlayMode.PLAYLIST_LOOP,
+            PlayMode.RANDOM,
+            PlayMode.RANDOM_LOOP,
+        ):
+            # Modes that advance to next track
+            self.play_next()
 
-            # Auto-play next based on mode
-            if self._play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
-                # Track loop modes
-                self.seek(0)
-                self.play()
-            elif self._play_mode in (PlayMode.SEQUENTIAL, PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM,
-                                     PlayMode.RANDOM_LOOP):
-                # Modes that advance to next track
-                self.play_next()
-
-    def _on_error(self, error, error_string):
+    def _on_error(self, error_string: str):
         """Handle playback error."""
         self.error_occurred.emit(error_string)

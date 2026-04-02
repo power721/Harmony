@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "certifi>=2024.0.0",
     "lxml>=6.0.2",
+    "mpv>=1.0.0",
     "mutagen>=1.47.0",
     "openai>=2.29.0",
     "opencc-python-reimplemented>=0.1.7",

@@ -215,7 +215,7 @@ Technical implementations.
 
 Important components:
 
-- `audio/` - AudioEngine (QMediaPlayer wrapper)
+- `audio/` - PlayerEngine + pluggable backends (`mpv` / Qt Multimedia)
 - `database/` - SqliteManager
 - `network/` - HttpClient
 - `cache/` - FileCache

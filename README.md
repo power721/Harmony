@@ -134,6 +134,15 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 | pyacoustid | Audio fingerprinting |
 | qqmusic-api-python | QQ Music API |
 | pycryptodome | Encryption/decryption (QQ Music) |
+| mpv (python-mpv) | mpv backend Python binding |
+
+### mpv Backend System Dependency
+
+`python-mpv` is a ctypes binding and also requires system `libmpv`:
+
+- Linux (Ubuntu/Debian): `sudo apt-get install libmpv-dev`
+- macOS (Homebrew): `brew install mpv`
+- Windows (PowerShell): `scoop install mpv` (or make sure `mpv-2.dll` is in `PATH`)
 
 ## Usage Guide
 
@@ -209,7 +218,7 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 ### Tech Stack
 
 - **GUI Framework**: PySide6 (Qt6)
-- **Audio Engine**: Qt Multimedia (QMediaPlayer)
+- **Audio Engine**: Pluggable backend (`mpv` default, `Qt Multimedia` fallback)
 - **Database**: SQLite3 with FTS5
 - **Metadata Extraction**: mutagen, pymediainfo
 - **Network Requests**: requests

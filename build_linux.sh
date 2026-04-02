@@ -117,7 +117,7 @@ if [ "$HARMONY_DEBUG" = "1" ]; then
 fi
 
 export PATH="${HERE}/usr/bin:${PATH}"
-export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}:${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bin/_internal/lib:${LD_LIBRARY_PATH}"
 
 # Qt plugins path - 输入法支持
 export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
@@ -217,7 +217,7 @@ Version: $APP_VERSION
 Section: sound
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= 2.17), libgl1, libpulse0, libxcb1, libxkbcommon0, libglib2.0-0
+Depends: libc6 (>= 2.17), libgl1, libpulse0, libxcb1, libxkbcommon0, libglib2.0-0, libmpv2 | libmpv-dev
 Maintainer: Harmony Player <support@harmonyplayer.com>
 Description: Modern Music Player
  A PySide6-based music player with a modern, Spotify-like interface.

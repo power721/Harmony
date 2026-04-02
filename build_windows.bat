@@ -20,6 +20,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Check mpv DLL availability for mpv backend
+where mpv-2.dll >nul 2>&1
+if errorlevel 1 (
+    echo Warning: mpv-2.dll not found in PATH
+    echo mpv backend may not work in packaged app. Install mpv with scoop/choco.
+)
+
 REM Install PyInstaller if needed
 python -c "import PyInstaller" >nul 2>&1
 if errorlevel 1 (
@@ -134,6 +141,8 @@ echo UninstallDisplayName=%APP_NAME% >> "%ISS_FILE%"
 echo. >> "%ISS_FILE%"
 echo [Files] >> "%ISS_FILE%"
 echo Source: "%DIST_DIR%\%APP_NAME%.exe"; DestDir: "{app}"; Flags: ignoreversion >> "%ISS_FILE%"
+echo Source: "%DIST_DIR%\mpv-2.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist >> "%ISS_FILE%"
+echo Source: "%DIST_DIR%\libmpv-2.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist >> "%ISS_FILE%"
 echo. >> "%ISS_FILE%"
 echo [Icons] >> "%ISS_FILE%"
 echo Name: "{group}\%APP_NAME%"; Filename: "{app}\%APP_NAME%.exe" >> "%ISS_FILE%"

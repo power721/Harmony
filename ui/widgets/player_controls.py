@@ -21,6 +21,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.icons import IconName, get_icon
+from .equalizer_widget import EqualizerDialog
 from utils import format_time
 
 # Configure logging
@@ -128,12 +129,12 @@ class PlayerControls(QWidget):
         QSlider#progressSlider::handle:horizontal:hover {
             background: %highlight%;
         }
-        QPushButton#volumeBtn, QPushButton#queueBtn {
+        QPushButton#volumeBtn, QPushButton#queueBtn, QPushButton#eqBtn {
             background: transparent;
             border: none;
             color: %text_secondary%;
         }
-        QPushButton#volumeBtn:hover, QPushButton#queueBtn:hover {
+        QPushButton#volumeBtn:hover, QPushButton#queueBtn:hover, QPushButton#eqBtn:hover {
             color: %text%;
         }
     """
@@ -192,6 +193,7 @@ class PlayerControls(QWidget):
         self._cover_load_version = 0  # Version counter for cover loading
         self._queue_placement = "volume"
         self._queue_visible = False
+        self._equalizer_dialog = None
 
         self._setup_ui()
         self._setup_connections()
@@ -442,6 +444,16 @@ class PlayerControls(QWidget):
         self._volume_slider.setCursor(Qt.PointingHandCursor)
         layout.addWidget(self._volume_slider)
 
+        # Equalizer button
+        self._eq_btn = QPushButton()
+        self._eq_btn.setObjectName("eqBtn")
+        self._eq_btn.setIcon(get_icon(IconName.EQUALIZER, None))
+        self._eq_btn.setIconSize(QSize(20, 20))
+        self._eq_btn.setFixedSize(35, 35)
+        self._eq_btn.setCursor(Qt.PointingHandCursor)
+        self._eq_btn.setToolTip(t("equalizer"))
+        layout.addWidget(self._eq_btn)
+
         self._queue_btn = QPushButton()
         self._queue_btn.setObjectName("queueBtn")
         self._queue_btn.setIcon(get_icon(IconName.LIST, None))
@@ -523,6 +535,7 @@ class PlayerControls(QWidget):
         # Volume controls
         self._volume_slider.valueChanged.connect(self._on_volume_changed)
         self._volume_btn.clicked.connect(self._toggle_mute)
+        self._eq_btn.clicked.connect(self._show_equalizer)
         self._queue_btn.clicked.connect(self.queue_requested.emit)
         self._queue_progress_btn.clicked.connect(self.queue_requested.emit)
 
@@ -567,6 +580,7 @@ class PlayerControls(QWidget):
 
             self._volume_slider.valueChanged.disconnect(self._on_volume_changed)
             self._volume_btn.clicked.disconnect(self._toggle_mute)
+            self._eq_btn.clicked.disconnect(self._show_equalizer)
             self._queue_btn.clicked.disconnect(self.queue_requested.emit)
             self._queue_progress_btn.clicked.disconnect(self.queue_requested.emit)
 
@@ -807,6 +821,19 @@ class PlayerControls(QWidget):
         else:
             volume = getattr(self, "_previous_volume", 70)
             self._volume_slider.setValue(volume)
+
+    def _show_equalizer(self):
+        """Show equalizer popup dialog."""
+        if self._equalizer_dialog is None:
+            self._equalizer_dialog = EqualizerDialog(
+                backend=self._player.engine.backend,
+                parent=self,
+            )
+        else:
+            # Re-bind backend in case engine instance changes in future.
+            self._equalizer_dialog.apply_to_backend(self._player.engine.backend)
+
+        self._equalizer_dialog.show()
 
     def _show_sleep_timer(self):
         """Show sleep timer dialog."""

@@ -81,6 +81,7 @@ class IconName:
 
     # Settings & Tools
     ROBOT = "robot.svg"
+    EQUALIZER = "equalizer.svg"
 
     # UI
     GLOBE = "globe.svg"

@@ -50,7 +50,7 @@ PYINSTALLER_NO_CONDA=1 python build.py
 ### 通用要求
 - Python 3.8+
 - pip
-- 项目依赖 (`pip install -r requirements.txt`)
+- 项目依赖（推荐 `uv sync`）
 - PyInstaller (`pip install pyinstaller`)
 
 ### Linux 额外要求
@@ -61,7 +61,8 @@ sudo apt-get install -y \
     libglib2.0-0 \
     libpulse0 \
     libxcb1 \
-    libxkbcommon-x11-0
+    libxkbcommon-x11-0 \
+    libmpv-dev
 
 # 可选：创建 AppImage
 # 下载 appimagetool: https://github.com/AppImage/AppImageKit/releases
@@ -69,10 +70,12 @@ sudo apt-get install -y \
 
 ### macOS 额外要求
 - Xcode Command Line Tools: `xcode-select --install`
+- mpv: `brew install mpv`
 - 可选：开发者证书（用于签名和公证）
 
 ### Windows 额外要求
 - Visual C++ Build Tools（通常已随 Python 安装）
+- mpv: `scoop install mpv`（或手动提供 `mpv-2.dll`）
 - 可选：Inno Setup（创建安装程序）
 - 可选：7-Zip（创建便携版 ZIP）
 

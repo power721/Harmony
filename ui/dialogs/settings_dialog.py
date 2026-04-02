@@ -666,6 +666,41 @@ class GeneralSettingsDialog(QDialog):
 
         repair_layout.addStretch()
 
+        # Playback tab
+        playback_tab = QWidget()
+        playback_tab_layout = QVBoxLayout(playback_tab)
+        playback_tab_layout.setSpacing(10)
+
+        playback_group = QGroupBox(t("playback_settings"))
+        playback_layout = QVBoxLayout()
+        playback_layout.setSpacing(8)
+
+        playback_row = QHBoxLayout()
+        playback_label = QLabel(t("audio_engine"))
+        playback_label.setMinimumWidth(120)
+        self._audio_engine_combo = QComboBox()
+        self._audio_engine_combo.setFixedWidth(320)
+        self._audio_engine_combo.addItem(t("audio_engine_mpv"), "mpv")
+        self._audio_engine_combo.addItem(t("audio_engine_qt"), "qt")
+        playback_row.addWidget(playback_label)
+        playback_row.addWidget(self._audio_engine_combo)
+        playback_row.addStretch()
+        playback_layout.addLayout(playback_row)
+
+        self._audio_engine_status_label = QLabel("")
+        self._audio_engine_status_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        self._audio_engine_status_label.setWordWrap(True)
+        playback_layout.addWidget(self._audio_engine_status_label)
+
+        playback_hint = QLabel(t("audio_engine_restart_hint"))
+        playback_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        playback_hint.setWordWrap(True)
+        playback_layout.addWidget(playback_hint)
+
+        playback_group.setLayout(playback_layout)
+        playback_tab_layout.addWidget(playback_group)
+        playback_tab_layout.addStretch()
+
         # Appearance Tab
         appearance_tab = QWidget()
         appearance_layout = QVBoxLayout(appearance_tab)
@@ -802,6 +837,7 @@ class GeneralSettingsDialog(QDialog):
 
         appearance_layout.addStretch()
 
+        tab_widget.addTab(playback_tab, t("playback_tab"))
         tab_widget.addTab(appearance_tab, t("theme_tab"))
         tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
         tab_widget.addTab(cache_tab, t("cache_tab"))
@@ -907,6 +943,17 @@ class GeneralSettingsDialog(QDialog):
                 self._quality_combo.setCurrentIndex(i)
                 break
 
+        # Audio engine setting
+        configured_engine = str(self._config.get_audio_engine()) if hasattr(self._config, "get_audio_engine") else "mpv"
+        for i in range(self._audio_engine_combo.count()):
+            if self._audio_engine_combo.itemData(i) == configured_engine:
+                self._audio_engine_combo.setCurrentIndex(i)
+                break
+        runtime_engine = self._get_runtime_audio_engine()
+        self._audio_engine_status_label.setText(
+            t("audio_engine_status").format(runtime=runtime_engine, configured=configured_engine)
+        )
+
         # QQ Music download directory setting
         download_dir = self._config.get_online_music_download_dir()
         self._download_dir_input.setText(download_dir)
@@ -985,6 +1032,11 @@ class GeneralSettingsDialog(QDialog):
         qqmusic_quality = self._quality_combo.currentData()
         self._config.set_qqmusic_quality(qqmusic_quality)
 
+        # Save audio engine setting
+        selected_engine = self._audio_engine_combo.currentData()
+        if hasattr(self._config, "set_audio_engine"):
+            self._config.set_audio_engine(selected_engine)
+
         # Save QQ Music download directory setting
         download_dir = self._download_dir_input.text().strip()
         if not download_dir:
@@ -1038,6 +1090,21 @@ class GeneralSettingsDialog(QDialog):
 
         MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
+
+    def _get_runtime_audio_engine(self) -> str:
+        """Get currently running engine name from parent window playback service."""
+        parent = self.parent()
+        try:
+            if parent and hasattr(parent, "_playback"):
+                backend = parent._playback.engine.backend
+                name = backend.__class__.__name__.lower()
+                if "mpv" in name:
+                    return "mpv"
+                if "qt" in name:
+                    return "qt"
+        except Exception:
+            pass
+        return "unknown"
 
     def _test_connection(self):
         """Test the AI API connection."""

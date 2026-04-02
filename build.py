@@ -371,6 +371,7 @@ def collect_hidden_imports() -> list:
     hiddenimports += [
         "ssl",
         "_ssl",
+        "mpv",
         "PySide6.QtCore",
         "PySide6.QtGui",
         "PySide6.QtWidgets",
@@ -530,6 +531,64 @@ def find_ffmpeg_libs() -> list:
                 binaries.append((matches[0], "."))
                 print(f"[INFO] Found FFmpeg: {matches[0]}")
                 break
+
+    return binaries
+
+
+def find_libmpv() -> list:
+    """查找 libmpv 共享库（python-mpv 的 ctypes 依赖）。"""
+    binaries = []
+    current_system = platform.system()
+
+    if current_system == "Linux":
+        patterns = [
+            "/usr/lib/x86_64-linux-gnu/libmpv.so*",
+            "/usr/lib64/libmpv.so*",
+            "/usr/lib/libmpv.so*",
+        ]
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            patterns.insert(0, os.path.join(conda_prefix, "lib", "libmpv.so*"))
+
+        for pattern in patterns:
+            matches = sorted(glob.glob(pattern))
+            for match in matches:
+                if (match, ".") not in binaries:
+                    binaries.append((match, "."))
+                    print(f"[INFO] Found libmpv: {match}")
+            if matches:
+                break
+
+    elif current_system == "Darwin":
+        brew_paths = [
+            "/opt/homebrew/lib/libmpv.dylib",
+            "/usr/local/lib/libmpv.dylib",
+            "/opt/homebrew/lib/libmpv.2.dylib",
+            "/usr/local/lib/libmpv.2.dylib",
+        ]
+        for lib_path in brew_paths:
+            if os.path.exists(lib_path):
+                binaries.append((lib_path, "."))
+                print(f"[INFO] Found libmpv: {lib_path}")
+                break
+
+    elif current_system == "Windows":
+        search_dirs = [os.path.dirname(sys.executable), str(PROJECT_ROOT)]
+        search_dirs.extend(os.environ.get("PATH", "").split(os.pathsep))
+        dll_names = ["mpv-2.dll", "libmpv-2.dll", "mpv.dll"]
+
+        for search_dir in search_dirs:
+            if not search_dir:
+                continue
+            for dll_name in dll_names:
+                dll_path = os.path.join(search_dir, dll_name)
+                if os.path.exists(dll_path):
+                    binaries.append((dll_path, "."))
+                    print(f"[INFO] Found libmpv: {dll_path}")
+                    return binaries
+
+    if not binaries:
+        print("[WARN] libmpv not found! mpv backend may not work in packaged app.")
 
     return binaries
 
@@ -811,12 +870,17 @@ def build_executable(
     all_binaries += find_openssl_libs()
     all_binaries += find_qt_plugins()
     all_binaries += find_ffmpeg_libs()
+    all_binaries += find_libmpv()
 
-    # Add GStreamer plugins (Linux only)
-    gst_binaries, gst_datas = find_gstreamer_plugins()
-    all_binaries += gst_binaries
-    for src, dst in gst_datas:
-        cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
+    # Add GStreamer plugins (Linux only, can be disabled)
+    include_gstreamer = os.environ.get("HARMONY_INCLUDE_GSTREAMER", "1") == "1"
+    if include_gstreamer:
+        gst_binaries, gst_datas = find_gstreamer_plugins()
+        all_binaries += gst_binaries
+        for src, dst in gst_datas:
+            cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
+    else:
+        print("[INFO] Skip GStreamer plugins (HARMONY_INCLUDE_GSTREAMER=0)")
 
     print(f"Total binaries: {len(all_binaries)}")
 

@@ -23,6 +23,7 @@ class SettingKey:
     # Player settings (shared)
     PLAYER_VOLUME = "player.volume"
     PLAYER_PLAY_MODE = "player.play_mode"
+    PLAYER_AUDIO_ENGINE = "player.audio_engine"  # "mpv" or "qt"
 
     # Playback source
     PLAYER_SOURCE = "player.source"  # "local" or "cloud"
@@ -178,6 +179,25 @@ class ConfigManager:
             volume: Volume level (0-100)
         """
         self.set(SettingKey.PLAYER_VOLUME, volume)
+
+    def get_audio_engine(self) -> str:
+        """
+        Get selected audio engine backend.
+
+        Returns:
+            "mpv" or "qt"
+        """
+        value = self.get(SettingKey.PLAYER_AUDIO_ENGINE, "mpv")
+        return value if value in ("mpv", "qt") else "mpv"
+
+    def set_audio_engine(self, engine: str):
+        """
+        Set selected audio engine backend.
+
+        Args:
+            engine: "mpv" or "qt"
+        """
+        self.set(SettingKey.PLAYER_AUDIO_ENGINE, "qt" if engine == "qt" else "mpv")
 
     def get_playback_source(self) -> str:
         """

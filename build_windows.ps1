@@ -28,6 +28,24 @@ try {
     exit 1
 }
 
+# Check mpv DLL availability for mpv backend
+$mpvDllInPath = $null
+foreach ($pathDir in $env:PATH.Split(';')) {
+    if (-not [string]::IsNullOrWhiteSpace($pathDir)) {
+        $candidate = Join-Path $pathDir "mpv-2.dll"
+        if (Test-Path $candidate) {
+            $mpvDllInPath = $candidate
+            break
+        }
+    }
+}
+if (-not $mpvDllInPath) {
+    Write-Host "Warning: mpv-2.dll not found in PATH" -ForegroundColor Yellow
+    Write-Host "mpv backend may not work in packaged app. Install mpv (e.g. scoop install mpv)." -ForegroundColor Yellow
+} else {
+    Write-Host "Found mpv DLL: $mpvDllInPath" -ForegroundColor Green
+}
+
 # Install PyInstaller if needed
 try {
     python -c "import PyInstaller" 2>$null
@@ -125,6 +143,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "$DIST_DIR\$APP_NAME.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "$SCRIPT_DIR\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion recursesubdirs
+Source: "$DIST_DIR\mpv-2.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "$DIST_DIR\libmpv-2.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\$APP_NAME"; Filename: "{app}\$APP_NAME.exe"

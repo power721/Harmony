@@ -111,7 +111,11 @@ class PlaybackService(QObject):
         self._history_repo = history_repo
         self._album_repo = album_repo
         self._artist_repo = artist_repo
-        self._engine = PlayerEngine()
+        if self._config and hasattr(self._config, "get_audio_engine"):
+            backend_type = self._config.get_audio_engine()
+        else:
+            backend_type = PlayerEngine.BACKEND_MPV
+        self._engine = PlayerEngine(backend_type=backend_type)
         self._event_bus = event_bus or EventBus.instance()
 
         # Playback state

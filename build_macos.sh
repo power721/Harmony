@@ -217,6 +217,15 @@ echo ""
 echo "Build complete!"
 echo "App Bundle: $APP_BUNDLE"
 
+# Try to fix libmpv install_name for bundled app (best effort)
+if [ -d "$APP_BUNDLE/Contents/MacOS" ]; then
+    MPV_LIB=$(find "$APP_BUNDLE/Contents/MacOS" -maxdepth 2 -name "libmpv*.dylib" | head -n 1)
+    if [ -n "$MPV_LIB" ] && command -v install_name_tool &> /dev/null; then
+        echo "Fixing libmpv install_name: $MPV_LIB"
+        install_name_tool -id "@executable_path/$(basename "$MPV_LIB")" "$MPV_LIB" || true
+    fi
+fi
+
 # Handle command line arguments
 case "$1" in
     --dmg)

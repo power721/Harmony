@@ -35,6 +35,7 @@ jobs:
           libegl1 \
           libopengl0 \
           libglib2.0-0 \
+          libmpv-dev \
           libpulse0 \
           libxcb-icccm4 \
           libxcb-image0 \
@@ -58,7 +59,15 @@ jobs:
           libgl1-mesa-dev \
           libxkbcommon-dev \
           libwayland-dev \
-          wayland-protocols
+          wayland-protocols \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-plugins-ugly \
+          gstreamer1.0-libav \
+          gstreamer1.0-tools \
+          libgstreamer1.0-0 \
+          libgstreamer-plugins-base1.0-0
 
       - name: Get Qt version for cache key
         id: qt-version
@@ -218,7 +227,6 @@ jobs:
           sudo rm -rf /Applications/Xcode*.app
           sudo rm -rf /Library/Developer/CoreSimulator
           sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/homebrew
           sudo rm -rf /Users/runner/hostedtoolcache
           rm -rf ~/.cache/pip
 
@@ -235,6 +243,11 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --extra dev
+
+      - name: Install system dependencies
+        run: |
+          brew update
+          brew install mpv
 
       - name: Build executable
         run: |
@@ -306,6 +319,11 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --extra dev
+
+      - name: Install mpv runtime
+        run: |
+          choco install mpv -y
+          Get-Command mpv
 
       - name: Build executable
         env:
