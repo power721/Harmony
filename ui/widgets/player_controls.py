@@ -445,7 +445,7 @@ class PlayerControls(QWidget):
         self._queue_btn = QPushButton()
         self._queue_btn.setObjectName("queueBtn")
         self._queue_btn.setIcon(get_icon(IconName.LIST, None))
-        self._queue_btn.setIconSize(QSize(20, 20))
+        self._queue_btn.setIconSize(QSize(28, 28))
         self._queue_btn.setFixedSize(35, 35)
         self._queue_btn.setCursor(Qt.PointingHandCursor)
         self._queue_btn.setToolTip(t("queue"))
