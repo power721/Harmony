@@ -18,6 +18,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QSizeGrip,
     QSizePolicy,
+    QDialog,
+    QListWidget,
+    QListWidgetItem,
 )
 from shiboken6 import isValid
 
@@ -89,17 +92,17 @@ class NowPlayingWindow(QWidget):
             background: transparent;
             border: none;
             color: %text_secondary%;
-            border-radius: 16px;
-            padding: 4px;
+            border-radius: 6px;
+            padding: 0px;
         }
         QPushButton#nowPlayingControl:hover {
-            background-color: %selection%;
+            background: rgba(255, 255, 255, 0.1);
             color: %text%;
         }
         QPushButton#nowPlayingControl[active="true"] {
             color: %highlight%;
             background-color: %text%;
-            border-radius: 16px;
+            border-radius: 6px;
         }
         QPushButton#nowPlayingControl[active="true"]:hover {
             color: %highlight_hover%;
@@ -109,8 +112,8 @@ class NowPlayingWindow(QWidget):
             background-color: %highlight%;
             border: none;
             color: %background%;
-            border-radius: 24px;
-            padding: 8px;
+            border-radius: 20px;
+            padding: 0px;
         }
         QPushButton#nowPlayingPrimaryBtn:hover {
             background-color: %highlight_hover%;
@@ -146,6 +149,39 @@ class NowPlayingWindow(QWidget):
             color: %text_secondary%;
             font-size: 12px;
             font-family: monospace;
+        }
+    """
+
+    _STYLE_QUEUE_DIALOG = """
+        QDialog {
+            background-color: %background%;
+            border: 1px solid %border%;
+            border-radius: 10px;
+        }
+        QPushButton#queueDialogClose {
+            background: transparent;
+            border: none;
+            color: %text_secondary%;
+            border-radius: 12px;
+            padding: 4px;
+        }
+        QPushButton#queueDialogClose:hover {
+            background-color: %selection%;
+            color: %text%;
+        }
+        QListWidget {
+            background-color: %background%;
+            border: none;
+            color: %text%;
+            outline: none;
+        }
+        QListWidget::item {
+            padding: 10px 12px;
+            border-bottom: 1px dashed %border%;
+        }
+        QListWidget::item:selected {
+            background-color: %selection%;
+            color: %text%;
         }
     """
 
@@ -214,13 +250,13 @@ class NowPlayingWindow(QWidget):
         header.addWidget(self._close_btn)
         root.addLayout(header)
 
-        self._track_artist = QLabel("")
-        self._track_artist.setObjectName("nowPlayingArtist")
-        root.addWidget(self._track_artist)
-
         self._track_album = QLabel("")
         self._track_album.setObjectName("nowPlayingAlbum")
         root.addWidget(self._track_album)
+
+        self._track_artist = QLabel("")
+        self._track_artist.setObjectName("nowPlayingArtist")
+        root.addWidget(self._track_artist)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 6, 0, 0)
@@ -264,38 +300,70 @@ class NowPlayingWindow(QWidget):
 
         controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(12)
-        controls.addStretch()
+        controls.setSpacing(0)
 
-        self._shuffle_btn = self._create_control_button(IconName.SHUFFLE, 30)
+        left_controls = QHBoxLayout()
+        left_controls.setSpacing(12)
+        self._favorite_btn = self._create_control_button(IconName.STAR_OUTLINE, 36)
+        self._favorite_btn.setToolTip(t("favorite"))
+        left_controls.addWidget(self._favorite_btn)
+        self._shuffle_btn = self._create_control_button(IconName.SHUFFLE, 36)
         self._shuffle_btn.setToolTip(t("shuffle"))
         self._shuffle_btn.setCheckable(True)
-        controls.addWidget(self._shuffle_btn)
+        left_controls.addWidget(self._shuffle_btn)
 
-        self._prev_btn = self._create_control_button(IconName.PREVIOUS, 34)
+        center_controls = QHBoxLayout()
+        center_controls.setSpacing(14)
+        self._prev_btn = self._create_control_button(IconName.PREVIOUS, 36)
         self._prev_btn.setToolTip(t("previous"))
-        controls.addWidget(self._prev_btn)
+        center_controls.addWidget(self._prev_btn)
 
         self._play_pause_btn = self._create_control_button(IconName.PLAY, 48)
         self._play_pause_btn.setObjectName("nowPlayingPrimaryBtn")
-        self._play_pause_btn.setIconSize(QSize(24, 24))
+        self._play_pause_btn.setIconSize(QSize(32, 32))
         self._play_pause_btn.setToolTip(t("play_pause"))
-        controls.addWidget(self._play_pause_btn)
+        center_controls.addWidget(self._play_pause_btn)
 
-        self._next_btn = self._create_control_button(IconName.NEXT, 34)
+        self._next_btn = self._create_control_button(IconName.NEXT, 36)
         self._next_btn.setToolTip(t("next"))
-        controls.addWidget(self._next_btn)
+        center_controls.addWidget(self._next_btn)
 
-        self._repeat_btn = self._create_control_button(IconName.REPEAT, 30)
+        right_controls = QHBoxLayout()
+        right_controls.setSpacing(12)
+        self._repeat_btn = self._create_control_button(IconName.REPEAT, 36)
         self._repeat_btn.setToolTip(t("repeat"))
         self._repeat_btn.setCheckable(True)
-        controls.addWidget(self._repeat_btn)
+        self._repeat_btn.setFixedSize(36, 36)
+        self._repeat_btn.setIconSize(QSize(26, 26))
+        right_controls.addWidget(self._repeat_btn)
+        self._queue_btn = self._create_control_button(IconName.LIST, 36)
+        self._queue_btn.setToolTip(t("queue"))
+        right_controls.addWidget(self._queue_btn)
 
-        self._favorite_btn = self._create_control_button(IconName.STAR_OUTLINE, 30)
-        self._favorite_btn.setToolTip(t("favorite"))
-        controls.addWidget(self._favorite_btn)
+        left_container = QWidget()
+        left_container.setLayout(left_controls)
+        center_container = QWidget()
+        center_container.setLayout(center_controls)
+        right_container = QWidget()
+        right_container.setLayout(right_controls)
+
+        middle_group_layout = QHBoxLayout()
+        middle_group_layout.setContentsMargins(0, 0, 0, 0)
+        middle_group_layout.setSpacing(34)
+        middle_group_layout.addWidget(left_container, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        middle_group_layout.addWidget(center_container, 0, Qt.AlignCenter)
+        middle_group_layout.addWidget(right_container, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        middle_group = QWidget()
+        middle_group.setLayout(middle_group_layout)
+        middle_group.setMaximumWidth(760)
+        middle_group.setMinimumWidth(600)
+        middle_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         controls.addStretch()
+        controls.addWidget(middle_group, 0, Qt.AlignCenter)
+        controls.addStretch()
+
         root.addLayout(controls)
 
         volume_row = QHBoxLayout()
@@ -322,8 +390,9 @@ class NowPlayingWindow(QWidget):
         btn.setObjectName("nowPlayingControl")
         btn.setFixedSize(size, size)
         btn.setCursor(Qt.PointingHandCursor)
-        btn.setIcon(get_icon(icon_name, None, 20))
-        btn.setIconSize(QSize(20, 20))
+        icon_size = 30 if icon_name in (IconName.PLAY, IconName.PAUSE) else 26
+        btn.setIcon(get_icon(icon_name, None, icon_size))
+        btn.setIconSize(QSize(icon_size, icon_size))
         return btn
 
     def _setup_connections(self):
@@ -339,6 +408,7 @@ class NowPlayingWindow(QWidget):
         self._shuffle_btn.clicked.connect(self._toggle_shuffle)
         self._repeat_btn.clicked.connect(self._toggle_repeat)
         self._favorite_btn.clicked.connect(self._toggle_favorite)
+        self._queue_btn.clicked.connect(self._show_playlist_dialog)
 
         self._progress_slider.sliderPressed.connect(self._on_seek_start)
         self._progress_slider.sliderReleased.connect(self._on_seek_end)
@@ -555,9 +625,9 @@ class NowPlayingWindow(QWidget):
         self._repeat_btn.style().polish(self._repeat_btn)
 
         if mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
-            self._repeat_btn.setIcon(get_icon(IconName.REPEAT_ONCE, None, 20))
+            self._repeat_btn.setIcon(get_icon(IconName.REPEAT_ONCE, None, 26))
         else:
-            self._repeat_btn.setIcon(get_icon(IconName.REPEAT, None, 20))
+            self._repeat_btn.setIcon(get_icon(IconName.REPEAT, None, 26))
 
     def _toggle_shuffle(self):
         mode = self._playback.engine.play_mode
@@ -590,6 +660,67 @@ class NowPlayingWindow(QWidget):
             self._playback.engine.set_play_mode(PlayMode.RANDOM_TRACK_LOOP)
         elif mode == PlayMode.RANDOM_TRACK_LOOP:
             self._playback.engine.set_play_mode(PlayMode.RANDOM)
+
+    def _show_playlist_dialog(self):
+        """Show current play queue."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("")
+        dialog.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        dialog.resize(520, 620)
+        from system.theme import ThemeManager
+        dialog.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_QUEUE_DIALOG))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        header = QHBoxLayout()
+        header.addStretch()
+        close_btn = QPushButton()
+        close_btn.setObjectName("queueDialogClose")
+        close_btn.setFixedSize(28, 28)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setIcon(get_icon(IconName.TIMES, None, 16))
+        close_btn.setIconSize(QSize(16, 16))
+        close_btn.clicked.connect(dialog.reject)
+        header.addWidget(close_btn)
+        layout.addLayout(header)
+
+        queue_list = QListWidget(dialog)
+        queue_list.setCursor(Qt.PointingHandCursor)
+        layout.addWidget(queue_list)
+
+        items = self._playback.engine.playlist_items
+        current_index = self._playback.engine.current_index
+
+        for i, item in enumerate(items):
+            title = item.title or t("unknown")
+            artist = item.artist or ""
+            text = f"{i + 1}. {title} - {artist}" if artist else f"{i + 1}. {title}"
+            row = QListWidgetItem(text)
+            row.setData(Qt.UserRole, i)
+            row.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            queue_list.addItem(row)
+
+        if 0 <= current_index < queue_list.count():
+            queue_list.setCurrentRow(current_index)
+            current_item = queue_list.item(current_index)
+            if current_item:
+                from system.theme import ThemeManager
+                tm = ThemeManager.instance().current_theme
+                current_item.setForeground(QColor(tm.highlight))
+                font = current_item.font()
+                font.setBold(True)
+                current_item.setFont(font)
+                queue_list.scrollToItem(current_item, QListWidget.PositionAtCenter)
+
+        def _play_selected(selected_item: QListWidgetItem):
+            index = selected_item.data(Qt.UserRole)
+            if isinstance(index, int):
+                self._playback.engine.play_at(index)
+            dialog.accept()
+
+        queue_list.itemDoubleClicked.connect(_play_selected)
+        dialog.exec()
 
     def _load_cover_async(self, track_dict: dict):
         """Load current track cover in worker thread."""
