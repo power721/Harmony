@@ -63,8 +63,10 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
-        # Check if this is an online track (empty path or QQ source)
-        is_online = not track.path or track.source == TrackSource.QQ
+        # QQ tracks may have either a virtual path (download required) or a
+        # real cached file path after download. Keep cached files playable.
+        has_cached_local_file = bool(track.path) and os.path.exists(track.path)
+        is_online = not track.path or (track.source == TrackSource.QQ and not has_cached_local_file)
 
         if is_online:
             return cls(
@@ -81,10 +83,12 @@ class PlaylistItem:
                 needs_metadata=False,
             )
 
-        # Local track
+        # Local-ready track, including downloaded online/cloud items that now
+        # have a concrete local path.
         return cls(
-            source=TrackSource.LOCAL,
+            source=track.source,
             track_id=track.id,
+            cloud_file_id=track.cloud_file_id,
             local_path=track.path,
             title=track.title or "",
             artist=track.artist or "",

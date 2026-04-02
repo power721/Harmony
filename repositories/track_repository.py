@@ -6,7 +6,7 @@ import logging
 import sqlite3
 from typing import Dict, List, Optional, TYPE_CHECKING
 
-from domain.track import Track, TrackId
+from domain.track import Track, TrackId, TrackSource
 from repositories.base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 class SqliteTrackRepository(BaseRepository):
     """SQLite implementation of TrackRepository."""
+
+    DEFAULT_PAGE_SIZE = 500
 
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         super().__init__(db_path, db_manager)
@@ -76,53 +78,131 @@ class SqliteTrackRepository(BaseRepository):
         rows = cursor.fetchall()
         return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
 
-    def get_all(self, limit: int = 0, offset: int = 0) -> List[Track]:
-        """Get all tracks. If limit > 0, returns only limit tracks starting from offset."""
+    @staticmethod
+    def _normalize_source_value(source: Optional[TrackSource | str]) -> Optional[str]:
+        """Normalize an optional source enum/string to the stored DB value."""
+        if source is None:
+            return None
+        if isinstance(source, TrackSource):
+            return source.value
+        return str(source)
+
+    def get_all(
+            self,
+            limit: int = DEFAULT_PAGE_SIZE,
+            offset: int = 0,
+            source: Optional[TrackSource | str] = None,
+    ) -> List[Track]:
+        """Get tracks ordered by newest first, with optional pagination and source filtering."""
         conn = self._get_connection()
         cursor = conn.cursor()
+        source_value = self._normalize_source_value(source)
+
+        query = "SELECT * FROM tracks"
+        params: list = []
+        if source_value:
+            query += " WHERE source = ?"
+            params.append(source_value)
+        query += " ORDER BY id DESC"
+
         if limit > 0:
-            cursor.execute("SELECT * FROM tracks ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
-        else:
-            cursor.execute("SELECT * FROM tracks ORDER BY id DESC")
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         return [self._row_to_track(row) for row in rows]
 
-    def get_track_count(self) -> int:
-        """Get total track count."""
+    def get_track_count(self, source: Optional[TrackSource | str] = None) -> int:
+        """Get total track count, optionally filtered by source."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM tracks")
+        source_value = self._normalize_source_value(source)
+        if source_value:
+            cursor.execute("SELECT COUNT(*) FROM tracks WHERE source = ?", (source_value,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM tracks")
         return cursor.fetchone()[0]
 
-    def search(self, query: str, limit: int = 100) -> List[Track]:
-        """Search tracks by query using FTS5 or LIKE fallback."""
+    def search(
+            self,
+            query: str,
+            limit: int = 100,
+            offset: int = 0,
+            source: Optional[TrackSource | str] = None,
+    ) -> List[Track]:
+        """Search tracks by query using FTS5 or LIKE fallback, with optional source filtering."""
         conn = self._get_connection()
         cursor = conn.cursor()
+        source_value = self._normalize_source_value(source)
 
         # Try FTS5 search first
         try:
-            cursor.execute("""
-                           SELECT t.*
-                           FROM tracks t
-                                    JOIN tracks_fts fts ON t.id = fts.rowid
-                           WHERE tracks_fts MATCH ?
-                           ORDER BY t.id DESC LIMIT ?
-                           """, (query, limit))
+            sql = """
+                SELECT t.*
+                FROM tracks t
+                JOIN tracks_fts fts ON t.id = fts.rowid
+                WHERE tracks_fts MATCH ?
+            """
+            params: list = [query]
+            if source_value:
+                sql += " AND t.source = ?"
+                params.append(source_value)
+            sql += " ORDER BY t.id DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            cursor.execute(sql, params)
             rows = cursor.fetchall()
             return [self._row_to_track(row) for row in rows]
         except sqlite3.OperationalError:
             # Fallback to LIKE search
             like_query = f"%{query}%"
-            cursor.execute("""
-                           SELECT *
-                           FROM tracks
-                           WHERE title LIKE ?
-                              OR artist LIKE ?
-                              OR album LIKE ?
-                           ORDER BY id DESC LIMIT ?
-                           """, (like_query, like_query, like_query, limit))
+            sql = """
+                SELECT *
+                FROM tracks
+                WHERE (title LIKE ? OR artist LIKE ? OR album LIKE ?)
+            """
+            params = [like_query, like_query, like_query]
+            if source_value:
+                sql += " AND source = ?"
+                params.append(source_value)
+            sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            cursor.execute(sql, params)
             rows = cursor.fetchall()
             return [self._row_to_track(row) for row in rows]
+
+    def get_search_count(self, query: str, source: Optional[TrackSource | str] = None) -> int:
+        """Count search matches using FTS5 when available, falling back to LIKE."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        source_value = self._normalize_source_value(source)
+
+        try:
+            sql = """
+                SELECT COUNT(*)
+                FROM tracks t
+                JOIN tracks_fts fts ON t.id = fts.rowid
+                WHERE tracks_fts MATCH ?
+            """
+            params: list = [query]
+            if source_value:
+                sql += " AND t.source = ?"
+                params.append(source_value)
+            cursor.execute(sql, params)
+            return cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            like_query = f"%{query}%"
+            sql = """
+                SELECT COUNT(*)
+                FROM tracks
+                WHERE (title LIKE ? OR artist LIKE ? OR album LIKE ?)
+            """
+            params = [like_query, like_query, like_query]
+            if source_value:
+                sql += " AND source = ?"
+                params.append(source_value)
+            cursor.execute(sql, params)
+            return cursor.fetchone()[0]
 
     def add(self, track: Track) -> TrackId:
         """Add a new track and return its ID."""
@@ -941,4 +1021,3 @@ class SqliteTrackRepository(BaseRepository):
         """, (track_id,))
 
         return [row[0] for row in cursor.fetchall()]
-

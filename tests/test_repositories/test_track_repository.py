@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from repositories.track_repository import SqliteTrackRepository
-from domain.track import Track
+from domain.track import Track, TrackSource
 
 
 @pytest.fixture
@@ -223,6 +223,34 @@ class TestSqliteTrackRepository:
         tracks = track_repo.get_all()
         assert len(tracks) == 3
 
+    def test_get_all_supports_pagination_and_offset(self, track_repo):
+        """Paginated reads should return a stable slice ordered by newest first."""
+        for i in range(5):
+            track_repo.add(Track(
+                path=f"/music/song{i}.mp3",
+                title=f"Song {i}",
+                artist="Artist",
+            ))
+
+        tracks = track_repo.get_all(limit=2, offset=1)
+
+        assert [track.title for track in tracks] == ["Song 3", "Song 2"]
+
+    def test_get_all_can_filter_by_source(self, track_repo):
+        """Track listing should support filtering by source in SQL."""
+        track_repo.add(Track(path="/music/local.mp3", title="Local", source=TrackSource.LOCAL))
+        track_repo.add(Track(
+            path="qqmusic://song/abc",
+            title="Online",
+            source=TrackSource.QQ,
+            cloud_file_id="abc",
+        ))
+
+        tracks = track_repo.get_all(source=TrackSource.QQ)
+
+        assert len(tracks) == 1
+        assert tracks[0].title == "Online"
+
     def test_update_track(self, track_repo):
         """Test updating a track."""
         track = Track(
@@ -309,6 +337,42 @@ class TestSqliteTrackRepository:
         # Search for "Song" - should match Rock Song and Pop Song
         results = track_repo.search("Song")
         assert len(results) >= 2
+
+    def test_search_tracks_supports_offset_and_source_filter(self, track_repo, temp_db):
+        """Search pagination should work together with SQL source filtering."""
+        tracks = [
+            Track(path="/music/local-song.mp3", title="Song Alpha", artist="Local Artist", source=TrackSource.LOCAL),
+            Track(
+                path="qqmusic://song/1",
+                title="Song Beta",
+                artist="QQ Artist",
+                source=TrackSource.QQ,
+                cloud_file_id="song-1",
+            ),
+            Track(
+                path="qqmusic://song/2",
+                title="Song Gamma",
+                artist="QQ Artist",
+                source=TrackSource.QQ,
+                cloud_file_id="song-2",
+            ),
+        ]
+        for track in tracks:
+            track_repo.add(track)
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks_fts (rowid, title, artist, album)
+            SELECT id, title, artist, album FROM tracks
+        """)
+        conn.commit()
+        conn.close()
+
+        results = track_repo.search("Song", limit=1, offset=1, source=TrackSource.QQ)
+
+        assert len(results) == 1
+        assert results[0].title == "Song Beta"
 
     def test_thread_local_connection(self, track_repo):
         """Test that each thread gets its own connection."""

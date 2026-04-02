@@ -39,6 +39,7 @@ class QueueService:
         """Save the current play queue to database."""
         items = self._engine.playlist_items
         if not items:
+            self.clear()
             return
 
         current_idx = self._engine.current_index
@@ -172,6 +173,22 @@ class QueueService:
         path_map = self._track_repo.get_by_paths(paths) if paths else {}
 
         # Enrich each item from the maps
+        # Pre-build path existence cache to avoid per-item disk I/O
+        local_paths = set()
+        for item in items:
+            track = None
+            if item.track_id and item.is_local:
+                track = id_map.get(item.track_id)
+            elif item.is_cloud and item.cloud_file_id:
+                track = cloud_map.get(item.cloud_file_id)
+            elif item.local_path and not item.cloud_file_id:
+                track = path_map.get(item.local_path)
+            if track:
+                lp = track.path or item.local_path
+                if lp:
+                    local_paths.add(lp)
+        existing_paths = {p for p in local_paths if Path(p).exists()}
+
         result = []
         for item in items:
             track = None
@@ -185,7 +202,7 @@ class QueueService:
 
             if track:
                 local_path = track.path or item.local_path
-                file_exists = local_path and Path(local_path).exists()
+                file_exists = local_path and local_path in existing_paths
                 needs_download = False
 
                 if item.source == TrackSource.QQ:

@@ -30,7 +30,12 @@ class BaseRepository:
                 timeout=30.0
             )
             self.local.conn.row_factory = sqlite3.Row
-            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            try:
+                self.local.conn.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                # Another thread may already be switching journal mode on a shared
+                # test database. The connection remains usable without failing init.
+                pass
             self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 

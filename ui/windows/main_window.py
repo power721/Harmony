@@ -1654,8 +1654,7 @@ class MainWindow(QMainWindow):
         """Show welcome dialog if the library is empty (first run)."""
         from PySide6.QtCore import QTimer
 
-        tracks = self._library_service.get_all_tracks()
-        if len(tracks) > 0:
+        if self._library_service.get_track_count() > 0:
             return
 
         from PySide6.QtCore import QLocale

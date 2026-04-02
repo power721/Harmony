@@ -389,54 +389,40 @@ class PlayerEngine(QObject):
             Index of updated item, or None if not found
         """
         with self._playlist_lock:
-            # If expected_index is provided, check that item at that index matches
-            if expected_index is not None and 0 <= expected_index < len(self._playlist):
-                item = self._playlist[expected_index]
-                if item.cloud_file_id == cloud_file_id:
-                    # Found the expected item, update it
-                    if local_path is not None:
-                        item.local_path = local_path
-                    if track_id is not None:
-                        item.track_id = track_id
-                    if title is not None:
-                        item.title = title
-                    if artist is not None:
-                        item.artist = artist
-                    if album is not None:
-                        item.album = album
-                    if duration is not None:
-                        item.duration = duration
-                    if cover_path is not None:
-                        item.cover_path = cover_path
-                    item.needs_download = needs_download
-                    item.needs_metadata = needs_metadata
-                    item.download_failed = download_failed
-                    return expected_index
+            matched_indices = []
 
-            # O(1) lookup by cloud_file_id
-            i = self._cloud_file_id_to_index.get(cloud_file_id)
-            if i is not None and 0 <= i < len(self._playlist):
+            if expected_index is not None and 0 <= expected_index < len(self._playlist):
+                if self._playlist[expected_index].cloud_file_id == cloud_file_id:
+                    matched_indices.append(expected_index)
+
+            for i, item in enumerate(self._playlist):
+                if item.cloud_file_id == cloud_file_id and i not in matched_indices:
+                    matched_indices.append(i)
+
+            if not matched_indices:
+                return None
+
+            for i in matched_indices:
                 item = self._playlist[i]
-                if item.cloud_file_id == cloud_file_id:
-                    if local_path is not None:
-                        item.local_path = local_path
-                    if track_id is not None:
-                        item.track_id = track_id
-                    if title is not None:
-                        item.title = title
-                    if artist is not None:
-                        item.artist = artist
-                    if album is not None:
-                        item.album = album
-                    if duration is not None:
-                        item.duration = duration
-                    if cover_path is not None:
-                        item.cover_path = cover_path
-                    item.needs_download = needs_download
-                    item.needs_metadata = needs_metadata
-                    item.download_failed = download_failed
-                    return i
-            return None
+                if local_path is not None:
+                    item.local_path = local_path
+                if track_id is not None:
+                    item.track_id = track_id
+                if title is not None:
+                    item.title = title
+                if artist is not None:
+                    item.artist = artist
+                if album is not None:
+                    item.album = album
+                if duration is not None:
+                    item.duration = duration
+                if cover_path is not None:
+                    item.cover_path = cover_path
+                item.needs_download = needs_download
+                item.needs_metadata = needs_metadata
+                item.download_failed = download_failed
+
+            return matched_indices[0]
 
     def remove_playlist_item_by_cloud_id(self, cloud_file_id: str) -> Optional[int]:
         """

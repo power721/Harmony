@@ -44,6 +44,7 @@ from ui.dialogs.progress_dialog import ProgressDialog
 from ui.workers.ai_enhance_worker import AIEnhanceWorker
 from ui.workers.acoustid_worker import AcoustIDWorker
 from ui.views.history_list_view import HistoryListView
+from ui.views.local_tracks_list_view import LocalTracksListView
 from ui.icons import IconName, get_icon
 
 
@@ -251,6 +252,7 @@ class LibraryView(QWidget):
     add_to_playlist_signal = Signal(
         list
     )  # Signal when tracks should be added to a playlist
+    ALL_TRACKS_PAGE_SIZE = 500
 
     def __init__(
             self, library_service, favorites_service, play_history_service, player: PlaybackService,
@@ -288,6 +290,12 @@ class LibraryView(QWidget):
             "favorites": "",
             "history": "",
         }  # 保存每个视图的搜索文本
+        self._all_tracks_total_count = 0
+        self._all_tracks_offset = 0
+        self._all_tracks_has_more = False
+        self._all_tracks_loading = False
+        self._all_tracks_query = ""
+        self._all_tracks_source = None
 
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
@@ -343,11 +351,24 @@ class LibraryView(QWidget):
 
         layout.addLayout(header_layout)
 
-        # Stacked widget for table and list views
+        # Stacked widget for library/history pages
         self._stacked_widget = QStackedWidget()
         layout.addWidget(self._stacked_widget)
 
-        # Tracks table (page 0)
+        # Library page (page 0)
+        self._library_page = QWidget()
+        library_page_layout = QVBoxLayout(self._library_page)
+        library_page_layout.setContentsMargins(0, 0, 0, 0)
+        library_page_layout.setSpacing(0)
+
+        self._library_content_stack = QStackedWidget()
+        library_page_layout.addWidget(self._library_content_stack)
+
+        # All tracks list view
+        self._all_tracks_list_view = LocalTracksListView(show_index=True, show_source=True)
+        self._library_content_stack.addWidget(self._all_tracks_list_view)
+
+        # Tracks table
         self._tracks_table = QTableWidget()
         self._tracks_table.setObjectName("tracksTable")
         self._tracks_table.setColumnCount(7)
@@ -380,7 +401,8 @@ class LibraryView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.Fixed)
         self._tracks_table.setColumnWidth(6, 40)
 
-        self._stacked_widget.addWidget(self._tracks_table)
+        self._library_content_stack.addWidget(self._tracks_table)
+        self._stacked_widget.addWidget(self._library_page)
 
         # History list view (page 1)
         self._history_list_view = HistoryListView()
@@ -411,6 +433,21 @@ class LibraryView(QWidget):
         self._search_timer.timeout.connect(self._on_search)
         self._source_filter.currentIndexChanged.connect(self._on_source_filter_changed)
         self._tracks_table.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._all_tracks_list_view.track_activated.connect(self._on_all_tracks_track_activated)
+        self._all_tracks_list_view.play_requested.connect(self._on_all_tracks_play_requested)
+        self._all_tracks_list_view.insert_to_queue_requested.connect(self._on_all_tracks_insert_to_queue)
+        self._all_tracks_list_view.add_to_queue_requested.connect(self._on_all_tracks_add_to_queue)
+        self._all_tracks_list_view.add_to_playlist_requested.connect(self._on_all_tracks_add_to_playlist)
+        self._all_tracks_list_view.favorites_toggle_requested.connect(self._on_all_tracks_favorites_toggle)
+        self._all_tracks_list_view.edit_info_requested.connect(self._on_all_tracks_edit_info)
+        self._all_tracks_list_view.download_cover_requested.connect(self._on_all_tracks_download_cover)
+        self._all_tracks_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
+        self._all_tracks_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
+        self._all_tracks_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
+        self._all_tracks_list_view.redownload_requested.connect(self._redownload_qq_track)
+        self._all_tracks_list_view._list_view.verticalScrollBar().valueChanged.connect(
+            self._on_all_tracks_scroll_changed
+        )
 
         # View toggle button
         self._view_toggle_btn.clicked.connect(self._toggle_history_view_mode)
@@ -477,7 +514,7 @@ class LibraryView(QWidget):
             self._title_label.setText(t("history"))
 
         # Reload data
-        self._stacked_widget.setCurrentIndex(0)  # Show table view
+        self._stacked_widget.setCurrentIndex(0)
         if self._current_view == "all":
             self._load_all_tracks()
         elif self._current_view == "favorites":
@@ -503,7 +540,8 @@ class LibraryView(QWidget):
 
         # Hide view toggle button for non-history views
         self._view_toggle_btn.setVisible(False)
-        self._stacked_widget.setCurrentIndex(0)  # Show table view
+        self._stacked_widget.setCurrentIndex(0)
+        self._library_content_stack.setCurrentWidget(self._all_tracks_list_view)
 
         # Show source filter for library view
         self._source_filter.setVisible(True)
@@ -534,7 +572,8 @@ class LibraryView(QWidget):
 
         # Hide view toggle button for non-history views
         self._view_toggle_btn.setVisible(False)
-        self._stacked_widget.setCurrentIndex(0)  # Show table view
+        self._stacked_widget.setCurrentIndex(0)
+        self._library_content_stack.setCurrentWidget(self._tracks_table)
 
         # Hide source filter for favorites view
         self._source_filter.setVisible(False)
@@ -557,6 +596,7 @@ class LibraryView(QWidget):
 
         self._current_view = "history"
         self._title_label.setText(t("history"))
+        self._library_content_stack.setCurrentWidget(self._tracks_table)
 
         # Show view toggle button for history
         self._view_toggle_btn.setVisible(True)
@@ -577,33 +617,89 @@ class LibraryView(QWidget):
             self._load_history()
 
     def _load_all_tracks(self):
-        """Load all tracks into the table (async via background thread)."""
+        """Load the first page of all tracks into the virtualized list view."""
         self._loading_label.setVisible(True)
-        self._tracks_table.setVisible(False)
+        self._stacked_widget.setVisible(False)
 
-        # Clean up previous worker if still running
-        if self._load_worker and self._load_worker.isRunning():
-            self._load_worker.quit()
-            if not self._load_worker.wait(1000):
-                self._load_worker.terminate()
-                self._load_worker.wait()
+        self._all_tracks_offset = 0
+        self._all_tracks_query = self._search_input.text().strip()
+        self._all_tracks_source = self._source_filter.currentData()
+        if self._all_tracks_source == "all":
+            self._all_tracks_source = None
 
-        search_text = self._search_input.text()
-        source_filter = self._source_filter.currentData()
-        self._load_worker = LoadTracksWorker(
-            self._library_service, search_text=search_text, source_filter=source_filter, parent=self
-        )
-        self._load_worker.finished.connect(self._on_tracks_loaded)
-        self._load_worker.progress.connect(self._on_tracks_remaining)
-        self._load_worker.start()
+        if self._all_tracks_query:
+            self._all_tracks_total_count = self._library_service.get_search_track_count(
+                self._all_tracks_query, source=self._all_tracks_source
+            )
+        else:
+            self._all_tracks_total_count = self._library_service.get_track_count(source=self._all_tracks_source)
 
-    def _on_tracks_loaded(self, tracks):
-        """Handle first batch of tracks loaded from background thread."""
-        self._populate_table(tracks)
-        self._status_label.setText(f"{len(tracks)} {t('tracks')}")
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+        self._all_tracks_list_view.load_tracks([], favorite_ids)
+        self._all_tracks_has_more = self._all_tracks_total_count > 0
+
+        if self._all_tracks_total_count == 0:
+            if self._all_tracks_query:
+                self._status_label.setText(f'0 {t("results_for")} "{self._all_tracks_query}"')
+            else:
+                self._status_label.setText(f"0 {t('tracks')}")
+            self._loading_label.setVisible(False)
+            self._stacked_widget.setVisible(True)
+            return
+
+        self._load_next_all_tracks_page()
+
+    def _load_next_all_tracks_page(self):
+        """Load the next page of tracks for the library list."""
+        if self._all_tracks_loading or not self._all_tracks_has_more:
+            return
+
+        self._all_tracks_loading = True
+        query = self._all_tracks_query
+        source = self._all_tracks_source
+
+        if query:
+            tracks = self._library_service.search_tracks(
+                query,
+                limit=self.ALL_TRACKS_PAGE_SIZE,
+                offset=self._all_tracks_offset,
+                source=source,
+            )
+        else:
+            tracks = self._library_service.get_all_tracks(
+                limit=self.ALL_TRACKS_PAGE_SIZE,
+                offset=self._all_tracks_offset,
+                source=source,
+            )
+
+        if self._all_tracks_offset == 0:
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._all_tracks_list_view.load_tracks(tracks, favorite_ids)
+        else:
+            self._all_tracks_list_view.append_tracks(tracks)
+
+        self._all_tracks_offset += len(tracks)
+        self._all_tracks_has_more = self._all_tracks_offset < self._all_tracks_total_count and bool(tracks)
+        self._all_tracks_loading = False
+
+        loaded_count = self._all_tracks_list_view.row_count()
+        if query:
+            self._status_label.setText(
+                f'{loaded_count}/{self._all_tracks_total_count} {t("results_for")} "{query}"'
+            )
+        else:
+            self._status_label.setText(f"{loaded_count}/{self._all_tracks_total_count} {t('tracks')}")
 
         self._loading_label.setVisible(False)
-        self._tracks_table.setVisible(True)
+        self._stacked_widget.setVisible(True)
+
+    def _on_all_tracks_scroll_changed(self, value: int):
+        """Lazy-load additional library pages when the list nears the bottom."""
+        if self._current_view != "all":
+            return
+        scrollbar = self._all_tracks_list_view._list_view.verticalScrollBar()
+        if value >= max(0, scrollbar.maximum() - 200):
+            self._load_next_all_tracks_page()
 
     def _on_tracks_remaining(self, remaining_tracks, total_count):
         """Handle remaining tracks loaded after first batch."""
@@ -831,7 +927,7 @@ class LibraryView(QWidget):
     def _load_artists(self):
         """Load artists view."""
         # Get all unique artists
-        tracks = self._library_service.get_all_tracks()
+        tracks = self._library_service.get_all_tracks(limit=0)
         artists = {}
         for track in tracks:
             if track.artist not in artists:
@@ -851,7 +947,7 @@ class LibraryView(QWidget):
     def _load_albums(self):
         """Load albums view."""
         # Get all unique albums
-        tracks = self._library_service.get_all_tracks()
+        tracks = self._library_service.get_all_tracks(limit=0)
         albums = {}
         for track in tracks:
             key = f"{track.artist} - {track.album}"
@@ -1052,9 +1148,8 @@ class LibraryView(QWidget):
 
         # 根据当前视图决定搜索范围
         if self._current_view == "all":
-            # 在所有 tracks 中搜索
-            tracks = self._library_service.search_tracks(query)
-            status_text = f'{len(tracks)} {t("results_for")} "{query}"'
+            self._load_all_tracks()
+            return
 
         elif self._current_view == "favorites":
             # 在收藏的 tracks 中搜索
@@ -1107,8 +1202,9 @@ class LibraryView(QWidget):
 
             self._current_playing_track_id = new_track_id
 
-            # Update the playing indicator in the table without reloading
-            self._update_playing_indicator_in_table(old_track_id, new_track_id)
+            # Update the playing indicator in the active view without reloading
+            if self._current_view != "all":
+                self._update_playing_indicator_in_table(old_track_id, new_track_id)
 
             # Scroll to the playing track
             self._scroll_to_playing_track()
@@ -1116,7 +1212,8 @@ class LibraryView(QWidget):
     def _on_player_state_changed(self, state: PlaybackState):
         """Handle player state change (play/pause)."""
         # Update the icon when playing/paused without reloading
-        self._update_playing_icon_state()
+        if self._current_view != "all":
+            self._update_playing_icon_state()
 
     def _update_playing_indicator_in_table(
             self, old_track_id: Optional[int], new_track_id: Optional[int]
@@ -1198,6 +1295,11 @@ class LibraryView(QWidget):
         if self._current_playing_track_id is None:
             return
 
+        if self._current_view == "all":
+            if self._all_tracks_list_view.select_track_by_id(self._current_playing_track_id):
+                self._all_tracks_list_view.scroll_to_track_id(self._current_playing_track_id)
+            return
+
         # O(1) lookup by track_id
         row = self._track_id_to_row.get(self._current_playing_track_id)
         if row is None:
@@ -1217,6 +1319,10 @@ class LibraryView(QWidget):
         Args:
             track_id: Track ID to select
         """
+        if self._current_view == "all":
+            self._all_tracks_list_view.select_track_by_id(track_id)
+            return
+
         # O(1) lookup by track_id
         row = self._track_id_to_row.get(track_id)
         if row is None:
@@ -1230,6 +1336,11 @@ class LibraryView(QWidget):
     def _select_and_scroll_to_current(self):
         """Select and scroll to the currently playing track."""
         if self._current_playing_track_id is None:
+            return
+
+        if self._current_view == "all":
+            if self._all_tracks_list_view.select_track_by_id(self._current_playing_track_id):
+                self._all_tracks_list_view.scroll_to_track_id(self._current_playing_track_id)
             return
 
         # O(1) lookup by track_id
@@ -1986,6 +2097,10 @@ class LibraryView(QWidget):
         Args:
             track_ids: List of track IDs to refresh
         """
+        if self._current_view == "all":
+            self._load_all_tracks()
+            return
+
         # format_duration imported at top
         from PySide6.QtGui import QBrush, QColor
 
@@ -2252,6 +2367,77 @@ class LibraryView(QWidget):
         item = PlaylistItem(track_id=track.id)
         self._player.engine.set_playlist([item])
         self._player.engine.play()
+
+    def _on_all_tracks_track_activated(self, track: Track):
+        """Play a track activated from the all-tracks virtualized list."""
+        if track and track.id:
+            self.track_double_clicked.emit(track.id)
+
+    def _on_all_tracks_play_requested(self, tracks: list):
+        """Play requested tracks from the all-tracks list."""
+        if not tracks:
+            return
+        track_ids = [track.id for track in tracks if track.id]
+        if not track_ids:
+            return
+        self.track_double_clicked.emit(track_ids[0])
+
+    def _on_all_tracks_insert_to_queue(self, tracks: list):
+        """Insert tracks after the current queue item."""
+        track_ids = [track.id for track in tracks if track.id]
+        if track_ids:
+            self.insert_to_queue.emit(track_ids)
+
+    def _on_all_tracks_add_to_queue(self, tracks: list):
+        """Append tracks to the playback queue."""
+        track_ids = [track.id for track in tracks if track.id]
+        if track_ids:
+            self.add_to_queue.emit(track_ids)
+
+    def _on_all_tracks_add_to_playlist(self, tracks: list):
+        """Add tracks from the all-tracks list to a playlist."""
+        from utils.playlist_utils import add_tracks_to_playlist
+
+        track_ids = [track.id for track in tracks if track.id]
+        if track_ids:
+            add_tracks_to_playlist(self, self._library_service, track_ids, "[LibraryAllTracksListView]")
+
+    def _on_all_tracks_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Toggle favorite state for tracks from the all-tracks list."""
+        bus = EventBus.instance()
+        for track in tracks:
+            if not track or not track.id:
+                continue
+            if all_favorited:
+                self._favorites_service.remove_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, False, is_cloud=False)
+            else:
+                self._favorites_service.add_favorite(track_id=track.id)
+                bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+    def _on_all_tracks_edit_info(self, track):
+        """Edit metadata for a track from the all-tracks list."""
+        if not track or not track.id:
+            return
+        dialog = EditMediaInfoDialog([track.id], self._library_service, self)
+        dialog.tracks_updated.connect(self._refresh_tracks_in_table)
+        dialog.exec()
+
+    def _on_all_tracks_download_cover(self, track):
+        """Download cover art for a track from the all-tracks list."""
+        self._on_history_download_cover(track)
+
+    def _on_all_tracks_open_file_location(self, track):
+        """Open file location for a track from the all-tracks list."""
+        self._on_history_open_file_location(track)
+
+    def _on_all_tracks_remove_from_library(self, tracks: list):
+        """Remove tracks from the library from the all-tracks list."""
+        self._on_history_remove_from_library(tracks)
+
+    def _on_all_tracks_delete_file(self, tracks: list):
+        """Delete files from disk from the all-tracks list."""
+        self._on_history_delete_file(tracks)
 
     def _on_history_play_requested(self, tracks: list):
         """Play requested tracks from history list view."""

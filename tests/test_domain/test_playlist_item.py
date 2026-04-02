@@ -60,6 +60,25 @@ class TestPlaylistItem:
         assert item.cloud_file_id == "song_mid_123"
         assert item.needs_download is True
 
+    def test_from_downloaded_online_track_preserves_local_path(self, temp_dir):
+        """Downloaded QQ tracks should keep their cached local path."""
+        cached_path = temp_dir / "song.mp3"
+        cached_path.write_text("cached")
+        track = Track(
+            id=1,
+            path=str(cached_path),
+            title="Downloaded Song",
+            artist="Online Artist",
+            source=TrackSource.QQ,
+            cloud_file_id="song_mid_123"
+        )
+        item = PlaylistItem.from_track(track)
+
+        assert item.source == TrackSource.QQ
+        assert item.cloud_file_id == "song_mid_123"
+        assert item.local_path == str(cached_path)
+        assert item.needs_download is False
+
     def test_from_cloud_file_without_local_path(self, sample_cloud_file_data):
         """Test creating PlaylistItem from CloudFile without local path."""
         cloud_file = CloudFile(**sample_cloud_file_data)

@@ -3,6 +3,7 @@ Library service - Manages music library operations.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional
 
@@ -28,6 +29,8 @@ class LibraryService:
     Manages music library operations including scanning,
     track management, and playlist operations.
     """
+
+    DEFAULT_TRACK_PAGE_SIZE = 500
 
     def __init__(
             self,
@@ -122,17 +125,32 @@ class LibraryService:
         """Get a track by cloud file ID."""
         return self._track_repo.get_by_cloud_file_id(cloud_file_id)
 
-    def get_all_tracks(self, limit: int = 0, offset: int = 0) -> List[Track]:
-        """Get all tracks in the library. If limit > 0, returns only limit tracks."""
-        return self._track_repo.get_all(limit, offset)
+    def get_all_tracks(
+            self,
+            limit: int = DEFAULT_TRACK_PAGE_SIZE,
+            offset: int = 0,
+            source: TrackSource | str | None = None,
+    ) -> List[Track]:
+        """Get tracks in the library with optional pagination and source filtering."""
+        return self._track_repo.get_all(limit=limit, offset=offset, source=source)
 
-    def get_track_count(self) -> int:
-        """Get total track count."""
-        return self._track_repo.get_track_count()
+    def get_track_count(self, source: TrackSource | str | None = None) -> int:
+        """Get total track count, optionally filtered by source."""
+        return self._track_repo.get_track_count(source=source)
 
-    def search_tracks(self, query: str, limit: int = 100) -> List[Track]:
-        """Search tracks by query."""
-        return self._track_repo.search(query, limit)
+    def search_tracks(
+            self,
+            query: str,
+            limit: int = 100,
+            offset: int = 0,
+            source: TrackSource | str | None = None,
+    ) -> List[Track]:
+        """Search tracks by query with optional pagination and source filtering."""
+        return self._track_repo.search(query, limit=limit, offset=offset, source=source)
+
+    def get_search_track_count(self, query: str, source: TrackSource | str | None = None) -> int:
+        """Get the total count for a track search."""
+        return self._track_repo.get_search_count(query, source=source)
 
     def add_track(self, track: Track) -> int:
         """Add a new track to the library."""
@@ -395,17 +413,26 @@ class LibraryService:
             return 0
 
         if recursive:
-            files = path.rglob('*')
+            files = [file_path for file_path in path.rglob('*') if file_path.suffix.lower() in supported_extensions]
         else:
-            files = path.glob('*')
+            files = [file_path for file_path in path.glob('*') if file_path.suffix.lower() in supported_extensions]
 
-        for file_path in files:
-            if file_path.suffix.lower() in supported_extensions:
-                track = self._create_track_from_file(str(file_path))
-                if track:
-                    track_id = self._track_repo.add(track)
-                    if track_id:
-                        added_count += 1
+        if not files:
+            return 0
+
+        max_workers = min(4, len(files))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._create_track_from_file, str(file_path)): file_path
+                for file_path in files
+            }
+            for future in as_completed(futures):
+                track = future.result()
+                if not track:
+                    continue
+                track_id = self._track_repo.add(track)
+                if track_id:
+                    added_count += 1
 
         if added_count > 0:
             self._event_bus.tracks_added.emit(added_count)

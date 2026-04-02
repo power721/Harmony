@@ -6,9 +6,26 @@ Base class for track list views with configurable display options.
 import logging
 from typing import List
 
-from PySide6.QtCore import Qt, Signal, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QSize,
+    QAbstractListModel,
+    QModelIndex,
+    QRunnable,
+    QThreadPool,
+    QRect,
+    QItemSelectionModel,
+)
 from PySide6.QtGui import QColor, QPixmap, QPainter, QImage, QCursor
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QListView,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QStyle,
+)
 
 from domain.track import Track, TrackSource
 from infrastructure.cache.pixmap_cache import CoverPixmapCache
@@ -39,6 +56,7 @@ class LocalTrackModel(QAbstractListModel):
         self._favorite_ids: set = set()
         self._current_track_id = None
         self._is_playing: bool = False
+        self._track_id_to_row: dict[int, int] = {}
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._tracks)
@@ -75,12 +93,27 @@ class LocalTrackModel(QAbstractListModel):
         }
 
     def reset_tracks(self, tracks: List[Track], favorite_ids: set):
-        self.blockSignals(True)
         self.beginResetModel()
         self._tracks = list(tracks)
         self._favorite_ids = set(favorite_ids)
+        self._track_id_to_row = {
+            track.id: index for index, track in enumerate(self._tracks)
+            if track and getattr(track, "id", None) is not None
+        }
         self.endResetModel()
-        self.blockSignals(False)
+
+    def append_tracks(self, tracks: List[Track]):
+        """Append tracks incrementally for paged loading."""
+        if not tracks:
+            return
+        start = len(self._tracks)
+        end = start + len(tracks) - 1
+        self.beginInsertRows(QModelIndex(), start, end)
+        self._tracks.extend(tracks)
+        for offset, track in enumerate(tracks, start=start):
+            if track and getattr(track, "id", None) is not None:
+                self._track_id_to_row[track.id] = offset
+        self.endInsertRows()
 
     def update_favorites(self, favorite_ids: set):
         """Update favorite IDs and emit dataChanged for affected rows."""
@@ -101,6 +134,12 @@ class LocalTrackModel(QAbstractListModel):
         if 0 <= row < len(self._tracks):
             return self._tracks[row]
         return None
+
+    def row_for_track_id(self, track_id: int | None) -> int | None:
+        """Get the row index for a track ID."""
+        if track_id is None:
+            return None
+        return self._track_id_to_row.get(track_id)
 
     def notify_cover_loaded(self, row: int):
         if 0 <= row < len(self._tracks):
@@ -650,6 +689,44 @@ class LocalTracksListView(QWidget):
         self._model.reset_tracks(tracks, favorite_ids or set())
         self._apply_viewport_bg()
 
+    def append_tracks(self, tracks: List[Track]):
+        """Append tracks without resetting the existing model state."""
+        self._model.append_tracks(tracks)
+        self._apply_viewport_bg()
+
     def clear(self):
         """Clear all tracks."""
         self._model.reset_tracks([], set())
+
+    def selected_tracks(self) -> List[Track]:
+        """Return currently selected tracks without duplicates."""
+        rows = sorted({index.row() for index in self._list_view.selectedIndexes()})
+        return [track for track in (self._model.get_track_at(row) for row in rows) if track is not None]
+
+    def row_count(self) -> int:
+        """Return the number of loaded rows."""
+        return self._model.rowCount()
+
+    def select_track_by_id(self, track_id: int, clear: bool = True) -> bool:
+        """Select a track row by its ID."""
+        row = self._model.row_for_track_id(track_id)
+        if row is None:
+            return False
+        index = self._model.index(row)
+        selection_model = self._list_view.selectionModel()
+        if clear:
+            self._list_view.clearSelection()
+        selection_model.select(
+            index,
+            QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+        )
+        self._list_view.setCurrentIndex(index)
+        return True
+
+    def scroll_to_track_id(self, track_id: int):
+        """Scroll the viewport to a track by ID."""
+        row = self._model.row_for_track_id(track_id)
+        if row is None:
+            return
+        index = self._model.index(row)
+        self._list_view.scrollTo(index, QListView.ScrollHint.PositionAtCenter)

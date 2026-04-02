@@ -96,7 +96,7 @@ class TestLibraryService:
         result = library_service.search_tracks("query", limit=50)
 
         assert result == mock_tracks
-        mock_track_repo.search.assert_called_once_with("query", 50)
+        mock_track_repo.search.assert_called_once_with("query", limit=50, offset=0, source=None)
 
     def test_add_track_success(self, library_service, mock_track_repo, mock_event_bus):
         """Test adding a track successfully."""

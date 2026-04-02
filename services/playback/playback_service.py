@@ -62,6 +62,7 @@ class PlaybackService(QObject):
     source_changed = Signal(str)  # "local" or "cloud"
     _metadata_processed = Signal(str, str, int, str, str, str, float, str)  # Internal signal for metadata
     _metadata_batch_complete = Signal()  # Emitted when batch metadata processing completes
+    LIBRARY_PAGE_SIZE = 1000
 
     def __init__(
             self,
@@ -348,16 +349,40 @@ class PlaybackService(QObject):
             List of PlaylistItem objects
         """
         items = []
+        # Pre-build path existence cache to avoid per-track disk I/O
+        local_paths = set()
+        for track in tracks:
+            if track and track.path:
+                local_paths.add(track.path)
+        existing_paths = {p for p in local_paths if Path(p).exists()}
+
         for track in tracks:
             if not track or not track.id or track.id <= 0:
                 continue
 
-            # Include online tracks (empty path) and existing local files
-            is_online = not track.path or track.source == TrackSource.QQ
-            if is_online or Path(track.path).exists():
+            # QQ items stay in the queue even when they still need download, but
+            # downloaded QQ files should be treated as ready local files.
+            has_local_file = bool(track.path) and track.path in existing_paths
+            is_online = track.source == TrackSource.QQ and not has_local_file
+            if is_online or (track.path and track.path in existing_paths):
                 items.append(PlaylistItem.from_track(track))
 
         return items
+
+    def _iter_library_track_batches(
+            self, source: TrackSource | str | None = None, page_size: Optional[int] = None
+    ):
+        """Yield library tracks in bounded batches to avoid unbounded SELECT * loads."""
+        batch_size = page_size or self.LIBRARY_PAGE_SIZE
+        total_count = self._track_repo.get_track_count(source=source)
+        offset = 0
+
+        while offset < total_count:
+            tracks = self._track_repo.get_all(limit=batch_size, offset=offset, source=source)
+            if not tracks:
+                break
+            yield tracks
+            offset += len(tracks)
 
     @property
     def play_mode(self) -> PlayMode:
@@ -430,11 +455,11 @@ class PlaybackService(QObject):
             logger.error(f"[PlaybackService] Track not found: {track_id}")
             return
 
-        # Check if this is an online track (empty path)
-        is_online_track = not track.path or track.source == TrackSource.QQ
+        has_local_file = bool(track.path) and Path(track.path).exists()
+        is_online_track = track.source == TrackSource.QQ and not has_local_file
 
         # For local tracks with path, verify file exists
-        if not is_online_track and not Path(track.path).exists():
+        if not is_online_track and (not track.path or not Path(track.path).exists()):
             logger.error(f"[PlaybackService] File not found: {track.path}")
             return
 
@@ -444,20 +469,14 @@ class PlaybackService(QObject):
         self._engine.clear_playlist()
         self._engine.cleanup_temp_files()
 
-        tracks = self._track_repo.get_all()
-
-        # Build items and find start index
         items = []
         start_index = 0
-        for t in tracks:
-            if not t or not t.id or t.id <= 0:
-                continue
-            is_online = not t.path or t.source == TrackSource.QQ
-            if is_online or Path(t.path).exists():
-                item = PlaylistItem.from_track(t)
-                if t.id == track_id:
-                    start_index = len(items)
-                items.append(item)
+        for tracks in self._iter_library_track_batches():
+            batch_items = self._filter_and_convert_tracks(tracks)
+            batch_item_ids = [item.track_id for item in batch_items]
+            if track_id in batch_item_ids:
+                start_index = len(items) + batch_item_ids.index(track_id)
+            items.extend(batch_items)
 
         self._engine.load_playlist_items(items)
 
@@ -505,8 +524,9 @@ class PlaybackService(QObject):
         """Play all tracks in the library."""
         self._set_source("local")
 
-        tracks = self._track_repo.get_all()
-        items = self._filter_and_convert_tracks(tracks)
+        items = []
+        for tracks in self._iter_library_track_batches():
+            items.extend(self._filter_and_convert_tracks(tracks))
         self._engine.load_playlist_items(items)
 
         if self._engine.is_shuffle_mode() and items:
@@ -836,6 +856,7 @@ class PlaybackService(QObject):
         """Save the current play queue to database."""
         items = self._engine.playlist_items
         if not items:
+            self.clear_saved_queue()
             return
 
         current_idx = self._engine.current_index
