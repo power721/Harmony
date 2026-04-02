@@ -322,8 +322,13 @@ jobs:
 
       - name: Install mpv runtime
         run: |
+          # Ensure core Windows binaries and Chocolatey shims are available in this session.
+          $env:PATH = "C:\Windows\System32;C:\ProgramData\chocolatey\bin;" + $env:PATH
           choco install mpv -y
-          Get-Command mpv
+          # Reload PATH updated by Chocolatey (machine/user scope) in the current PowerShell process.
+          $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          Get-Command mpv -ErrorAction Stop
+          mpv --version
 
       - name: Build executable
         env:
