@@ -3,6 +3,7 @@ Application - Main application singleton.
 """
 
 import logging
+import threading
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
@@ -22,6 +23,7 @@ class Application(QObject):
     """
 
     _instance: Optional["Application"] = None
+    _lock = threading.Lock()
 
     # Signals
     initialized = Signal()
@@ -41,12 +43,11 @@ class Application(QObject):
         self._bootstrap = Bootstrap.instance(db_path)
         self._main_window = None
 
-        Application._instance = self
-
     @classmethod
     def instance(cls) -> "Application":
         """Get singleton instance."""
-        return cls._instance
+        with cls._lock:
+            return cls._instance
 
     @classmethod
     def create(cls, qt_app: QApplication, db_path: str = "Harmony.db") -> "Application":
@@ -60,9 +61,10 @@ class Application(QObject):
         Returns:
             Application instance
         """
-        if cls._instance is None:
-            cls._instance = cls(qt_app, db_path)
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(qt_app, db_path)
+            return cls._instance
 
     @property
     def bootstrap(self) -> Bootstrap:

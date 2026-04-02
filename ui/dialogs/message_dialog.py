@@ -87,7 +87,7 @@ class MessageDialog(QDialog):
     def __init__(self, parent=None, dialog_type="information"):
         super().__init__(parent)
         self._dialog_type = dialog_type
-        self._result = StandardButton.Ok
+        self._result = StandardButton.Cancel
         self._drag_pos = None
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)

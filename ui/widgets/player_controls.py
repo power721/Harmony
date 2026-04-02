@@ -524,6 +524,53 @@ class PlayerControls(QWidget):
         # Sync button states with current player mode
         self._sync_button_states()
 
+    def cleanup(self):
+        """Disconnect all signal connections."""
+        try:
+            self._play_pause_btn.clicked.disconnect(self._toggle_play_pause)
+            self._prev_btn.clicked.disconnect(self._player.engine.play_previous)
+            self._next_btn.clicked.disconnect(self._player.engine.play_next)
+
+            self._progress_slider.sliderPressed.disconnect(self._on_seek_start)
+            self._progress_slider.sliderReleased.disconnect(self._on_seek_end)
+            self._progress_slider.valueChanged.disconnect(self._on_seek)
+            self._progress_slider.clicked_value.disconnect(self._on_slider_clicked)
+
+            self._volume_slider.valueChanged.disconnect(self._on_volume_changed)
+            self._volume_btn.clicked.disconnect(self._toggle_mute)
+
+            self._favorite_btn.clicked.disconnect(self._toggle_favorite)
+
+            self._shuffle_btn.clicked.disconnect(self._toggle_shuffle)
+            self._repeat_btn.clicked.disconnect(self._toggle_repeat)
+
+            self._player.engine.state_changed.disconnect(self._on_state_changed)
+            self._player.engine.position_changed.disconnect(self._on_position_changed)
+            self._player.engine.duration_changed.disconnect(self._on_duration_changed)
+            self._player.engine.current_track_changed.disconnect(self._on_track_changed)
+            self._player.engine.play_mode_changed.disconnect(self._on_play_mode_changed)
+            self._player.engine.volume_changed.disconnect(self._on_volume_changed_from_engine)
+
+            bus = EventBus.instance()
+            bus.favorite_changed.disconnect(self._on_favorite_changed)
+            bus.metadata_updated.disconnect(self._on_metadata_updated)
+            bus.cover_updated.disconnect(self._on_cover_updated)
+
+            self._cover_loaded.disconnect(self._on_cover_loaded)
+
+            # Sleep timer connections
+            try:
+                from app.bootstrap import Bootstrap
+                sleep_timer_service = Bootstrap.instance().sleep_timer_service
+                sleep_timer_service.timer_started.disconnect(self._on_sleep_timer_started)
+                sleep_timer_service.timer_stopped.disconnect(self._on_sleep_timer_stopped)
+                sleep_timer_service.remaining_changed.disconnect(self._on_sleep_timer_remaining_changed)
+                sleep_timer_service.timer_triggered.disconnect(self._on_sleep_timer_stopped)
+            except Exception:
+                pass
+        except (TypeError, RuntimeError):
+            pass
+
     def _setup_sleep_timer_connections(self):
         """Setup sleep timer signal connections."""
         from app.bootstrap import Bootstrap

@@ -151,6 +151,7 @@ class MiniPlayer(QWidget):
         self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
         self._is_hidden = False  # Track auto-hide state
         self._opacity_anim: Optional[QPropertyAnimation] = None  # Opacity animation
+        self._cover_thread: Optional[threading.Thread] = None  # Cover loading thread
 
         self._setup_ui()
         self._setup_connections()
@@ -561,6 +562,7 @@ class MiniPlayer(QWidget):
         # Run in thread
         thread = threading.Thread(target=worker)
         thread.daemon = True
+        self._cover_thread = thread
         thread.start()
 
     def _show_cover(self, cover_path: str):

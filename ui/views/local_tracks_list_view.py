@@ -489,6 +489,11 @@ class LocalTracksListView(QWidget):
             bus.playback_state_changed.disconnect(self._on_playback_state_changed)
         except RuntimeError:
             pass
+        # Disconnect delegate's class-level signal to prevent leaked connections
+        try:
+            self._delegate._cover_loaded_signal.disconnect(self._delegate._on_cover_loaded)
+        except RuntimeError:
+            pass
         super().closeEvent(event)
 
     def _on_item_activated(self, index):

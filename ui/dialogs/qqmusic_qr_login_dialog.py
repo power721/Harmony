@@ -375,8 +375,7 @@ class QQMusicQRLoginDialog(QDialog):
         # Stop old thread if exists
         if old_thread:
             old_thread.stop()
-            # Let the old thread finish naturally, don't wait
-            # We keep it referenced but don't block
+            old_thread.wait(2000)
 
         # Start new login
         self._start_login()

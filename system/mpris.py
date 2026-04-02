@@ -502,8 +502,11 @@ class MPRISController(QObject):
         """
         Register the MPRIS2 interface on the D-Bus session bus.
 
-        Does nothing if D-Bus is not available.
+        Does nothing if D-Bus is not available or already registered.
         """
+        if self._service is not None:
+            return
+
         if not _AVAILABLE:
             logger.debug("[MPRIS] D-Bus not available, skipping MPRIS registration")
             return
@@ -548,8 +551,8 @@ class MPRISController(QObject):
                 self._event_bus.position_changed.disconnect(self._on_position_changed)
                 self._event_bus.volume_changed.disconnect(self._on_volume_changed)
                 self._event_bus.play_mode_changed.disconnect(self._on_play_mode_changed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error disconnecting MPRIS signals: {e}")
 
         self._cleanup()
         logger.info("[MPRIS] Unregistered from D-Bus")

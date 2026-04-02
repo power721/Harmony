@@ -121,7 +121,10 @@ class AlbumCoverLoader(QThread):
                     Qt.KeepAspectRatioByExpanding,
                     Qt.SmoothTransformation
                 )
-                self.cover_loaded.emit(scaled)
+                try:
+                    self.cover_loaded.emit(scaled)
+                except RuntimeError:
+                    pass  # Target widget already deleted
         except Exception as e:
             logger.debug(f"Error loading album cover: {e}")
 

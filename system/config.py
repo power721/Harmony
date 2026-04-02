@@ -3,8 +3,10 @@ Configuration manager for the music player.
 Unified configuration storage using database.
 """
 import base64
+import binascii
 import json
 import logging
+import threading
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -95,6 +97,7 @@ class ConfigManager:
         """
         self._settings_repo = settings_repo
         self._cache: Dict[str, Any] = {}
+        self._cache_lock = threading.RLock()
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -107,11 +110,12 @@ class ConfigManager:
         Returns:
             Configuration value or default
         """
-        if key in self._cache:
-            return self._cache[key]
-        value = self._settings_repo.get(key, default)
-        self._cache[key] = value
-        return value
+        with self._cache_lock:
+            if key in self._cache:
+                return self._cache[key]
+            value = self._settings_repo.get(key, default)
+            self._cache[key] = value
+            return value
 
     def set(self, key: str, value: Any):
         """
@@ -121,8 +125,9 @@ class ConfigManager:
             key: Configuration key
             value: Value to set
         """
-        self._settings_repo.set(key, value)
-        self._cache[key] = value
+        with self._cache_lock:
+            self._settings_repo.set(key, value)
+            self._cache[key] = value
 
     def delete(self, key: str):
         """
@@ -131,8 +136,9 @@ class ConfigManager:
         Args:
             key: Configuration key
         """
-        self._settings_repo.delete(key)
-        self._cache.pop(key, None)
+        with self._cache_lock:
+            self._settings_repo.delete(key)
+            self._cache.pop(key, None)
 
     # ===== Player settings =====
 
@@ -339,7 +345,7 @@ class ConfigManager:
         if geometry_b64:
             try:
                 return base64.b64decode(geometry_b64)
-            except Exception:
+            except (ValueError, binascii.Error):
                 return None
         return None
 
@@ -363,7 +369,7 @@ class ConfigManager:
         if state_b64:
             try:
                 return base64.b64decode(state_b64)
-            except Exception:
+            except (ValueError, binascii.Error):
                 return None
         return None
 

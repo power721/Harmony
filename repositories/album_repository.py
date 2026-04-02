@@ -210,9 +210,6 @@ class SqliteAlbumRepository(BaseRepository):
         conn.commit()
         return True
 
-        conn.commit()
-        return True
-
     def update_cover_path(self, album_name: str, artist: str, cover_path: str) -> bool:
         """
         Update cover path for an album.

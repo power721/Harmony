@@ -33,3 +33,12 @@ class BaseRepository:
             self.local.conn.execute("PRAGMA journal_mode=WAL")
             self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
+
+    def close(self):
+        """Close the thread-local connection if it exists."""
+        if hasattr(self.local, "conn") and self.local.conn:
+            try:
+                self.local.conn.close()
+            except Exception:
+                pass
+            self.local.conn = None

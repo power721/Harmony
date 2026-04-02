@@ -50,13 +50,16 @@ class FontLoader:
         for font_path, family in fonts_to_load:
             full_path = font_dir / font_path
             if full_path.exists():
-                font_id = QFontDatabase.addApplicationFont(str(full_path))
-                if font_id != -1:
-                    self._font_ids.append(font_id)
-                    loaded_count += 1
-                    logger.debug(f"Loaded font: {family} from {full_path}")
-                else:
-                    logger.warning(f"Failed to load font: {full_path}")
+                try:
+                    font_id = QFontDatabase.addApplicationFont(str(full_path))
+                    if font_id != -1:
+                        self._font_ids.append(font_id)
+                        loaded_count += 1
+                        logger.debug(f"Loaded font: {family} from {full_path}")
+                    else:
+                        logger.warning(f"Failed to load font: {full_path}")
+                except Exception as e:
+                    logger.warning(f"Error loading font {full_path}: {e}")
             else:
                 logger.debug(f"Font file not found: {full_path}")
 

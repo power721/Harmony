@@ -54,10 +54,18 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Create controller and connect signals
         self._controller = CoverController(parent=self)
-        self._controller.search_completed.connect(self._on_search_completed)
-        self._controller.search_failed.connect(self._on_search_failed)
-        self._controller.download_completed.connect(self._on_download_completed)
-        self._controller.download_failed.connect(self._on_download_failed)
+        self._controller.search_completed.connect(
+            self._on_search_completed, Qt.ConnectionType.QueuedConnection
+        )
+        self._controller.search_failed.connect(
+            self._on_search_failed, Qt.ConnectionType.QueuedConnection
+        )
+        self._controller.download_completed.connect(
+            self._on_download_completed, Qt.ConnectionType.QueuedConnection
+        )
+        self._controller.download_failed.connect(
+            self._on_download_failed, Qt.ConnectionType.QueuedConnection
+        )
 
         # Setup UI
         self._setup_ui()

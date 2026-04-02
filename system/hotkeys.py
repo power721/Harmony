@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 # Import PlaybackState from domain (no circular dependency)
 from domain.playback import PlaybackState
 
+# Module-level listener reference for cleanup
+_listener = None
+
 
 class GlobalHotkeys(QObject):
     """
@@ -264,8 +267,17 @@ def _setup_windows_media_keys(player: "PlaybackService"):
                 player.engine.play_previous()
 
         # Start listener in a separate thread
-        listener = keyboard.Listener(on_press=on_press)
-        listener.start()
+        global _listener
+        _listener = keyboard.Listener(on_press=on_press)
+        _listener.start()
 
     except ImportError:
         logger.debug("pynput not available for Windows media key support")
+
+
+def cleanup():
+    """Stop and clean up the Windows media key listener."""
+    global _listener
+    if _listener:
+        _listener.stop()
+        _listener = None

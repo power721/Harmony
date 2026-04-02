@@ -1,6 +1,7 @@
 """In-memory pixmap cache wrapping QPixmapCache for cover art."""
 import hashlib
 import logging
+import threading
 
 from PySide6.QtGui import QPixmap, QPixmapCache
 
@@ -11,13 +12,15 @@ class CoverPixmapCache:
     """Wraps QPixmapCache with cover-specific key generation."""
 
     _initialized = False
+    _lock = threading.Lock()
 
     @classmethod
     def initialize(cls):
         """Set cache limit (128MB)."""
-        if not cls._initialized:
-            QPixmapCache.setCacheLimit(131072)  # 128MB in KB
-            cls._initialized = True
+        with cls._lock:
+            if not cls._initialized:
+                QPixmapCache.setCacheLimit(131072)  # 128MB in KB
+                cls._initialized = True
 
     @classmethod
     def make_key(cls, artist: str, album: str) -> str:

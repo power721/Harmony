@@ -66,6 +66,7 @@ class AlbumCard(QWidget):
         self._is_hovering = False
         self._cover_loaded = False
         self._downloading = False
+        self._cover_executor = None  # ThreadPoolExecutor for async downloads
 
         self._setup_ui()
         # Set default cover immediately, load actual cover lazily
@@ -231,8 +232,11 @@ class AlbumCard(QWidget):
                     logger.warning(f"Failed to download cover: {e}")
                     return None
 
-            executor = ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(download)
+            # Reuse single executor instance
+            if self._cover_executor is None:
+                self._cover_executor = ThreadPoolExecutor(max_workers=1)
+
+            future = self._cover_executor.submit(download)
 
             def check_download():
                 if future.done():
@@ -249,7 +253,6 @@ class AlbumCard(QWidget):
                             self._cover_label.setPixmap(scaled)
                             self._cover_loaded = True
                     self._downloading = False
-                    executor.shutdown(wait=False)
                 else:
                     QTimer.singleShot(100, check_download)
 

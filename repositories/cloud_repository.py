@@ -280,13 +280,17 @@ class SqliteCloudRepository(BaseRepository):
     def hard_delete_account(self, account_id: int) -> bool:
         """Hard delete a cloud account and associated files."""
         conn = self._get_connection()
-        cursor = conn.cursor()
-        # Delete associated files first
-        cursor.execute("DELETE FROM cloud_files WHERE account_id = ?", (account_id,))
-        # Delete account
-        cursor.execute("DELETE FROM cloud_accounts WHERE id = ?", (account_id,))
-        conn.commit()
-        return cursor.rowcount > 0
+        try:
+            cursor = conn.cursor()
+            # Delete associated files first
+            cursor.execute("DELETE FROM cloud_files WHERE account_id = ?", (account_id,))
+            # Delete account
+            cursor.execute("DELETE FROM cloud_accounts WHERE id = ?", (account_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            conn.rollback()
+            raise
 
     # ===== Cloud File methods =====
 

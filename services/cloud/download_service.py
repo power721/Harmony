@@ -268,33 +268,34 @@ class CloudDownloadService(QObject):
             self.download_completed.emit(file_id, cached_path)
             return True
 
-        # Start download
-        worker = CloudDownloadWorker(
-            cloud_file, account, self._download_dir, self
-        )
-
-        # Connect signals
-        worker.download_progress.connect(
-            lambda fid, cur, tot: self.download_progress.emit(fid, cur, tot)
-        )
-        worker.download_completed.connect(self._on_download_completed)
-        worker.download_error.connect(self._on_download_error)
-
-        # Clean up worker ONLY after thread has fully stopped
-        def on_thread_finished():
-            with self._downloads_lock:
-                if file_id in self._active_downloads:
-                    del self._active_downloads[file_id]
-
-        worker.finished.connect(on_thread_finished)
-
+        # Check if already downloading and start worker atomically
         with self._downloads_lock:
-            # Double-check: another thread might have started downloading
             if file_id in self._active_downloads:
-                # Another thread started, don't create duplicate
-                return False
+                return False  # Already downloading
+
+            # Create worker inside lock to prevent race
+            worker = CloudDownloadWorker(
+                cloud_file, account, self._download_dir, self
+            )
+
+            # Connect signals
+            worker.download_progress.connect(
+                lambda fid, cur, tot: self.download_progress.emit(fid, cur, tot)
+            )
+            worker.download_completed.connect(self._on_download_completed)
+            worker.download_error.connect(self._on_download_error)
+
+            # Clean up worker ONLY after thread has fully stopped
+            def on_thread_finished():
+                with self._downloads_lock:
+                    if file_id in self._active_downloads:
+                        del self._active_downloads[file_id]
+
+            worker.finished.connect(on_thread_finished)
+
             self._active_downloads[file_id] = worker
             worker.start()
+
         self.download_started.emit(file_id)
 
         return True

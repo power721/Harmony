@@ -3,6 +3,7 @@ Bootstrap - Dependency injection container.
 """
 
 import logging
+import threading
 from typing import Optional
 
 from infrastructure import HttpClient
@@ -40,6 +41,7 @@ class Bootstrap:
     """
 
     _instance: Optional["Bootstrap"] = None
+    _lock = threading.Lock()
 
     def __init__(self, db_path: str = "Harmony.db"):
         """Initialize bootstrap container."""
@@ -89,9 +91,10 @@ class Bootstrap:
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
         """Get singleton instance."""
-        if cls._instance is None:
-            cls._instance = cls(db_path)
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(db_path)
+            return cls._instance
 
     # ===== Infrastructure =====
 

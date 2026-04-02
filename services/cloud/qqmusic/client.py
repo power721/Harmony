@@ -404,8 +404,9 @@ class QQMusicClient:
         # Try quality fallback
         if quality not in APIConfig.QUALITY_FALLBACK:
             quality = APIConfig.QUALITY_FALLBACK[0]
-        for q in APIConfig.QUALITY_FALLBACK:
-            if APIConfig.QUALITY_FALLBACK.index(q) < APIConfig.QUALITY_FALLBACK.index(quality):
+        start_idx = APIConfig.QUALITY_FALLBACK.index(quality)
+        for i, q in enumerate(APIConfig.QUALITY_FALLBACK):
+            if i < start_idx:
                 continue
 
             file_type = parse_quality(q)

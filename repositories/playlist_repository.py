@@ -114,6 +114,7 @@ class SqlitePlaylistRepository(BaseRepository):
                     retry_delay *= 2
                 else:
                     raise
+        return False
 
     def remove_track(self, playlist_id: int, track_id: TrackId) -> bool:
         """Remove a track from a playlist."""

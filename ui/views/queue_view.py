@@ -2,6 +2,7 @@
 Queue view for managing the current playback queue.
 """
 
+import ast
 import logging
 from typing import List
 
@@ -194,7 +195,7 @@ class QueueTrackModel(QAbstractListModel):
             return False
 
         try:
-            source_rows = eval(data.data("application/x-queueitem").data().decode())
+            source_rows = ast.literal_eval(data.data("application/x-queueitem").data().decode())
         except Exception:
             return False
 

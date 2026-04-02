@@ -34,11 +34,11 @@ class ImageCache:
             Image data if cached, None otherwise
         """
         cache_path = cls._get_cache_path(url)
-        if cache_path and cache_path.exists():
+        if cache_path:
             try:
                 return cache_path.read_bytes()
-            except Exception as e:
-                logger.warning(f"Failed to read cached image: {e}")
+            except FileNotFoundError:
+                return None
         return None
 
     @classmethod

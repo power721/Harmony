@@ -27,8 +27,8 @@ class OrganizeFilesThread(QThread):
     progress = Signal(str)  # Emits status message
     finished = Signal(dict)  # Emits result dict
 
-    def __init__(self, file_org_service, track_ids: List[int], target_dir: str):
-        super().__init__()
+    def __init__(self, file_org_service, track_ids: List[int], target_dir: str, parent=None):
+        super().__init__(parent)
         self._file_org_service = file_org_service
         self._track_ids = track_ids
         self._target_dir = target_dir
@@ -377,7 +377,8 @@ class OrganizeFilesDialog(QDialog):
         self.organize_thread = OrganizeFilesThread(
             self._file_org_service,
             track_ids,
-            self.target_dir
+            self.target_dir,
+            parent=self
         )
         self.organize_thread.progress.connect(self._on_progress)
         self.organize_thread.finished.connect(self._on_finished)

@@ -84,6 +84,10 @@ class SleepTimerService(QObject):
             logger.info(f"Started sleep timer: {config.value} seconds, action={config.action}")
         else:
             # Track mode: listen to track_finished event
+            try:
+                self._event_bus.track_finished.disconnect(self._on_track_finished)
+            except TypeError:
+                pass
             self._event_bus.track_finished.connect(self._on_track_finished)
             logger.info(f"Started sleep timer: {config.value} tracks, action={config.action}")
 

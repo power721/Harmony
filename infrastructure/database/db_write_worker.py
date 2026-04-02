@@ -64,15 +64,17 @@ class DBWriteWorker:
     def _get_connection(self) -> sqlite3.Connection:
         """Get or create the worker's database connection."""
         if self._conn is None:
-            self._conn = sqlite3.connect(
-                self._db_path,
-                check_same_thread=False,
-                timeout=30.0
-            )
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA busy_timeout=30000")
-            logger.info("[DBWriteWorker] Connection created with WAL mode")
+            with self._start_lock:
+                if self._conn is None:
+                    self._conn = sqlite3.connect(
+                        self._db_path,
+                        check_same_thread=False,
+                        timeout=30.0
+                    )
+                    self._conn.row_factory = sqlite3.Row
+                    self._conn.execute("PRAGMA journal_mode=WAL")
+                    self._conn.execute("PRAGMA busy_timeout=30000")
+                    logger.info("[DBWriteWorker] Connection created with WAL mode")
         return self._conn
 
     def _run(self):
@@ -115,8 +117,8 @@ class DBWriteWorker:
             try:
                 self._conn.close()
                 logger.info("[DBWriteWorker] Connection closed")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[DBWriteWorker] Error closing connection: {e}")
             self._conn = None
 
         logger.info("[DBWriteWorker] Stopped")

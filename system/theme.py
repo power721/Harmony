@@ -7,6 +7,7 @@ Real-time theme switching via widget registration and refresh mechanism.
 """
 
 import logging
+import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional, Dict
@@ -149,6 +150,7 @@ class ThemeManager(QObject):
     """Manage application theme and colors with real-time switching support."""
 
     _instance: Optional['ThemeManager'] = None
+    _lock = threading.Lock()
 
     # Signal emitted when theme changes
     theme_changed = Signal(Theme)
@@ -177,11 +179,12 @@ class ThemeManager(QObject):
         Returns:
             ThemeManager singleton instance
         """
-        if cls._instance is None:
-            if config is None:
-                raise ValueError("ConfigManager required for first initialization")
-            cls._instance = cls(config)
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                if config is None:
+                    raise ValueError("ConfigManager required for first initialization")
+                cls._instance = cls(config)
+            return cls._instance
 
     def _load_theme(self) -> Theme:
         """Load theme from config or return default."""
@@ -267,7 +270,7 @@ class ThemeManager(QObject):
                 try:
                     widget.refresh_theme()
                 except Exception as e:
-                    logger.warning(f"Failed to refresh widget {widget.__class__.__name__}: {e}")
+                    logger.error(f"Failed to refresh widget {widget.__class__.__name__}: {e}", exc_info=True)
 
     def register_widget(self, widget: QWidget):
         """

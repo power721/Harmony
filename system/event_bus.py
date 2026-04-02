@@ -6,6 +6,7 @@ all application-wide signals, reducing coupling between components.
 """
 
 import logging
+import threading
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
@@ -149,12 +150,14 @@ class EventBus(QObject):
 
     # Singleton instance
     _instance: Optional["EventBus"] = None
+    _lock = threading.Lock()
 
     @classmethod
     def instance(cls) -> "EventBus":
         """Get the singleton EventBus instance."""
-        if cls._instance is None:
-            cls._instance = cls()
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls()
         return cls._instance
 
     @classmethod

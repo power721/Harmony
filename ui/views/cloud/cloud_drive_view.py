@@ -1605,3 +1605,15 @@ class CloudDriveView(QWidget):
             return f"{size_bytes / (1024 * 1024):.1f} MB"
         else:
             return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+    def closeEvent(self, event):
+        """Disconnect EventBus connections to prevent leaked signal handlers."""
+        if self._event_bus:
+            try:
+                self._event_bus.download_started.disconnect(self._on_event_bus_download_started)
+                self._event_bus.download_completed.disconnect(self._on_event_bus_download_completed)
+                self._event_bus.track_changed.disconnect(self._on_track_changed)
+                self._event_bus.playback_state_changed.disconnect(self._on_playback_state_changed)
+            except (TypeError, RuntimeError):
+                pass
+        super().closeEvent(event)

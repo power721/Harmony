@@ -309,11 +309,15 @@ class QQMusicQRLogin:
             return QRCodeLoginEvents.OTHER, None
 
         data = [p.strip("'") for p in match.group(1).split(",")]
+        if len(data) < 1:
+            return QRCodeLoginEvents.OTHER, None
         code_str = data[0]
 
         if code_str.isdigit():
             event = QRCodeLoginEvents.get_by_value(int(code_str))
             if event == QRCodeLoginEvents.DONE:
+                if len(data) < 3:
+                    return QRCodeLoginEvents.OTHER, None
                 try:
                     sigx = re.findall(r"&ptsigx=(.+?)&s_url", data[2])[0]
                     uin = re.findall(r"&uin=(.+?)&service", data[2])[0]

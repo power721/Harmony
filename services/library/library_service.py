@@ -157,6 +157,7 @@ class LibraryService:
             immediate: If True, refresh immediately; otherwise debounce
         """
         if immediate:
+            self._refresh_timer.stop()
             self._do_refresh()
         else:
             self._refresh_albums_artist_async()

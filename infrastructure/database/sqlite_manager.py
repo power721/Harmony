@@ -1549,7 +1549,7 @@ class DatabaseManager:
         # Check if we're in the write worker thread - execute directly
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_update_track_path(track_id, path, conn=self._write_worker._conn)
+            return self._do_update_track_path(track_id, path, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_update_track_path, track_id, path)
         return future.result(timeout=10.0)
@@ -1580,7 +1580,7 @@ class DatabaseManager:
         """Create a new playlist. Returns playlist ID."""
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_create_playlist(name, conn=self._write_worker._conn)
+            return self._do_create_playlist(name, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_create_playlist, name)
         return future.result(timeout=10.0)
@@ -1674,7 +1674,7 @@ class DatabaseManager:
         # Check if we're in the write worker thread - execute directly
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_add_track_to_playlist(playlist_id, track_id, conn=self._write_worker._conn)
+            return self._do_add_track_to_playlist(playlist_id, track_id, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_add_track_to_playlist, playlist_id, track_id)
         return future.result(timeout=10.0)
@@ -1717,7 +1717,7 @@ class DatabaseManager:
         """Remove a track from a playlist."""
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_remove_track_from_playlist(playlist_id, track_id, conn=self._write_worker._conn)
+            return self._do_remove_track_from_playlist(playlist_id, track_id, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_remove_track_from_playlist, playlist_id, track_id)
         return future.result(timeout=10.0)
@@ -1758,7 +1758,7 @@ class DatabaseManager:
         """Delete a playlist."""
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_delete_playlist(playlist_id, conn=self._write_worker._conn)
+            return self._do_delete_playlist(playlist_id, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_delete_playlist, playlist_id)
         return future.result(timeout=10.0)
@@ -1778,7 +1778,7 @@ class DatabaseManager:
         """Rename a playlist."""
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_rename_playlist(playlist_id, new_name, conn=self._write_worker._conn)
+            return self._do_rename_playlist(playlist_id, new_name, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_rename_playlist, playlist_id, new_name)
         return future.result(timeout=10.0)
@@ -1801,7 +1801,7 @@ class DatabaseManager:
         """Remove a track from the library (does not delete the file)."""
         current_thread = threading.current_thread()
         if current_thread.name == "DBWriteWorker":
-            return self._do_remove_track(track_id, conn=self._write_worker._conn)
+            return self._do_remove_track(track_id, conn=self._write_worker._get_connection())
 
         future = self._submit_write(self._do_remove_track, track_id)
         return future.result(timeout=10.0)

@@ -28,8 +28,8 @@ class VerifyLoginThread(QThread):
 
     verified = Signal(bool, str, int)  # valid, nick, uin
 
-    def __init__(self, credential: dict):
-        super().__init__()
+    def __init__(self, credential: dict, parent=None):
+        super().__init__(parent)
         self._credential = credential
 
     def run(self):
@@ -1116,7 +1116,7 @@ class GeneralSettingsDialog(QDialog):
                     self._verify_thread.quit()
                     self._verify_thread.wait()
 
-                self._verify_thread = VerifyLoginThread(credential)
+                self._verify_thread = VerifyLoginThread(credential, parent=self)
                 self._verify_thread.verified.connect(
                     lambda valid, nick, uin: self._on_login_verified(valid, nick, uin, musicid, login_type)
                 )

@@ -108,7 +108,10 @@ class HttpClient:
                                          timeout=self.timeout)
             response.raise_for_status()
 
-            total_size = int(response.headers.get('content-length', 0))
+            try:
+                total_size = int(response.headers.get('content-length', 0))
+            except (ValueError, TypeError):
+                total_size = 0
             downloaded = 0
 
             with open(dest_path, 'wb') as f:

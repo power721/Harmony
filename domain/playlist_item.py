@@ -2,14 +2,11 @@
 Unified playlist item model for local and cloud playback.
 """
 
-import logging
 import os
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 from .track import TrackSource
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from domain.track import Track

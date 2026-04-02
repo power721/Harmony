@@ -806,7 +806,8 @@ class SqliteTrackRepository(BaseRepository):
 
             conn.commit()
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error syncing track artists: {e}")
             return False
 
     def rebuild_track_artists(self) -> int:

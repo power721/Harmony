@@ -105,6 +105,7 @@ class OnlineItemDelegate(QStyledItemDelegate):
         self._cover_cache = OrderedDict()  # LRU cache for loaded covers
         self._cache_max_size = 500
         self._pending_downloads = set()  # Track URLs being downloaded
+        self._executor = None  # ThreadPoolExecutor for async downloads
 
         self._default_cover = self._create_default_cover()
 
@@ -194,9 +195,11 @@ class OnlineItemDelegate(QStyledItemDelegate):
                     logger.warning(f"Failed to download cover from {url}: {e}")
                     return None
 
-            # Run in background thread
-            executor = ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(download)
+            # Reuse single executor instance
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(max_workers=1)
+
+            future = self._executor.submit(download)
 
             # Check completion after a short delay
             from PySide6.QtCore import QTimer
@@ -208,7 +211,6 @@ class OnlineItemDelegate(QStyledItemDelegate):
                         ImageCache.set(url, image_data)
                         self._load_cached_cover(url, image_data)
                     self._pending_downloads.discard(url)
-                    executor.shutdown(wait=False)
                 else:
                     # Check again later
                     QTimer.singleShot(100, check_download)
@@ -420,6 +422,9 @@ class OnlineItemDelegate(QStyledItemDelegate):
         """Clear cover cache and pending downloads."""
         self._cover_cache.clear()
         self._pending_downloads.clear()
+        if self._executor:
+            self._executor.shutdown(wait=False)
+            self._executor = None
 
     def refresh_theme(self):
         """Refresh default cover when theme changes."""
