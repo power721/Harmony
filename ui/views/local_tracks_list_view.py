@@ -75,21 +75,27 @@ class LocalTrackModel(QAbstractListModel):
         }
 
     def reset_tracks(self, tracks: List[Track], favorite_ids: set):
+        self.blockSignals(True)
         self.beginResetModel()
         self._tracks = list(tracks)
         self._favorite_ids = set(favorite_ids)
         self.endResetModel()
+        self.blockSignals(False)
 
     def update_favorites(self, favorite_ids: set):
         """Update favorite IDs and emit dataChanged for affected rows."""
         old_favs = self._favorite_ids
         self._favorite_ids = set(favorite_ids)
 
-        # Find rows that changed
+        # Find rows that changed and batch emit
+        changed_indices = []
         for i, track in enumerate(self._tracks):
             if track and (track.id in old_favs) != (track.id in self._favorite_ids):
-                idx = self.index(i)
-                self.dataChanged.emit(idx, idx, [self.IsFavoriteRole])
+                changed_indices.append(i)
+        if changed_indices:
+            first = self.index(min(changed_indices))
+            last = self.index(max(changed_indices))
+            self.dataChanged.emit(first, last, [self.IsFavoriteRole])
 
     def get_track_at(self, row: int):
         if 0 <= row < len(self._tracks):
@@ -105,10 +111,14 @@ class LocalTrackModel(QAbstractListModel):
         """Update the current track and emit dataChanged for affected rows."""
         old_track_id = self._current_track_id
         self._current_track_id = track_id
+        changed_indices = []
         for i, track in enumerate(self._tracks):
             if track and (track.id == old_track_id or track.id == track_id):
-                idx = self.index(i)
-                self.dataChanged.emit(idx, idx, [self.IsCurrentRole, self.IsPlayingRole])
+                changed_indices.append(i)
+        if changed_indices:
+            first = self.index(min(changed_indices))
+            last = self.index(max(changed_indices))
+            self.dataChanged.emit(first, last, [self.IsCurrentRole, self.IsPlayingRole])
 
     def set_playing(self, playing: bool):
         """Update playing state and emit dataChanged for current track."""
@@ -217,6 +227,11 @@ class LocalTrackDelegate(QStyledItemDelegate):
         return QSize(0, 82)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+        # Skip off-screen items
+        parent_view = self.parent()
+        if parent_view and (option.rect.bottom() < 0 or option.rect.top() > parent_view.height()):
+            return
+
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
 

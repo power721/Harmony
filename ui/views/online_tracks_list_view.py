@@ -162,6 +162,11 @@ class OnlineTracksDelegate(QStyledItemDelegate):
         return QSize(0, 82)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+        # Skip off-screen items
+        parent_view = self.parent()
+        if parent_view and (option.rect.bottom() < 0 or option.rect.top() > parent_view.height()):
+            return
+
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
 

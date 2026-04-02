@@ -51,6 +51,12 @@ def temp_db():
         )
     """)
 
+    # Create unique index for UPSERT support
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_track_unique
+            ON play_history(track_id)
+    """)
+
     conn.commit()
     conn.close()
 

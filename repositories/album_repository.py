@@ -190,19 +190,16 @@ class SqliteAlbumRepository(BaseRepository):
         # Clear albums table
         cursor.execute("DELETE FROM albums")
 
-        # Rebuild from tracks with cover_path from first track
+        # Rebuild from tracks with aggregate cover lookup
         cursor.execute("""
             INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
             SELECT
                 album as name,
                 artist,
-                (SELECT cover_path FROM tracks t2
-                 WHERE t2.album = t.album AND t2.artist = t.artist
-                 AND t2.cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 SUM(duration) as total_duration
-            FROM tracks t
+            FROM tracks
             WHERE album IS NOT NULL AND album != ''
             GROUP BY album, artist
         """)

@@ -101,19 +101,21 @@ class QueueTrackModel(QAbstractListModel):
         }
 
     def reset_tracks(self, tracks: list, selected_rows: set = None):
+        self.blockSignals(True)
         self.beginResetModel()
         self._tracks = list(tracks)
         self._selection = set(selected_rows) if selected_rows else set()
         self.endResetModel()
+        self.blockSignals(False)
 
     def set_selection(self, rows: set):
         old = self._selection.copy()
         self._selection = set(rows)
         changed = old.symmetric_difference(self._selection)
-        for row in changed:
-            idx = self.index(row)
-            if idx.isValid():
-                self.dataChanged.emit(idx, idx, [self.IsSelectedRole])
+        if changed:
+            first = self.index(min(changed))
+            last = self.index(max(changed))
+            self.dataChanged.emit(first, last, [self.IsSelectedRole])
 
     def set_current(self, index: int):
         old = self._current_index
@@ -349,6 +351,11 @@ class QueueItemDelegate(QStyledItemDelegate):
         return QSize(0, 82)
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+        # Skip off-screen items
+        parent_view = self.parent()
+        if parent_view and (option.rect.bottom() < 0 or option.rect.top() > parent_view.height()):
+            return
+
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
 

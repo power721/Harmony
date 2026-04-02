@@ -81,28 +81,16 @@ class SqliteFavoriteRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Check if already exists
-        if track_id is not None:
-            cursor.execute(
-                "SELECT 1 FROM favorites WHERE track_id = ? LIMIT 1",
-                (track_id,)
-            )
-        elif cloud_file_id is not None:
-            cursor.execute(
-                "SELECT 1 FROM favorites WHERE cloud_file_id = ? LIMIT 1",
-                (cloud_file_id,)
-            )
-        else:
+        # Use INSERT OR IGNORE with partial unique indexes for atomic dedup
+        if track_id is None and cloud_file_id is None:
             return False
 
-        if cursor.fetchone() is not None:
-            return False  # Already exists
-
-        # Add favorite
         cursor.execute(
-            "INSERT INTO favorites (track_id, cloud_file_id, cloud_account_id) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO favorites (track_id, cloud_file_id, cloud_account_id) VALUES (?, ?, ?)",
             (track_id, cloud_file_id, cloud_account_id)
         )
+        if cursor.rowcount == 0:
+            return False  # Already exists
         conn.commit()
         return True
 

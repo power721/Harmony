@@ -35,25 +35,12 @@ class SqliteHistoryRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Check if track already exists in history
-        cursor.execute(
-            "SELECT id FROM play_history WHERE track_id = ? LIMIT 1",
-            (track_id,)
-        )
-        existing = cursor.fetchone()
-
-        if existing:
-            # Update timestamp instead of inserting new record
-            cursor.execute(
-                "UPDATE play_history SET played_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (existing["id"],)
-            )
-        else:
-            # Insert new record
-            cursor.execute(
-                "INSERT INTO play_history (track_id) VALUES (?)",
-                (track_id,)
-            )
+        # Single UPSERT: update timestamp if exists, insert if not
+        cursor.execute("""
+            INSERT INTO play_history (track_id, played_at)
+            VALUES (?, CURRENT_TIMESTAMP)
+            ON CONFLICT(track_id) DO UPDATE SET played_at = CURRENT_TIMESTAMP
+        """, (track_id,))
 
         conn.commit()
         return True

@@ -43,6 +43,11 @@ class DatabaseManager:
             self.local.conn.execute("PRAGMA journal_mode=WAL")
             # Set busy timeout for this connection
             self.local.conn.execute("PRAGMA busy_timeout=30000")
+            # Performance optimizations
+            self.local.conn.execute("PRAGMA synchronous=NORMAL")
+            self.local.conn.execute("PRAGMA cache_size=-10000")
+            self.local.conn.execute("PRAGMA temp_store=MEMORY")
+            self.local.conn.execute("PRAGMA foreign_keys=ON")
         return self.local.conn
 
     def _submit_write(self, func: Callable, *args, **kwargs) -> Future:
@@ -293,6 +298,11 @@ class DatabaseManager:
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_tracks_created_at
                            ON tracks(created_at DESC)
+                       """)
+        # Index for genre queries
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_genre
+                           ON tracks(genre)
                        """)
 
         # H-02: Indexes for favorites table
@@ -675,7 +685,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 8
+        CURRENT_SCHEMA_VERSION = 9
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -965,6 +975,31 @@ class DatabaseManager:
         if 'total_duration' not in genre_columns:
             cursor.execute("ALTER TABLE genres ADD COLUMN total_duration REAL DEFAULT 0.0")
             logger.info("[Database] Added 'total_duration' column to genres table")
+
+        # Migration 9: Add unique indexes for UPSERT/INSERT OR IGNORE support
+        if stored_version < 9:
+            # Deduplicate play_history: keep only the most recent entry per track_id
+            cursor.execute("""
+                DELETE FROM play_history WHERE id NOT IN (
+                    SELECT MAX(id) FROM play_history GROUP BY track_id
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_track_unique
+                    ON play_history(track_id)
+            """)
+            # Add partial unique indexes for favorites
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_track_unique
+                    ON favorites(track_id)
+                    WHERE track_id IS NOT NULL
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
+                    ON favorites(cloud_file_id)
+                    WHERE cloud_file_id IS NOT NULL
+            """)
+            logger.info("[Database] Added unique indexes for UPSERT support")
 
         # Update schema version after all migrations complete
         if schema_changed:

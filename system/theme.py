@@ -166,6 +166,8 @@ class ThemeManager(QObject):
         self._config = config
         self._current_theme = self._load_theme()
         self._widgets: WeakSet[QWidget] = WeakSet()
+        self._qss_cache: dict = {}
+        self._global_qss_template: str | None = None
         logger.info(f"ThemeManager initialized with theme: {self._current_theme.name}")
 
     @classmethod
@@ -237,6 +239,7 @@ class ThemeManager(QObject):
             name = 'dark'
 
         self._current_theme = PRESET_THEMES[name]
+        self._qss_cache.clear()
         from system.config import SettingKey
         self._config.set(SettingKey.UI_THEME, name)
         self._config.delete(SettingKey.UI_THEME_CUSTOM)
@@ -252,6 +255,7 @@ class ThemeManager(QObject):
             theme: Custom Theme instance
         """
         self._current_theme = theme
+        self._qss_cache.clear()
         from system.config import SettingKey
         self._config.set(SettingKey.UI_THEME, 'custom')
         self._config.set(SettingKey.UI_THEME_CUSTOM, theme.to_dict())
@@ -292,6 +296,11 @@ class ThemeManager(QObject):
             QSS string with tokens replaced by actual colors
         """
         theme = self._current_theme
+        # Use hash of template + theme name as cache key
+        cache_key = (hash(template), theme.name)
+        cached = self._qss_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         # Token replacement map
         tokens = {
@@ -310,6 +319,7 @@ class ThemeManager(QObject):
         for token, color in tokens.items():
             result = result.replace(token, color)
 
+        self._qss_cache[cache_key] = result
         return result
 
     @staticmethod
@@ -370,8 +380,10 @@ class ThemeManager(QObject):
         qss_path = Path(__file__).parent.parent / "ui" / "styles.qss"
         if qss_path.exists():
             try:
-                template = qss_path.read_text(encoding="utf-8")
-                themed_qss = self.get_qss(template)
+                # Cache the template to avoid re-reading from disk
+                if self._global_qss_template is None:
+                    self._global_qss_template = qss_path.read_text(encoding="utf-8")
+                themed_qss = self.get_qss(self._global_qss_template)
                 app.setStyleSheet(themed_qss)
                 logger.info("Global stylesheet applied")
             except Exception as e:

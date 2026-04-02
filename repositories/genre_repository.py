@@ -52,13 +52,11 @@ class SqliteGenreRepository(BaseRepository):
                     for row in rows
                 ]
 
-        # Fallback to direct query (slower)
+        # Fallback to direct query with aggregate cover lookup
         cursor.execute("""
             SELECT
                 t.genre as name,
-                (SELECT t2.cover_path FROM tracks t2
-                 WHERE t2.genre = t.genre AND t2.cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN t.cover_path IS NOT NULL THEN t.cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT t.album) as album_count,
                 SUM(t.duration) as total_duration
@@ -116,9 +114,7 @@ class SqliteGenreRepository(BaseRepository):
         cursor.execute("""
             SELECT
                 t.genre as name,
-                (SELECT t2.cover_path FROM tracks t2
-                 WHERE t2.genre = t.genre AND t2.cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN t.cover_path IS NOT NULL THEN t.cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT t.album) as album_count,
                 SUM(t.duration) as total_duration
@@ -176,19 +172,16 @@ class SqliteGenreRepository(BaseRepository):
         # Clear genres table
         cursor.execute("DELETE FROM genres")
 
-        # Rebuild from tracks with cover_path from first track
+        # Rebuild from tracks with aggregate cover lookup
         cursor.execute("""
             INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
             SELECT
                 genre as name,
-                (SELECT cover_path FROM tracks t2
-                 WHERE t2.genre = t.genre
-                 AND t2.cover_path IS NOT NULL
-                 LIMIT 1) as cover_path,
+                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
                 COUNT(*) as song_count,
                 COUNT(DISTINCT album) as album_count,
                 SUM(duration) as total_duration
-            FROM tracks t
+            FROM tracks
             WHERE genre IS NOT NULL AND genre != ''
             GROUP BY genre
         """)
@@ -206,32 +199,20 @@ class SqliteGenreRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Get genres without covers that have tracks with covers
         cursor.execute("""
-            SELECT g.name
-            FROM genres g
-            WHERE g.cover_path IS NULL
+            UPDATE genres SET cover_path = (
+                SELECT cover_path FROM tracks
+                WHERE genre = genres.name AND cover_path IS NOT NULL
+                LIMIT 1
+            )
+            WHERE cover_path IS NULL
             AND EXISTS (
-                SELECT 1 FROM tracks t
-                WHERE t.genre = g.name AND t.cover_path IS NOT NULL
+                SELECT 1 FROM tracks
+                WHERE genre = genres.name AND cover_path IS NOT NULL
                 LIMIT 1
             )
         """)
-        genres = [row["name"] for row in cursor.fetchall()]
-
-        fixed = 0
-        for genre_name in genres:
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE genre = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (genre_name,))
-            row = cursor.fetchone()
-            if row and row["cover_path"]:
-                cursor.execute("""
-                    UPDATE genres SET cover_path = ? WHERE name = ?
-                """, (row["cover_path"], genre_name))
-                fixed += 1
+        fixed = cursor.rowcount
 
         conn.commit()
         return fixed

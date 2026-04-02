@@ -51,6 +51,18 @@ def temp_db():
         )
     """)
 
+    # Create unique indexes for INSERT OR IGNORE support
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_track_unique
+            ON favorites(track_id)
+            WHERE track_id IS NOT NULL
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
+            ON favorites(cloud_file_id)
+            WHERE cloud_file_id IS NOT NULL
+    """)
+
     conn.commit()
     conn.close()
 
