@@ -12,7 +12,7 @@ import requests
 
 from .crypto import generate_sign
 from .common import (
-    APIConfig, get_guid, get_search_id, parse_quality, SongFileType,
+    APIConfig, get_guid, get_search_id, parse_quality, SongFileType, normalize_quality,
     SearchType, parse_search_type
 )
 
@@ -390,7 +390,7 @@ class QQMusicClient:
 
         Args:
             song_mid: Song MID (can be comma-separated for multiple songs)
-            quality: Audio quality (master/atmos/flac/320/128)
+            quality: Audio quality code, alias, or display name
 
         Returns:
             Dictionary with song URLs
@@ -400,6 +400,8 @@ class QQMusicClient:
 
         if not mids:
             return {}
+
+        quality = normalize_quality(quality)
 
         # Try quality fallback
         if quality not in APIConfig.QUALITY_FALLBACK:

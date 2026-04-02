@@ -18,6 +18,11 @@ from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.progress_dialog import ProgressDialog
+from services.cloud.qqmusic.common import (
+    get_selectable_qualities,
+    get_quality_label_key,
+    normalize_quality,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -316,17 +321,11 @@ class GeneralSettingsDialog(QDialog):
         quality_label = QLabel(t("qqmusic_quality"))
         self._quality_combo = QComboBox()
         self._quality_combo.setFixedWidth(300)
-        # Add items
-        self._quality_combo.addItem(t("qqmusic_quality_master"))
-        self._quality_combo.setItemData(0, "master", Qt.UserRole)
-        self._quality_combo.addItem(t("qqmusic_quality_atmos"))
-        self._quality_combo.setItemData(1, "atmos", Qt.UserRole)
-        self._quality_combo.addItem(t("qqmusic_quality_flac"))
-        self._quality_combo.setItemData(2, "flac", Qt.UserRole)
-        self._quality_combo.addItem(t("qqmusic_quality_320"))
-        self._quality_combo.setItemData(3, "320", Qt.UserRole)
-        self._quality_combo.addItem(t("qqmusic_quality_128"))
-        self._quality_combo.setItemData(4, "128", Qt.UserRole)
+        for quality in get_selectable_qualities():
+            label_key = get_quality_label_key(quality)
+            label = t(label_key) if label_key else quality
+            self._quality_combo.addItem(label)
+            self._quality_combo.setItemData(self._quality_combo.count() - 1, quality, Qt.UserRole)
         quality_layout.addWidget(quality_label)
         quality_layout.addWidget(self._quality_combo)
         quality_layout.addStretch()
@@ -937,7 +936,7 @@ class GeneralSettingsDialog(QDialog):
         self._acoustid_api_key_input.setEnabled(acoustid_enabled)
 
         # QQ Music quality setting
-        qqmusic_quality = str(self._config.get_qqmusic_quality())
+        qqmusic_quality = normalize_quality(str(self._config.get_qqmusic_quality()))
         for i in range(self._quality_combo.count()):
             if self._quality_combo.itemData(i) == qqmusic_quality:
                 self._quality_combo.setCurrentIndex(i)

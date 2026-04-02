@@ -11,6 +11,11 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from services.cloud.qqmusic.common import (
+    get_selectable_qualities,
+    get_quality_label_key,
+    normalize_quality,
+)
 
 
 class RedownloadDialog(QDialog):
@@ -110,17 +115,13 @@ class RedownloadDialog(QDialog):
 
         self._quality_combo = QComboBox()
         self._quality_combo.setCursor(Qt.PointingHandCursor)
-        qualities = [
-            ("master", t("qqmusic_quality_master")),
-            ("atmos", t("qqmusic_quality_atmos")),
-            ("flac", t("qqmusic_quality_flac")),
-            ("320", t("qqmusic_quality_320")),
-            ("128", t("qqmusic_quality_128")),
-        ]
-        default_index = 2  # "320"
-        for i, (value, label) in enumerate(qualities):
+        normalized_current = normalize_quality(current_quality or "320")
+        default_index = 0
+        for i, value in enumerate(get_selectable_qualities()):
+            label_key = get_quality_label_key(value)
+            label = t(label_key) if label_key else value
             self._quality_combo.addItem(label, value)
-            if current_quality and value == current_quality:
+            if value == normalized_current:
                 default_index = i
         self._quality_combo.setCurrentIndex(default_index)
         quality_row.addWidget(self._quality_combo)
