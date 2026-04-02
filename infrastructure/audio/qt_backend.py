@@ -85,6 +85,9 @@ class QtAudioBackend(AudioBackend):
     def cleanup(self):
         self._player.stop()
 
+    def supports_visualizer(self) -> bool:
+        return False
+
     def _on_state_changed(self, state):
         if state == QMediaPlayer.PlaybackState.PlayingState:
             self.state_changed.emit(self.STATE_PLAYING)

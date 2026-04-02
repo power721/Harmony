@@ -143,3 +143,14 @@ def test_qt_backend_control_and_signal_mapping(monkeypatch):
     assert caps.treble_boost is False
     assert caps.reverb is False
     assert caps.stereo_enhance is False
+
+
+def test_qt_backend_reports_visualizer_unsupported(monkeypatch):
+    monkeypatch.setattr(qt_backend, "QMediaPlayer", _FakeQMediaPlayer)
+    monkeypatch.setattr(qt_backend, "QAudioOutput", _FakeQAudioOutput)
+    monkeypatch.setattr(qt_backend, "QUrl", _FakeQUrl)
+
+    backend = qt_backend.QtAudioBackend()
+
+    assert backend.supports_visualizer() is False
+    assert hasattr(backend, "visualizer_frame")
