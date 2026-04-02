@@ -318,14 +318,6 @@ class LibraryView(QWidget):
         self._title_label.setObjectName("libraryTitle")
         header_layout.addWidget(self._title_label)
 
-        # View toggle button (for history view)
-        self._view_toggle_btn = QPushButton()
-        self._view_toggle_btn.setFixedSize(32, 32)
-        self._view_toggle_btn.setToolTip(t("toggle_view"))
-        self._view_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self._view_toggle_btn.setVisible(False)  # Only visible in history view
-        header_layout.addWidget(self._view_toggle_btn)
-
         header_layout.addStretch()
 
         # Source filter dropdown
@@ -351,60 +343,19 @@ class LibraryView(QWidget):
 
         layout.addLayout(header_layout)
 
-        # Stacked widget for library/history pages
+        # Stacked widget for library/favorites/history list pages
         self._stacked_widget = QStackedWidget()
         layout.addWidget(self._stacked_widget)
 
-        # Library page (page 0)
-        self._library_page = QWidget()
-        library_page_layout = QVBoxLayout(self._library_page)
-        library_page_layout.setContentsMargins(0, 0, 0, 0)
-        library_page_layout.setSpacing(0)
-
-        self._library_content_stack = QStackedWidget()
-        library_page_layout.addWidget(self._library_content_stack)
-
         # All tracks list view
         self._all_tracks_list_view = LocalTracksListView(show_index=True, show_source=True)
-        self._library_content_stack.addWidget(self._all_tracks_list_view)
+        self._stacked_widget.addWidget(self._all_tracks_list_view)
 
-        # Tracks table
-        self._tracks_table = QTableWidget()
-        self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(7)
-        self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration"), ""]
-        )
+        # Favorites list view
+        self._favorites_list_view = LocalTracksListView(show_index=True, show_source=True)
+        self._stacked_widget.addWidget(self._favorites_list_view)
 
-        # Configure table
-        self._tracks_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._tracks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._tracks_table.setAlternatingRowColors(True)
-        self._tracks_table.verticalHeader().setVisible(False)
-        self._tracks_table.horizontalHeader().setStretchLastSection(False)
-        self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
-        # Disable editing
-        self._tracks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        # Remove focus outline
-        self._tracks_table.setFocusPolicy(Qt.NoFocus)
-
-        # Set column widths
-        header = self._tracks_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        # Favorites: fixed small width
-        header.setSectionResizeMode(6, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(6, 40)
-
-        self._library_content_stack.addWidget(self._tracks_table)
-        self._stacked_widget.addWidget(self._library_page)
-
-        # History list view (page 1)
+        # History list view
         self._history_list_view = HistoryListView()
         self._stacked_widget.addWidget(self._history_list_view)
 
@@ -418,9 +369,6 @@ class LibraryView(QWidget):
         self._status_label = QLabel(t("no_tracks"))
         layout.addWidget(self._status_label)
 
-        # Load view mode preference
-        self._load_view_mode()
-
         # Apply themed styles
         self.refresh_theme()
 
@@ -432,7 +380,6 @@ class LibraryView(QWidget):
         self._search_timer.setInterval(300)
         self._search_timer.timeout.connect(self._on_search)
         self._source_filter.currentIndexChanged.connect(self._on_source_filter_changed)
-        self._tracks_table.itemDoubleClicked.connect(self._on_item_double_clicked)
         self._all_tracks_list_view.track_activated.connect(self._on_all_tracks_track_activated)
         self._all_tracks_list_view.play_requested.connect(self._on_all_tracks_play_requested)
         self._all_tracks_list_view.insert_to_queue_requested.connect(self._on_all_tracks_insert_to_queue)
@@ -449,8 +396,19 @@ class LibraryView(QWidget):
             self._on_all_tracks_scroll_changed
         )
 
-        # View toggle button
-        self._view_toggle_btn.clicked.connect(self._toggle_history_view_mode)
+        # Favorites list view
+        self._favorites_list_view.track_activated.connect(self._on_favorites_track_activated)
+        self._favorites_list_view.play_requested.connect(self._on_all_tracks_play_requested)
+        self._favorites_list_view.insert_to_queue_requested.connect(self._on_all_tracks_insert_to_queue)
+        self._favorites_list_view.add_to_queue_requested.connect(self._on_all_tracks_add_to_queue)
+        self._favorites_list_view.add_to_playlist_requested.connect(self._on_all_tracks_add_to_playlist)
+        self._favorites_list_view.favorites_toggle_requested.connect(self._on_favorites_favorites_toggle)
+        self._favorites_list_view.edit_info_requested.connect(self._on_all_tracks_edit_info)
+        self._favorites_list_view.download_cover_requested.connect(self._on_all_tracks_download_cover)
+        self._favorites_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
+        self._favorites_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
+        self._favorites_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
+        self._favorites_list_view.redownload_requested.connect(self._redownload_qq_track)
 
         # History list view
         self._history_list_view.track_activated.connect(self._on_history_track_activated)
@@ -475,6 +433,7 @@ class LibraryView(QWidget):
         # Connect to file organization events
         event_bus = EventBus.instance()
         event_bus.tracks_organized.connect(self._on_tracks_organized)
+        event_bus.favorite_changed.connect(self._on_favorite_changed)
 
     def refresh_theme(self):
         """Apply themed styles from ThemeManager."""
@@ -500,11 +459,6 @@ class LibraryView(QWidget):
         # Update UI texts
         self._search_input.setPlaceholderText(t("search_tracks"))
 
-        # Update table headers
-        self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), t("title"), t("artist"), t("album"), t("genre"), t("duration"), ""]
-        )
-
         # Update title based on current view
         if self._current_view == "all":
             self._title_label.setText(t("library"))
@@ -514,12 +468,14 @@ class LibraryView(QWidget):
             self._title_label.setText(t("history"))
 
         # Reload data
-        self._stacked_widget.setCurrentIndex(0)
         if self._current_view == "all":
+            self._stacked_widget.setCurrentWidget(self._all_tracks_list_view)
             self._load_all_tracks()
         elif self._current_view == "favorites":
+            self._stacked_widget.setCurrentWidget(self._favorites_list_view)
             self._load_favorites()
         elif self._current_view == "history":
+            self._stacked_widget.setCurrentWidget(self._history_list_view)
             self._load_history()
 
     def get_current_view(self) -> str:
@@ -537,11 +493,7 @@ class LibraryView(QWidget):
 
         self._current_view = "all"
         self._title_label.setText(t("library"))
-
-        # Hide view toggle button for non-history views
-        self._view_toggle_btn.setVisible(False)
-        self._stacked_widget.setCurrentIndex(0)
-        self._library_content_stack.setCurrentWidget(self._all_tracks_list_view)
+        self._stacked_widget.setCurrentWidget(self._all_tracks_list_view)
 
         # Show source filter for library view
         self._source_filter.setVisible(True)
@@ -569,11 +521,7 @@ class LibraryView(QWidget):
 
         self._current_view = "favorites"
         self._title_label.setText(t("favorites"))
-
-        # Hide view toggle button for non-history views
-        self._view_toggle_btn.setVisible(False)
-        self._stacked_widget.setCurrentIndex(0)
-        self._library_content_stack.setCurrentWidget(self._tracks_table)
+        self._stacked_widget.setCurrentWidget(self._favorites_list_view)
 
         # Hide source filter for favorites view
         self._source_filter.setVisible(False)
@@ -596,11 +544,7 @@ class LibraryView(QWidget):
 
         self._current_view = "history"
         self._title_label.setText(t("history"))
-        self._library_content_stack.setCurrentWidget(self._tracks_table)
-
-        # Show view toggle button for history
-        self._view_toggle_btn.setVisible(True)
-        self._update_view_toggle_icon()
+        self._stacked_widget.setCurrentWidget(self._history_list_view)
 
         # Hide source filter for history view
         self._source_filter.setVisible(False)
@@ -615,6 +559,26 @@ class LibraryView(QWidget):
         else:
             # 否则加载历史记录
             self._load_history()
+
+    def _current_list_view(self):
+        """Return the active list view for the current library subview."""
+        if self._current_view == "favorites":
+            return self._favorites_list_view
+        if self._current_view == "history":
+            return self._history_list_view
+        return self._all_tracks_list_view
+
+    def _reload_current_list_view(self):
+        """Reload the active library subview while preserving current search text."""
+        query = self._search_input.text().strip()
+        if query:
+            self._on_search(query)
+        elif self._current_view == "favorites":
+            self._load_favorites()
+        elif self._current_view == "history":
+            self._load_history()
+        else:
+            self._load_all_tracks()
 
     def _load_all_tracks(self):
         """Load the first page of all tracks into the virtualized list view."""
@@ -788,16 +752,17 @@ class LibraryView(QWidget):
         self._status_label.setText(f"{total_rows} {t('tracks')}")
 
     def _load_favorites(self):
-        """Load favorite tracks and cloud files."""
+        """Load favorite tracks into the favorites list view."""
         self._loading_label.setVisible(True)
-        self._tracks_table.setVisible(False)
+        self._stacked_widget.setVisible(False)
 
-        favorites = self._favorites_service.get_favorites_with_cloud()
-        self._populate_favorites_table(favorites)
+        favorites = self._favorites_service.get_favorites()
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+        self._favorites_list_view.load_tracks(favorites, favorite_ids)
         self._status_label.setText(f"{len(favorites)} {t('favorites_word')}")
 
         self._loading_label.setVisible(False)
-        self._tracks_table.setVisible(True)
+        self._stacked_widget.setVisible(True)
 
     def _populate_favorites_table(self, favorites: list):
         """Populate table with favorites (mix of local and cloud)."""
@@ -901,28 +866,15 @@ class LibraryView(QWidget):
                 tracks.append(track)
                 self._history_played_at_map[track.id] = entry.played_at
 
-        # Check current view mode
-        view_mode = self._config.get("view/history_view_mode", "table")
-
-        if view_mode == "list":
-            # Load into list view
-            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
-            self._history_list_view.load_tracks(tracks, self._history_played_at_map, favorite_ids)
-            self._stacked_widget.setCurrentIndex(1)  # Show list view
-        else:
-            # Load into table view
-            self._populate_table(tracks)
-            self._stacked_widget.setCurrentIndex(0)  # Show table view
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+        self._history_list_view.load_tracks(tracks, self._history_played_at_map, favorite_ids)
+        self._stacked_widget.setCurrentWidget(self._history_list_view)
 
         self._status_label.setText(f"{len(tracks)} {t('recently_played')}")
 
         self._loading_label.setVisible(False)
         self._stacked_widget.setVisible(True)
-
-        # Apply current playing indicator after loading (only for table view)
-        if view_mode == "table" and self._current_playing_track_id:
-            self._set_track_playing_status(self._current_playing_track_id, True)
-            self._scroll_to_playing_track()
+        self._scroll_to_playing_track()
 
     def _load_artists(self):
         """Load artists view."""
@@ -1152,24 +1104,28 @@ class LibraryView(QWidget):
             return
 
         elif self._current_view == "favorites":
-            # 在收藏的 tracks 中搜索
             all_favorites = self._favorites_service.get_favorites()
             tracks = self._filter_tracks_by_query(all_favorites, query)
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._favorites_list_view.load_tracks(tracks, favorite_ids)
             status_text = (
                 f'{len(tracks)} {t("results_for")} "{query}" {t("in_favorites")}'
             )
 
         elif self._current_view == "history":
-            # 在历史记录中搜索
             history = self._play_history_service.get_history()
-            # Batch query tracks by IDs (avoid N+1 query)
             track_ids = [entry.track_id for entry in history]
             tracks_map = {t.id: t for t in self._library_service.get_tracks_by_ids(track_ids)}
             tracks = []
+            played_at_map = {}
             for entry in history:
                 track = tracks_map.get(entry.track_id)
                 if track and self._track_matches_query(track, query):
                     tracks.append(track)
+                    played_at_map[track.id] = entry.played_at
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._history_played_at_map = played_at_map
+            self._history_list_view.load_tracks(tracks, played_at_map, favorite_ids)
             status_text = (
                 f'{len(tracks)} {t("results_for")} "{query}" {t("in_history")}'
             )
@@ -1177,14 +1133,12 @@ class LibraryView(QWidget):
             tracks = []
             status_text = f'0 {t("results_for")} "{query}"'
 
-        self._populate_table(tracks)
         self._status_label.setText(status_text)
 
     def _on_current_track_changed(self, track_dict: dict):
         """Handle current track change from player."""
         if track_dict:
             new_track_id = track_dict.get("id")
-            old_track_id = self._current_playing_track_id
 
             # For cloud files, try to find the track_id from database
             if new_track_id is None:
@@ -1201,19 +1155,11 @@ class LibraryView(QWidget):
                         new_track_id = track.id
 
             self._current_playing_track_id = new_track_id
-
-            # Update the playing indicator in the active view without reloading
-            if self._current_view != "all":
-                self._update_playing_indicator_in_table(old_track_id, new_track_id)
-
-            # Scroll to the playing track
             self._scroll_to_playing_track()
 
     def _on_player_state_changed(self, state: PlaybackState):
         """Handle player state change (play/pause)."""
-        # Update the icon when playing/paused without reloading
-        if self._current_view != "all":
-            self._update_playing_icon_state()
+        del state
 
     def _update_playing_indicator_in_table(
             self, old_track_id: Optional[int], new_track_id: Optional[int]
@@ -1295,22 +1241,9 @@ class LibraryView(QWidget):
         if self._current_playing_track_id is None:
             return
 
-        if self._current_view == "all":
-            if self._all_tracks_list_view.select_track_by_id(self._current_playing_track_id):
-                self._all_tracks_list_view.scroll_to_track_id(self._current_playing_track_id)
-            return
-
-        # O(1) lookup by track_id
-        row = self._track_id_to_row.get(self._current_playing_track_id)
-        if row is None:
-            return
-
-        item = self._tracks_table.item(row, 0)
-        if item:
-            # Select the row
-            self._tracks_table.selectRow(row)
-            # Scroll to the item
-            self._tracks_table.scrollToItem(item)
+        current_list_view = self._current_list_view()
+        if current_list_view.select_track_by_id(self._current_playing_track_id):
+            current_list_view.scroll_to_track_id(self._current_playing_track_id)
 
     def _select_track_by_id(self, track_id: int):
         """
@@ -1319,42 +1252,16 @@ class LibraryView(QWidget):
         Args:
             track_id: Track ID to select
         """
-        if self._current_view == "all":
-            self._all_tracks_list_view.select_track_by_id(track_id)
-            return
-
-        # O(1) lookup by track_id
-        row = self._track_id_to_row.get(track_id)
-        if row is None:
-            return
-
-        # Clear previous selection
-        self._tracks_table.clearSelection()
-        # Select the row
-        self._tracks_table.selectRow(row)
+        self._current_list_view().select_track_by_id(track_id)
 
     def _select_and_scroll_to_current(self):
         """Select and scroll to the currently playing track."""
         if self._current_playing_track_id is None:
             return
 
-        if self._current_view == "all":
-            if self._all_tracks_list_view.select_track_by_id(self._current_playing_track_id):
-                self._all_tracks_list_view.scroll_to_track_id(self._current_playing_track_id)
-            return
-
-        # O(1) lookup by track_id
-        row = self._track_id_to_row.get(self._current_playing_track_id)
-        if row is None:
-            return
-
-        item = self._tracks_table.item(row, 0)
-        if item:
-            # Clear previous selection and select this row
-            self._tracks_table.clearSelection()
-            self._tracks_table.selectRow(row)
-            # Scroll to the item with center positioning
-            self._tracks_table.scrollToItem(item)
+        current_list_view = self._current_list_view()
+        if current_list_view.select_track_by_id(self._current_playing_track_id):
+            current_list_view.scroll_to_track_id(self._current_playing_track_id)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem):
         """Handle item double click."""
@@ -2092,69 +1999,13 @@ class LibraryView(QWidget):
 
     def _refresh_tracks_in_table(self, track_ids: List[int]):
         """
-        Refresh specific tracks in the table without reloading all data.
+        Refresh tracks in the active list view.
 
         Args:
             track_ids: List of track IDs to refresh
         """
-        if self._current_view == "all":
-            self._load_all_tracks()
-            return
-
-        # format_duration imported at top
-        from PySide6.QtGui import QBrush, QColor
-
-        # Use O(1) lookup for each track_id
-        for track_id in track_ids:
-            row = self._track_id_to_row.get(track_id)
-            if row is None:
-                continue
-
-            # Get updated track from database
-            track = self._library_service.get_track(track_id)
-            if not track:
-                continue
-
-            title_item = self._tracks_table.item(row, 1)
-            if not title_item:
-                continue
-
-            # Update title
-            is_currently_playing = track.id == self._current_playing_track_id
-            icon_prefix = ""
-            if is_currently_playing:
-                if self._player.engine.state == PlaybackState.PLAYING:
-                    icon_prefix = "▶️ "
-                else:
-                    icon_prefix = "⏸️ "
-
-            title_text = f"{icon_prefix}{track.title or track.path.split('/')[-1]}"
-            title_item.setText(title_text)
-            from system.theme import ThemeManager
-            tm = ThemeManager.instance()
-            title_item.setForeground(
-                QBrush(QColor(tm.current_theme.highlight if is_currently_playing else tm.current_theme.text)))
-
-            if is_currently_playing:
-                font = title_item.font()
-                font.setBold(True)
-                title_item.setFont(font)
-            else:
-                font = title_item.font()
-                font.setBold(False)
-                title_item.setFont(font)
-
-            # Update artist
-            artist_item = self._tracks_table.item(row, 2)
-            if artist_item:
-                artist_item.setText(track.artist or t("unknown"))
-
-            # Update album
-            album_item = self._tracks_table.item(row, 3)
-            if album_item:
-                album_item.setText(track.album or t("unknown"))
-
-            logger.debug(f"Refreshed row {row} for track {track_id}")
+        del track_ids
+        self._reload_current_list_view()
 
     def _acoustid_identify_selected(self):
         """Identify selected tracks using AcoustID fingerprinting."""
@@ -2331,35 +2182,11 @@ class LibraryView(QWidget):
             # Refresh the view to show updated paths
             self.refresh()
 
-    def _load_view_mode(self):
-        """Load view mode preference from config."""
-        view_mode = self._config.get("view/history_view_mode", "table")
-        self._update_view_toggle_icon()
-
-    def _toggle_history_view_mode(self):
-        """Toggle between table and list view for history."""
-        current_mode = self._config.get("view/history_view_mode", "table")
-        new_mode = "list" if current_mode == "table" else "table"
-        self._config.set("view/history_view_mode", new_mode)
-        self._update_view_toggle_icon()
-
-        # Reload history with new view mode
-        if self._current_view == "history":
-            self._load_history()
-
-    def _update_view_toggle_icon(self):
-        """Update view toggle button icon."""
-        view_mode = self._config.get("view/history_view_mode", "table")
-        theme = ThemeManager.instance().current_theme
-
-        if view_mode == "list":
-            icon = get_icon(IconName.GRID, theme.text_secondary)
-            self._view_toggle_btn.setToolTip(t("switch_to_table_view"))
-        else:
-            icon = get_icon(IconName.LIST, theme.text_secondary)
-            self._view_toggle_btn.setToolTip(t("switch_to_list_view"))
-
-        self._view_toggle_btn.setIcon(icon)
+    def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
+        """Reload the favorites page when its membership changes."""
+        del item_id, is_favorite, is_cloud
+        if self._current_view == "favorites":
+            self._reload_current_list_view()
 
     def _on_history_track_activated(self, track: Track):
         """Handle track activation from history list view."""
@@ -2367,6 +2194,10 @@ class LibraryView(QWidget):
         item = PlaylistItem(track_id=track.id)
         self._player.engine.set_playlist([item])
         self._player.engine.play()
+
+    def _on_favorites_track_activated(self, track: Track):
+        """Play a track activated from the favorites list."""
+        self._on_all_tracks_track_activated(track)
 
     def _on_all_tracks_track_activated(self, track: Track):
         """Play a track activated from the all-tracks virtualized list."""
@@ -2414,6 +2245,10 @@ class LibraryView(QWidget):
             else:
                 self._favorites_service.add_favorite(track_id=track.id)
                 bus.emit_favorite_change(track.id, True, is_cloud=False)
+
+    def _on_favorites_favorites_toggle(self, tracks: list, all_favorited: bool):
+        """Toggle favorites from the favorites list and reload the page."""
+        self._on_all_tracks_favorites_toggle(tracks, all_favorited)
 
     def _on_all_tracks_edit_info(self, track):
         """Edit metadata for a track from the all-tracks list."""
