@@ -88,6 +88,8 @@ class MpvAudioBackend(AudioBackend):
 
     def seek(self, position_ms: int):
         safe_ms = max(0, int(position_ms))
+        if not self._media_ready and self._can_seek_without_media_loaded():
+            self._media_ready = True
         if not self._media_ready:
             self._pending_seek_ms = safe_ms
             return
@@ -169,6 +171,24 @@ class MpvAudioBackend(AudioBackend):
         except Exception:
             return default
 
+    def _can_seek_without_media_loaded(self) -> bool:
+        """
+        Best-effort readiness check when media_loaded signal is delayed/missed.
+
+        Some mpv environments can report valid timeline properties while
+        `media_loaded`/idle transition callback is not observed in time.
+        """
+        try:
+            if not bool(self._safe_get_property("idle-active", True)):
+                return True
+            if float(self._safe_get_property("duration", 0.0) or 0.0) > 0:
+                return True
+            if float(self._safe_get_property("time-pos", 0.0) or 0.0) > 0:
+                return True
+        except Exception:
+            return False
+        return False
+
     def _compute_state(self) -> int:
         idle = bool(self._safe_get_property("idle-active", True))
         if idle:
@@ -236,11 +256,17 @@ class MpvAudioBackend(AudioBackend):
         """Run a concrete seek command and absorb transient mpv errors."""
         sec = max(0, int(position_ms)) / 1000.0
         try:
-            self._player.command("seek", sec, "absolute", "exact")
+            # mpv seek flags are passed as a single token (e.g. "absolute+exact").
+            self._player.command("seek", sec, "absolute+exact")
         except Exception as exc:
-            logger.debug("[MpvAudioBackend] seek failed at %.3fs: %s", sec, exc)
-            # Keep pending seek for a later retry (e.g. right after loadfile).
-            self._pending_seek_ms = int(position_ms)
+            logger.debug("[MpvAudioBackend] exact seek failed at %.3fs: %s", sec, exc)
+            try:
+                # Fallback for mpv builds that reject exact flag.
+                self._player.command("seek", sec, "absolute")
+            except Exception as fallback_exc:
+                logger.debug("[MpvAudioBackend] absolute seek failed at %.3fs: %s", sec, fallback_exc)
+                # Keep pending seek for a later retry (e.g. right after loadfile).
+                self._pending_seek_ms = int(position_ms)
 
     def _emit_end_of_media_once(self):
         if self._end_notified:

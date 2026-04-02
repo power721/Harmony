@@ -148,6 +148,7 @@ class MiniPlayer(QWidget):
         self._is_dragging = False
         self._drag_position = None
         self._is_seeking = False  # Track if user is seeking
+        self._skip_seek_on_release = False
         self._current_track_title = ""  # Current track title for window title
         self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
         self._is_hidden = False  # Track auto-hide state
@@ -414,9 +415,14 @@ class MiniPlayer(QWidget):
     def _on_seek_start(self):
         """Handle seek start (slider pressed)."""
         self._is_seeking = True
+        self._skip_seek_on_release = False
 
     def _on_seek_end(self):
         """Handle seek end (slider released)."""
+        if self._skip_seek_on_release:
+            self._skip_seek_on_release = False
+            self._is_seeking = False
+            return
         if hasattr(self, "_current_duration") and self._current_duration > 0:
             # Calculate position in milliseconds
             position_ms = int(
@@ -428,6 +434,8 @@ class MiniPlayer(QWidget):
     def _on_slider_clicked(self, value: int):
         """Handle click on progress slider - jump to position."""
         if hasattr(self, "_current_duration") and self._current_duration > 0:
+            # Click triggers sliderReleased too; skip duplicate seek on release.
+            self._skip_seek_on_release = True
             # Calculate position in milliseconds
             position_ms = int((value / 1000) * self._current_duration * 1000)
             self._player.engine.seek(position_ms)
@@ -654,6 +662,13 @@ class MiniPlayer(QWidget):
         sender = self.sender()
         if sender and sender == self._lyrics_thread:
             self._lyrics_thread = None
+
+    def keyPressEvent(self, event):
+        """Esc closes now playing view."""
+        if event.key() == Qt.Key_Escape:
+            self.close()
+            return
+        super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
         """Handle mouse press for dragging."""

@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QSizePolicy,
+    QStyleOptionSlider,
+    QStyle,
 )
 
 from domain.playback import PlaybackState, PlayMode
@@ -189,6 +191,7 @@ class PlayerControls(QWidget):
         self._player = player
         self._current_duration = 0
         self._is_seeking = False
+        self._skip_seek_on_release = False
         self._current_cover_path = None  # Store current cover path
         self._cover_load_version = 0  # Version counter for cover loading
         self._queue_placement = "volume"
@@ -753,29 +756,71 @@ class PlayerControls(QWidget):
     def _on_seek_start(self):
         """Handle seek start."""
         self._is_seeking = True
+        self._skip_seek_on_release = False
 
     def _on_seek_end(self):
         """Handle seek end."""
         self._is_seeking = False
+        if self._skip_seek_on_release:
+            self._skip_seek_on_release = False
+            return
+        duration_s = self._get_effective_duration_s()
+        if duration_s <= 0:
+            return
         # Calculate position in milliseconds
         position_ms = int(
-            (self._progress_slider.value() / 1000) * self._current_duration * 1000
+            (self._progress_slider.value() / 1000) * duration_s * 1000
         )
         self._player.engine.seek(position_ms)
 
     def _on_seek(self, value: int):
         """Handle seek (update time label while dragging)."""
-        if self._current_duration > 0:
+        duration_s = self._get_effective_duration_s()
+        if duration_s > 0:
             # Calculate position in seconds for display
-            position_s = (value / 1000) * self._current_duration
+            position_s = (value / 1000) * duration_s
             self._current_time_label.setText(format_time(position_s))
 
     def _on_slider_clicked(self, value: int):
         """Handle click on progress slider - jump to position."""
-        if self._current_duration > 0:
+        duration_s = self._get_effective_duration_s()
+        if duration_s > 0:
+            # Click triggers sliderReleased too; skip duplicate seek on release.
+            self._skip_seek_on_release = True
             # Calculate position in milliseconds
-            position_ms = int((value / 1000) * self._current_duration * 1000)
+            position_ms = int((value / 1000) * duration_s * 1000)
             self._player.engine.seek(position_ms)
+
+    def _get_effective_duration_s(self) -> float:
+        """
+        Return a reliable duration in seconds for seek calculations.
+
+        Falls back to querying the engine when local cached duration is not ready.
+        """
+        if self._current_duration > 0:
+            return self._current_duration
+
+        try:
+            duration_ms = self._player.engine.duration()
+        except Exception:
+            duration_ms = 0
+
+        if duration_ms > 0:
+            self._current_duration = duration_ms / 1000
+            self._total_time_label.setText(format_time(self._current_duration))
+            return self._current_duration
+
+        try:
+            track = self._player.engine.current_track or {}
+            track_duration = track.get("duration") or 0
+        except Exception:
+            track_duration = 0
+
+        if track_duration > 0:
+            self._current_duration = float(track_duration)
+            self._total_time_label.setText(format_time(self._current_duration))
+            return self._current_duration
+        return 0.0
 
     def _on_volume_changed(self, value: int):
         """Handle volume change from slider."""
@@ -1144,6 +1189,17 @@ class PlayerControls(QWidget):
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
         if track_dict:
+            # Reset progress state so new track won't reuse stale duration/position.
+            self._current_duration = 0.0
+            self._progress_slider.setValue(0)
+            self._current_time_label.setText("0:00")
+            self._total_time_label.setText("0:00")
+
+            track_duration = track_dict.get("duration") or 0
+            if track_duration > 0:
+                self._current_duration = float(track_duration)
+                self._total_time_label.setText(format_time(self._current_duration))
+
             title = track_dict.get("title", t("unknown"))
             artist = track_dict.get("artist", t("unknown"))
             album = track_dict.get("album", "")
@@ -1170,6 +1226,10 @@ class PlayerControls(QWidget):
             # Use QTimer to delay cover loading so UI doesn't block
             QTimer.singleShot(100, lambda v=current_version, t=track_dict: self._load_cover_art_async(t, v))
         else:
+            self._current_duration = 0.0
+            self._progress_slider.setValue(0)
+            self._current_time_label.setText("0:00")
+            self._total_time_label.setText("0:00")
             self._title_label.setText(t("not_playing"))
             self._artist_widget.clear()
             self._album_label.setText("")
@@ -1359,13 +1419,28 @@ class ClickableSlider(QSlider):
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press - jump to click position."""
         if event.button() == Qt.LeftButton:
-            # Calculate value from click position
+            option = QStyleOptionSlider()
+            self.initStyleOption(option)
+            handle_rect = self.style().subControlRect(
+                QStyle.CC_Slider,
+                option,
+                QStyle.SC_SliderHandle,
+                self,
+            )
+
+            # Press on handle: keep default QSlider drag behavior.
+            if handle_rect.contains(event.position().toPoint()):
+                super().mousePressEvent(event)
+                return
+
+            # Press on groove: jump directly and emit click signal.
             value = self._pixel_pos_to_value(event.position().x())
             self.setValue(value)
             self.clicked_value.emit(value)
             event.accept()
-        else:
-            super().mousePressEvent(event)
+            return
+
+        super().mousePressEvent(event)
 
     def _pixel_pos_to_value(self, pos: int) -> int:
         """Convert pixel position to slider value."""

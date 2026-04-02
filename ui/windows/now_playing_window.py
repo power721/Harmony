@@ -396,6 +396,10 @@ class NowPlayingWindow(QWidget):
     def _on_track_changed(self, track_dict: dict):
         """Update cover/lyrics when track changes."""
         if not track_dict:
+            self._current_duration = 0.0
+            self._progress_slider.setValue(0)
+            self._current_time.setText("0:00")
+            self._total_time.setText("0:00")
             self._track_title.setText(t("not_playing"))
             self._track_artist.setText("")
             self._track_album.setText("")
@@ -403,6 +407,11 @@ class NowPlayingWindow(QWidget):
             self._current_cover_path = ""
             self._set_default_cover()
             return
+
+        self._current_duration = 0.0
+        self._progress_slider.setValue(0)
+        self._current_time.setText("0:00")
+        self._total_time.setText("0:00")
 
         title = track_dict.get("title", t("unknown"))
         artist = track_dict.get("artist", "")
@@ -412,6 +421,7 @@ class NowPlayingWindow(QWidget):
         self._track_album.setText(album if album else "")
 
         window_title = f"{title} - {artist}" if artist else title
+        self._current_track_title = window_title
         self.setWindowTitle(window_title if self._playback.state == PlaybackState.PLAYING else t("app_title"))
 
         self._load_cover_async(track_dict)
@@ -420,7 +430,8 @@ class NowPlayingWindow(QWidget):
 
     def _on_position_changed(self, position_ms: int):
         """Sync lyric highlight position."""
-        if self._current_duration > 0 and not self._is_seeking:
+        controls_seeking = bool(getattr(self._player_controls, "_is_seeking", False))
+        if self._current_duration > 0 and not self._is_seeking and not controls_seeking:
             value = int((position_ms / (self._current_duration * 1000)) * 1000)
             self._progress_slider.setValue(value)
             self._current_time.setText(format_time(position_ms / 1000))
@@ -434,9 +445,12 @@ class NowPlayingWindow(QWidget):
         if state == PlaybackState.PLAYING:
             self._play_pause_btn.setIcon(get_icon(IconName.PAUSE, None, 32))
             self._update_cover_animation_state()
+            if self._current_track_title:
+                self.setWindowTitle(self._current_track_title)
         else:
             self._play_pause_btn.setIcon(get_icon(IconName.PLAY, None, 32))
             self._update_cover_animation_state()
+            self.setWindowTitle(t("app_title"))
 
     def _toggle_play_pause(self):
         if self._playback.engine.state == PlaybackState.PLAYING:

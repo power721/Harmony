@@ -1,5 +1,4 @@
 """Audio playback engine with pluggable backends (Qt or mpv)."""
-import os
 import logging
 import threading
 import importlib

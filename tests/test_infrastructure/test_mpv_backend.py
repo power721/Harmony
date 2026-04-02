@@ -172,3 +172,23 @@ def test_mpv_backend_poll_timer_only_runs_when_active_media(monkeypatch):
     # Explicit stop should stop polling immediately.
     backend.stop()
     assert backend._poll_timer.started is False
+
+
+def test_mpv_seek_executes_when_timeline_ready_even_if_media_loaded_not_observed(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    # Simulate a delayed/missed idle transition callback state update:
+    # backend still thinks media isn't ready, but mpv timeline is active.
+    backend._media_ready = False
+    player._props["idle-active"] = False
+    player._props["duration"] = 180.0
+
+    backend.seek(92000)
+
+    # Seek should run immediately instead of being stuck in pending state.
+    assert backend._pending_seek_ms is None
+    assert backend.position() == 92000
