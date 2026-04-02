@@ -253,6 +253,64 @@ class SqliteTrackRepository(BaseRepository):
             # Track already exists
             return 0
 
+    def batch_add(self, tracks: List[Track]) -> int:
+        """Add multiple tracks in a single transaction. Returns number added."""
+        if not tracks:
+            return 0
+
+        from services.metadata import split_artists_aware, normalize_artist_name
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        added_count = 0
+
+        try:
+            # Load known artists once for all tracks
+            cursor.execute("SELECT normalized_name FROM artists")
+            known_artists = {row[0] for row in cursor.fetchall() if row[0]}
+
+            for track in tracks:
+                try:
+                    cursor.execute("""
+                        INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        track.path, track.title, track.artist, track.album,
+                        track.genre, track.duration, track.cover_path,
+                        track.cloud_file_id,
+                        track.source.value if hasattr(track, 'source') and track.source else 'Local'
+                    ))
+                    track_id = cursor.lastrowid
+
+                    # Create artist entries and junction records
+                    if track.artist:
+                        artist_names = split_artists_aware(track.artist, known_artists)
+                        for position, artist_name in enumerate(artist_names):
+                            normalized = normalize_artist_name(artist_name)
+                            cursor.execute("""
+                                INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+                                ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+                            """, (artist_name, normalized, normalized))
+                            cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
+                            artist_row = cursor.fetchone()
+                            if artist_row:
+                                artist_id = artist_row[0]
+                                cursor.execute("""
+                                    INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                                    VALUES (?, ?, ?)
+                                """, (track_id, artist_id, position))
+
+                    added_count += 1
+                except sqlite3.IntegrityError:
+                    pass  # Track already exists
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+        return added_count
+
     def update(self, track: Track) -> bool:
         """Update an existing track."""
         if not track.id:

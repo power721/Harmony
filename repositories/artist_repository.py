@@ -163,24 +163,18 @@ class SqliteArtistRepository(BaseRepository):
         """)
         existing_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
 
-        # Phase 1: Build known artists set using only regex splitting.
-        # This ensures composite entries like "周杰伦 费玉清" are broken down
-        # so the set contains only individual artist names.
-        cursor.execute("""
-            SELECT DISTINCT artist FROM tracks
-            WHERE artist IS NOT NULL AND artist != ''
-        """)
-        known_artists = set()
-        for row in cursor.fetchall():
-            for name in split_artists(row["artist"]):
-                known_artists.add(normalize_artist_name(name))
-
-        # Collect all artist strings from tracks
+        # Single query to get all distinct artist strings with cover paths
         cursor.execute("""
             SELECT DISTINCT artist, cover_path FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
         """)
         rows = cursor.fetchall()
+
+        # Phase 1: Build known artists set using only regex splitting.
+        known_artists = set()
+        for row in rows:
+            for name in split_artists(row["artist"]):
+                known_artists.add(normalize_artist_name(name))
 
         # Phase 2: Split with known artists awareness
         artist_data = {}  # name -> {song_count, albums, cover_path}
@@ -194,7 +188,7 @@ class SqliteArtistRepository(BaseRepository):
                 if track_cover and not artist_data[name]["cover"]:
                     artist_data[name]["cover"] = track_cover
 
-        # Also count distinct albums per artist
+        # Also count distinct albums per artist (second query — can't combine with DISTINCT)
         cursor.execute("""
             SELECT artist, album FROM tracks
             WHERE artist IS NOT NULL AND artist != ''

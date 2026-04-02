@@ -159,6 +159,8 @@ class PlayerEngine(QObject):
             self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
+    MAX_PLAYLIST_SIZE = 50000
+
     def load_playlist_items(self, items: List[PlaylistItem]):
         """
         Load a playlist from PlaylistItem objects.
@@ -166,6 +168,11 @@ class PlayerEngine(QObject):
         Args:
             items: List of PlaylistItem objects
         """
+        if len(items) > self.MAX_PLAYLIST_SIZE:
+            logger.warning(
+                f"[Engine] Playlist has {len(items)} items, truncating to {self.MAX_PLAYLIST_SIZE}"
+            )
+            items = items[:self.MAX_PLAYLIST_SIZE]
         with self._playlist_lock:
             self._playlist = items.copy()
             self._original_playlist = items.copy()  # Save original order
@@ -830,17 +837,18 @@ class PlayerEngine(QObject):
         # Get current item before shuffling (if any)
         current_item = self._playlist[self._current_index] if 0 <= self._current_index < len(self._playlist) else None
 
-        # Shuffle the playlist
+        # Shuffle (random.shuffle is Fisher-Yates internally)
         import random
-        self._playlist = self._original_playlist.copy()
+        self._playlist = self._original_playlist[:]
         random.shuffle(self._playlist)
 
-        # Move current item to front if there's one playing
+        # Move current item to front via O(1) swap instead of pop+insert
         if current_item:
             try:
                 idx = self._playlist.index(current_item)
-                self._playlist.pop(idx)
-                self._playlist.insert(0, current_item)
+                if idx != 0:
+                    self._playlist[idx] = self._playlist[0]
+                    self._playlist[0] = current_item
             except ValueError:
                 pass
 

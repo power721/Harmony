@@ -421,6 +421,8 @@ class LibraryService:
             return 0
 
         max_workers = min(4, len(files))
+        # Parallel metadata extraction, then batch insert in single transaction
+        valid_tracks = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self._create_track_from_file, str(file_path)): file_path
@@ -428,11 +430,11 @@ class LibraryService:
             }
             for future in as_completed(futures):
                 track = future.result()
-                if not track:
-                    continue
-                track_id = self._track_repo.add(track)
-                if track_id:
-                    added_count += 1
+                if track:
+                    valid_tracks.append(track)
+
+        if valid_tracks:
+            added_count = self._track_repo.batch_add(valid_tracks)
 
         if added_count > 0:
             self._event_bus.tracks_added.emit(added_count)

@@ -247,12 +247,12 @@ class TestLibraryService:
         mock_create_track.side_effect = [mock_track1, mock_track2, None]
 
         # Mock repository add
-        mock_track_repo.add.side_effect = [1, 2]
+        mock_track_repo.batch_add.return_value = 2
 
         result = library_service.scan_directory("/music", recursive=True)
 
         assert result == 2
-        assert mock_track_repo.add.call_count == 2
+        assert mock_track_repo.batch_add.call_count == 1
 
     @patch("services.library.library_service.Path")
     def test_scan_directory_non_recursive(self, mock_path_class, library_service):
@@ -327,7 +327,7 @@ class TestLibraryService:
         mock_path_class.return_value = mock_path
 
         mock_create_track.return_value = Track(path="/music/song.mp3")
-        mock_track_repo.add.return_value = 1
+        mock_track_repo.batch_add.return_value = 1
 
         library_service.scan_directory("/music")
 
