@@ -17,15 +17,26 @@ class _FakeBackend:
         self.set_source_calls = []
         self.seek_calls = []
         self.play_calls = 0
+        self._source_path = ""
 
     def set_source(self, path: str):
         self.set_source_calls.append(path)
+        self._source_path = path
 
     def seek(self, position_ms: int):
         self.seek_calls.append(position_ms)
 
     def play(self):
         self.play_calls += 1
+
+    def get_source_path(self) -> str:
+        return self._source_path
+
+    def is_playing(self) -> bool:
+        return False
+
+    def is_paused(self) -> bool:
+        return False
 
 
 def _build_engine_with_item(item: PlaylistItem) -> PlayerEngine:
