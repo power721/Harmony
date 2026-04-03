@@ -74,6 +74,7 @@ class MpvAudioBackend(AudioBackend):
         self._pending_seek_ms = None
         self._end_notified = False
         self._set_polling_enabled(False)
+        self._set_visualizer_enabled(False)
         self._player.command("loadfile", self._source_path, "replace", "pause=yes")
 
     def play(self):
@@ -251,12 +252,9 @@ class MpvAudioBackend(AudioBackend):
         self._set_visualizer_enabled(self._should_emit_visualizer_frames())
 
     def _should_emit_visualizer_frames(self) -> bool:
-        try:
-            if bool(self._safe_get_property("idle-active", True)):
-                return False
-            if bool(self._safe_get_property("pause", False)):
-                return False
-        except Exception:
+        if bool(self._safe_get_property("idle-active", True)):
+            return False
+        if bool(self._safe_get_property("pause", False)):
             return False
         return True
 

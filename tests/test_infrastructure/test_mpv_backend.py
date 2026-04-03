@@ -66,6 +66,8 @@ class _FakeMPV:
 
     def trigger(self, prop, value):
         self._props[prop] = value
+        if prop.isidentifier():
+            setattr(self, prop, value)
         callback = self._observers[prop]
         callback(prop, value)
 
@@ -120,6 +122,12 @@ def test_mpv_backend_visualizer_timer_lifecycle(monkeypatch):
     assert timer.started is False
 
     player.trigger("idle-active", False)
+    assert timer.started is True
+
+    player.trigger("pause", True)
+    assert timer.started is False
+
+    player.trigger("pause", False)
     assert timer.started is True
 
     backend.pause()
