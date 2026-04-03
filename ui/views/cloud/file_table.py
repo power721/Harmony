@@ -139,6 +139,7 @@ class CloudFileTable(QWidget):
     folder_double_clicked = Signal(CloudFile)  # User double-clicked a folder
     audio_double_clicked = Signal(CloudFile)  # User double-clicked an audio file
     context_menu_requested = Signal(object, CloudFile)  # (position, file)
+    selection_changed = Signal()
 
     def __init__(self, parent=None):
         """Initialize the file table widget."""
@@ -177,6 +178,7 @@ class CloudFileTable(QWidget):
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.setFocusPolicy(Qt.NoFocus)
         self._table.cellDoubleClicked.connect(self._on_double_click)
+        self._table.itemSelectionChanged.connect(self.selection_changed)
 
         # Apply style matching library table
         from system.theme import ThemeManager
@@ -409,6 +411,17 @@ class CloudFileTable(QWidget):
             if item:
                 file = item.data(Qt.UserRole)
                 if file and file.file_type == "audio":
+                    files.append(file)
+        return files
+
+    def get_selected_files(self) -> List[CloudFile]:
+        """Get selected files from the table."""
+        files = []
+        for row in self._table.selectionModel().selectedRows():
+            item = self._table.item(row.row(), 0)
+            if item:
+                file = item.data(Qt.UserRole)
+                if file:
                     files.append(file)
         return files
 

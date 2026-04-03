@@ -120,10 +120,13 @@ def test_mpv_backend_basic_flow(monkeypatch):
     player.trigger("duration", 123.4)
     player.trigger("time-pos", 4.2)
     player.trigger("pause", True)
+    # Set position near end to trigger EOF (within 0.5s of duration)
+    player.trigger("time-pos", 123.0)
     player.trigger("eof-reached", True)
 
     assert backend.get_source_path() == "/tmp/demo.flac"
-    assert backend.position() == 4200
+    # Position is now 123.0s (near end) after the time-pos trigger
+    assert backend.position() == 123000
     assert backend.get_volume() == 66
     assert backend.supports_eq() is True
     assert backend.supports_audio_effects() is True
@@ -132,7 +135,8 @@ def test_mpv_backend_basic_flow(monkeypatch):
     assert "extrastereo" in backend._player.af
     assert loaded == [True]
     assert ended == [True]
-    assert positions and positions[-1] == 4200
+    # Last position is 123000 (near end), not 4200
+    assert positions and positions[-1] == 123000
     assert durations and durations[-1] == 123400
     assert states
 
@@ -166,10 +170,21 @@ def test_mpv_backend_idle_fallback_and_play_restart_from_eof(monkeypatch):
     ended = []
     backend.end_of_media.connect(lambda: ended.append(True))
 
-    # Media becomes ready, then idle without explicit stop -> should emit end once.
+    # Media becomes ready, then transient idle without EOF evidence -> should NOT end.
     player = backend._player
     player.trigger("idle-active", False)
     player.trigger("idle-active", True)
+    assert ended == []
+
+    # Stale EOF flag alone should not trigger idle fallback end.
+    player._props["eof-reached"] = True
+    player._props["duration"] = 180.0
+    player._props["time-pos"] = 3.0
+    player.trigger("idle-active", True)
+    assert ended == []
+
+    # Near-end timeline should trigger end.
+    player._props["time-pos"] = 179.8
     player.trigger("idle-active", True)
     assert ended == [True]
 
@@ -217,3 +232,42 @@ def test_mpv_seek_executes_when_timeline_ready_even_if_media_loaded_not_observed
     # Seek should run immediately instead of being stuck in pending state.
     assert backend._pending_seek_ms is None
     assert backend.position() == 92000
+
+
+def test_mpv_seek_does_not_use_stale_timeline_when_idle_active(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    # Simulate stale values from previous track while new media is still idle.
+    backend._media_ready = False
+    player._props["idle-active"] = True
+    player._props["duration"] = 215.0
+    player._props["time-pos"] = 12.0
+
+    backend.seek(1500)
+
+    # Should defer seek until media becomes active; no immediate seek command.
+    assert backend._pending_seek_ms == 1500
+    seek_calls = [c for c in player._commands if c and c[0] == "seek"]
+    assert seek_calls == []
+
+
+def test_mpv_backend_ignores_eof_signal_when_not_near_end(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    ended = []
+    backend.end_of_media.connect(lambda: ended.append(True))
+
+    player.trigger("idle-active", False)
+    player.trigger("duration", 180.0)
+    player.trigger("time-pos", 2.0)
+    player.trigger("eof-reached", True)
+
+    assert ended == []

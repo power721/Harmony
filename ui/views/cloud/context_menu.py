@@ -88,7 +88,13 @@ class CloudFileContextMenu(QObject):
         self._cover_service = cover_service
         self._menu_style = ""
 
-    def show_menu(self, file: CloudFile, current_audio_files: list = None, account_id: int = None):
+    def show_menu(
+            self,
+            file: CloudFile,
+            current_audio_files: list = None,
+            account_id: int = None,
+            share_mode: bool = False,
+    ):
         """
         Show the context menu for a file.
 
@@ -122,15 +128,21 @@ class CloudFileContextMenu(QObject):
 
         # Queue actions
         insert_action = menu.addAction(t("insert_to_queue"))
-        insert_action.triggered.connect(lambda: self.insert_to_queue_requested.emit(file))
-
         queue_action = menu.addAction(t("add_to_queue"))
-        queue_action.triggered.connect(lambda: self.add_to_queue_requested.emit(file))
+        if share_mode:
+            insert_action.setEnabled(False)
+            queue_action.setEnabled(False)
+        else:
+            insert_action.triggered.connect(lambda: self.insert_to_queue_requested.emit(file))
+            queue_action.triggered.connect(lambda: self.add_to_queue_requested.emit(file))
 
         menu.addSeparator()
 
         # Download action
-        if has_local_path:
+        if share_mode:
+            download_action = menu.addAction(f"⬇ {t('download')}")
+            download_action.setEnabled(False)
+        elif has_local_path:
             download_action = menu.addAction(f"✓ {t('download')}")
             download_action.setEnabled(False)
         else:
@@ -141,7 +153,10 @@ class CloudFileContextMenu(QObject):
 
         # Edit media info action
         edit_action = menu.addAction(t("edit_media_info"))
-        if has_local_path:
+        if share_mode:
+            edit_action.setEnabled(False)
+            edit_action.setText(f"{t('edit_media_info')} ({t('save_first')})")
+        elif has_local_path:
             edit_action.triggered.connect(lambda: self.edit_media_info_requested.emit(file))
         else:
             edit_action.setEnabled(False)
@@ -150,7 +165,12 @@ class CloudFileContextMenu(QObject):
         # Download cover action
         if self._cover_service:
             download_cover_action = menu.addAction(t("download_cover_manual"))
-            if has_local_path:
+            if share_mode:
+                download_cover_action.setEnabled(False)
+                download_cover_action.setText(
+                    f"{t('download_cover_manual')} ({t('save_first')})"
+                )
+            elif has_local_path:
                 download_cover_action.triggered.connect(
                     lambda: self.download_cover_requested.emit(file)
                 )
@@ -162,7 +182,10 @@ class CloudFileContextMenu(QObject):
 
         # Open file location action
         open_action = menu.addAction(t("open_file_location"))
-        if has_local_path:
+        if share_mode:
+            open_action.setEnabled(False)
+            open_action.setText(f"{t('open_file_location')} ({t('save_first')})")
+        elif has_local_path:
             open_action.triggered.connect(lambda: self.open_file_location_requested.emit(file))
         else:
             open_action.setEnabled(False)

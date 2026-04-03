@@ -8,6 +8,7 @@ This is a refactored version that uses modular components:
 - CloudFileContextMenu: Right-click menu handling
 """
 
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -26,11 +27,13 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QSplitter,
     QDialog,
+    QLineEdit,
 )
 
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.baidu_service import BaiduDriveService
 from services.cloud.quark_service import QuarkDriveService
+from services.cloud.share_search_service import ShareSearchService, ShareSong
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.cloud_login_dialog import CloudLoginDialog
@@ -157,6 +160,56 @@ class CloudDriveView(QWidget):
         }
     """
 
+    _SEARCH_INPUT_STYLE_TEMPLATE = """
+        QLineEdit {
+            background-color: %background_hover%;
+            color: %text%;
+            border: 2px solid %border%;
+            border-radius: 20px;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+        QLineEdit:focus {
+            border: 2px solid %highlight%;
+            background-color: %background_hover%;
+        }
+        QLineEdit::placeholder {
+            color: %text_secondary%;
+        }
+        QLineEdit::clear-button {
+            subcontrol-origin: padding;
+            subcontrol-position: right;
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            border-radius: 9px;
+            background-color: %border%;
+        }
+        QLineEdit::clear-button:hover {
+            background-color: %background_hover%;
+            border: 1px solid %border%;
+        }
+        QLineEdit::clear-button:pressed {
+            background-color: %background_alt%;
+        }
+    """
+
+    _SEARCH_BUTTON_STYLE_TEMPLATE = """
+        QPushButton {
+            background: %background_alt%;
+            color: %text%;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background: %border%;
+        }
+        QPushButton:pressed {
+            background: %text_secondary%;
+        }
+    """
+
     track_double_clicked = Signal(str)
     play_cloud_files = Signal(str, int, list, float)
 
@@ -202,6 +255,16 @@ class CloudDriveView(QWidget):
         self._fid_path = []
         self._current_playing_file_id = ""
         self._data_loaded = False
+        self._share_mode = False
+        self._share_pwd_id = ""
+        self._share_stoken = ""
+        self._share_root_title = ""
+        self._share_history: List[tuple[str, str]] = []
+        self._share_search_result = None
+        self._share_search_keyword = ""
+        self._share_search_page = 1
+        self._share_search_total_pages = 0
+        self._share_search_limit = 20
 
         # Batch download state
         self._download_queue: List[CloudFile] = []
@@ -295,29 +358,53 @@ class CloudDriveView(QWidget):
         layout.setContentsMargins(20, 20, 20, 10)
         layout.setSpacing(10)
 
-        # Header
-        header_layout = QHBoxLayout()
-
         self._account_title = QLabel(t("select_account"))
         self._account_title.setObjectName("accountTitle")
-        header_layout.addWidget(self._account_title)
+        self._account_title.setVisible(False)
 
-        header_layout.addStretch()
+        # Share search toolbar
+        search_layout = QHBoxLayout()
+        search_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Navigation button
-        self._back_btn = QPushButton("← " + t("back"))
-        self._back_btn.setObjectName("backBtn")
-        self._back_btn.setCursor(Qt.PointingHandCursor)
-        self._back_btn.setEnabled(False)
-        self._back_btn.clicked.connect(self._navigate_back)
-        header_layout.addWidget(self._back_btn)
+        self._share_search_input = QLineEdit()
+        self._share_search_input.setPlaceholderText(t("cloud_share_search_placeholder"))
+        self._share_search_input.setClearButtonEnabled(True)
+        self._share_search_input.returnPressed.connect(self._search_shares)
+        self._share_search_input.textChanged.connect(self._on_share_search_text_changed)
+        search_layout.addWidget(self._share_search_input)
 
-        # Path label
-        self._path_label = QLabel("/")
-        self._path_label.setObjectName("pathLabel")
-        header_layout.addWidget(self._path_label)
+        self._share_search_btn = QPushButton(t("search"))
+        self._share_search_btn.setCursor(Qt.PointingHandCursor)
+        self._share_search_btn.setFixedHeight(50)
+        self._share_search_btn.clicked.connect(self._search_shares)
+        search_layout.addWidget(self._share_search_btn)
 
-        layout.addLayout(header_layout)
+        self._share_prev_btn = QPushButton("◀")
+        self._share_prev_btn.setCursor(Qt.PointingHandCursor)
+        self._share_prev_btn.setEnabled(False)
+        self._share_prev_btn.setVisible(False)
+        self._share_prev_btn.clicked.connect(self._go_share_prev_page)
+        search_layout.addWidget(self._share_prev_btn)
+
+        self._share_page_label = QLabel("1/1")
+        self._share_page_label.setObjectName("pathLabel")
+        self._share_page_label.setVisible(False)
+        search_layout.addWidget(self._share_page_label)
+
+        self._share_next_btn = QPushButton("▶")
+        self._share_next_btn.setCursor(Qt.PointingHandCursor)
+        self._share_next_btn.setEnabled(False)
+        self._share_next_btn.setVisible(False)
+        self._share_next_btn.clicked.connect(self._go_share_next_page)
+        search_layout.addWidget(self._share_next_btn)
+
+        layout.addLayout(search_layout)
+
+        self._share_results_list = QListWidget()
+        self._share_results_list.setVisible(False)
+        self._share_results_list.itemSelectionChanged.connect(self._on_share_result_selection_changed)
+        self._share_results_list.itemClicked.connect(self._on_share_result_clicked)
+        layout.addWidget(self._share_results_list)
 
         # Toolbar for batch download
         toolbar_layout = QHBoxLayout()
@@ -337,7 +424,28 @@ class CloudDriveView(QWidget):
         self._cancel_downloads_btn.setVisible(False)
         toolbar_layout.addWidget(self._cancel_downloads_btn)
 
+        self._share_save_selected_btn = QPushButton(t("save_selected_to_cloud"))
+        self._share_save_selected_btn.setObjectName("batchDownloadBtn")
+        self._share_save_selected_btn.setCursor(Qt.PointingHandCursor)
+        self._share_save_selected_btn.clicked.connect(self._save_selected_share_items)
+        self._share_save_selected_btn.setVisible(False)
+        self._share_save_selected_btn.setEnabled(False)
+        toolbar_layout.addWidget(self._share_save_selected_btn)
+
         toolbar_layout.addStretch()
+
+        # Navigation button
+        self._back_btn = QPushButton("← " + t("back"))
+        self._back_btn.setObjectName("backBtn")
+        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setEnabled(False)
+        self._back_btn.clicked.connect(self._navigate_back)
+        toolbar_layout.addWidget(self._back_btn)
+
+        # Path label
+        self._path_label = QLabel("/")
+        self._path_label.setObjectName("pathLabel")
+        toolbar_layout.addWidget(self._path_label)
 
         layout.addLayout(toolbar_layout)
 
@@ -381,6 +489,7 @@ class CloudDriveView(QWidget):
         self._file_table.folder_double_clicked.connect(self._navigate_to_folder)
         self._file_table.audio_double_clicked.connect(self._play_audio_file)
         self._file_table.context_menu_requested.connect(self._show_file_context_menu)
+        self._file_table.selection_changed.connect(self._update_share_save_button_state)
 
         # File context menu signals
         self._file_context_menu.play_requested.connect(self._play_audio_file)
@@ -463,6 +572,7 @@ class CloudDriveView(QWidget):
         """Handle account selection."""
         account = item.data(Qt.UserRole)
         if account:
+            self._clear_share_search_results(reset_view=False)
             self._current_account = account
 
             # Save selected account ID
@@ -537,6 +647,379 @@ class CloudDriveView(QWidget):
                     self._update_file_view()
                     break
 
+    # === Share Search ===
+
+    def _search_shares(self):
+        """Search cloud share entries from remote API."""
+        keyword = self._share_search_input.text().strip()
+        if not keyword:
+            self._clear_share_search_results()
+            return
+        self._share_search_keyword = keyword
+        self._share_search_page = 1
+        self._search_shares_page(self._share_search_page)
+
+    def _on_share_search_text_changed(self, text: str):
+        """Clear results immediately when search text is cleared."""
+        if text.strip():
+            return
+        self._clear_share_search_results()
+
+    def _clear_share_search_results(self, reset_view: bool = True):
+        """Clear share search results and hide pagination controls."""
+        if self._share_mode:
+            self._clear_share_mode(reset_view=reset_view)
+        self._share_search_keyword = ""
+        self._share_search_result = None
+        self._share_search_input.blockSignals(True)
+        self._share_search_input.clear()
+        self._share_search_input.blockSignals(False)
+        self._share_results_list.clear()
+        self._share_results_list.setVisible(False)
+        self._stack.setVisible(True)
+        self._update_toolbar_for_search_results(False)
+        self._share_page_label.setText("1/1")
+        self._share_prev_btn.setEnabled(False)
+        self._share_next_btn.setEnabled(False)
+        self._share_prev_btn.setVisible(False)
+        self._share_next_btn.setVisible(False)
+        self._share_page_label.setVisible(False)
+
+    def _search_shares_page(self, page: int):
+        """Search cloud share entries by page."""
+        keyword = self._share_search_keyword or self._share_search_input.text().strip()
+        if not keyword:
+            return
+        self._status_label.setText(f"{t('searching')}...")
+        result = ShareSearchService.search(
+            keyword, page=page, limit=self._share_search_limit
+        )
+        self._share_search_result = result
+        self._share_search_page = max(1, int(result.page or page))
+        self._share_search_total_pages = max(1, int(result.total_pages or 1))
+        self._share_prev_btn.setVisible(True)
+        self._share_next_btn.setVisible(True)
+        self._share_page_label.setVisible(True)
+        self._share_page_label.setText(f"{self._share_search_page}/{self._share_search_total_pages}")
+        self._share_prev_btn.setEnabled(self._share_search_page > 1)
+        self._share_next_btn.setEnabled(
+            self._share_search_page < self._share_search_total_pages
+        )
+
+        self._share_results_list.clear()
+        for song in result.songs:
+            prefix = "✓" if song.has_quark_link else "✗"
+            title = f"{prefix} {song.artist} - {song.name or song.title}"
+            item = QListWidgetItem(title)
+            item.setData(Qt.UserRole, song)
+            self._share_results_list.addItem(item)
+
+        has_results = len(result.songs) > 0
+        self._share_results_list.setVisible(has_results)
+        self._stack.setVisible(False)
+        self._update_toolbar_for_search_results(has_results)
+        self._adjust_share_results_height()
+        self._status_label.setText("")
+        # self._status_label.setText(
+        #     t("cloud_share_search_result_count").format(count=len(result.songs))
+        # )
+
+    def _go_share_prev_page(self):
+        """Go to previous share-search page."""
+        if self._share_search_page > 1:
+            self._search_shares_page(self._share_search_page - 1)
+
+    def _go_share_next_page(self):
+        """Go to next share-search page."""
+        if self._share_search_page < self._share_search_total_pages:
+            self._search_shares_page(self._share_search_page + 1)
+
+    def _on_share_result_selection_changed(self):
+        """Show hint when selected result has no Quark link."""
+        selected = self._share_results_list.selectedItems()
+        if not selected:
+            self._update_share_save_button_state()
+            return
+
+        song = selected[0].data(Qt.UserRole)
+        has_quark = isinstance(song, ShareSong) and song.has_quark_link
+        if not has_quark:
+            self._status_label.setText(t("cloud_share_no_quark_link"))
+        self._update_share_save_button_state()
+
+    def _on_share_result_clicked(self, item: QListWidgetItem):
+        """Parse and show file list directly when clicking a search result."""
+        song = item.data(Qt.UserRole)
+        if not isinstance(song, ShareSong) or not song.has_quark_link:
+            self._status_label.setText(t("cloud_share_no_quark_link"))
+            return
+        self._parse_share_song(song)
+
+    def _parse_selected_share(self):
+        """Compatibility wrapper: parse currently selected result if any."""
+        selected = self._share_results_list.selectedItems()
+        if not selected:
+            return
+        song = selected[0].data(Qt.UserRole)
+        if not isinstance(song, ShareSong) or not song.has_quark_link:
+            self._status_label.setText(t("cloud_share_no_quark_link"))
+            return
+        self._parse_share_song(song)
+
+    def _parse_share_song(self, song: ShareSong):
+        """Parse a share song entry and display file list."""
+
+        if not self._current_account or self._current_account.provider != "quark":
+            MessageDialog.warning(self, t("error"), t("cloud_share_quark_account_required"))
+            return
+
+        pwd_id, passcode = QuarkDriveService.parse_share_url(song.quark_link or "")
+        if not pwd_id:
+            self._status_label.setText(t("cloud_share_parse_failed"))
+            return
+
+        stoken = QuarkDriveService.get_share_stoken(
+            self._current_account.access_token, pwd_id, passcode
+        )
+        if not stoken:
+            self._status_label.setText(t("cloud_share_parse_failed"))
+            return
+
+        self._share_pwd_id = pwd_id
+        self._share_stoken = stoken
+        self._share_root_title = song.name or song.title or "share"
+        self._share_history = []
+        self._share_mode = True
+        self._batch_download_btn.setVisible(False)
+        self._cancel_downloads_btn.setVisible(False)
+        self._share_results_list.setVisible(True)
+        self._stack.setVisible(True)
+        self._update_toolbar_for_search_results(True)
+        self._adjust_share_results_height()
+        self._update_share_save_button_state()
+
+        self._path_label.setText(f"/{self._share_root_title}")
+        root_items = QuarkDriveService.get_share_detail(
+            self._current_account.access_token, self._share_pwd_id, self._share_stoken, "0"
+        )
+
+        # Auto-enter when root has only one folder
+        dirs = [x for x in root_items if x.get("dir")]
+        files = [x for x in root_items if not x.get("dir")]
+        if len(dirs) == 1 and len(files) == 0:
+            folder = dirs[0]
+            self._share_history.append(("0", f"/{self._share_root_title}"))
+            self._load_share_folder(folder.get("fid", "0"), f"/{self._share_root_title}/{folder.get('file_name', '')}")
+            return
+
+        self._load_share_items(root_items, "0")
+
+    def _clear_share_mode(self, reset_view: bool = True):
+        """Exit share mode and restore normal cloud view."""
+        self._share_mode = False
+        self._share_pwd_id = ""
+        self._share_stoken = ""
+        self._share_root_title = ""
+        self._share_history = []
+        self._share_save_selected_btn.setVisible(False)
+        self._share_save_selected_btn.setEnabled(False)
+        self._share_results_list.clearSelection()
+        has_results = self._share_results_list.count() > 0
+        self._share_results_list.setVisible(has_results)
+        self._stack.setVisible(not has_results)
+        self._update_toolbar_for_search_results(has_results)
+        self._adjust_share_results_height()
+        self._update_share_save_button_state()
+        if reset_view and self._current_account and not has_results:
+            self._update_file_view()
+
+    def _load_share_folder(self, pdir_fid: str, path_text: str):
+        """Load one folder in current parsed share."""
+        if not self._current_account:
+            return
+        items = QuarkDriveService.get_share_detail(
+            self._current_account.access_token, self._share_pwd_id, self._share_stoken, pdir_fid
+        )
+        self._path_label.setText(path_text)
+        self._load_share_items(items, pdir_fid)
+
+    def _load_share_items(self, items: list, parent_id: str):
+        """Map share detail items and render into file table."""
+        files = self._map_share_items_to_cloud_files(items, parent_id)
+        self._current_parent_id = parent_id
+        self._current_audio_files = [f for f in files if f.file_type == "audio"]
+        self._file_table.populate(files, self._current_playing_file_id)
+        self._back_btn.setEnabled(bool(self._share_history))
+        self._status_label.setText(f"{len(files)} {t('items')}")
+
+    def _map_share_items_to_cloud_files(self, items: list, parent_id: str) -> List[CloudFile]:
+        """Convert Quark share detail payload to CloudFile list."""
+        files: List[CloudFile] = []
+        audio_ext = {"mp3", "flac", "wav", "m4a", "aac", "ogg", "wma", "ape"}
+        for raw in items or []:
+            file_name = raw.get("file_name", "")
+            is_dir = bool(raw.get("dir"))
+            if is_dir:
+                file_type = "folder"
+            else:
+                category = raw.get("category", 0)
+                file_type_num = raw.get("file_type", 0)
+                ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+                if category == 2 or file_type_num == 1 or ext in audio_ext:
+                    file_type = "audio"
+                else:
+                    file_type = "other"
+
+            metadata = json.dumps(
+                {
+                    "is_share": True,
+                    "share_fid_token": raw.get("share_fid_token", ""),
+                    "dir": is_dir,
+                },
+                ensure_ascii=False,
+            )
+
+            files.append(
+                CloudFile(
+                    file_id=str(raw.get("fid", "")),
+                    parent_id=parent_id,
+                    name=file_name,
+                    file_type=file_type,
+                    size=raw.get("size"),
+                    duration=raw.get("duration"),
+                    metadata=metadata,
+                )
+            )
+        return files
+
+    def _is_share_file(self, file: CloudFile) -> bool:
+        """Whether a table row comes from parsed share result."""
+        if not file.metadata:
+            return False
+        try:
+            data = json.loads(file.metadata)
+            return bool(data.get("is_share"))
+        except (json.JSONDecodeError, TypeError):
+            return False
+
+    def _get_share_meta(self, file: CloudFile) -> dict:
+        """Read share metadata payload from CloudFile."""
+        if not file.metadata:
+            return {}
+        try:
+            return json.loads(file.metadata)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def _save_selected_share_items(self):
+        """Save selected items from parsed share to Harmony folder."""
+        if not self._share_mode:
+            return
+        selected_files = self._file_table.get_selected_files()
+        share_files = [f for f in selected_files if self._is_share_file(f)]
+        if not share_files:
+            self._status_label.setText(t("select_files_to_save"))
+            return
+
+        folder_fid = self._save_share_files(share_files)
+        if folder_fid:
+            self._status_label.setText(
+                t("cloud_share_saved_to_folder").format(folder="Harmony", count=len(share_files))
+            )
+        self._update_share_save_button_state()
+
+    def _save_share_files(self, files: List[CloudFile]) -> Optional[str]:
+        """Save share files into fixed Harmony folder; return target folder fid."""
+        if not self._current_account or self._current_account.provider != "quark":
+            return None
+
+        folder_fid, updated_token = QuarkDriveService.ensure_share_save_folder(
+            self._current_account.access_token, "Harmony"
+        )
+        if updated_token:
+            self._cloud_account_service.update_token(self._current_account.id, updated_token)
+            self._current_account.access_token = updated_token
+
+        if not folder_fid:
+            return None
+
+        fid_list: List[str] = []
+        fid_token_list: List[str] = []
+        for file in files:
+            meta = self._get_share_meta(file)
+            token = meta.get("share_fid_token", "")
+            if not token:
+                continue
+            fid_list.append(file.file_id)
+            fid_token_list.append(token)
+
+        if not fid_list:
+            return None
+
+        ok = QuarkDriveService.save_share_items(
+            self._current_account.access_token,
+            self._share_pwd_id,
+            self._share_stoken,
+            fid_list,
+            fid_token_list,
+            folder_fid,
+        )
+        if not ok:
+            return None
+        return folder_fid
+
+    def _play_share_audio(self, share_file: CloudFile, start_position: float = 0.0):
+        """Play shared audio by saving to cloud first, then downloading for playback."""
+        folder_fid = self._save_share_files([share_file])
+        if not folder_fid or not self._current_account:
+            self._status_label.setText(t("cloud_share_save_failed"))
+            return
+
+        result = QuarkDriveService.get_file_list(self._current_account.access_token, folder_fid)
+        if isinstance(result, tuple):
+            saved_files, updated_token = result
+        else:
+            saved_files, updated_token = result, None
+
+        if updated_token:
+            self._cloud_account_service.update_token(self._current_account.id, updated_token)
+            self._current_account.access_token = updated_token
+
+        target = None
+        for item in saved_files:
+            if item.file_type == "audio" and item.name == share_file.name:
+                target = item
+                break
+
+        if target is None:
+            for item in saved_files:
+                if item.file_type == "audio":
+                    target = item
+                    break
+
+        if target is None:
+            self._status_label.setText(t("cloud_share_saved_but_not_found"))
+            return
+
+        # Switch to normal mode so context menu is based on saved cloud files.
+        self._share_mode = False
+        self._share_save_selected_btn.setVisible(False)
+        self._share_save_selected_btn.setEnabled(False)
+        self._share_results_list.setVisible(False)
+        self._stack.setVisible(True)
+        self._update_toolbar_for_search_results(False)
+        self._adjust_share_results_height()
+
+        # Reuse existing download-and-play pipeline with saved files in Harmony.
+        self._current_parent_id = folder_fid
+        self._path_label.setText("/Harmony")
+        self._fid_path = [folder_fid]
+        self._current_audio_files = [f for f in saved_files if f.file_type == "audio"]
+        self._file_table.populate(saved_files, self._current_playing_file_id)
+        self._back_btn.setEnabled(True)
+        self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
+        self._play_audio_file(target, start_position=start_position)
+
     # === File Management ===
 
     def _update_file_view(self):
@@ -585,6 +1068,8 @@ class CloudDriveView(QWidget):
 
         # Show batch download button when audio files are present
         self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
+        if not self._share_mode:
+            self._share_save_selected_btn.setVisible(False)
 
         # Use the CloudFileTable component
         self._file_table.populate(files, self._current_playing_file_id)
@@ -594,6 +1079,16 @@ class CloudDriveView(QWidget):
 
     def _navigate_to_folder(self, file: CloudFile):
         """Navigate to a folder."""
+        if self._share_mode and self._is_share_file(file):
+            current_path = self._path_label.text()
+            self._share_history.append((self._current_parent_id, current_path))
+            if current_path == "/":
+                new_path = f"/{file.name}"
+            else:
+                new_path = f"{current_path}/{file.name}"
+            self._load_share_folder(file.file_id, new_path)
+            return
+
         parent_id = self._current_parent_id
         current_path = self._path_label.text()
 
@@ -618,6 +1113,15 @@ class CloudDriveView(QWidget):
 
     def _navigate_back(self):
         """Navigate to previous folder."""
+        if self._share_mode:
+            if not self._share_history:
+                self._back_btn.setEnabled(False)
+                return
+            parent_id, path = self._share_history.pop()
+            self._load_share_folder(parent_id, path)
+            self._back_btn.setEnabled(bool(self._share_history))
+            return
+
         is_baidu = self._current_account and self._current_account.provider == "baidu"
 
         if self._navigation_history:
@@ -686,6 +1190,10 @@ class CloudDriveView(QWidget):
 
     def _play_audio_file(self, file: CloudFile, start_position: float = None):
         """Play an audio file from cloud."""
+        if self._share_mode and self._is_share_file(file):
+            self._play_share_audio(file, start_position or 0.0)
+            return
+
         if self._current_playing_file_id and self._current_playing_file_id != file.file_id:
             self._file_table.update_playing_status(self._current_playing_file_id, False)
 
@@ -942,8 +1450,12 @@ class CloudDriveView(QWidget):
 
     def _show_file_context_menu(self, pos, file: CloudFile):
         """Show context menu for file."""
-        self._file_context_menu.show_menu(file, self._current_audio_files,
-                                          self._current_account.id if self._current_account else None)
+        self._file_context_menu.show_menu(
+            file,
+            self._current_audio_files,
+            self._current_account.id if self._current_account else None,
+            share_mode=self._share_mode and self._is_share_file(file),
+        )
 
     def _show_account_context_menu(self, pos):
         """Show context menu for account."""
@@ -1521,6 +2033,10 @@ class CloudDriveView(QWidget):
         self._back_btn.setText("← " + t("back"))
         self._batch_download_btn.setText(t("batch_download"))
         self._cancel_downloads_btn.setText(t("cancel_downloads"))
+        self._share_search_input.setPlaceholderText(t("cloud_share_search_placeholder"))
+        self._share_search_btn.setText(t("search"))
+        self._share_page_label.setText(f"{self._share_search_page}/{max(1, self._share_search_total_pages)}")
+        self._share_save_selected_btn.setText(t("save_selected_to_cloud"))
         self._account_title.setText(
             self._current_account.account_name if self._current_account else t("select_account")
         )
@@ -1532,13 +2048,59 @@ class CloudDriveView(QWidget):
     def refresh_theme(self):
         """Apply themed styles using ThemeManager tokens."""
         from system.theme import ThemeManager
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        tm = ThemeManager.instance()
+        self.setStyleSheet(tm.get_qss(self._STYLE_TEMPLATE))
+        self._share_search_input.setStyleSheet(tm.get_qss(self._SEARCH_INPUT_STYLE_TEMPLATE))
+        self._share_search_btn.setStyleSheet(tm.get_qss(self._SEARCH_BUTTON_STYLE_TEMPLATE))
+
+    def _adjust_share_results_height(self):
+        """Keep search results list around half-height when visible."""
+        if self._share_results_list.isVisible():
+            self._share_results_list.setFixedHeight(max(180, int(self.height() * 0.45)))
+        else:
+            self._share_results_list.setFixedHeight(0)
+
+    def _update_toolbar_for_search_results(self, has_results: bool):
+        """Hide/show toolbar controls when search results are visible."""
+        if has_results:
+            self._batch_download_btn.setVisible(False)
+            self._back_btn.setVisible(False)
+            self._path_label.setVisible(False)
+        else:
+            self._back_btn.setVisible(True)
+            self._path_label.setVisible(True)
+            if not self._share_mode:
+                self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
+
+    def _update_share_save_button_state(self):
+        """Update visibility/enabled state for 'save selected' action."""
+        selected_results = self._share_results_list.selectedItems()
+        has_selected_share = False
+        if selected_results:
+            song = selected_results[0].data(Qt.UserRole)
+            has_selected_share = isinstance(song, ShareSong) and song.has_quark_link
+
+        should_show = self._share_mode and has_selected_share
+        self._share_save_selected_btn.setVisible(should_show)
+        if not should_show:
+            self._share_save_selected_btn.setEnabled(False)
+            return
+
+        selected_files = self._file_table.get_selected_files()
+        has_files = any(self._is_share_file(f) for f in selected_files)
+        self._share_save_selected_btn.setEnabled(has_files)
 
     def showEvent(self, event):
         """Handle show event."""
         super().showEvent(event)
         if not self._data_loaded:
             self._load_accounts()
+        self._adjust_share_results_height()
+
+    def resizeEvent(self, event):
+        """Update dynamic sizes on resize."""
+        super().resizeEvent(event)
+        self._adjust_share_results_height()
 
     def restore_playback_state(
             self,

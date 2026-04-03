@@ -60,6 +60,7 @@ class PlayerEngine(QObject):
         self._pending_play: bool = False  # Whether to play after seek
         self._cloud_file_id_to_index: dict = {}  # Dict for O(1) lookup by cloud_file_id
         self._prevent_auto_next: bool = False  # Flag to prevent auto-play next track
+        self._media_loaded_flag: bool = False  # Track if media has been loaded for current source
 
         # Connect signals
         self._backend.position_changed.connect(self._on_position_changed)
@@ -685,15 +686,18 @@ class PlayerEngine(QObject):
             item_copy = item
 
         if is_current:
+            self._media_loaded_flag = False  # Reset flag for new source
             self._backend.set_source(local_path)
-            self._backend.seek(0)
 
-            # Use pending seek if available
-            if self._pending_seek and self._pending_seek > 0:
-                # Will seek after media is loaded
+            # Always use pending play mechanism to wait for media_loaded
+            # This fixes race condition where play() is called before media is ready
+            if not self._media_loaded_flag:
                 self._pending_play = True
+                logger.debug(f"[PlayerEngine] Set pending play for index {index}, will play after media loaded")
             else:
+                # Media already loaded (rare case), play directly
                 self._backend.play()
+                logger.debug(f"[PlayerEngine] Media already loaded, playing directly for index {index}")
 
             self.current_track_changed.emit(item_copy.to_dict())
 
@@ -1081,10 +1085,8 @@ class PlayerEngine(QObject):
             local_path = item.local_path
             item_dict = item.to_dict()
 
+        self._media_loaded_flag = False  # Reset flag for new source
         self._backend.set_source(local_path)
-        # Reset position to 0 when loading a new track.
-        # This ensures position() returns correct value for play_previous logic.
-        self._backend.seek(0)
         self.current_track_changed.emit(item_dict)
 
     def _on_position_changed(self, position_ms: int):
@@ -1107,13 +1109,15 @@ class PlayerEngine(QObject):
     def _on_media_loaded(self):
         """Handle media loaded event from backend."""
         logger.debug("[PlayerEngine] Media loaded, checking pending seek")
+        self._media_loaded_flag = True
         if self._pending_seek > 0:
             logger.debug(f"[PlayerEngine] Pending seek: {self._pending_seek}ms")
             self._backend.seek(self._pending_seek)
             self._pending_seek = 0
-            if self._pending_play:
-                self._pending_play = False
-                self._backend.play()
+        if self._pending_play:
+            logger.debug("[PlayerEngine] Executing pending play after media loaded")
+            self._pending_play = False
+            self._backend.play()
 
     def _on_end_of_media(self):
         """Handle end-of-media event from backend."""

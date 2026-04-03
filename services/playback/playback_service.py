@@ -133,6 +133,10 @@ class PlaybackService(QObject):
         self._online_download_workers: dict = {}
         self._online_download_lock = threading.Lock()
 
+        # Metadata processing deduplication
+        self._processing_metadata: set = set()  # cloud_file_ids being processed
+        self._metadata_processing_lock = threading.Lock()
+
         # Queue save debouncing
         self._save_queue_timer = None
         self._pending_save = False
@@ -1542,6 +1546,12 @@ class PlaybackService(QObject):
         if item.local_path:
             return
 
+        # Skip if metadata is already being processed
+        with self._metadata_processing_lock:
+            if item.cloud_file_id in self._processing_metadata:
+                logger.debug(f"[PlaybackService] Skipping preload, metadata already being processed for {item.cloud_file_id}")
+                return
+
         service = CloudDownloadService.instance()
         if service.is_downloading(item.cloud_file_id):
             return
@@ -1845,8 +1855,22 @@ class PlaybackService(QObject):
         Args:
             files: List of (file_id, local_path, provider) tuples
         """
-        def process():
+        # Filter out files that are already being processed
+        files_to_process = []
+        with self._metadata_processing_lock:
             for file_id, local_path, provider in files:
+                if file_id not in self._processing_metadata:
+                    self._processing_metadata.add(file_id)
+                    files_to_process.append((file_id, local_path, provider))
+                else:
+                    logger.debug(f"[PlaybackService] Skipping duplicate metadata processing for {file_id}")
+
+        if not files_to_process:
+            logger.debug("[PlaybackService] All files already being processed, skipping metadata batch")
+            return
+
+        def process():
+            for file_id, local_path, provider in files_to_process:
                 try:
                     # Determine TrackSource
                     if provider.lower() == "quark":
@@ -1876,6 +1900,10 @@ class PlaybackService(QObject):
                         )
                 except Exception as e:
                     logger.error(f"[PlaybackService] Error processing metadata for {file_id}: {e}")
+                finally:
+                    # Remove from processing set when done (even on error)
+                    with self._metadata_processing_lock:
+                        self._processing_metadata.discard(file_id)
 
             # Save queue once after all metadata processing is complete
             self._metadata_batch_complete.emit()

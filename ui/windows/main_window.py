@@ -1357,10 +1357,6 @@ class MainWindow(QMainWindow):
         # Use PlaybackService for cloud playback
         self._playback.play_cloud_playlist(cloud_files, index, account, temp_path, start_position)
 
-        # If first file is already downloaded, update it
-        if temp_path and index < len(cloud_files):
-            self._playback.on_cloud_file_downloaded(cloud_files[index].file_id, temp_path)
-
     def _on_cloud_download_completed(self, file_id: str, local_path: str):
         """Handle cloud file download completion."""
         # Forward to playback service

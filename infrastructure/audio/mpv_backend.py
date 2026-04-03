@@ -194,15 +194,12 @@ class MpvAudioBackend(AudioBackend):
         `media_loaded`/idle transition callback is not observed in time.
         """
         try:
-            if not bool(self._safe_get_property("idle-active", True)):
-                return True
-            if float(self._safe_get_property("duration", 0.0) or 0.0) > 0:
-                return True
-            if float(self._safe_get_property("time-pos", 0.0) or 0.0) > 0:
-                return True
+            # Only trust active playback state here.
+            # duration/time-pos may still be stale values from previous media
+            # immediately after loadfile(replace), causing premature seek calls.
+            return not bool(self._safe_get_property("idle-active", True))
         except Exception:
             return False
-        return False
 
     def _compute_state(self) -> int:
         idle = bool(self._safe_get_property("idle-active", True))
@@ -259,13 +256,18 @@ class MpvAudioBackend(AudioBackend):
             self.media_loaded.emit()
         elif is_idle and self._media_ready and not self._explicit_stop:
             # Fallback for environments where eof-reached callback is unreliable.
-            self._emit_end_of_media_once()
+            # Guard against transient idle transitions by requiring EOF evidence.
+            if self._should_treat_idle_as_end():
+                self._emit_end_of_media_once()
         self._set_polling_enabled(not is_idle)
         self._emit_state_if_changed()
 
     def _on_eof_observed(self, value):
         if bool(value) and not self._explicit_stop:
-            self._emit_end_of_media_once()
+            # Only treat eof-reached as end if we're actually near the end
+            # This prevents spurious EOF signals from stopping playback prematurely
+            if self._should_treat_idle_as_end():
+                self._emit_end_of_media_once()
 
     def _seek_now(self, position_ms: int):
         """Run a concrete seek command and absorb transient mpv errors."""
@@ -288,6 +290,21 @@ class MpvAudioBackend(AudioBackend):
             return
         self._end_notified = True
         self.end_of_media.emit()
+
+    def _should_treat_idle_as_end(self) -> bool:
+        """Decide whether an idle transition should be treated as end-of-media."""
+        try:
+            duration = float(self._safe_get_property("duration", 0.0) or 0.0)
+            position = float(self._safe_get_property("time-pos", 0.0) or 0.0)
+            # Only trust timeline proximity here.
+            # eof-reached is handled by _on_eof_observed and may be stale
+            # around track switches in some mpv builds.
+            if duration > 1.0 and position > 0.0:
+                # Accept tiny decode tolerance near track end.
+                return position >= max(0.0, duration - 0.5)
+        except Exception:
+            return False
+        return False
 
     @staticmethod
     def _clamp_effect(value: float) -> float:

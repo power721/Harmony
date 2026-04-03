@@ -3,6 +3,7 @@ Quark Drive cloud storage service.
 """
 import json
 import logging
+import re
 import traceback
 
 import requests
@@ -12,7 +13,8 @@ from domain import CloudFile
 # Configure logging
 logger = logging.getLogger(__name__)
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
+from urllib.parse import parse_qs, urlparse
 
 
 class QuarkDriveService:
@@ -88,6 +90,23 @@ class QuarkDriveService:
             return updated_cookie
 
         return access_token
+
+    @staticmethod
+    def parse_share_url(share_url: str) -> Tuple[str, str]:
+        """Parse Quark share URL and return (pwd_id, passcode)."""
+        if not share_url:
+            return "", ""
+
+        pwd_match = re.search(r"/s/([^/?#]+)", share_url)
+        if not pwd_match:
+            return "", ""
+
+        pwd_id = pwd_match.group(1).strip()
+
+        parsed = urlparse(share_url)
+        query = parse_qs(parsed.query)
+        passcode = query.get("pwd", [""])[0].strip()
+        return pwd_id, passcode
 
     @classmethod
     def generate_qr_code(cls) -> Optional[Dict[str, str]]:
@@ -263,6 +282,207 @@ class QuarkDriveService:
             logger.error(f"Quark file list error: {e}", exc_info=True)
             logger.debug(f"Traceback: {traceback.format_exc()}")
         return [], None
+
+    @classmethod
+    def create_folder(cls, access_token: str, folder_name: str, parent_id: str = "0") -> tuple:
+        """Create folder in Quark drive.
+
+        Returns:
+            tuple: (fid or None, updated_access_token or None)
+        """
+        try:
+            url = f"{cls.BASE_URL}/1/clouddrive/file"
+            params = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "uc_param_str": "",
+                "__dt": 1000,
+                "__t": int(time.time() * 1000),
+            }
+            payload = {
+                "pdir_fid": parent_id,
+                "file_name": folder_name,
+                "dir_path": "",
+                "dir_init_lock": False,
+            }
+
+            headers = cls.HEADERS.copy()
+            headers["Cookie"] = access_token
+            headers["Content-Type"] = "application/json"
+
+            response = cls._get_session().post(
+                url, params=params, json=payload, headers=headers, timeout=30
+            )
+
+            updated_token = cls._update_cookie_from_response(access_token, response.cookies)
+            data = cls._safe_json_parse(response, "create folder")
+            if data is None:
+                return None, None
+
+            if data.get("code") == 0:
+                fid = data.get("data", {}).get("fid")
+                if updated_token != access_token:
+                    return fid, updated_token
+                return fid, None
+            return None, None
+        except Exception as e:
+            logger.error(f"Quark create folder error: {e}", exc_info=True)
+            return None, None
+
+    @classmethod
+    def ensure_share_save_folder(
+            cls,
+            access_token: str,
+            folder_name: str = "Harmony",
+    ) -> tuple:
+        """Ensure fixed folder exists in root and return its fid.
+
+        Returns:
+            tuple: (folder_fid or None, updated_access_token or None)
+        """
+        files, updated_token = cls.get_file_list(access_token, "0")
+        token_for_next = updated_token or access_token
+        for item in files:
+            if item.file_type == "folder" and item.name == folder_name:
+                return item.file_id, updated_token
+
+        created_fid, created_token = cls.create_folder(token_for_next, folder_name, "0")
+        if created_token:
+            return created_fid, created_token
+        return created_fid, updated_token
+
+    @classmethod
+    def get_share_stoken(cls, access_token: str, pwd_id: str, password: str = "") -> Optional[str]:
+        """Get stoken for a shared link."""
+        try:
+            url = f"{cls.BASE_URL}/1/clouddrive/share/sharepage/token"
+            params = {"pr": "ucpro", "fr": "pc"}
+            payload = {"pwd_id": pwd_id, "passcode": password}
+            headers = cls.HEADERS.copy()
+            headers["Cookie"] = access_token
+            headers["Content-Type"] = "application/json"
+
+            response = cls._get_session().post(
+                url, params=params, json=payload, headers=headers, timeout=30
+            )
+            data = cls._safe_json_parse(response, "share stoken")
+            if data is None:
+                return None
+            if data.get("status") == 200:
+                return data.get("data", {}).get("stoken")
+            return None
+        except Exception as e:
+            logger.error(f"Quark share stoken error: {e}", exc_info=True)
+            return None
+
+    @classmethod
+    def get_share_detail(
+            cls,
+            access_token: str,
+            pwd_id: str,
+            stoken: str,
+            pdir_fid: str = "0",
+    ) -> List[dict]:
+        """Get share folder detail list (single page)."""
+        try:
+            url = f"{cls.BASE_URL}/1/clouddrive/share/sharepage/detail"
+            params = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "pwd_id": pwd_id,
+                "stoken": stoken,
+                "pdir_fid": pdir_fid,
+                "_page": "1",
+                "_size": "200",
+                "_sort": "file_type:asc,file_name:asc",
+            }
+            headers = cls.HEADERS.copy()
+            headers["Cookie"] = access_token
+            response = cls._get_session().get(url, params=params, headers=headers, timeout=30)
+            data = cls._safe_json_parse(response, "share detail")
+            if data is None:
+                return []
+            if data.get("status") != 200:
+                return []
+            return data.get("data", {}).get("list", []) or []
+        except Exception as e:
+            logger.error(f"Quark share detail error: {e}", exc_info=True)
+            return []
+
+    @classmethod
+    def poll_task(cls, access_token: str, task_id: str, retry: int = 30) -> bool:
+        """Poll task status until done."""
+        headers = cls.HEADERS.copy()
+        headers["Cookie"] = access_token
+        for i in range(retry):
+            try:
+                params = {
+                    "pr": "ucpro",
+                    "fr": "pc",
+                    "uc_param_str": "",
+                    "task_id": task_id,
+                    "retry_index": i,
+                    "__dt": 1000,
+                    "__t": int(time.time() * 1000),
+                }
+                url = f"{cls.BASE_URL}/1/clouddrive/task"
+                response = cls._get_session().get(url, params=params, headers=headers, timeout=30)
+                data = cls._safe_json_parse(response, "poll task")
+                if data and data.get("message") == "ok":
+                    status = data.get("data", {}).get("status")
+                    if status == 2:
+                        return True
+                time.sleep(0.6)
+            except Exception:
+                time.sleep(0.6)
+        return False
+
+    @classmethod
+    def save_share_items(
+            cls,
+            access_token: str,
+            pwd_id: str,
+            stoken: str,
+            fid_list: List[str],
+            fid_token_list: List[str],
+            to_pdir_fid: str,
+    ) -> bool:
+        """Save share items to user drive and wait until task completed."""
+        try:
+            url = "https://drive.quark.cn/1/clouddrive/share/sharepage/save"
+            params = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "uc_param_str": "",
+                "__dt": 1000,
+                "__t": int(time.time() * 1000),
+            }
+            payload = {
+                "fid_list": fid_list,
+                "fid_token_list": fid_token_list,
+                "to_pdir_fid": to_pdir_fid,
+                "pwd_id": pwd_id,
+                "stoken": stoken,
+                "pdir_fid": "0",
+                "scene": "link",
+            }
+            headers = cls.HEADERS.copy()
+            headers["Cookie"] = access_token
+            headers["Content-Type"] = "application/json"
+
+            response = cls._get_session().post(
+                url, params=params, json=payload, headers=headers, timeout=30
+            )
+            data = cls._safe_json_parse(response, "save share")
+            if data is None:
+                return False
+            task_id = data.get("data", {}).get("task_id")
+            if not task_id:
+                return False
+            return cls.poll_task(access_token, task_id)
+        except Exception as e:
+            logger.error(f"Quark save share error: {e}", exc_info=True)
+            return False
 
     @classmethod
     def get_download_url(cls, access_token: str, file_id: str) -> tuple:
