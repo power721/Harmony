@@ -1,5 +1,5 @@
 """
-Tests for PlayerEngine queue update edge cases.
+Tests for PlayerEngine infrastructure behavior and signal passthrough.
 """
 
 import threading

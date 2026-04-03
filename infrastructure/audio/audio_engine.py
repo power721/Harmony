@@ -1,5 +1,6 @@
 """Audio playback engine with pluggable backends (Qt or mpv)."""
 import logging
+import os
 import threading
 import importlib
 from pathlib import Path
@@ -39,6 +40,7 @@ class PlayerEngine(QObject):
     play_mode_changed = Signal(PlayMode)  # Emitted when play mode changes
     track_needs_download = Signal(object)  # Emitted when cloud track needs download (PlaylistItem)
     playlist_changed = Signal()  # Emitted when playlist is modified (add/remove/reorder)
+    # Visualizer frame payload: {"mode": ..., "bins"/"samples": ..., "timestamp_ms": ...}
     visualizer_frame = Signal(object)
 
     BACKEND_QT = "qt"
