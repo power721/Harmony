@@ -119,6 +119,16 @@ class EqualizerWidget(QWidget):
 
     _FREQ_LABEL_STYLE = "color: %text_secondary%; font-size: 10px;"
     _VALUE_LABEL_STYLE = "color: %text%; font-size: 11px;"
+    _EFFECTS_ENABLED_CHECKBOX_STYLE = """
+        QCheckBox {
+            color: %highlight%;
+            font-weight: 600;
+        }
+        QCheckBox:disabled {
+            color: %text_secondary%;
+            font-weight: 500;
+        }
+    """
     _SLIDER_STYLE = """
         QSlider::groove:vertical {
             width: 4px;
@@ -212,6 +222,9 @@ class EqualizerWidget(QWidget):
         top_row = QHBoxLayout()
         self._effects_enabled_checkbox = QCheckBox(t("audio_effects_enabled"))
         self._effects_enabled_checkbox.setChecked(True)
+        self._effects_enabled_checkbox.setStyleSheet(
+            ThemeManager.instance().get_qss(self._EFFECTS_ENABLED_CHECKBOX_STYLE)
+        )
         self._effects_enabled_checkbox.stateChanged.connect(self._on_effects_enabled_changed)
         top_row.addWidget(self._effects_enabled_checkbox)
 
@@ -471,6 +484,10 @@ class EqualizerWidget(QWidget):
 
         # Update combo box
         self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
+        self._effects_enabled_checkbox.setStyleSheet(
+            ThemeManager.instance().get_qss(self._EFFECTS_ENABLED_CHECKBOX_STYLE)
+        )
+        self._effects_preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
 
         # Update sliders
         for slider in self.findChildren(QSlider):
@@ -511,6 +528,7 @@ class EqualizerWidget(QWidget):
 
     def _refresh_effect_controls_enabled(self):
         enabled = self._effects_enabled and self._capabilities.eq
+        self._effects_preset_combo.setEnabled(enabled)
         self._bass_slider.setEnabled(enabled and self._capabilities.bass_boost)
         self._treble_slider.setEnabled(enabled and self._capabilities.treble_boost)
         self._reverb_slider.setEnabled(enabled and self._capabilities.reverb)

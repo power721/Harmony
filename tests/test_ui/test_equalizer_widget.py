@@ -99,3 +99,23 @@ def test_equalizer_widget_applies_and_persists_audio_effects(qapp, mock_theme_co
     qapp.processEvents()
     assert backend.effects.bass_boost == 35.0
     assert config._saved.get("bass_boost") == 35.0
+
+
+def test_effects_preset_combo_disabled_when_effects_off(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+    widget = EqualizerWidget()
+
+    assert widget._effects_preset_combo.isEnabled() is True
+
+    widget._effects_enabled_checkbox.setChecked(False)
+    qapp.processEvents()
+
+    assert widget._effects_preset_combo.isEnabled() is False
+
+
+def test_effects_enabled_label_style_is_emphasized(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+    widget = EqualizerWidget()
+
+    style = widget._effects_enabled_checkbox.styleSheet()
+    assert "font-weight: 600" in style
