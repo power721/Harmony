@@ -455,6 +455,14 @@ class PlaybackService(QObject):
     def shuffle(self) -> bool:
         return self._engine.play_mode == PlayMode.RANDOM or self._engine.play_mode == PlayMode.RANDOM_LOOP or self._engine.play_mode == PlayMode.RANDOM_TRACK_LOOP
 
+    @property
+    def can_seek(self) -> bool:
+        return True
+
+    @property
+    def playlist(self) -> List[PlaylistItem]:
+        return self._engine.playlist_items
+
     # ===== Playback Control =====
 
     def play(self):
@@ -1843,7 +1851,7 @@ class PlaybackService(QObject):
 
     def _fetch_cover_for_track(self, file_id: str, title: str, artist: str, album: str,
                                duration: float, metadata: dict, local_path: str, source: TrackSource = None) -> \
-    Optional[str]:
+            Optional[str]:
         """
         Fetch cover art for a track from various sources.
 
