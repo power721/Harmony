@@ -66,3 +66,16 @@ def test_visualizer_paint_handles_recent_frame(qapp):
     widget.show()
     widget.repaint()
     qapp.processEvents()
+
+
+def test_visualizer_waveform_paint_path(qapp):
+    widget = AudioVisualizerWidget()
+    widget.resize(240, 120)
+    widget.update_frame({"mode": "waveform", "samples": [-0.5, 0.0, 0.75, -1.2]})
+
+    widget.show()
+    widget.repaint()
+    qapp.processEvents()
+
+    assert widget._last_frame is not None
+    assert widget._last_frame["mode"] == "waveform"
