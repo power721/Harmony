@@ -520,6 +520,8 @@ class LocalTracksListView(QWidget):
         self._hover_timer.timeout.connect(self._show_cover_popup)
         self._hovered_row = -1
         self._last_cover_pos = QPoint()
+        from system.theme import ThemeManager
+        ThemeManager.instance().register_widget(self)
         self._setup_ui()
         self._setup_connections()
         self._context_menu = LocalTrackContextMenu(self)
@@ -542,6 +544,7 @@ class LocalTracksListView(QWidget):
         self._list_view.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
 
         layout.addWidget(self._list_view)
+        self._apply_viewport_bg()
 
     def _setup_connections(self):
         self._list_view.activated.connect(self._on_item_activated)
@@ -765,9 +768,16 @@ class LocalTracksListView(QWidget):
     def _apply_viewport_bg(self):
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
+        background_color = theme.background if self._model.rowCount() == 0 else theme.background_alt
         self._list_view.setStyleSheet(
-            f"QListView {{ background-color: {theme.background_alt}; border: none; outline: none; }}"
+            "QListView, QListView::viewport { "
+            f"background-color: {background_color}; "
+            "border: none; outline: none; }"
         )
+
+    def refresh_theme(self):
+        """Refresh list viewport styling for the active theme."""
+        self._apply_viewport_bg()
 
     def load_tracks(self, tracks: List[Track], favorite_ids: set = None):
         """Load tracks into the view."""
@@ -782,6 +792,7 @@ class LocalTracksListView(QWidget):
     def clear(self):
         """Clear all tracks."""
         self._model.reset_tracks([], set())
+        self._apply_viewport_bg()
 
     def selected_tracks(self) -> List[Track]:
         """Return currently selected tracks without duplicates."""

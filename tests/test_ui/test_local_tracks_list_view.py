@@ -90,6 +90,29 @@ def test_local_tracks_cover_hover_starts_timer_on_cover_area():
         assert view._hover_timer.isActive()
 
 
+def test_local_tracks_list_view_uses_theme_background_for_empty_state():
+    """An empty track list should inherit the main theme background."""
+    app = QApplication.instance() or QApplication([])
+    theme_manager = MagicMock()
+    theme = MagicMock()
+    theme.background = "#101010"
+    theme.background_alt = "#1a1a1a"
+    theme.background_hover = "#202020"
+    theme.text = "#ffffff"
+    theme.text_secondary = "#b3b3b3"
+    theme.highlight = "#1db954"
+    theme.border = "#404040"
+    type(theme_manager).current_theme = PropertyMock(return_value=theme)
+
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        view = LocalTracksListView()
+        view.load_tracks([], favorite_ids=set())
+
+        stylesheet = view._list_view.styleSheet()
+        assert theme.background in stylesheet
+        assert theme.background_alt not in stylesheet
+
+
 def test_history_list_view_cover_hover_works_with_history_delegate():
     """HistoryListView should support cover hover even without delegate-specific helper."""
     app = QApplication.instance() or QApplication([])
