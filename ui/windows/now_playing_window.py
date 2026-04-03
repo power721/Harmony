@@ -406,6 +406,7 @@ class NowPlayingWindow(QWidget):
             self._lyrics_widget.set_lyrics("")
             self._current_cover_path = ""
             self._set_default_cover()
+            self.setWindowTitle(t("app_title"))
             return
 
         self._current_duration = 0.0
@@ -422,7 +423,7 @@ class NowPlayingWindow(QWidget):
 
         window_title = f"{title} - {artist}" if artist else title
         self._current_track_title = window_title
-        self.setWindowTitle(window_title if self._playback.state == PlaybackState.PLAYING else t("app_title"))
+        self.setWindowTitle(window_title)
 
         self._load_cover_async(track_dict)
         self._load_lyrics_async(track_dict)

@@ -1440,6 +1440,8 @@ class MainWindow(QMainWindow):
 
         # Save current track title for backward compat
         self._current_track_title = f"{title} - {artist}" if artist else title
+        if self._current_track_title:
+            self.setWindowTitle(self._current_track_title)
 
     def _on_playback_state_changed(self, state: str):
         """Handle playback state change to update window title.

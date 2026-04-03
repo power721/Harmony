@@ -509,7 +509,7 @@ class MiniPlayer(QWidget):
             else:
                 self._current_track_title = title
 
-            if self._player.engine.state == PlaybackState.PLAYING:
+            if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
 
             # Load cover asynchronously to avoid blocking
