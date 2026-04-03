@@ -21,7 +21,10 @@ class _StubSignal:
 
     def disconnect(self, callback):
         self.disconnect_calls += 1
-        self._callbacks = [cb for cb in self._callbacks if cb is not callback]
+        for index, cb in enumerate(list(self._callbacks)):
+            if cb == callback:
+                self._callbacks.pop(index)
+                break
 
 
 class _DummyVisualizer:
@@ -124,13 +127,33 @@ def test_connect_visualizer_signal_is_idempotent():
 def test_close_event_disconnects_visualizer_signal():
     backend = _DummyBackend(True)
     signal = _StubSignal()
-    window, _ = _build_window(backend=backend, signal=signal)
+    window, engine = _build_window(backend=backend, signal=signal)
     event = SimpleNamespace(accept=lambda: None)
 
     window._connect_visualizer_signal()
     assert window._visualizer_signal_connected is True
+    first_payload = {"mode": "spectrum", "bins": [0.1]}
+    engine.visualizer_frame.emit(first_payload)
+    assert window._visualizer_widget.frames == [first_payload]
 
     window.closeEvent(event)
 
     assert signal.disconnect_calls == 1
     assert window._visualizer_signal_connected is False
+    second_payload = {"mode": "spectrum", "bins": [0.5]}
+    engine.visualizer_frame.emit(second_payload)
+    assert window._visualizer_widget.frames == [first_payload]
+
+
+def test_close_event_disconnect_is_idempotent():
+    backend = _DummyBackend(True)
+    signal = _StubSignal()
+    window, _ = _build_window(backend=backend, signal=signal)
+    event = SimpleNamespace(accept=lambda: None)
+
+    window._connect_visualizer_signal()
+
+    window.closeEvent(event)
+    window.closeEvent(event)
+
+    assert signal.disconnect_calls == 1
