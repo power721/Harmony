@@ -61,8 +61,8 @@ class MPRISService(dbus.service.Object):
 
     def _position_us(self) -> int:
         method = getattr(self.playback_service, "position", None)
-        seconds = method() if callable(method) else 0.0
-        return int(_safe_float(seconds) * 1_000_000)
+        ms = method() if callable(method) else 0.0
+        return int(_safe_float(ms) * 1000)
 
     def _playback_status(self) -> str:
         """
@@ -257,7 +257,7 @@ class MPRISService(dbus.service.Object):
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player", in_signature="x")
     def Seek(self, offset):
-        ms = int(offset) / 1_000
+        ms = int(offset) // 1000
         self.playback_service.seek(ms)
         self.Seeked(dbus.Int64(self._position_us()))
 
@@ -268,11 +268,10 @@ class MPRISService(dbus.service.Object):
             return
 
         current_id = _make_track_object_path(track)
-        print("SetPosition called", track_id, current_id, position)
         if track_id != current_id:
             return
 
-        ms = int(position) / 1_000
+        ms = int(position) // 1000
 
         try:
             self.playback_service.seek(ms)
