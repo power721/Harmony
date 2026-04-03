@@ -42,6 +42,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_audio_engine_backend(config_manager: ConfigManager = None) -> str:
+    """Resolve configured backend, falling back to mpv if Qt backend is unavailable."""
+    if config_manager and hasattr(config_manager, "get_audio_engine"):
+        backend_type = config_manager.get_audio_engine()
+    else:
+        backend_type = PlayerEngine.BACKEND_MPV
+
+    if (
+        backend_type == PlayerEngine.BACKEND_QT
+        and not PlayerEngine.is_backend_available(PlayerEngine.BACKEND_QT)
+    ):
+        logger.warning("[PlaybackService] Qt audio backend unavailable, falling back to mpv")
+        return PlayerEngine.BACKEND_MPV
+
+    return backend_type
+
+
 class PlaybackService(QObject):
     """
     Unified playback service for all music sources.
@@ -112,10 +129,7 @@ class PlaybackService(QObject):
         self._history_repo = history_repo
         self._album_repo = album_repo
         self._artist_repo = artist_repo
-        if self._config and hasattr(self._config, "get_audio_engine"):
-            backend_type = self._config.get_audio_engine()
-        else:
-            backend_type = PlayerEngine.BACKEND_MPV
+        backend_type = _resolve_audio_engine_backend(self._config)
         self._engine = PlayerEngine(backend_type=backend_type)
         self._event_bus = event_bus or EventBus.instance()
 

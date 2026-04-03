@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QFrame, QGraphicsDropShadowEffect
 )
 
+from infrastructure.audio import PlayerEngine
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
@@ -27,6 +28,14 @@ from services.cloud.qqmusic.common import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def _get_audio_engine_options() -> list[tuple[str, str]]:
+    """Return supported audio engine options for the current runtime."""
+    options = [(t("audio_engine_mpv"), PlayerEngine.BACKEND_MPV)]
+    if PlayerEngine.is_backend_available(PlayerEngine.BACKEND_QT):
+        options.append((t("audio_engine_qt"), PlayerEngine.BACKEND_QT))
+    return options
 
 
 class VerifyLoginThread(QThread):
@@ -679,8 +688,8 @@ class GeneralSettingsDialog(QDialog):
         playback_label.setMinimumWidth(120)
         self._audio_engine_combo = QComboBox()
         self._audio_engine_combo.setFixedWidth(320)
-        self._audio_engine_combo.addItem(t("audio_engine_mpv"), "mpv")
-        self._audio_engine_combo.addItem(t("audio_engine_qt"), "qt")
+        for label, value in _get_audio_engine_options():
+            self._audio_engine_combo.addItem(label, value)
         playback_row.addWidget(playback_label)
         playback_row.addWidget(self._audio_engine_combo)
         playback_row.addStretch()

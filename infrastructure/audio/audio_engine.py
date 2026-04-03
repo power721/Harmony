@@ -107,6 +107,19 @@ class PlayerEngine(QObject):
         """Whether mpv failures should fall back to QtMultimedia backend."""
         return os.environ.get("HARMONY_ENABLE_QT_FALLBACK", "1") == "1"
 
+    @classmethod
+    def is_backend_available(cls, backend_type: str) -> bool:
+        """Whether a backend can be instantiated in the current runtime."""
+        if backend_type == cls.BACKEND_MPV:
+            return True
+        if backend_type == cls.BACKEND_QT:
+            try:
+                importlib.import_module("infrastructure.audio.qt_backend")
+                return True
+            except Exception:
+                return False
+        return False
+
     def _create_qt_backend(self):
         """Import Qt backend lazily so mpv-only builds can exclude QtMultimedia."""
         qt_module = importlib.import_module("infrastructure.audio.qt_backend")
