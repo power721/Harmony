@@ -82,10 +82,12 @@ class MpvAudioBackend(AudioBackend):
         if bool(self._safe_get_property("eof-reached", False)):
             self.seek(0)
         self._player.pause = False
+        self._refresh_visualizer_state()
         self._emit_state_if_changed()
 
     def pause(self):
         self._player.pause = True
+        self._set_visualizer_enabled(False)
         self._emit_state_if_changed()
 
     def stop(self):
@@ -245,6 +247,19 @@ class MpvAudioBackend(AudioBackend):
         if self._visualizer_timer.isActive():
             self._visualizer_timer.stop()
 
+    def _refresh_visualizer_state(self):
+        self._set_visualizer_enabled(self._should_emit_visualizer_frames())
+
+    def _should_emit_visualizer_frames(self) -> bool:
+        try:
+            if bool(self._safe_get_property("idle-active", True)):
+                return False
+            if bool(self._safe_get_property("pause", False)):
+                return False
+        except Exception:
+            return False
+        return True
+
     def _poll_position(self):
         self.position_changed.emit(self.position())
         self._emit_state_if_changed()
@@ -267,6 +282,7 @@ class MpvAudioBackend(AudioBackend):
 
     def _on_pause_observed(self, _value):
         self._emit_state_if_changed()
+        self._refresh_visualizer_state()
 
     def _on_idle_observed(self, value):
         is_idle = bool(value)
@@ -280,7 +296,7 @@ class MpvAudioBackend(AudioBackend):
             # Fallback for environments where eof-reached callback is unreliable.
             self._emit_end_of_media_once()
         self._set_polling_enabled(not is_idle)
-        self._set_visualizer_enabled(not is_idle)
+        self._refresh_visualizer_state()
         self._emit_state_if_changed()
 
     def _on_eof_observed(self, value):
@@ -322,6 +338,7 @@ class MpvAudioBackend(AudioBackend):
         self.visualizer_frame.emit(frame)
 
     def _build_spectrum_bins(self, position_ms: int) -> list[float]:
+        # Deterministic placeholder bins for MVP visualizer; replace with mpv FFT output later.
         phase = (position_ms % 2000) / 2000.0
         bins: list[float] = []
         for i in range(24):
@@ -330,6 +347,7 @@ class MpvAudioBackend(AudioBackend):
         return bins
 
     def _build_waveform_samples(self, position_ms: int) -> list[float]:
+        # Deterministic placeholder waveform samples until real audio data wiring is added.
         phase = (position_ms % 1000) / 1000.0
         samples: list[float] = []
         for i in range(64):

@@ -109,6 +109,32 @@ def test_mpv_backend_emits_visualizer_frame_when_playing(monkeypatch):
     assert frames[-1]["timestamp_ms"] >= 0
 
 
+def test_mpv_backend_visualizer_timer_lifecycle(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    timer = backend._visualizer_timer
+    player = backend._player
+
+    assert timer.started is False
+
+    player.trigger("idle-active", False)
+    assert timer.started is True
+
+    backend.pause()
+    assert timer.started is False
+
+    backend.play()
+    assert timer.started is True
+
+    backend.stop()
+    assert timer.started is False
+
+    backend.cleanup()
+    assert timer.started is False
+
+
 def test_mpv_backend_basic_flow(monkeypatch):
     monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
     monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
