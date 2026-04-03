@@ -88,3 +88,13 @@ def test_mini_player_track_change_updates_window_title_even_if_state_not_playing
     )
 
     fake.setWindowTitle.assert_called_once_with("Mini Song - Mini Artist")
+
+
+def test_normalize_restore_position_resets_when_near_track_end():
+    # 120s track, saved at 119.5s should reset to 0 to avoid instant auto-next
+    assert MainWindow._normalize_restore_position(119500, 120.0) == 0
+
+
+def test_normalize_restore_position_keeps_regular_middle_position():
+    # 120s track, saved at 40s should be preserved
+    assert MainWindow._normalize_restore_position(40000, 120.0) == 40000

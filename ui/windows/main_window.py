@@ -252,8 +252,8 @@ class MainWindow(QMainWindow):
             def load_playlist(self, playlist_id):
                 return playback.load_playlist(playlist_id)
 
-            def save_queue(self):
-                return playback.save_queue()
+            def save_queue(self, force: bool = False):
+                return playback.save_queue(force=force)
 
             def restore_queue(self):
                 return playback.restore_queue()
@@ -1939,6 +1939,30 @@ class MainWindow(QMainWindow):
         """Update navigation buttons for detail view (album/artist)."""
         self._sidebar.set_current_page(-1)  # No active nav for detail views
 
+    @staticmethod
+    def _normalize_restore_position(position_ms: int, duration_s: float | int | None) -> int:
+        """
+        Normalize restored position to avoid instant end-of-track auto-next.
+
+        If the saved position is too close to the end, restart from 0 so the app
+        restores the same song instead of immediately jumping to the next one.
+        """
+        if position_ms <= 0:
+            return 0
+
+        try:
+            duration_ms = int(float(duration_s or 0) * 1000)
+        except (TypeError, ValueError):
+            duration_ms = 0
+
+        if duration_ms <= 0:
+            return position_ms
+
+        if position_ms >= max(0, duration_ms - 3000):
+            return 0
+
+        return min(position_ms, max(0, duration_ms - 1))
+
     def _restore_playback_state(self):
         """Restore previous playback state."""
         from PySide6.QtCore import QTimer
@@ -1946,12 +1970,16 @@ class MainWindow(QMainWindow):
         # Try to restore saved queue first
         if self._player.restore_queue():
             logger.debug("Restored play queue from database")
+            # Guard against spurious end-of-media events during backend warm-up.
+            # This prevents an immediate auto-advance before restore completes.
+            try:
+                self._player.engine.set_prevent_auto_next(True)
+            except Exception:
+                pass
 
             # Check if we should auto-play
             was_playing = self._config.get_was_playing()
             playback_position = self._config.get_playback_position()
-            source = self._config.get_playback_source()
-
             # Update navigation buttons immediately based on source
             # if source == "cloud":
             #     if hasattr(self, '_nav_cloud'):
@@ -1964,7 +1992,11 @@ class MainWindow(QMainWindow):
                 if current_item:
                     # Restore position if valid
                     if playback_position > 0:
-                        self._player.engine.seek(playback_position)
+                        seek_pos = self._normalize_restore_position(
+                            playback_position,
+                            getattr(current_item, "duration", 0),
+                        )
+                        self._player.engine.seek(seek_pos)
 
                     # Auto-play if was playing
                     if was_playing:
@@ -2035,7 +2067,11 @@ class MainWindow(QMainWindow):
                         self._player.play_track(current_track_id)
 
                         if playback_position > 0:
-                            self._player.engine.seek(playback_position)
+                            seek_pos = self._normalize_restore_position(
+                                playback_position,
+                                getattr(track, "duration", 0),
+                            )
+                            self._player.engine.seek(seek_pos)
 
                         if was_playing:
                             QTimer.singleShot(300, self._player.engine.play)
@@ -2082,9 +2118,10 @@ class MainWindow(QMainWindow):
         # Save volume
         self._config.set_volume(current_volume)
 
-        # Save play queue
+        # Save play queue and block any later async writes from overriding it
         try:
-            self._player.save_queue()
+            self._playback.begin_shutdown()
+            self._playback.save_queue(force=True)
         except Exception as e:
             logger.error(f"Error saving play queue: {e}")
 

@@ -136,6 +136,7 @@ class PlaybackService(QObject):
         # Queue save debouncing
         self._save_queue_timer = None
         self._pending_save = False
+        self._is_shutting_down = False
 
         # Connect internal signal for thread-safe metadata updates
         self._metadata_processed.connect(self._on_metadata_processed)
@@ -864,6 +865,9 @@ class PlaybackService(QObject):
         Args:
             delay_ms: Delay in milliseconds before saving (default: 100ms)
         """
+        if self._is_shutting_down:
+            return
+
         if self._save_queue_timer is None:
             self._save_queue_timer = QTimer()
             self._save_queue_timer.setSingleShot(True)
@@ -882,8 +886,18 @@ class PlaybackService(QObject):
             self.save_queue()
             self._pending_save = False
 
-    def save_queue(self):
+    def begin_shutdown(self):
+        """Mark service as shutting down and prevent further async queue saves."""
+        self._is_shutting_down = True
+        self._pending_save = False
+        if getattr(self, "_save_queue_timer", None) is not None:
+            self._save_queue_timer.stop()
+
+    def save_queue(self, force: bool = False):
         """Save the current play queue to database."""
+        if getattr(self, "_is_shutting_down", False) and not force:
+            return
+
         items = self._engine.playlist_items
         if not items:
             self.clear_saved_queue()
@@ -903,6 +917,21 @@ class PlaybackService(QObject):
         # Save current index and play mode
         self._config.set("queue_current_index", current_idx)
         self._config.set("queue_play_mode", self._engine.play_mode.value)
+        current_item = getattr(self._engine, "current_playlist_item", None)
+        if current_item is None and 0 <= current_idx < len(items):
+            current_item = items[current_idx]
+        self._config.set(
+            "queue_current_track_id",
+            current_item.track_id if current_item and current_item.track_id else 0,
+        )
+        self._config.set(
+            "queue_current_cloud_file_id",
+            current_item.cloud_file_id if current_item and current_item.cloud_file_id else "",
+        )
+        self._config.set(
+            "queue_current_local_path",
+            current_item.local_path if current_item and current_item.local_path else "",
+        )
 
         logger.debug(f"[PlaybackService] Saved queue: {len(queue_items)} items, index={current_idx}")
 
@@ -927,6 +956,29 @@ class PlaybackService(QObject):
         # Get saved index and play mode
         saved_index = self._config.get("queue_current_index", 0)
         saved_mode = self._config.get("queue_play_mode", PlayMode.SEQUENTIAL.value)
+        saved_track_id = self._config.get("queue_current_track_id", 0)
+        saved_cloud_file_id = self._config.get("queue_current_cloud_file_id", "")
+        saved_local_path = self._config.get("queue_current_local_path", "")
+
+        # Prefer restoring by stable identity; fall back to raw index.
+        matched_index = None
+        if saved_track_id:
+            for i, item in enumerate(items):
+                if item.track_id == saved_track_id:
+                    matched_index = i
+                    break
+        if matched_index is None and saved_cloud_file_id:
+            for i, item in enumerate(items):
+                if item.cloud_file_id == saved_cloud_file_id:
+                    matched_index = i
+                    break
+        if matched_index is None and saved_local_path:
+            for i, item in enumerate(items):
+                if item.local_path == saved_local_path:
+                    matched_index = i
+                    break
+        if matched_index is not None:
+            saved_index = matched_index
 
         # Determine source type from items at saved_index
         if items and 0 <= saved_index < len(items):
@@ -1023,6 +1075,9 @@ class PlaybackService(QObject):
         self._queue_repo.clear()
         self._config.delete("queue_current_index")
         self._config.delete("queue_play_mode")
+        self._config.delete("queue_current_track_id")
+        self._config.delete("queue_current_cloud_file_id")
+        self._config.delete("queue_current_local_path")
 
     # ===== Library Scanning =====
 
@@ -1144,6 +1199,12 @@ class PlaybackService(QObject):
 
             # Preload next track
             self._preload_next_cloud_track()
+
+            # Persist current queue/index on user-driven track switches.
+            # Skip when engine is stopped to avoid restore-time transient switches
+            # overwriting the last persisted index.
+            if self._engine.state != PlaybackState.STOPPED:
+                self._schedule_save_queue()
 
     def _on_state_changed(self, state: PlaybackState):
         """Handle state change."""
