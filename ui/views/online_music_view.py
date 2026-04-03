@@ -3239,8 +3239,8 @@ class OnlineMusicView(QWidget):
 
     def _on_ranking_track_activated(self, track):
         """Handle track activation from ranking list view."""
-        # TODO: Implement online track playback
         logger.info(f"Ranking track activated: {track.title}")
+        self._play_track(track)
 
     def _on_ranking_favorite_toggled(self, track, is_favorite: bool):
         """Handle favorite toggle from ranking list view star click."""

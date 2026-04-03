@@ -1,5 +1,6 @@
 """Focus behavior tests for OnlineMusicView search input."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PySide6.QtCore import Qt
@@ -26,3 +27,15 @@ def test_click_outside_search_input_clears_focus(qtbot):
         qtbot.mouseClick(view._stack, Qt.LeftButton)
 
         qtbot.waitUntil(lambda: not view._search_input.hasFocus())
+
+
+def test_ranking_track_activation_plays_selected_track():
+    """Ranking list activation should route into the normal play path."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    played = []
+    track = SimpleNamespace(title="Top Song")
+    view._play_track = lambda selected_track: played.append(selected_track)
+
+    OnlineMusicView._on_ranking_track_activated(view, track)
+
+    assert played == [track]
