@@ -143,6 +143,22 @@ def test_mpv_backend_visualizer_timer_lifecycle(monkeypatch):
     assert timer.started is False
 
 
+def test_mpv_backend_set_source_disables_visualizer_timer(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    timer = backend._visualizer_timer
+    player = backend._player
+
+    player.trigger("idle-active", False)
+    assert timer.started is True
+
+    backend.set_source("/tmp/new-track.flac")
+
+    assert timer.started is False
+
+
 def test_mpv_backend_basic_flow(monkeypatch):
     monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
     monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
