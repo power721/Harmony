@@ -62,6 +62,11 @@ class MpvAudioBackend(AudioBackend):
         self._poll_timer.setInterval(100)
         self._poll_timer.timeout.connect(self._poll_position)
 
+        self._visualizer_mode = "spectrum"
+        self._visualizer_timer = QTimer(self)
+        self._visualizer_timer.setInterval(33)
+        self._visualizer_timer.timeout.connect(self._emit_visualizer_frame)
+
     def set_source(self, file_path: str):
         self._source_path = file_path or ""
         self._explicit_stop = False
@@ -87,6 +92,7 @@ class MpvAudioBackend(AudioBackend):
         self._explicit_stop = True
         self._pending_seek_ms = None
         self._set_polling_enabled(False)
+        self._set_visualizer_enabled(False)
         self._player.command("stop")
         self._emit_state_if_changed(force=self.STATE_STOPPED)
 
@@ -151,11 +157,15 @@ class MpvAudioBackend(AudioBackend):
     def supports_audio_effects(self) -> bool:
         return True
 
+    def supports_visualizer(self) -> bool:
+        return True
+
     def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
         return AudioEffectCapabilities.all_supported()
 
     def cleanup(self):
         self._set_polling_enabled(False)
+        self._set_visualizer_enabled(False)
         try:
             self._player.command("stop")
         except Exception:
@@ -226,6 +236,15 @@ class MpvAudioBackend(AudioBackend):
         if self._poll_timer.isActive():
             self._poll_timer.stop()
 
+    def _set_visualizer_enabled(self, enabled: bool):
+        if enabled:
+            if not self._visualizer_timer.isActive():
+                self._visualizer_timer.start()
+            return
+
+        if self._visualizer_timer.isActive():
+            self._visualizer_timer.stop()
+
     def _poll_position(self):
         self.position_changed.emit(self.position())
         self._emit_state_if_changed()
@@ -261,6 +280,7 @@ class MpvAudioBackend(AudioBackend):
             # Fallback for environments where eof-reached callback is unreliable.
             self._emit_end_of_media_once()
         self._set_polling_enabled(not is_idle)
+        self._set_visualizer_enabled(not is_idle)
         self._emit_state_if_changed()
 
     def _on_eof_observed(self, value):
@@ -288,6 +308,35 @@ class MpvAudioBackend(AudioBackend):
             return
         self._end_notified = True
         self.end_of_media.emit()
+
+    def _emit_visualizer_frame(self):
+        if not self._visualizer_timer.isActive():
+            return
+        position_ms = max(0, self.position())
+        if self._visualizer_mode == "waveform":
+            samples = self._build_waveform_samples(position_ms)
+            frame = {"mode": "waveform", "samples": samples, "timestamp_ms": position_ms}
+        else:
+            bins = self._build_spectrum_bins(position_ms)
+            frame = {"mode": "spectrum", "bins": bins, "timestamp_ms": position_ms}
+        self.visualizer_frame.emit(frame)
+
+    def _build_spectrum_bins(self, position_ms: int) -> list[float]:
+        phase = (position_ms % 2000) / 2000.0
+        bins: list[float] = []
+        for i in range(24):
+            value = abs((i / 24.0) - phase)
+            bins.append(max(0.0, min(1.0, 1.0 - value)))
+        return bins
+
+    def _build_waveform_samples(self, position_ms: int) -> list[float]:
+        phase = (position_ms % 1000) / 1000.0
+        samples: list[float] = []
+        for i in range(64):
+            progress = i / 63.0
+            amplitude = (progress * 2.0) - 1.0
+            samples.append(amplitude * (1.0 - phase))
+        return samples
 
     @staticmethod
     def _clamp_effect(value: float) -> float:
