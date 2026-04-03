@@ -622,10 +622,10 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def closeEvent(self, event):
         """Cleanup on close."""
-        self._controller.cancel_all()
+        self._controller.shutdown()
         super().closeEvent(event)
 
     def reject(self):
         """Handle dialog rejection."""
-        self._controller.cancel_all()
+        self._controller.shutdown()
         super().reject()

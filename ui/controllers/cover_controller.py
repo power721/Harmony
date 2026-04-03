@@ -100,26 +100,36 @@ class CoverController(QObject):
             self._futures.clear()
 
     def shutdown(self):
+        if self._shutdown:
+            return
         self._shutdown = True
         self.cancel_all()
-        self._executor.shutdown(wait=False)
+        self._executor.shutdown(wait=True, cancel_futures=True)
 
     # ===================== Internal =====================
 
     def _wrap_search(self, token: str, key: str, task: Callable):
         try:
             results = task()
+            if self._shutdown:
+                return
             self._cache[key] = results
             self.search_completed.emit(token, results)
         except Exception as e:
+            if self._shutdown:
+                return
             logger.error(f"Search failed: {e}", exc_info=True)
             self.search_failed.emit(token, str(e))
 
     def _wrap_download(self, token: str, key: str, task: Callable):
         try:
             data, source = task()
+            if self._shutdown:
+                return
             self.download_completed.emit(token, data, source)
         except Exception as e:
+            if self._shutdown:
+                return
             logger.error(f"Download failed: {e}", exc_info=True)
             self.download_failed.emit(token, str(e))
 

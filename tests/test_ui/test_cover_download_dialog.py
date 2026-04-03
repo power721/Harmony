@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch, MagicMock
 from PySide6.QtWidgets import QApplication, QDialog
 from PySide6.QtCore import Qt
 
+from ui.controllers.cover_controller import CoverController
 from ui.dialogs import UniversalCoverDownloadDialog
 from ui.strategies.track_search_strategy import TrackSearchStrategy
 from ui.strategies.album_search_strategy import AlbumSearchStrategy
@@ -133,6 +134,23 @@ def sample_artist():
 
 class TestTrackCoverDownloadDialog:
     """Test track cover download with TrackSearchStrategy."""
+
+    def test_dialog_reject_shuts_down_cover_controller(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
+        """Closing the dialog must shut down the controller executor."""
+        strategy = TrackSearchStrategy(
+            sample_tracks, mock_track_repo, mock_event_bus
+        )
+
+        with patch.object(CoverController, "search", return_value=None):
+            dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+
+        dialog._controller.shutdown = Mock()
+
+        dialog.reject()
+
+        dialog._controller.shutdown.assert_called_once_with()
 
     def test_dialog_initialization_with_tracks(
         self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
