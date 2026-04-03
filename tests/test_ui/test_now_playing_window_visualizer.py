@@ -8,13 +8,20 @@ from ui.windows.now_playing_window import NowPlayingWindow
 class _StubSignal:
     def __init__(self):
         self._callbacks = []
+        self.connect_calls = 0
+        self.disconnect_calls = 0
 
     def connect(self, callback):
+        self.connect_calls += 1
         self._callbacks.append(callback)
 
     def emit(self, payload):
         for callback in list(self._callbacks):
             callback(payload)
+
+    def disconnect(self, callback):
+        self.disconnect_calls += 1
+        self._callbacks = [cb for cb in self._callbacks if cb is not callback]
 
 
 class _DummyVisualizer:
@@ -50,6 +57,11 @@ def _build_window(*, backend, signal=None):
     window = NowPlayingWindow.__new__(NowPlayingWindow)
     window._playback = playback
     window._visualizer_widget = _DummyVisualizer()
+    window._visualizer_signal = None
+    window._visualizer_signal_connected = False
+    window._visualizer_supported = False
+    window._lyrics_thread = None
+    window.closed = SimpleNamespace(emit=lambda *_, **__: None)
     return window, engine
 
 
@@ -94,3 +106,31 @@ def test_connect_visualizer_signal_routes_frames():
     payload = {"mode": "spectrum", "bins": [0.1, 0.2, 0.3]}
     engine.visualizer_frame.emit(payload)
     assert window._visualizer_widget.frames == [payload]
+
+
+def test_connect_visualizer_signal_is_idempotent():
+    backend = _DummyBackend(True)
+    signal = _StubSignal()
+    window, _ = _build_window(backend=backend, signal=signal)
+
+    window._connect_visualizer_signal()
+    window._connect_visualizer_signal()
+
+    assert signal.connect_calls == 1
+    assert window._visualizer_signal_connected is True
+    assert signal._callbacks.count(window._visualizer_widget.update_frame) == 1
+
+
+def test_close_event_disconnects_visualizer_signal():
+    backend = _DummyBackend(True)
+    signal = _StubSignal()
+    window, _ = _build_window(backend=backend, signal=signal)
+    event = SimpleNamespace(accept=lambda: None)
+
+    window._connect_visualizer_signal()
+    assert window._visualizer_signal_connected is True
+
+    window.closeEvent(event)
+
+    assert signal.disconnect_calls == 1
+    assert window._visualizer_signal_connected is False

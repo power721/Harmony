@@ -212,6 +212,8 @@ class NowPlayingWindow(QWidget):
         self._cover_angle = 0.0
         self._cover_source_pixmap: Optional[QPixmap] = None
         self._visualizer_supported = False
+        self._visualizer_signal = None
+        self._visualizer_signal_connected = False
         self._cover_anim_timer = QTimer(self)
         self._cover_anim_timer.setInterval(33)
         self._cover_anim_timer.timeout.connect(self._update_cover_rotation)
@@ -367,14 +369,40 @@ class NowPlayingWindow(QWidget):
             return
         engine = getattr(self._playback, "engine", None)
         if not engine:
+            self._disconnect_visualizer_signal()
             return
         signal = getattr(engine, "visualizer_frame", None)
+        if signal is None:
+            self._disconnect_visualizer_signal()
+            return
+        if self._visualizer_signal_connected and signal is self._visualizer_signal:
+            return
+        if self._visualizer_signal_connected:
+            self._disconnect_visualizer_signal()
         connect = getattr(signal, "connect", None)
-        if callable(connect):
+        if not callable(connect):
+            return
+        try:
+            connect(self._visualizer_widget.update_frame)
+        except (TypeError, RuntimeError):
+            logger.debug("[NowPlayingWindow] Visualizer signal connection failed", exc_info=True)
+            return
+        self._visualizer_signal = signal
+        self._visualizer_signal_connected = True
+
+    def _disconnect_visualizer_signal(self):
+        """Disconnect previously wired visualizer signal if any."""
+        if not getattr(self, "_visualizer_signal_connected", False):
+            return
+        signal = getattr(self, "_visualizer_signal", None)
+        disconnect = getattr(signal, "disconnect", None)
+        if callable(disconnect) and hasattr(self, "_visualizer_widget"):
             try:
-                connect(self._visualizer_widget.update_frame)
-            except TypeError:
-                logger.debug("[NowPlayingWindow] Visualizer signal connection failed", exc_info=True)
+                disconnect(self._visualizer_widget.update_frame)
+            except (TypeError, RuntimeError):
+                logger.debug("[NowPlayingWindow] Visualizer signal disconnection failed", exc_info=True)
+        self._visualizer_signal_connected = False
+        self._visualizer_signal = None
 
     def _refresh_visualizer_visibility(self):
         """Show or hide visualizer widget based on backend capability."""
@@ -958,6 +986,7 @@ class NowPlayingWindow(QWidget):
 
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
+        self._disconnect_visualizer_signal()
         if self._lyrics_thread and isValid(self._lyrics_thread):
             if self._lyrics_thread.isRunning():
                 self._lyrics_thread.requestInterruption()
