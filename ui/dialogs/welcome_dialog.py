@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.icons import IconName, get_icon
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class WelcomeDialog(QDialog):
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(480, 360)
+        self.setWindowTitle(t("welcome_title"))
 
         self._setup_shadow()
         self._setup_ui()
@@ -98,9 +100,14 @@ class WelcomeDialog(QDialog):
         container.setObjectName("welcomeContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(8)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("welcome_title"),
+            content_margins=(32, 28, 32, 28),
+            content_spacing=8,
+        )
 
         # Icon
         icon_label = QLabel()
@@ -110,14 +117,6 @@ class WelcomeDialog(QDialog):
         layout.addWidget(icon_label)
 
         layout.addSpacing(12)
-
-        # Title
-        self._title_label = QLabel(t("welcome_title"))
-        self._title_label.setObjectName("welcomeTitle")
-        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._title_label)
-
-        layout.addSpacing(4)
 
         # Subtitle
         subtitle = QLabel(t("welcome_subtitle"))
@@ -172,6 +171,7 @@ class WelcomeDialog(QDialog):
 
     def refresh_theme(self):
         self._apply_style()
+        self._title_bar_controller.refresh_theme()
         icon_pixmap = get_icon(IconName.MUSIC, None, 48).pixmap(48, 48)
         for child in self.findChildren(QLabel):
             if child.pixmap() and child.pixmap().width() >= 48:

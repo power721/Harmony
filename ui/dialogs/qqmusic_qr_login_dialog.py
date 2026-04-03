@@ -20,6 +20,7 @@ from services.cloud.qqmusic.qr_login import (
 )
 from system.i18n import t, get_language
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog
 
 logger = logging.getLogger(__name__)
@@ -262,14 +263,13 @@ class QQMusicQRLoginDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(15)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(t("qqmusic_login_title"))
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("qqmusic_login_title"),
+            content_spacing=15,
+        )
 
         # Login type selection
         type_layout = QHBoxLayout()
@@ -551,6 +551,7 @@ class QQMusicQRLoginDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         theme = ThemeManager.instance().current_theme
         if self._status_label:
             self._status_label.setStyleSheet(

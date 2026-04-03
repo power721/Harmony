@@ -24,6 +24,7 @@ from shiboken6.Shiboken import isValid
 from services.lyrics.lyrics_service import LyricsService
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -227,14 +228,12 @@ class LyricsDownloadDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(t("select_song"))
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("select_song"),
+        )
 
         # Info label
         self._info_label = QLabel(
@@ -516,6 +515,7 @@ class LyricsDownloadDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         if self._status_label:
             self._status_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary};")
 

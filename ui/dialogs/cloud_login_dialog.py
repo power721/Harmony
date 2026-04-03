@@ -15,6 +15,7 @@ from services.cloud.baidu_service import BaiduDriveService
 from services.cloud.quark_service import QuarkDriveService
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -126,14 +127,13 @@ class CloudLoginDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        main_layout = QVBoxLayout(container)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(provider_name + " " + t("login"))
-        title_label.setObjectName("dialogTitle")
-        main_layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        main_layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            provider_name + " " + t("login"),
+            content_spacing=15,
+        )
 
         # Mode toggle buttons
         mode_layout = QHBoxLayout()
@@ -432,6 +432,7 @@ class CloudLoginDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         theme = ThemeManager.instance().current_theme
         if self._status_label:
             self._status_label.setStyleSheet(f"color: {theme.text_secondary};")

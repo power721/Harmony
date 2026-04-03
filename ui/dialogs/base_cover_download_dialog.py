@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from services.metadata import CoverService
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 logger = logging.getLogger(__name__)
 
@@ -305,9 +306,14 @@ class BaseCoverDownloadDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(15)
-        layout.setContentsMargins(30, 30, 30, 30)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("download_cover_manual"),
+            content_margins=(30, 30, 30, 30),
+            content_spacing=15,
+        )
 
         # Info label at top
         info_label = QLabel(info_text)
@@ -721,6 +727,7 @@ class BaseCoverDownloadDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         # Update inline styles that use theme colors
         theme = ThemeManager.instance().current_theme
         if self._score_label:

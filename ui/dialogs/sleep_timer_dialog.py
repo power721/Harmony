@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from services.playback.sleep_timer_service import SleepTimerConfig
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,15 @@ class SleepTimerDialog(QDialog):
         self._container.setGeometry(0, 0, 530, 490)
         layout.addWidget(self._container)
 
-        self._main_layout = QVBoxLayout(self._container)
-        self._main_layout.setSpacing(16)
-        self._main_layout.setContentsMargins(24, 24, 24, 24)
+        container_layout = QVBoxLayout(self._container)
+        self._main_layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("sleep_timer_title"),
+            content_margins=(24, 24, 24, 24),
+            content_spacing=16,
+        )
 
-        self._add_title()
         self._add_mode_selection()
         self._add_time_inputs()
         self._add_track_inputs()
@@ -94,12 +99,6 @@ class SleepTimerDialog(QDialog):
         # QTimer 更新显示
         self._display_timer = QTimer(self)
         self._display_timer.timeout.connect(self._update_display)
-
-    def _add_title(self):
-        title = QLabel(t("sleep_timer_title"))
-        title.setObjectName("dialogTitle")
-        title.setAlignment(Qt.AlignCenter)
-        self._main_layout.addWidget(title)
 
     def _add_mode_selection(self):
         self._time_radio = QRadioButton(t("countdown_mode"))
@@ -302,6 +301,10 @@ QPushButton#presetBtn:hover { background-color: %background_hover%; border-color
 #statusLabel { color: %highlight%; font-size: 14px; font-weight: bold; padding: 8px; background-color: %background_hover%; border-radius: 6px; }
 """
         self.setStyleSheet(ThemeManager.instance().get_qss(style_template))
+        self._title_bar_controller.refresh_theme()
+
+    def refresh_theme(self):
+        self._apply_styles()
 
     # ----------------------- 核心逻辑 -----------------------
     def _on_mode_changed(self):

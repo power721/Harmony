@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.progress_dialog import ProgressDialog
 from services.cloud.qqmusic.common import (
@@ -190,14 +191,13 @@ class GeneralSettingsDialog(QDialog):
         outer.addWidget(container)
 
         # Content layout
-        layout = QVBoxLayout(container)
-        layout.setSpacing(15)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(t("settings"))
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("settings"),
+            content_spacing=15,
+        )
 
         # Tab widget for AI and AcoustID settings
         tab_widget = QTabWidget()
@@ -1895,6 +1895,7 @@ class GeneralSettingsDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):
         """Apply rounded corner mask."""

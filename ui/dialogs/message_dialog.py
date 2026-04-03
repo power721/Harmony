@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QMessageBox as _QMB
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.icons import IconName, get_icon
 
 Yes = _QMB.StandardButton.Yes
@@ -37,11 +38,6 @@ class MessageDialog(QDialog):
             color: %text%;
             border: 1px solid %border%;
             border-radius: 12px;
-        }
-        QLabel#msgTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
         }
         QLabel#msgText {
             color: %text_secondary%;
@@ -116,25 +112,22 @@ class MessageDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(12)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            "",
+        )
 
-        # Title row with icon
-        title_row = QHBoxLayout()
-        title_row.setSpacing(10)
-
+        # Icon row
+        icon_row = QHBoxLayout()
+        icon_row.setSpacing(10)
         self._icon_label = QLabel()
         icon_name = self._ICON_MAP.get(self._dialog_type, IconName.INFO)
         self._icon_label.setPixmap(get_icon(icon_name, None, 24).pixmap(24, 24))
-        title_row.addWidget(self._icon_label)
-
-        self._title_label = QLabel()
-        self._title_label.setObjectName("msgTitle")
-        title_row.addWidget(self._title_label)
-        title_row.addStretch()
-
-        layout.addLayout(title_row)
+        icon_row.addWidget(self._icon_label)
+        icon_row.addStretch()
+        layout.addLayout(icon_row)
 
         # Message text in scroll area
         self._text_label = QLabel()
@@ -172,6 +165,7 @@ class MessageDialog(QDialog):
 
     def refresh_theme(self):
         self._apply_style()
+        self._title_bar_controller.refresh_theme()
         icon_name = self._ICON_MAP.get(self._dialog_type, IconName.INFO)
         self._icon_label.setPixmap(get_icon(icon_name, None, 24).pixmap(24, 24))
 
@@ -214,7 +208,7 @@ class MessageDialog(QDialog):
     @staticmethod
     def _show(parent, dialog_type, title, text, buttons, default_button):
         dialog = MessageDialog(parent, dialog_type)
-        dialog._title_label.setText(title)
+        dialog._title_bar_controller.title_label.setText(title)
         dialog._text_label.setText(text)
 
         # Build buttons in order

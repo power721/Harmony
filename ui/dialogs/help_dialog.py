@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 
 class HelpDialog(QDialog):
@@ -114,9 +115,14 @@ class HelpDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("help"),
+            content_margins=(20, 20, 20, 20),
+            content_spacing=15,
+        )
 
         # Scroll area for content
         scroll = QScrollArea()
@@ -210,6 +216,7 @@ class HelpDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         # Re-apply inline styles that use theme colors
         theme = ThemeManager.instance().current_theme
 

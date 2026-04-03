@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from services.cloud.qqmusic.common import (
     get_selectable_qualities,
     get_quality_label_key,
@@ -97,15 +98,12 @@ class RedownloadDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(f"{t('redownload')} - {track_title}")
-        title_label.setObjectName("dialogTitle")
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            f"{t('redownload')} - {track_title}",
+        )
 
         # Quality selection
         quality_row = QHBoxLayout()
@@ -166,6 +164,7 @@ class RedownloadDialog(QDialog):
 
     def refresh_theme(self):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):
         path = QPainterPath()

@@ -21,6 +21,7 @@ from shiboken6.Shiboken import isValid
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 logger = logging.getLogger(__name__)
@@ -147,9 +148,14 @@ class BaseRenameDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(16)
-        layout.setContentsMargins(24, 24, 24, 24)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            title,
+            content_margins=(24, 24, 24, 24),
+            content_spacing=16,
+        )
 
         return layout
 
@@ -359,6 +365,7 @@ class BaseRenameDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
         # Update inline styles that use theme colors
         theme = ThemeManager.instance().current_theme
         if self._warning_label:

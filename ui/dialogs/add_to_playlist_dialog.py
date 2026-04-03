@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 
@@ -124,14 +125,12 @@ class AddToPlaylistDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(t("select_playlist"))
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            t("select_playlist"),
+        )
 
         # Message label
         self._label = QLabel(t("select_playlist"))
@@ -242,6 +241,7 @@ class AddToPlaylistDialog(QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self._apply_style()
+        self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):
         """Handle resize to apply rounded mask."""

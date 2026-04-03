@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 
 class ProgressDialog(QDialog):
@@ -101,14 +102,12 @@ class ProgressDialog(QDialog):
         container.setObjectName("dialogContainer")
         outer.addWidget(container)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(title)
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            title,
+        )
 
         # Status label
         self._label = QLabel(label_text)
@@ -147,6 +146,7 @@ class ProgressDialog(QDialog):
 
     def refresh_theme(self):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):
         path = QPainterPath()

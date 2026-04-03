@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 
 class InputDialog(QDialog):
@@ -95,14 +96,12 @@ class InputDialog(QDialog):
         container.setObjectName("dialogContainer")
         container.setGeometry(0, 0, 380, 200)
 
-        layout = QVBoxLayout(container)
-        layout.setSpacing(12)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        # Title
-        title_label = QLabel(title)
-        title_label.setObjectName("dialogTitle")
-        layout.addWidget(title_label)
+        container_layout = QVBoxLayout(container)
+        layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            title,
+        )
 
         # Label
         label_widget = QLabel(label)
@@ -137,6 +136,7 @@ class InputDialog(QDialog):
 
     def refresh_theme(self):
         self._apply_style()
+        self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):
         path = QPainterPath()
