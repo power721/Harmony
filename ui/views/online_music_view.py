@@ -5,7 +5,7 @@ Online music view for searching and browsing online music.
 import logging
 from typing import Optional, List, Dict, Any
 
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint, QEvent
 from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import (
     QWidget,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QFrame,
     QCompleter,
+    QApplication,
 )
 
 from ui.dialogs.message_dialog import MessageDialog
@@ -891,6 +892,8 @@ class OnlineMusicView(QWidget):
         self._completion_timer.timeout.connect(self._trigger_completion)
 
         self._setup_ui()
+        self._focus_filter_registered = False
+        self._register_focus_clear_filter()
 
         # Register with theme system
         from system.theme import ThemeManager
@@ -972,6 +975,59 @@ class OnlineMusicView(QWidget):
         if not self._top_lists_loaded:
             self._top_lists_loaded = True
             self._load_top_lists()
+
+    def closeEvent(self, event):
+        """Handle close event and unregister global event filter."""
+        self._unregister_focus_clear_filter()
+        super().closeEvent(event)
+
+    def _register_focus_clear_filter(self):
+        """Install app-level event filter for clearing search focus on outside click."""
+        app = QApplication.instance()
+        if app and not self._focus_filter_registered:
+            app.installEventFilter(self)
+            self._focus_filter_registered = True
+
+    def _unregister_focus_clear_filter(self):
+        """Remove app-level event filter."""
+        app = QApplication.instance()
+        if app and self._focus_filter_registered:
+            app.removeEventFilter(self)
+            self._focus_filter_registered = False
+
+    def eventFilter(self, watched, event):
+        """Clear search input focus when clicking outside search-related popups."""
+        if (
+            event.type() == QEvent.MouseButtonPress
+            and hasattr(self, "_search_input")
+            and self._search_input
+            and self._search_input.hasFocus()
+            and self.isVisible()
+        ):
+            global_pos = event.globalPosition().toPoint()
+            clicked_widget = QApplication.widgetAt(global_pos)
+            if clicked_widget and not self._is_search_related_widget(clicked_widget):
+                self._search_input.clearFocus()
+
+        return super().eventFilter(watched, event)
+
+    def _is_search_related_widget(self, widget: QWidget) -> bool:
+        """Return whether clicked widget belongs to search input or its related popups."""
+        if widget is self._search_input or self._search_input.isAncestorOf(widget):
+            return True
+
+        if (
+            self._hotkey_popup
+            and (widget is self._hotkey_popup or self._hotkey_popup.isAncestorOf(widget))
+        ):
+            return True
+
+        if self._completer:
+            popup = self._completer.popup()
+            if popup and (widget is popup or popup.isAncestorOf(widget)):
+                return True
+
+        return False
 
     def _create_header(self) -> QWidget:
         """Create header with QQ Music login status."""
