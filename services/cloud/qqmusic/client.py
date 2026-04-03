@@ -438,9 +438,14 @@ class QQMusicClient:
                         urls[info['songmid']] = ''
 
                 if has_valid:
-                    return {'urls': urls, 'quality': q}
+                    return {
+                        'urls': urls,
+                        'quality': q,
+                        'file_type': file_type,
+                        'extension': file_type.get('e'),
+                    }
 
-        return {'urls': {}, 'quality': None}
+        return {'urls': {}, 'quality': None, 'file_type': None, 'extension': None}
 
     def get_song_detail(self, song_mid: str) -> Dict:
         """

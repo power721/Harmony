@@ -242,32 +242,40 @@ class QQMusicService:
             logger.error(f"Get hotkey failed: {e}", exc_info=True)
             return []
 
-    def get_playback_url(self, song_mid: str, quality: str = 'flac') -> Optional[str]:
+    def get_playback_url_info(self, song_mid: str, quality: str = 'flac') -> Optional[Dict[str, Any]]:
         """
-        Get playback URL for a song.
+        Get playback URL and file type information for a song.
 
         Args:
             song_mid: Song MID
             quality: Audio quality (master/atmos/flac/320/128)
 
         Returns:
-            Playback URL or None if failed
+            Dict with url/quality/extension metadata, or None if failed
         """
         try:
             result = self.client.get_song_url(song_mid, quality=quality)
-
             urls = result.get('urls', {})
 
-            # Return first valid URL
             for mid, url in urls.items():
                 if url:
-                    return url
+                    return {
+                        'url': url,
+                        'quality': result.get('quality'),
+                        'file_type': result.get('file_type'),
+                        'extension': result.get('extension'),
+                    }
 
             return None
 
         except Exception as e:
             logger.error(f"Get playback URL failed: {e}", exc_info=True)
             return None
+
+    def get_playback_url(self, song_mid: str, quality: str = 'flac') -> Optional[str]:
+        """Get playback URL for a song."""
+        info = self.get_playback_url_info(song_mid, quality=quality)
+        return info.get('url') if info else None
 
     def get_lyrics(self, song_mid: str) -> Dict[str, Optional[str]]:
         """

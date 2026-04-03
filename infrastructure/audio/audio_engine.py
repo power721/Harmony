@@ -1149,7 +1149,6 @@ class PlayerEngine(QObject):
     def _on_end_of_media(self):
         """Handle end-of-media event from backend."""
         self.track_finished.emit()
-        logger.debug("=== [PlayerEngine] End of media played")
 
         # Check if auto-next is prevented
         if self._prevent_auto_next:

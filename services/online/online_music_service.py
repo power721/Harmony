@@ -12,6 +12,7 @@ from domain.online_music import (
     OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
     SearchResult, SearchType
 )
+from services.cloud.qqmusic.common import parse_quality
 from .adapter import OnlineMusicAdapter, ApiSource
 
 if TYPE_CHECKING:
@@ -548,15 +549,20 @@ class OnlineMusicService:
             return None
 
     def get_playback_url(self, song_mid: str, quality: Optional[str] = None) -> Optional[str]:
+        """Get playback URL for a song."""
+        info = self.get_playback_url_info(song_mid, quality=quality)
+        return info.get("url") if info else None
+
+    def get_playback_url_info(self, song_mid: str, quality: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
-        Get playback URL for a song.
+        Get playback URL plus format metadata for a song.
 
         Args:
             song_mid: Song MID
             quality: Audio quality (master/flac/320/128), uses config default if None
 
         Returns:
-            Playback URL or None
+            Dict with url/quality/extension metadata, or None
         """
         # Use configured quality if not specified
         if quality is None:
@@ -569,14 +575,22 @@ class OnlineMusicService:
             start_index = quality_fallback.index(quality) if quality in quality_fallback else 0
 
             for q in quality_fallback[start_index:]:
-                url = self._qqmusic.get_playback_url(song_mid, q)
-                if url:
-                    return url
+                info = self._qqmusic.get_playback_url_info(song_mid, q)
+                if info:
+                    return info
 
             logger.debug(f"No playback URL via QQ Music local API for {song_mid}, trying remote API")
 
         # Use remote API (api.ygking.top) as fallback or when not logged in
-        return self._get_playback_url_remote(song_mid, quality)
+        url = self._get_playback_url_remote(song_mid, quality)
+        if not url:
+            return None
+        return {
+            "url": url,
+            "quality": quality,
+            "file_type": parse_quality(quality),
+            "extension": parse_quality(quality).get("e"),
+        }
 
     def _get_playback_url_remote(self, song_mid: str, quality: str = "320") -> Optional[str]:
         """Get playback URL from remote API."""

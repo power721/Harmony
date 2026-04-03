@@ -3,13 +3,14 @@ Metadata extraction service for audio files using mutagen.
 """
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 
 import mutagen
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3NoHeaderError
 from mutagen.mp3 import MP3, HeaderNotFoundError
 from mutagen.mp4 import MP4
+from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 from mutagen.wave import WAVE
 
@@ -32,6 +33,9 @@ class MetadataService:
         ".wma",
         ".wav",
     }
+
+    _HEADER_READ_SIZE = 128
+    _MP3_HEADER_PREFIXES = (b"ID3", b"\xFF\xF2", b"\xFF\xF3", b"\xFF\xFA", b"\xFF\xFB")
 
     @classmethod
     def is_supported(cls, file_path: str) -> bool:
@@ -75,36 +79,9 @@ class MetadataService:
             if not path.exists():
                 return metadata
 
-            # Get file extension and use appropriate mutagen class
             suffix = path.suffix.lower()
-            audio = None
-
-            try:
-                if suffix == ".mp3":
-                    audio = MP3(file_path)
-                    metadata.update(cls._parse_mp3(audio))
-                elif suffix == ".flac":
-                    audio = FLAC(file_path)
-                    metadata.update(cls._parse_flac(audio))
-                elif suffix in {".ogg", ".oga"}:
-                    audio = OggVorbis(file_path)
-                    metadata.update(cls._parse_ogg(audio))
-                elif suffix in {".m4a", ".mp4"}:
-                    audio = MP4(file_path)
-                    metadata.update(cls._parse_mp4(audio))
-                elif suffix == ".wav":
-                    audio = WAVE(file_path)
-                    metadata.update(cls._parse_wav(audio))
-                else:
-                    audio = mutagen.File(file_path)
-                    if audio is not None:
-                        metadata["duration"] = audio.info.length
-            except HeaderNotFoundError:
-                # File extension doesn't match actual format, detect by content
-                logger.warning(f"Extension {suffix} doesn't match content for {file_path}, falling back to content detection")
-                audio = mutagen.File(file_path)
-                if audio is not None:
-                    metadata["duration"] = audio.info.length
+            format_key, audio = cls._load_audio_file(file_path, suffix)
+            metadata.update(cls._parse_loaded_audio(format_key, audio))
 
         except Exception as e:
             logger.error(f"Error extracting metadata from {file_path}: {e}", exc_info=True)
@@ -118,6 +95,115 @@ class MetadataService:
             metadata["artist"] = ""
 
         return metadata
+
+    @classmethod
+    def _load_audio_file(cls, file_path: str, suffix: str) -> tuple[str | None, Any]:
+        """Load an audio file using extension first, then content sniffing if needed."""
+        suffix_key, suffix_loader = cls._get_loader_for_suffix(suffix)
+        header = cls._read_file_header(file_path)
+        header_key, header_loader = cls._get_loader_for_header(header)
+
+        if suffix_loader is not None:
+            try:
+                return suffix_key, suffix_loader(file_path)
+            except (mutagen.MutagenError, HeaderNotFoundError):
+                if header_loader is not None and header_loader is not suffix_loader:
+                    logger.warning(
+                        "Extension %s doesn't match content for %s, falling back to detected %s loader",
+                        suffix,
+                        file_path,
+                        header_key,
+                    )
+                    return header_key, header_loader(file_path)
+
+                audio = cls._load_generic_audio(file_path)
+                if audio is not None:
+                    return "generic", audio
+                raise
+
+        if header_loader is not None:
+            return header_key, header_loader(file_path)
+
+        audio = cls._load_generic_audio(file_path)
+        if audio is not None:
+            return "generic", audio
+
+        return None, None
+
+    @classmethod
+    def _load_generic_audio(cls, file_path: str):
+        """Load audio with mutagen's generic file detection."""
+        try:
+            return mutagen.File(file_path)
+        except mutagen.MutagenError:
+            return None
+
+    @classmethod
+    def _read_file_header(cls, file_path: str) -> bytes:
+        """Read the leading bytes needed for container sniffing."""
+        try:
+            with open(file_path, "rb") as file_obj:
+                return file_obj.read(cls._HEADER_READ_SIZE)
+        except OSError:
+            return b""
+
+    @classmethod
+    def _get_loader_for_suffix(cls, suffix: str) -> tuple[str | None, Callable[[str], Any] | None]:
+        """Return the preferred loader for a known extension."""
+        suffix_loaders = {
+            ".mp3": ("mp3", MP3),
+            ".flac": ("flac", FLAC),
+            ".ogg": ("ogg", OggVorbis),
+            ".oga": ("ogg", OggVorbis),
+            ".opus": ("opus", OggOpus),
+            ".m4a": ("mp4", MP4),
+            ".mp4": ("mp4", MP4),
+            ".wav": ("wav", WAVE),
+        }
+        return suffix_loaders.get(suffix, (None, None))
+
+    @classmethod
+    def _get_loader_for_header(cls, header: bytes) -> tuple[str | None, Callable[[str], Any] | None]:
+        """Return the loader suggested by the file header bytes."""
+        if header.startswith(b"OggS"):
+            if b"\x01vorbis" in header:
+                return "ogg", OggVorbis
+            if b"OpusHead" in header:
+                return "opus", OggOpus
+
+        if header.startswith(b"fLaC"):
+            return "flac", FLAC
+
+        if header.startswith(b"RIFF") and header[8:12] == b"WAVE":
+            return "wav", WAVE
+
+        if b"ftyp" in header:
+            return "mp4", MP4
+
+        if any(header.startswith(prefix) for prefix in cls._MP3_HEADER_PREFIXES):
+            return "mp3", MP3
+
+        return None, None
+
+    @classmethod
+    def _parse_loaded_audio(cls, format_key: str | None, audio) -> Dict[str, Any]:
+        """Parse metadata from a loaded audio object based on its detected format."""
+        if audio is None:
+            return {}
+        if format_key == "mp3":
+            return cls._parse_mp3(audio)
+        if format_key == "flac":
+            return cls._parse_flac(audio)
+        if format_key in {"ogg", "opus"}:
+            return cls._parse_ogg(audio)
+        if format_key == "mp4":
+            return cls._parse_mp4(audio)
+        if format_key == "wav":
+            return cls._parse_wav(audio)
+
+        info = getattr(audio, "info", None)
+        duration = getattr(info, "length", 0.0)
+        return {"duration": duration}
 
     @classmethod
     def _parse_mp3(cls, audio: MP3) -> Dict[str, Any]:
@@ -327,27 +413,8 @@ class MetadataService:
                 return False
 
             suffix = path.suffix.lower()
-            audio = None
-
-            if suffix == ".mp3":
-                audio = MP3(file_path)
-                cls._save_mp3_metadata(audio, title, artist, album, genre)
-            elif suffix == ".flac":
-                audio = FLAC(file_path)
-                cls._save_flac_metadata(audio, title, artist, album, genre)
-            elif suffix in {".ogg", ".oga"}:
-                audio = OggVorbis(file_path)
-                cls._save_ogg_metadata(audio, title, artist, album, genre)
-            elif suffix in {".m4a", ".mp4"}:
-                audio = MP4(file_path)
-                cls._save_mp4_metadata(audio, title, artist, album, genre)
-            elif suffix == ".wav":
-                audio = WAVE(file_path)
-                cls._save_wav_metadata(audio, title, artist, album, genre)
-            else:
-                audio = mutagen.File(file_path)
-                if audio is not None:
-                    cls._save_generic_metadata(audio, title, artist, album, genre)
+            format_key, audio = cls._load_audio_file(file_path, suffix)
+            cls._save_loaded_audio_metadata(format_key, audio, title, artist, album, genre)
 
             if audio:
                 audio.save()
@@ -357,6 +424,45 @@ class MetadataService:
             logger.error(f"Error saving metadata to {file_path}: {e}", exc_info=True)
 
         return False
+
+    @classmethod
+    def _save_loaded_audio_metadata(
+        cls, format_key: str | None, audio, title: str, artist: str, album: str, genre: str = None
+    ) -> None:
+        """Save metadata using the detected file format handler."""
+        if audio is None:
+            return
+        if format_key == "mp3":
+            cls._save_mp3_metadata(audio, title, artist, album, genre)
+        elif format_key == "flac":
+            cls._save_flac_metadata(audio, title, artist, album, genre)
+        elif format_key in {"ogg", "opus"}:
+            cls._save_ogg_metadata(audio, title, artist, album, genre)
+        elif format_key == "mp4":
+            cls._save_mp4_metadata(audio, title, artist, album, genre)
+        elif format_key == "wav":
+            cls._save_wav_metadata(audio, title, artist, album, genre)
+        else:
+            cls._save_generic_metadata(audio, title, artist, album, genre)
+
+    @classmethod
+    def detect_file_extension(cls, file_path: str) -> str | None:
+        """Detect the preferred file extension from the audio container header."""
+        header = cls._read_file_header(file_path)
+        format_key, _ = cls._get_loader_for_header(header)
+        if format_key == "mp3":
+            return ".mp3"
+        if format_key == "flac":
+            return ".flac"
+        if format_key == "ogg":
+            return ".ogg"
+        if format_key == "opus":
+            return ".opus"
+        if format_key == "mp4":
+            return ".m4a"
+        if format_key == "wav":
+            return ".wav"
+        return None
 
     @classmethod
     def _save_mp3_metadata(cls, audio: MP3, title: str, artist: str, album: str, genre: str = None):

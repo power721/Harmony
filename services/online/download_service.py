@@ -7,6 +7,7 @@ import logging
 import os
 from typing import Dict, Optional, Callable, Any, TYPE_CHECKING
 
+from services.cloud.qqmusic.common import parse_quality
 from system.event_bus import EventBus
 from services.metadata.metadata_service import MetadataService
 
@@ -24,6 +25,18 @@ class OnlineDownloadService:
     Works with OnlineMusicService to get playback URLs and download files.
     Supports both QQ Music local API and remote API.
     """
+
+    _CACHE_EXTENSIONS = (
+        ".flac",
+        ".mp3",
+        ".ogg",
+        ".opus",
+        ".m4a",
+        ".mp4",
+        ".ape",
+        ".dts",
+        ".wav",
+    )
 
     def __init__(
         self,
@@ -80,9 +93,13 @@ class OnlineDownloadService:
         Returns:
             Local file path
         """
+        existing_path = self._find_existing_cached_path(song_mid)
+        if existing_path:
+            return existing_path
+
         if quality is None:
             quality = self._config.get_qqmusic_quality() if self._config else "320"
-        ext = ".flac" if quality in ("master", "flac") else ".mp3"
+        ext = self._get_extension_for_quality(quality)
         filename = f"{song_mid}{ext}"
         return os.path.join(self._download_dir, filename)
 
@@ -97,8 +114,7 @@ class OnlineDownloadService:
         Returns:
             True if cached
         """
-        path = self.get_cached_path(song_mid, quality)
-        return os.path.exists(path)
+        return self._find_existing_cached_path(song_mid) is not None
 
     def download(
         self,
@@ -133,24 +149,30 @@ class OnlineDownloadService:
         # Get playback URL - prefer online service (supports remote API)
         url = None
         actual_quality = quality
+        playback_extension = None
 
         if self._online_service:
             # Use online service (supports both QQ Music and remote API)
-            url = self._online_service.get_playback_url(song_mid, quality)
-            if url:
-                # Determine actual quality from URL extension
-                if ".flac" in url:
-                    actual_quality = "flac"
-                elif ".mp3" in url:
-                    actual_quality = "320"
+            playback_info = None
+            if hasattr(self._online_service, "get_playback_url_info"):
+                playback_info = self._online_service.get_playback_url_info(song_mid, quality)
+
+            if playback_info:
+                url = playback_info.get("url")
+                actual_quality = playback_info.get("quality") or quality
+                playback_extension = playback_info.get("extension")
+            else:
+                url = self._online_service.get_playback_url(song_mid, quality)
 
         elif self._qqmusic:
             # Fallback to QQ Music direct API
             quality_fallback = ["320", "128", "flac"]
             for q in quality_fallback:
-                url = self._qqmusic.get_playback_url(song_mid, q)
-                if url:
-                    actual_quality = q
+                playback_info = self._qqmusic.get_playback_url_info(song_mid, q)
+                if playback_info:
+                    url = playback_info.get("url")
+                    actual_quality = playback_info.get("quality") or q
+                    playback_extension = playback_info.get("extension")
                     break
 
         if not url:
@@ -159,6 +181,8 @@ class OnlineDownloadService:
 
         # Update cached path with actual quality
         cached_path = self.get_cached_path(song_mid, actual_quality)
+        if playback_extension:
+            cached_path = os.path.join(self._download_dir, f"{song_mid}{playback_extension}")
 
         # Download file
         try:
@@ -193,22 +217,23 @@ class OnlineDownloadService:
                         if progress_callback:
                             progress_callback(downloaded, total_size)
 
-            # Rename to final path
-            os.rename(temp_path, cached_path)
+            final_path = self._get_final_download_path(song_mid, cached_path, temp_path)
+            os.replace(temp_path, final_path)
+            self._delete_other_cached_variants(song_mid, final_path)
 
-            logger.info(f"Download complete: {cached_path}")
+            logger.info(f"Download complete: {final_path}")
 
             # Extract metadata from downloaded file
-            metadata = self._extract_metadata(song_mid, cached_path)
+            metadata = self._extract_metadata(song_mid, final_path)
 
             # Emit download completed event
-            self._event_bus.download_completed.emit(song_mid, cached_path)
+            self._event_bus.download_completed.emit(song_mid, final_path)
 
             # Emit metadata loaded event
             if metadata:
                 self._event_bus.online_track_metadata_loaded.emit(song_mid, metadata)
 
-            return cached_path
+            return final_path
 
         except Exception as e:
             logger.error(f"Download failed: {e}")
@@ -335,7 +360,7 @@ class OnlineDownloadService:
             True if any file was deleted
         """
         deleted = False
-        for ext in (".flac", ".mp3", ".flac.tmp", ".mp3.tmp"):
+        for ext in self._CACHE_EXTENSIONS:
             path = os.path.join(self._download_dir, f"{song_mid}{ext}")
             if os.path.exists(path):
                 try:
@@ -344,7 +369,42 @@ class OnlineDownloadService:
                     logger.info(f"Deleted cached file: {path}")
                 except OSError as e:
                     logger.warning(f"Failed to delete cached file {path}: {e}")
+
+            tmp_path = f"{path}.tmp"
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                    deleted = True
+                    logger.info(f"Deleted cached file: {tmp_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to delete cached file {tmp_path}: {e}")
         return deleted
+
+    def _get_extension_for_quality(self, quality: str) -> str:
+        """Map a QQ Music quality code to its preferred container extension."""
+        return parse_quality(quality).get("e", ".mp3")
+
+    def _find_existing_cached_path(self, song_mid: str) -> Optional[str]:
+        """Find any existing cached variant for a song."""
+        for ext in self._CACHE_EXTENSIONS:
+            path = os.path.join(self._download_dir, f"{song_mid}{ext}")
+            if os.path.exists(path):
+                return path
+        return None
+
+    def _get_final_download_path(self, song_mid: str, fallback_path: str, temp_path: str) -> str:
+        """Choose the final cache path from the downloaded file's actual content."""
+        actual_ext = MetadataService.detect_file_extension(temp_path)
+        if not actual_ext:
+            return fallback_path
+        return os.path.join(self._download_dir, f"{song_mid}{actual_ext}")
+
+    def _delete_other_cached_variants(self, song_mid: str, keep_path: str) -> None:
+        """Remove stale cache files with mismatched extensions."""
+        for ext in self._CACHE_EXTENSIONS:
+            path = os.path.join(self._download_dir, f"{song_mid}{ext}")
+            if path != keep_path and os.path.exists(path):
+                os.remove(path)
 
     def get_cache_size(self) -> int:
         """Get total size of cached files in bytes."""

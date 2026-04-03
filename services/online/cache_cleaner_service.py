@@ -176,9 +176,7 @@ class CacheCleanerService(QObject):
                 "newest_file": None
             }
 
-        audio_files = []
-        for ext in (".mp3", ".flac"):
-            audio_files.extend(cache_dir.glob(f"*{ext}"))
+        audio_files = self._get_audio_files(cache_dir)
 
         if not audio_files:
             return {
@@ -276,17 +274,16 @@ class CacheCleanerService(QObject):
         deleted_files = []
 
         # Find old audio files
-        for ext in (".mp3", ".flac"):
-            for audio_file in cache_dir.glob(f"*{ext}"):
-                # Skip protected files
-                song_mid = audio_file.stem
-                if song_mid in protected_mids:
-                    continue
+        for audio_file in self._get_audio_files(cache_dir):
+            # Skip protected files
+            song_mid = audio_file.stem
+            if song_mid in protected_mids:
+                continue
 
-                # Check file age
-                if audio_file.stat().st_mtime < cutoff_time:
-                    # Delete both audio and lyrics
-                    deleted_files.extend(self._delete_song_files(cache_dir, song_mid))
+            # Check file age
+            if audio_file.stat().st_mtime < cutoff_time:
+                # Delete both audio and lyrics
+                deleted_files.extend(self._delete_song_files(cache_dir, song_mid))
 
         return deleted_files
 
@@ -308,15 +305,14 @@ class CacheCleanerService(QObject):
         current_size = 0
         audio_files = []
 
-        for ext in (".mp3", ".flac"):
-            for audio_file in cache_dir.glob(f"*{ext}"):
-                song_mid = audio_file.stem
-                if song_mid in protected_mids:
-                    continue
+        for audio_file in self._get_audio_files(cache_dir):
+            song_mid = audio_file.stem
+            if song_mid in protected_mids:
+                continue
 
-                stat = audio_file.stat()
-                current_size += stat.st_size
-                audio_files.append((audio_file, stat.st_mtime, stat.st_size, song_mid))
+            stat = audio_file.stat()
+            current_size += stat.st_size
+            audio_files.append((audio_file, stat.st_mtime, stat.st_size, song_mid))
 
         # Check if cleanup is needed
         if current_size <= max_size_bytes:
@@ -354,14 +350,13 @@ class CacheCleanerService(QObject):
 
         # Get all audio files (excluding protected)
         audio_files = []
-        for ext in (".mp3", ".flac"):
-            for audio_file in cache_dir.glob(f"*{ext}"):
-                song_mid = audio_file.stem
-                if song_mid in protected_mids:
-                    continue
+        for audio_file in self._get_audio_files(cache_dir):
+            song_mid = audio_file.stem
+            if song_mid in protected_mids:
+                continue
 
-                stat = audio_file.stat()
-                audio_files.append((audio_file, stat.st_mtime, song_mid))
+            stat = audio_file.stat()
+            audio_files.append((audio_file, stat.st_mtime, song_mid))
 
         # Check if cleanup is needed
         current_count = len(audio_files)
@@ -396,8 +391,8 @@ class CacheCleanerService(QObject):
         """
         deleted_files = []
 
-        # Try to delete audio file (mp3 or flac)
-        for ext in (".mp3", ".flac"):
+        # Try to delete audio file across all supported cache extensions
+        for ext in self._get_audio_extensions():
             audio_file = cache_dir / f"{song_mid}{ext}"
             if audio_file.exists():
                 try:
@@ -418,6 +413,20 @@ class CacheCleanerService(QObject):
                 logger.warning(f"Failed to delete {lyrics_file}: {e}")
 
         return deleted_files
+
+    def _get_audio_extensions(self) -> tuple[str, ...]:
+        """Return the cache audio extensions supported by the download service."""
+        extensions = getattr(self._download_service, "_CACHE_EXTENSIONS", None)
+        if isinstance(extensions, (list, tuple)) and extensions:
+            return tuple(extensions)
+        return (".mp3", ".flac")
+
+    def _get_audio_files(self, cache_dir: Path) -> List[Path]:
+        """Collect cached audio files for all supported extensions."""
+        audio_files = []
+        for ext in self._get_audio_extensions():
+            audio_files.extend(cache_dir.glob(f"*{ext}"))
+        return audio_files
 
     @staticmethod
     def _get_file_size(file_path: str) -> int:

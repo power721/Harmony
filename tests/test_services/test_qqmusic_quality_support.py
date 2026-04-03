@@ -54,7 +54,27 @@ def test_get_song_url_accepts_chinese_quality_name():
     result = client.get_song_url("abc", quality="HQ高品质")
 
     assert result["quality"] == "320"
+    assert result["file_type"] == {"s": "M800", "e": ".mp3"}
+    assert result["extension"] == ".mp3"
     assert captured["filename"].startswith("M800")
+
+
+def test_get_song_url_returns_file_type_for_fallback_quality():
+    client = QQMusicClient()
+
+    def fake_make_request(module, method, params, _retry=False, use_sign=False):
+        requested = params["filename"][0]
+        if requested.startswith("O800"):
+            return {"midurlinfo": [{"songmid": "abc", "purl": "abc.ogg"}]}
+        return {"midurlinfo": [{"songmid": "abc", "purl": ""}]}
+
+    client._make_request = fake_make_request
+
+    result = client.get_song_url("abc", quality="hires")
+
+    assert result["quality"] == "ogg_320"
+    assert result["file_type"] == {"s": "O800", "e": ".ogg"}
+    assert result["extension"] == ".ogg"
 
 
 def test_selectable_quality_list_includes_extended_levels():

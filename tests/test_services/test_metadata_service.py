@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 from services.metadata.metadata_service import MetadataService
+from mutagen.flac import FLACNoHeaderError
 from mutagen.mp3 import HeaderNotFoundError
 
 
@@ -260,6 +261,33 @@ class TestMetadataService:
             assert result["title"] == "song"
             mock_mutagen_file.assert_called_once_with("misnamed.mp3")
 
+    @patch("services.metadata.metadata_service.OggVorbis")
+    @patch(
+        "services.metadata.metadata_service.FLAC",
+        side_effect=FLACNoHeaderError("not a valid FLAC file"),
+    )
+    def test_extract_metadata_flac_fallback_to_ogg_content_detection(
+        self, mock_flac, mock_ogg_class, tmp_path
+    ):
+        """Test that a misnamed .flac file falls back to OGG content detection."""
+        file_path = tmp_path / "misnamed.flac"
+        file_path.write_bytes(b"OggS" + b"\x00" * 24 + b"\x01vorbis")
+
+        mock_audio = MagicMock()
+        mock_audio.info.length = 200.0
+        mock_audio.__contains__ = lambda self, key: key in {"title", "artist", "album", "genre"}
+        mock_audio.__getitem__ = lambda self, key: [f"Ogg {key.title()}"]
+        mock_ogg_class.return_value = mock_audio
+
+        result = MetadataService.extract_metadata(str(file_path))
+
+        assert result["title"] == "Ogg Title"
+        assert result["artist"] == "Ogg Artist"
+        assert result["album"] == "Ogg Album"
+        assert result["genre"] == "Ogg Genre"
+        assert result["duration"] == 200.0
+        mock_ogg_class.assert_called_once_with(str(file_path))
+
     # ===== Save Metadata Method Tests =====
 
     def test_save_mp3_metadata_with_existing_tags(self):
@@ -456,6 +484,34 @@ class TestMetadataService:
 
             assert result is True
             mock_audio.save.assert_called_once()
+
+    @patch("services.metadata.metadata_service.OggVorbis")
+    @patch(
+        "services.metadata.metadata_service.FLAC",
+        side_effect=FLACNoHeaderError("not a valid FLAC file"),
+    )
+    def test_save_metadata_flac_fallback_to_ogg_content_detection(
+        self, mock_flac, mock_ogg_class, tmp_path
+    ):
+        """Test save_metadata uses OGG tags for a misnamed .flac file."""
+        file_path = tmp_path / "misnamed.flac"
+        file_path.write_bytes(b"OggS" + b"\x00" * 24 + b"\x01vorbis")
+
+        mock_audio = MagicMock()
+        mock_ogg_class.return_value = mock_audio
+
+        result = MetadataService.save_metadata(
+            str(file_path), title="Title", artist="Artist", album="Album", genre="Genre"
+        )
+
+        assert result is True
+        assert mock_audio.__setitem__.call_args_list == [
+            (("title", ["Title"]),),
+            (("artist", ["Artist"]),),
+            (("album", ["Album"]),),
+            (("genre", ["Genre"]),),
+        ]
+        mock_audio.save.assert_called_once()
 
     @patch("services.metadata.metadata_service.WAVE")
     def test_save_metadata_wav_success(self, mock_wave_class):
