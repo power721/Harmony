@@ -139,8 +139,8 @@ class TestSleepTimerService:
         mock_playback_service.stop.assert_called_once()
         # Should have set prevent_auto_next flag
         mock_playback_service._engine.set_prevent_auto_next.assert_called_once_with(True)
-        # Should have advanced queue index to next track via restore_state
-        mock_playback_service._engine.restore_state.assert_called()
+        # Should keep current index so restart restores the same track
+        mock_playback_service._engine.restore_state.assert_not_called()
 
     def test_fade_out_volume(self, sleep_timer_service, mock_playback_service, qtbot):
         """Test volume fade out."""
@@ -427,7 +427,7 @@ class TestSleepTimerService:
         assert sleep_timer_service._original_volume == 80
 
     def test_track_mode_last_track_index_reset(self, sleep_timer_service, mock_event_bus, mock_playback_service):
-        """Test track mode resets index to -1 at last track."""
+        """Test track mode keeps index unchanged even at last track."""
         config = SleepTimerConfig(
             mode='track',
             value=1,
@@ -440,9 +440,8 @@ class TestSleepTimerService:
         sleep_timer_service.start(config)
         sleep_timer_service._on_track_finished()
 
-        # Should have called restore_state with -1 (last track)
-        restore_calls = mock_playback_service._engine.restore_state.call_args_list
-        assert len(restore_calls) >= 1
+        # Should not mutate queue index during sleep timer action
+        mock_playback_service._engine.restore_state.assert_not_called()
 
     # ===== Cancel with Volume Restoration Tests =====
 
