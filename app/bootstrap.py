@@ -8,24 +8,24 @@ from typing import Optional
 
 from infrastructure import HttpClient
 from infrastructure.database import DatabaseManager
-from repositories.cloud_repository import SqliteCloudRepository
-from repositories.favorite_repository import SqliteFavoriteRepository
-from repositories.history_repository import SqliteHistoryRepository
 from repositories.album_repository import SqliteAlbumRepository
 from repositories.artist_repository import SqliteArtistRepository
+from repositories.cloud_repository import SqliteCloudRepository
+from repositories.favorite_repository import SqliteFavoriteRepository
 from repositories.genre_repository import SqliteGenreRepository
+from repositories.history_repository import SqliteHistoryRepository
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.queue_repository import SqliteQueueRepository
 from repositories.settings_repository import SqliteSettingsRepository
 from repositories.track_repository import SqliteTrackRepository
+from services.cloud import CloudAccountService, CloudFileService
 from services.library import LibraryService
 from services.library.favorites_service import FavoritesService
+from services.library.file_organization_service import FileOrganizationService
 from services.library.play_history_service import PlayHistoryService
 from services.library.playlist_service import PlaylistService
-from services.library.file_organization_service import FileOrganizationService
 from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
-from services.cloud import CloudAccountService, CloudFileService
 from system.config import ConfigManager
 from system.event_bus import EventBus
 
@@ -376,9 +376,9 @@ class Bootstrap:
                     try:
                         qqmusic = QQMusicService(credential)
                         logger.info(f"QQMusicService initialized for OnlineMusicService, "
-                                   f"musicid={credential.get('musicid')}, "
-                                   f"has_refresh_key={bool(credential.get('refresh_key'))}, "
-                                   f"has_refresh_token={bool(credential.get('refresh_token'))}")
+                                    f"musicid={credential.get('musicid')}, "
+                                    f"has_refresh_key={bool(credential.get('refresh_key'))}, "
+                                    f"has_refresh_token={bool(credential.get('refresh_token'))}")
                     except Exception as e:
                         logger.debug(f"Failed to initialize QQMusicService: {e}")
 
@@ -430,10 +430,21 @@ class Bootstrap:
         if self._mpris_controller is None:
             import sys
             if sys.platform == "linux":
-                from system.mpris import MPRISController
-                self._mpris_controller = MPRISController(
-                    playback_service=self.playback_service,
-                )
+                ready = False
+                try:
+                    import dbus
+                    import dbus.mainloop.glib
+                    import dbus.service
+                    from gi.repository import GLib
+                    ready = True
+                except ImportError:
+                    pass
+
+                if ready:
+                    from system.mpris import MPRISController
+                    self._mpris_controller = MPRISController(
+                        playback_service=self.playback_service,
+                    )
         return self._mpris_controller
 
     def start_mpris(self, main_window=None, ui_dispatcher=None):
@@ -455,4 +466,3 @@ class Bootstrap:
         """Stop MPRIS D-Bus service."""
         if self._mpris_controller is not None:
             self._mpris_controller.stop()
-
