@@ -187,6 +187,33 @@ class TestOnlineMusicHandler:
         mock_playback.engine.add_track.assert_called_once()
         mock_playback._schedule_save_queue.assert_called_once()
 
+    def test_play_online_tracks_respects_shuffle_mode(self, qapp):
+        """Batch online playback should preserve shuffle semantics."""
+        mock_playback = Mock()
+        mock_playback.engine = Mock()
+        mock_playback.engine.is_shuffle_mode.return_value = True
+
+        bootstrap = Mock()
+        bootstrap.library_service.add_online_track.side_effect = [101, 102]
+
+        handler = OnlineMusicHandler(playback_service=mock_playback)
+
+        with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
+            handler.play_online_tracks(
+                1,
+                [
+                    ("song_mid_1", {"title": "Song 1", "artist": "Artist 1"}),
+                    ("song_mid_2", {"title": "Song 2", "artist": "Artist 2"}),
+                ],
+            )
+
+        mock_playback.engine.load_playlist_items.assert_called_once()
+        selected_item = mock_playback.engine.shuffle_and_play.call_args[0][0]
+
+        assert selected_item.cloud_file_id == "song_mid_2"
+        mock_playback.engine.shuffle_and_play.assert_called_once()
+        mock_playback.engine.play_at.assert_called_once_with(0)
+
 
 class TestSidebarWithConfig:
     """Tests for Sidebar with ConfigManager."""

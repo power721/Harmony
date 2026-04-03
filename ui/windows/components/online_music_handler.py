@@ -359,6 +359,9 @@ class OnlineMusicHandler(QObject):
             items.append(item)
 
         if items:
-            # TODO: check shuffle mode and shuffle items, the item at start_index should be first
             self._playback.engine.load_playlist_items(items)
-            self._playback.engine.play_at(start_index)
+            if self._playback.engine.is_shuffle_mode() and 0 <= start_index < len(items):
+                self._playback.engine.shuffle_and_play(items[start_index])
+                self._playback.engine.play_at(0)
+            else:
+                self._playback.engine.play_at(start_index)
