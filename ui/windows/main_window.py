@@ -297,9 +297,6 @@ class MainWindow(QMainWindow):
         # Cloud account for current playback
         self._current_cloud_account = None
 
-        # Original window title for restoring when paused
-        self._original_title: str = ""
-
         # Current track title for window title
         self._current_track_title: str = ""
 
@@ -1446,9 +1443,6 @@ class MainWindow(QMainWindow):
             state: "playing", "paused", or "stopped"
         """
         if state == "playing":
-            # Save original title if not saved yet
-            if not self._original_title:
-                self._original_title = self.windowTitle()
             # Update window title to show current track
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
@@ -1456,8 +1450,7 @@ class MainWindow(QMainWindow):
             # Paused/stopped - restore original title
             self._title_bar.clear_track_title()
             self._title_bar.clear_accent_color()
-            if self._original_title:
-                self.setWindowTitle(self._original_title)
+            self.setWindowTitle(t("app_title"))
 
     def _on_cover_color_extracted(self, color):
         """Handle cover color extraction result."""

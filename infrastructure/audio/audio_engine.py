@@ -686,6 +686,27 @@ class PlayerEngine(QObject):
             item_copy = item
 
         if is_current:
+            # Check if we're already playing this file to avoid interrupting playback
+            current_source = self._backend.get_source_path()
+            logger.debug(f"[PlayerEngine] play_after_download: index={index}, local_path={local_path}, current_source={current_source}, state={self.state}")
+
+            # Only proceed if the backend source matches the file we're trying to play
+            # If they don't match, it means the user has changed tracks, so just update metadata
+            if current_source and current_source != local_path:
+                # Backend is playing a different file, likely user changed tracks
+                # Just update the playlist item metadata but don't change playback
+                logger.debug(f"[PlayerEngine] Backend playing different file {current_source}, skipping reload for {local_path}")
+                self.current_track_changed.emit(item_copy.to_dict())
+                return
+
+            # Backend is not playing or is playing the same file - safe to proceed
+            if current_source == local_path:
+                # Same file - just emit track change to update UI metadata
+                logger.debug(f"[PlayerEngine] Same file {local_path}, just updating metadata")
+                self.current_track_changed.emit(item_copy.to_dict())
+                return
+
+            # No file loaded or same file - safe to load
             self._media_loaded_flag = False  # Reset flag for new source
             self._backend.set_source(local_path)
 

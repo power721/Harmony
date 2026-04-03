@@ -63,6 +63,12 @@ class MpvAudioBackend(AudioBackend):
         self._poll_timer.timeout.connect(self._poll_position)
 
     def set_source(self, file_path: str):
+        # Check if we're already playing this file to avoid unnecessary reload
+        if file_path and file_path == self._source_path and self._media_ready:
+            # Already playing this file, don't reload
+            logger.debug(f"[MpvBackend] Already playing {file_path}, skipping reload")
+            return
+
         self._source_path = file_path or ""
         self._explicit_stop = False
         self._media_ready = False
