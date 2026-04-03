@@ -37,8 +37,10 @@ def _safe_file_uri(path: str) -> str:
         return ""
 
 
-def _make_track_object_path(track) -> dbus.ObjectPath:
-    return dbus.ObjectPath(f"/org/mpris/MediaPlayer2/track/{track.track_id}")
+def _make_track_object_path(track):
+    raw = str(track.track_id)
+    digest = hashlib.md5(raw.encode()).hexdigest()
+    return dbus.ObjectPath(f"/org/mpris/MediaPlayer2/track/{digest}")
 
 
 class MPRISService(dbus.service.Object):
@@ -201,7 +203,8 @@ class MPRISService(dbus.service.Object):
     def Raise(self):
         if self._main_window:
             try:
-                self._main_window.show()
+                self._main_window.showNormal()
+                self._main_window.raise_()
                 self._main_window.activateWindow()
             except Exception:
                 pass
@@ -254,8 +257,8 @@ class MPRISService(dbus.service.Object):
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player", in_signature="x")
     def Seek(self, offset):
-        seconds_offset = int(offset) / 1_000_000
-        self.playback_service.seek(seconds_offset)
+        ms = int(offset) / 1_000
+        self.playback_service.seek(ms)
         self.Seeked(dbus.Int64(self._position_us()))
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player", in_signature="ox")
@@ -265,18 +268,16 @@ class MPRISService(dbus.service.Object):
             return
 
         current_id = _make_track_object_path(track)
-        if str(track_id) != str(current_id):
+        print("SetPosition called", track_id, current_id, position)
+        if track_id != current_id:
             return
 
-        seconds = int(position) / 1_000_000
+        ms = int(position) / 1_000
 
-        # 兼容两种签名：
-        # 1) set_position(seconds)
-        # 2) set_position(track_id, seconds)
         try:
-            self.playback_service.set_position(seconds)
+            self.playback_service.seek(ms)
         except TypeError:
-            self.playback_service.set_position(track_id, seconds)
+            pass
 
         self.Seeked(dbus.Int64(self._position_us()))
 
@@ -413,9 +414,9 @@ class MPRISController:
             name="MPRIS-GLibLoop"
         )
         self.loop_thread.start()
+        self._emit_tracklist()
 
         self._started = True
-
     def stop(self):
         if not self._started:
             return
@@ -432,6 +433,27 @@ class MPRISController:
         self.loop_thread = None
         self._started = False
 
+    def _emit_tracklist(self):
+        if not self.service:
+            return
+
+        tracks = [
+            _make_track_object_path(t)
+            for t in self.playback_service.playlist
+        ]
+
+        current_track = self.playback_service.current_track
+        current_id = (
+            _make_track_object_path(current_track)
+            if current_track else
+            dbus.ObjectPath("/org/mpris/MediaPlayer2/track/none")
+        )
+
+        self.service.TrackListReplaced(
+            dbus.Array(tracks, signature="o"),
+            current_id
+        )
+
     def on_playback_state_changed(self, *args):
         if self.service:
             self.service.emit_player_properties(["PlaybackStatus"])
@@ -440,6 +462,7 @@ class MPRISController:
         if self.service:
             self.service.emit_player_properties(["Metadata", "PlaybackStatus"])
             self.service.Seeked(dbus.Int64(self.service._position_us()))
+            self._emit_tracklist()
 
     def on_metadata_changed(self, *args):
         if self.service:
