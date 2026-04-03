@@ -66,6 +66,8 @@ class _FakeMPV:
 
     def trigger(self, prop, value):
         self._props[prop] = value
+        if prop.isidentifier():
+            setattr(self, prop, value)
         callback = self._observers[prop]
         callback(prop, value)
 
@@ -80,6 +82,81 @@ class _FakeMPV:
 
 class _FakeMPVModule:
     MPV = _FakeMPV
+
+
+def test_mpv_backend_reports_visualizer_supported(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+
+    assert backend.supports_visualizer() is True
+
+
+def test_mpv_backend_emits_visualizer_frame_when_playing(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    frames = []
+    backend.visualizer_frame.connect(frames.append)
+
+    player = backend._player
+    player.trigger("idle-active", False)
+
+    backend._emit_visualizer_frame()
+
+    assert frames
+    assert frames[-1]["mode"] in {"spectrum", "waveform"}
+    assert frames[-1]["timestamp_ms"] >= 0
+
+
+def test_mpv_backend_visualizer_timer_lifecycle(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    timer = backend._visualizer_timer
+    player = backend._player
+
+    assert timer.started is False
+
+    player.trigger("idle-active", False)
+    assert timer.started is True
+
+    player.trigger("pause", True)
+    assert timer.started is False
+
+    player.trigger("pause", False)
+    assert timer.started is True
+
+    backend.pause()
+    assert timer.started is False
+
+    backend.play()
+    assert timer.started is True
+
+    backend.stop()
+    assert timer.started is False
+
+    backend.cleanup()
+    assert timer.started is False
+
+
+def test_mpv_backend_set_source_disables_visualizer_timer(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    timer = backend._visualizer_timer
+    player = backend._player
+
+    player.trigger("idle-active", False)
+    assert timer.started is True
+
+    backend.set_source("/tmp/new-track.flac")
+
+    assert timer.started is False
 
 
 def test_mpv_backend_basic_flow(monkeypatch):

@@ -1,5 +1,6 @@
 """Audio playback engine with pluggable backends (Qt or mpv)."""
 import logging
+import os
 import threading
 import importlib
 from pathlib import Path
@@ -39,6 +40,8 @@ class PlayerEngine(QObject):
     play_mode_changed = Signal(PlayMode)  # Emitted when play mode changes
     track_needs_download = Signal(object)  # Emitted when cloud track needs download (PlaylistItem)
     playlist_changed = Signal()  # Emitted when playlist is modified (add/remove/reorder)
+    # Visualizer frame payload: {"mode": ..., "bins"/"samples": ..., "timestamp_ms": ...}
+    visualizer_frame = Signal(object)
 
     BACKEND_QT = "qt"
     BACKEND_MPV = "mpv"
@@ -68,6 +71,8 @@ class PlayerEngine(QObject):
         self._backend.media_loaded.connect(self._on_media_loaded)
         self._backend.end_of_media.connect(self._on_end_of_media)
         self._backend.error_occurred.connect(self._on_error)
+
+        self._wire_visualizer_signal()
 
         # Set initial volume
         self.set_volume(70)
@@ -109,6 +114,15 @@ class PlayerEngine(QObject):
         """Import Qt backend lazily so mpv-only builds can exclude QtMultimedia."""
         qt_module = importlib.import_module("infrastructure.audio.qt_backend")
         return qt_module.QtAudioBackend(parent=self)
+
+    def _wire_visualizer_signal(self):
+        """Connect backend visualizer frame signal to engine signal if available."""
+        backend_signal = getattr(self._backend, "visualizer_frame", None)
+        if backend_signal is None:
+            return
+        connect = getattr(backend_signal, "connect", None)
+        if callable(connect):
+            connect(self.visualizer_frame.emit)
 
     def _rebuild_cloud_file_id_index(self):
         """Rebuild the cloud_file_id -> index mapping."""

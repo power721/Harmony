@@ -48,6 +48,7 @@ class AudioBackend(QObject):
     media_loaded = Signal()
     end_of_media = Signal()
     error_occurred = Signal(str)
+    visualizer_frame = Signal(object)
 
     def set_source(self, file_path: str):
         """Set playback source from local file path."""
@@ -116,6 +117,10 @@ class AudioBackend(QObject):
     def get_audio_effect_capabilities(self) -> AudioEffectCapabilities:
         """Get backend support matrix for effect controls."""
         raise NotImplementedError
+
+    def supports_visualizer(self) -> bool:
+        """Whether backend can emit realtime visualizer frames."""
+        return False
 
     def cleanup(self):
         """Release resources."""

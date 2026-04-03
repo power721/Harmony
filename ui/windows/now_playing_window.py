@@ -31,6 +31,7 @@ from system.i18n import t
 from ui.icons import IconName, get_icon
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
+from ui.widgets.audio_visualizer_widget import AudioVisualizerWidget
 from utils import format_time
 from PySide6.QtGui import QKeySequence
 
@@ -210,6 +211,9 @@ class NowPlayingWindow(QWidget):
         self._cover_mode = "square"  # square | circle_rotate
         self._cover_angle = 0.0
         self._cover_source_pixmap: Optional[QPixmap] = None
+        self._visualizer_supported = False
+        self._visualizer_signal = None
+        self._visualizer_signal_connected = False
         self._cover_anim_timer = QTimer(self)
         self._cover_anim_timer.setInterval(33)
         self._cover_anim_timer.timeout.connect(self._update_cover_rotation)
@@ -288,9 +292,22 @@ class NowPlayingWindow(QWidget):
         body.addWidget(self._cover_label, 0, Qt.AlignVCenter)
         self._apply_cover_mode_style()
 
+        right_panel = QVBoxLayout()
+        right_panel.setContentsMargins(0, 0, 0, 0)
+        right_panel.setSpacing(8)
+
         self._lyrics_widget = LyricsWidget()
         self._lyrics_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        body.addWidget(self._lyrics_widget, 3)
+        right_panel.addWidget(self._lyrics_widget, 1)
+
+        self._visualizer_widget = AudioVisualizerWidget()
+        self._visualizer_widget.setObjectName("nowPlayingVisualizer")
+        self._visualizer_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._visualizer_widget.setMinimumHeight(140)
+        self._visualizer_widget.hide()
+        right_panel.addWidget(self._visualizer_widget)
+
+        body.addLayout(right_panel, 3)
         body.addStretch(0)
 
         root.addLayout(body, 1)
@@ -341,8 +358,74 @@ class NowPlayingWindow(QWidget):
         engine.state_changed.connect(self._on_state_changed)
         engine.play_mode_changed.connect(self._on_play_mode_changed)
         engine.volume_changed.connect(self._on_volume_changed_from_engine)
+        self._connect_visualizer_signal()
+        self._refresh_visualizer_visibility()
 
         EventBus.instance().favorite_changed.connect(self._on_favorite_changed)
+
+    def _connect_visualizer_signal(self):
+        """Wire playback engine visualizer frames to the widget if possible."""
+        if not hasattr(self, "_visualizer_widget"):
+            return
+        engine = getattr(self._playback, "engine", None)
+        if not engine:
+            self._disconnect_visualizer_signal()
+            return
+        signal = getattr(engine, "visualizer_frame", None)
+        if signal is None:
+            self._disconnect_visualizer_signal()
+            return
+        if self._visualizer_signal_connected and signal is self._visualizer_signal:
+            return
+        if self._visualizer_signal_connected:
+            self._disconnect_visualizer_signal()
+        connect = getattr(signal, "connect", None)
+        if not callable(connect):
+            return
+        try:
+            connect(self._visualizer_widget.update_frame)
+        except (TypeError, RuntimeError):
+            logger.debug("[NowPlayingWindow] Visualizer signal connection failed", exc_info=True)
+            return
+        self._visualizer_signal = signal
+        self._visualizer_signal_connected = True
+
+    def _disconnect_visualizer_signal(self):
+        """Disconnect previously wired visualizer signal if any."""
+        if not getattr(self, "_visualizer_signal_connected", False):
+            return
+        signal = getattr(self, "_visualizer_signal", None)
+        disconnect = getattr(signal, "disconnect", None)
+        if callable(disconnect) and hasattr(self, "_visualizer_widget"):
+            try:
+                disconnect(self._visualizer_widget.update_frame)
+            except (TypeError, RuntimeError):
+                logger.debug("[NowPlayingWindow] Visualizer signal disconnection failed", exc_info=True)
+        self._visualizer_signal_connected = False
+        self._visualizer_signal = None
+
+    def _refresh_visualizer_visibility(self):
+        """Show or hide visualizer widget based on backend capability."""
+        engine = getattr(self._playback, "engine", None)
+        backend = getattr(engine, "backend", None)
+        supports_visualizer = getattr(backend, "supports_visualizer", None)
+        supported = False
+        if callable(supports_visualizer):
+            try:
+                supported = bool(supports_visualizer())
+            except Exception:
+                logger.debug("[NowPlayingWindow] supports_visualizer check failed", exc_info=True)
+        self._set_visualizer_available(supported)
+
+    def _set_visualizer_available(self, available: bool):
+        """Track visualizer availability and toggle widget visibility."""
+        if not hasattr(self, "_visualizer_widget"):
+            return
+        self._visualizer_supported = available
+        if available:
+            self._visualizer_widget.show()
+        else:
+            self._visualizer_widget.hide()
 
     def _add_shortcut(self, key: str | int, callback):
         shortcut = QShortcut(QKeySequence(key), self)
@@ -903,6 +986,7 @@ class NowPlayingWindow(QWidget):
 
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
+        self._disconnect_visualizer_signal()
         if self._lyrics_thread and isValid(self._lyrics_thread):
             if self._lyrics_thread.isRunning():
                 self._lyrics_thread.requestInterruption()
