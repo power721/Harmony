@@ -82,6 +82,33 @@ class _FakeMPVModule:
     MPV = _FakeMPV
 
 
+def test_import_mpv_module_uses_packaged_lib_when_system_lookup_fails(monkeypatch):
+    packaged_lib = "/tmp/AppDir/usr/bin/libmpv.so.2"
+    original_find_library = mpv_backend.ctypes.util.find_library
+    observed_lookups = []
+    fake_module = _FakeMPVModule()
+
+    def fake_find_library(name):
+        if name == "mpv":
+            return None
+        return original_find_library(name)
+
+    def fake_import_module(name):
+        assert name == "mpv"
+        observed_lookups.append(mpv_backend.ctypes.util.find_library("mpv"))
+        return fake_module
+
+    monkeypatch.setattr(mpv_backend.ctypes.util, "find_library", fake_find_library)
+    monkeypatch.setattr(mpv_backend, "_find_packaged_libmpv", lambda: packaged_lib)
+    monkeypatch.setattr(mpv_backend.importlib, "import_module", fake_import_module)
+
+    module = mpv_backend._import_mpv_module()
+
+    assert module is fake_module
+    assert observed_lookups == [packaged_lib]
+    assert mpv_backend.ctypes.util.find_library("mpv") is None
+
+
 def test_mpv_backend_basic_flow(monkeypatch):
     monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
     monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())

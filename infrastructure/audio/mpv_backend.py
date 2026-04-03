@@ -2,13 +2,94 @@
 
 from __future__ import annotations
 
+import ctypes.util
+import importlib
 import logging
+import os
+import sys
+from pathlib import Path
 
 from PySide6.QtCore import QTimer, Signal
 
 from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 
 logger = logging.getLogger(__name__)
+
+
+def _iter_packaged_libmpv_dirs() -> list[Path]:
+    """Yield likely bundle directories that may contain libmpv."""
+    candidates: list[Path] = []
+
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        candidates.extend(
+            [
+                executable_dir,
+                executable_dir / "_internal",
+                executable_dir / "_internal" / "lib",
+            ]
+        )
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            base_dir = Path(meipass)
+            candidates.extend(
+                [
+                    base_dir,
+                    base_dir / "_internal",
+                    base_dir / "_internal" / "lib",
+                ]
+            )
+
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        result.append(path)
+    return result
+
+
+def _find_packaged_libmpv() -> str | None:
+    """Find a bundled libmpv path for packaged builds."""
+    if os.name == "nt":
+        patterns = ("mpv-2.dll", "libmpv-2.dll", "mpv.dll")
+    elif sys.platform == "darwin":
+        patterns = ("libmpv.dylib", "libmpv.2.dylib")
+    else:
+        patterns = ("libmpv.so*",)
+
+    for directory in _iter_packaged_libmpv_dirs():
+        if not directory.exists():
+            continue
+        for pattern in patterns:
+            for match in sorted(directory.glob(pattern)):
+                if match.is_file():
+                    return str(match)
+    return None
+
+
+def _import_mpv_module():
+    """Import python-mpv, exposing bundled libmpv when packaged builds need it."""
+    packaged_lib = _find_packaged_libmpv()
+
+    if os.name != "nt" and packaged_lib and ctypes.util.find_library("mpv") is None:
+        original_find_library = ctypes.util.find_library
+
+        def _patched_find_library(name: str):
+            if name == "mpv":
+                return packaged_lib
+            return original_find_library(name)
+
+        ctypes.util.find_library = _patched_find_library
+        try:
+            sys.modules.pop("mpv", None)
+            return importlib.import_module("mpv")
+        finally:
+            ctypes.util.find_library = original_find_library
+
+    return importlib.import_module("mpv")
 
 
 class MpvAudioBackend(AudioBackend):
@@ -30,7 +111,7 @@ class MpvAudioBackend(AudioBackend):
         super().__init__(parent)
 
         try:
-            import mpv  # type: ignore
+            mpv = _import_mpv_module()
         except ImportError as exc:
             raise RuntimeError("python-mpv is not installed") from exc
 
