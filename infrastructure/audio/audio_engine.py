@@ -1,5 +1,6 @@
 """Audio playback engine with pluggable backends (Qt or mpv)."""
 import logging
+import os
 import threading
 import importlib
 from pathlib import Path
@@ -163,6 +164,11 @@ class PlayerEngine(QObject):
     def backend(self):
         """Expose current audio backend instance."""
         return self._backend
+
+    @property
+    def position(self) -> int:
+        """Expose current audio backend instance."""
+        return self._backend.position()
 
     @property
     def state(self) -> PlaybackState:
@@ -1143,6 +1149,7 @@ class PlayerEngine(QObject):
     def _on_end_of_media(self):
         """Handle end-of-media event from backend."""
         self.track_finished.emit()
+        logger.debug("=== [PlayerEngine] End of media played")
 
         # Check if auto-next is prevented
         if self._prevent_auto_next:

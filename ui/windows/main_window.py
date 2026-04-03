@@ -1977,7 +1977,14 @@ class MainWindow(QMainWindow):
             #         self._nav_library.setChecked(False)
 
             def restore_queue_state():
+                # Re-enable auto-next after restoration completes
+                try:
+                    self._player.engine.set_prevent_auto_next(False)
+                except Exception:
+                    pass
+
                 current_item = self._player.current_track
+                logger.debug(f"restore_queue_state: {current_item} playback_position={playback_position} was_playing={was_playing}")
                 if current_item:
                     # Restore position if valid
                     if playback_position > 0:
@@ -2017,6 +2024,12 @@ class MainWindow(QMainWindow):
                     logger.debug(f"Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
 
                     def restore_cloud_state():
+                        # Re-enable auto-next after restoration completes
+                        try:
+                            self._player.engine.set_prevent_auto_next(False)
+                        except Exception:
+                            pass
+
                         # Extract parent_id from last_fid_path
                         # last_fid_path is like "/fid1/fid2/fid3", we need the last segment
                         fid_path = account.last_fid_path or "0"
@@ -2049,6 +2062,12 @@ class MainWindow(QMainWindow):
 
         if current_track_id and current_track_id > 0:
             def restore_later():
+                # Re-enable auto-next after restoration completes
+                try:
+                    self._player.engine.set_prevent_auto_next(False)
+                except Exception:
+                    pass
+
                 track = self._db.get_track(current_track_id)
                 if track:
                     try:

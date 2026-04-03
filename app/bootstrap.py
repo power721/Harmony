@@ -433,11 +433,10 @@ class Bootstrap:
                 from system.mpris import MPRISController
                 self._mpris_controller = MPRISController(
                     playback_service=self.playback_service,
-                    event_bus=self.event_bus,
                 )
         return self._mpris_controller
 
-    def start_mpris(self, main_window=None):
+    def start_mpris(self, main_window=None, ui_dispatcher=None):
         """
         Start MPRIS D-Bus service (Linux only).
 
@@ -449,6 +448,7 @@ class Bootstrap:
             controller = self.mpris_controller  # Access property to trigger lazy init
             if controller is not None:
                 controller._main_window = main_window
+                controller.ui_dispatcher = ui_dispatcher
                 controller.start()
 
     def stop_mpris(self):

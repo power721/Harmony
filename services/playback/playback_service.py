@@ -16,13 +16,13 @@ import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal, Qt, QTimer
+from PySide6.QtCore import QObject, Signal, QTimer
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
 from domain.track import Track, TrackSource
-from infrastructure.audio.audio_backend import AudioEffectsState
 from infrastructure.audio import PlayerEngine
+from infrastructure.audio.audio_backend import AudioEffectsState
 from system.config import ConfigManager
 from system.event_bus import EventBus
 from utils.helpers import get_cache_dir
@@ -136,6 +136,13 @@ class PlaybackService(QObject):
         # Metadata processing deduplication
         self._processing_metadata: set = set()  # cloud_file_ids being processed
         self._metadata_processing_lock = threading.Lock()
+
+        # Preload scheduling deduplication
+        self._scheduled_preloads: set = set()  # cloud_file_ids scheduled for preload
+        self._preload_scheduled_lock = threading.Lock()
+        self._max_concurrent_preloads = 1  # Limit concurrent preloads to prevent overwhelming
+        self._preload_attempts: dict = {}  # cloud_file_id -> attempt count
+        self._max_preload_attempts = 2  # Max retry attempts per file
 
         # Queue save debouncing
         self._save_queue_timer = None
@@ -361,6 +368,15 @@ class PlaybackService(QObject):
         return self._engine.state
 
     @property
+    def is_playing(self) -> bool:
+        """Get current player state."""
+        return self._engine.state == PlaybackState.PLAYING
+
+    @property
+    def position(self) -> int:
+        return self._engine.position
+
+    @property
     def volume(self) -> int:
         """Get current volume (0-100)."""
         return self._engine.volume
@@ -421,6 +437,23 @@ class PlaybackService(QObject):
     def play_mode(self) -> PlayMode:
         """Get current play mode."""
         return self._engine.play_mode
+
+    @property
+    def loop_status(self) -> str:
+        status = "None"
+        if self._engine.play_mode == PlayMode.LOOP:
+            status = "Track"
+        elif self._engine.play_mode == PlayMode.RANDOM_TRACK_LOOP:
+            status = "Track"
+        elif self._engine.play_mode == PlayMode.PLAYLIST_LOOP:
+            status = "Playlist"
+        elif self._engine.play_mode == PlayMode.RANDOM_LOOP:
+            status = "Playlist"
+        return status
+
+    @property
+    def shuffle(self) -> bool:
+        return self._engine.play_mode == PlayMode.RANDOM or self._engine.play_mode == PlayMode.RANDOM_LOOP or self._engine.play_mode == PlayMode.RANDOM_TRACK_LOOP
 
     # ===== Playback Control =====
 
@@ -762,12 +795,18 @@ class PlaybackService(QObject):
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
         """
+        # Reset preload attempt counter on successful download
+        with self._preload_scheduled_lock:
+            if cloud_file_id in self._preload_attempts:
+                del self._preload_attempts[cloud_file_id]
+
         # Check if this is an online track (QQ Music) by looking up the playlist item
         # QQ Music downloads are handled by on_online_track_downloaded
         for item in self._engine.playlist_items:
             if item.cloud_file_id == cloud_file_id:
                 if item.source == TrackSource.QQ:
-                    logger.debug(f"[PlaybackService] Skipping on_cloud_file_downloaded for QQ Music track: {cloud_file_id}")
+                    logger.debug(
+                        f"[PlaybackService] Skipping on_cloud_file_downloaded for QQ Music track: {cloud_file_id}")
                     return
                 break
 
@@ -999,6 +1038,15 @@ class PlaybackService(QObject):
                 self._cloud_account = self._cloud_repo.get_account_by_id(target_item.cloud_account_id)
         else:
             self._set_source("local")
+
+        # Populate _cloud_files_by_id for cloud files in the queue
+        # This is needed for play_next() to work correctly with cloud tracks
+        cloud_file_ids = [item.cloud_file_id for item in items if item.cloud_file_id]
+        if cloud_file_ids and self._cloud_repo:
+            cloud_files = self._cloud_repo.get_files_by_file_ids(cloud_file_ids)
+            self._cloud_files = [cf for cf in cloud_files if cf]
+            self._cloud_files_by_id = {cf.file_id: cf for cf in self._cloud_files}
+            logger.debug(f"[PlaybackService] Restored {len(self._cloud_files_by_id)} cloud files for queue")
 
         # Load queue into engine
         self._engine.load_playlist_items(items)
@@ -1254,7 +1302,6 @@ class PlaybackService(QObject):
 
     def _download_online_track(self, item: PlaylistItem):
         """Download an online track."""
-        from services.online import OnlineDownloadService
 
         song_mid = item.cloud_file_id
         worker = None
@@ -1539,21 +1586,54 @@ class PlaybackService(QObject):
         self._download_online_track(item)
 
     def _preload_cloud_track(self, item: PlaylistItem):
-        """Preload a cloud track."""
+        """Preload a cloud track with delay."""
         from services.cloud.download_service import CloudDownloadService
 
         # Skip if already downloaded
         if item.local_path:
             return
 
+        # Check attempt limit to prevent infinite retries
+        with self._preload_scheduled_lock:
+            attempts = self._preload_attempts.get(item.cloud_file_id, 0)
+            if attempts >= self._max_preload_attempts:
+                logger.debug(f"[PlaybackService] Skipping preload, max attempts reached for {item.cloud_file_id}")
+                return
+            self._preload_attempts[item.cloud_file_id] = attempts + 1
+
+        # Check concurrent preload limit
+        with self._preload_scheduled_lock:
+            if len(self._scheduled_preloads) >= self._max_concurrent_preloads:
+                logger.debug(
+                    f"[PlaybackService] Skipping preload, max concurrent limit reached: {len(self._scheduled_preloads)}")
+                # Decrement attempts since we're not actually scheduling
+                self._preload_attempts[item.cloud_file_id] = attempts
+                return
+            # Skip if already scheduled for preload (prevent duplicate scheduling)
+            if item.cloud_file_id in self._scheduled_preloads:
+                logger.debug(f"[PlaybackService] Skipping preload, already scheduled for {item.cloud_file_id}")
+                # Decrement attempts since we're not actually scheduling
+                self._preload_attempts[item.cloud_file_id] = attempts
+                return
+            self._scheduled_preloads.add(item.cloud_file_id)
+
         # Skip if metadata is already being processed
         with self._metadata_processing_lock:
             if item.cloud_file_id in self._processing_metadata:
-                logger.debug(f"[PlaybackService] Skipping preload, metadata already being processed for {item.cloud_file_id}")
+                logger.debug(
+                    f"[PlaybackService] Skipping preload, metadata already being processed for {item.cloud_file_id}")
+                # Remove from scheduled since we're not actually scheduling
+                with self._preload_scheduled_lock:
+                    self._scheduled_preloads.discard(item.cloud_file_id)
+                    self._preload_attempts[item.cloud_file_id] = attempts
                 return
 
         service = CloudDownloadService.instance()
         if service.is_downloading(item.cloud_file_id):
+            # Remove from scheduled since we're not actually scheduling
+            with self._preload_scheduled_lock:
+                self._scheduled_preloads.discard(item.cloud_file_id)
+                self._preload_attempts[item.cloud_file_id] = attempts
             return
 
         # Find the CloudFile
@@ -1567,6 +1647,10 @@ class PlaybackService(QObject):
             cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
 
         if not cloud_file:
+            # Remove from scheduled since we failed to find file
+            with self._preload_scheduled_lock:
+                self._scheduled_preloads.discard(item.cloud_file_id)
+                self._preload_attempts[item.cloud_file_id] = attempts
             return
 
         # Get cloud account if needed
@@ -1575,12 +1659,30 @@ class PlaybackService(QObject):
             account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
 
         if not account:
+            # Remove from scheduled since we failed to get account
+            with self._preload_scheduled_lock:
+                self._scheduled_preloads.discard(item.cloud_file_id)
+                self._preload_attempts[item.cloud_file_id] = attempts
             return
 
-        # Start preload
-        logger.info(f"[PlaybackService] Preloading cloud track: {item.title}")
-        service.set_download_dir(self._config.get_cloud_download_dir())
-        service.download_file(cloud_file, account)
+        # Schedule preload with delay
+        logger.info(
+            f"[PlaybackService] Scheduling cloud track preload in 10 seconds (attempt {attempts + 1}): {item.title}")
+
+        def start_preload():
+            # Remove from scheduled set
+            with self._preload_scheduled_lock:
+                self._scheduled_preloads.discard(item.cloud_file_id)
+
+            # Check again if still need to download (might have been cancelled or already downloaded)
+            if item.local_path:
+                return
+            logger.info(f"[PlaybackService] Starting preload for cloud track: {item.title}")
+            service.set_download_dir(self._config.get_cloud_download_dir())
+            service.download_file(cloud_file, account)
+
+        # Use QTimer for non-blocking delay
+        QTimer.singleShot(10000, start_preload)
 
     def _save_cloud_track_to_library(self, file_id: str, local_path: str, source: TrackSource = None) -> str:
         """
@@ -1657,7 +1759,8 @@ class PlaybackService(QObject):
 
             # Fetch and update cover if missing
             if not existing.cover_path and self._cover_service:
-                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
+                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration,
+                                                         metadata, local_path, source)
                 if cover_path:
                     self._track_repo.update_cover_path(existing.id, cover_path)
                     logger.info(f"[PlaybackService] Updated track {existing.id} cover: {cover_path}")
@@ -1686,7 +1789,8 @@ class PlaybackService(QObject):
 
             # Fetch and update cover if missing
             if not existing_by_path.cover_path and self._cover_service:
-                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration, metadata, local_path)
+                cover_path = self._fetch_cover_for_track(file_id, new_title, new_artist, new_album, new_duration,
+                                                         metadata, local_path, source)
                 if cover_path:
                     self._track_repo.update_cover_path(existing_by_path.id, cover_path)
                     logger.info(f"[PlaybackService] Updated track {existing_by_path.id} cover: {cover_path}")
@@ -1711,7 +1815,8 @@ class PlaybackService(QObject):
         # Fetch cover art
         cover_path = None
         if self._cover_service:
-            cover_path = self._fetch_cover_for_track(file_id, title, artist, album, duration, metadata, local_path)
+            cover_path = self._fetch_cover_for_track(file_id, title, artist, album, duration, metadata, local_path,
+                                                     source)
 
         track = Track(
             path=local_path,
@@ -1737,7 +1842,8 @@ class PlaybackService(QObject):
         return cover_path
 
     def _fetch_cover_for_track(self, file_id: str, title: str, artist: str, album: str,
-                               duration: float, metadata: dict, local_path: str) -> Optional[str]:
+                               duration: float, metadata: dict, local_path: str, source: TrackSource = None) -> \
+    Optional[str]:
         """
         Fetch cover art for a track from various sources.
 
@@ -1766,18 +1872,20 @@ class PlaybackService(QObject):
 
         # Step 2: For QQ Music online tracks, try to get cover directly by song_mid
         if file_id:
-            logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
-            qq_cover_path = self._cover_service.get_online_cover(
-                song_mid=file_id,
-                artist=artist,
-                title=title
-            )
+            qq_cover_path = None
+            if source == TrackSource.QQ:
+                logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
+                qq_cover_path = self._cover_service.get_online_cover(
+                    song_mid=file_id,
+                    artist=artist,
+                    title=title
+                )
             if qq_cover_path:
                 logger.info(f"[PlaybackService] QQ Music cover downloaded: {qq_cover_path}")
                 cover_path = qq_cover_path
             elif title and artist:
                 # Fallback to search if direct fetch failed
-                logger.info(f"[PlaybackService] QQ Music cover not found, searching: {title} - {artist}")
+                logger.info(f"[PlaybackService] Searching cover: {title} - {artist}")
                 online_cover_path = self._cover_service.fetch_online_cover(
                     title,
                     artist,
@@ -1808,7 +1916,7 @@ class PlaybackService(QObject):
         return cover_path
 
     def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "", skip_online: bool = False) -> \
-    Optional[str]:
+            Optional[str]:
         """
         Get cover art for a track.
 
@@ -1826,12 +1934,11 @@ class PlaybackService(QObject):
             return self._cover_service.get_cover(track_path, title, artist, album, skip_online=skip_online)
         return None
 
-
-    def get_online_track_cover(self, source: str, cloud_file_id: str, artist: str = "", title: str = "") -> Optional[str]:
+    def get_online_track_cover(self, source: str, cloud_file_id: str, artist: str = "", title: str = "") -> Optional[
+        str]:
         if self._cover_service:
             return self._cover_service.get_online_cover(cloud_file_id, "", artist, title)
         return None
-
 
     def save_cover_from_metadata(self, track_path: str, cover_data: bytes) -> Optional[str]:
         """
@@ -1949,4 +2056,5 @@ class PlaybackService(QObject):
     def _on_metadata_batch_complete(self):
         """Handle batch metadata processing completion - save queue once."""
         self.save_queue()
-        logger.debug(f"[PlaybackService] Batch metadata processing complete, saved queue: {len(self._engine.playlist_items)} items")
+        logger.debug(
+            f"[PlaybackService] Batch metadata processing complete, saved queue: {len(self._engine.playlist_items)} items")

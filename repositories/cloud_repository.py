@@ -308,6 +308,32 @@ class SqliteCloudRepository(BaseRepository):
         """Get a cloud file by file ID (alias for get_file_by_id)."""
         return self.get_file_by_id(file_id)
 
+    def get_files_by_file_ids(self, file_ids: List[str]) -> List[CloudFile]:
+        """
+        Get multiple cloud files by their file IDs.
+
+        Args:
+            file_ids: List of file IDs to fetch
+
+        Returns:
+            List of CloudFile objects (only files that are found)
+        """
+        if not file_ids:
+            return []
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Use IN clause for batch lookup
+        placeholders = ','.join(['?' for _ in file_ids])
+        cursor.execute(
+            f"SELECT * FROM cloud_files WHERE file_id IN ({placeholders})",
+            file_ids
+        )
+        rows = cursor.fetchall()
+
+        return [self._row_to_file(row) for row in rows]
+
     def get_file_by_local_path(self, local_path: str) -> Optional[CloudFile]:
         """Get a cloud file by its local path."""
         conn = self._get_connection()

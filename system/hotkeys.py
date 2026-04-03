@@ -182,50 +182,7 @@ def setup_media_key_handler(player: "PlaybackService"):
 
 def _setup_linux_media_keys(player: "PlaybackService"):
     """Setup media keys on Linux using MPRIS."""
-    try:
-        import dbus
-        import dbus.service
-
-        class MPRISPlayer(dbus.service.Object):
-            """MPRIS2 D-Bus interface for Linux media keys."""
-
-            def __init__(self, player_controller):
-                bus_name = dbus.service.BusName('org.mpris.MediaPlayer2.Harmony', bus=dbus.SessionBus())
-                path = '/org/mpris/MediaPlayer2'
-                super().__init__(bus_name, path)
-                self._player = player_controller
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def Play(self):
-                self._player.engine.play()
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def Pause(self):
-                self._player.engine.pause()
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def PlayPause(self):
-                if self._player.engine.state == PlaybackState.PLAYING:
-                    self._player.engine.pause()
-                else:
-                    self._player.engine.play()
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def Next(self):
-                self._player.engine.play_next()
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def Previous(self):
-                self._player.engine.play_previous()
-
-            @dbus.service.method('org.mpris.MediaPlayer2.Player')
-            def Stop(self):
-                self._player.engine.stop()
-
-        MPRISPlayer(player)
-
-    except ImportError:
-        logger.debug("DBus not available for MPRIS support")
+    pass
 
 
 def _setup_macos_media_keys(player: "PlaybackService"):

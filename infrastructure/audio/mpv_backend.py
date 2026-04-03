@@ -307,8 +307,18 @@ class MpvAudioBackend(AudioBackend):
             # around track switches in some mpv builds.
             if duration > 1.0 and position > 0.0:
                 # Accept tiny decode tolerance near track end.
-                return position >= max(0.0, duration - 0.5)
-        except Exception:
+                result = position >= max(0.0, duration - 0.5)
+                logger.debug(f"[MpvBackend] Timeline check result: {result}")
+                return result
+
+            # If we have a source file loaded but duration/position are both 0,
+            # this might indicate a playback issue or unsupported format.
+            # Treat as end-of-media to allow auto-next to proceed.
+            if self._source_path and duration == 0.0 and position == 0.0:
+                logger.warning(f"[MpvBackend] Source loaded but duration/position are 0, treating as end-of-media: {self._source_path}")
+                return True
+        except Exception as e:
+            logger.debug(f"[MpvBackend] Exception in _should_treat_idle_as_end: {e}")
             return False
         return False
 

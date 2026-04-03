@@ -188,7 +188,7 @@ class MatchScorer:
                 best_priority = priority
 
         if best_result:
-            logger.info(f"Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f}, source: {best_result.source})")
+            logger.info(f"[{track.title} - {track.artist}] Best match ({mode}): {best_result.title} - {best_result.artist} (score: {best_score:.1f}, source: {best_result.source})")
 
         return (best_result, best_score) if best_result else None
 

@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import Optional
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 
 from .bootstrap import Bootstrap
@@ -105,6 +105,9 @@ class Application(QObject):
         """Set main window."""
         self._main_window = window
 
+    def _dispatch_to_ui(fn, *args, **kwargs):
+        QTimer.singleShot(0, lambda: fn(*args, **kwargs))
+
     def run(self) -> int:
         """
         Run the application.
@@ -124,7 +127,7 @@ class Application(QObject):
             cache_cleaner.start()
 
         # Start MPRIS D-Bus service (Linux only)
-        self._bootstrap.start_mpris(self._main_window)
+        self._bootstrap.start_mpris(self._main_window, self._dispatch_to_ui)
 
         return self._qt_app.exec()
 
