@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Iterable, List, Optional
 
 from PySide6.QtCore import Qt, QRectF
@@ -13,6 +14,8 @@ class AudioVisualizerWidget(QWidget):
     """Simple QWidget that paints the latest audio spectrum or waveform frame."""
 
     _VALID_MODES = {"spectrum", "waveform"}
+    _MAX_BINS = 256
+    _MAX_SAMPLES = 512
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -43,6 +46,8 @@ class AudioVisualizerWidget(QWidget):
         if mode not in self._VALID_MODES:
             return
 
+        timestamp_ms = self._parse_timestamp(frame.get("timestamp_ms"))
+
         if mode == "spectrum":
             bins = self._normalize_bins(frame.get("bins"))
             if not bins:
@@ -50,7 +55,7 @@ class AudioVisualizerWidget(QWidget):
             sanitized = {
                 "mode": "spectrum",
                 "bins": bins,
-                "timestamp_ms": int(frame.get("timestamp_ms", 0) or 0),
+                "timestamp_ms": timestamp_ms,
             }
         else:
             samples = self._normalize_samples(frame.get("samples"))
@@ -59,7 +64,7 @@ class AudioVisualizerWidget(QWidget):
             sanitized = {
                 "mode": "waveform",
                 "samples": samples,
-                "timestamp_ms": int(frame.get("timestamp_ms", 0) or 0),
+                "timestamp_ms": timestamp_ms,
             }
 
         self._last_frame = sanitized
@@ -116,29 +121,61 @@ class AudioVisualizerWidget(QWidget):
         painter.drawPath(path)
 
     @staticmethod
-    def _normalize_bins(values: Optional[Iterable]) -> List[float]:
-        if not values:
+    def _parse_timestamp(value) -> int:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return 0
+        if math.isnan(number) or math.isinf(number):
+            return 0
+        return max(0, int(number))
+
+    @classmethod
+    def _normalize_bins(cls, values: Optional[Iterable]) -> List[float]:
+        if values is None:
             return []
         normalized: List[float] = []
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            number = max(0.0, min(1.0, number))
-            normalized.append(number)
+        try:
+            iterator = iter(values)
+        except TypeError:
+            return []
+        try:
+            for value in iterator:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isnan(number) or math.isinf(number):
+                    continue
+                number = max(0.0, min(1.0, number))
+                normalized.append(number)
+                if len(normalized) >= cls._MAX_BINS:
+                    break
+        except TypeError:
+            return normalized
         return normalized
 
-    @staticmethod
-    def _normalize_samples(values: Optional[Iterable]) -> List[float]:
-        if not values:
+    @classmethod
+    def _normalize_samples(cls, values: Optional[Iterable]) -> List[float]:
+        if values is None:
             return []
         normalized: List[float] = []
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            number = max(-1.0, min(1.0, number))
-            normalized.append(number)
+        try:
+            iterator = iter(values)
+        except TypeError:
+            return []
+        try:
+            for value in iterator:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isnan(number) or math.isinf(number):
+                    continue
+                number = max(-1.0, min(1.0, number))
+                normalized.append(number)
+                if len(normalized) >= cls._MAX_SAMPLES:
+                    break
+        except TypeError:
+            return normalized
         return normalized
