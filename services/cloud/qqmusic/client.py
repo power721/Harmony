@@ -8,12 +8,10 @@ import logging
 import time
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
-import requests
-
 from .crypto import generate_sign
 from .common import (
     APIConfig, get_guid, get_search_id, parse_quality, SongFileType, normalize_quality,
-    SearchType, parse_search_type
+    SearchType, parse_search_type, create_qq_session
 )
 
 if TYPE_CHECKING:
@@ -38,7 +36,7 @@ class QQMusicClient:
         """
         self.credential = credential
         self._on_credential_updated = on_credential_updated
-        self.session = requests.Session()
+        self.session = create_qq_session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'https://y.qq.com/',

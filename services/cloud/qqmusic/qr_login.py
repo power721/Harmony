@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from .common import create_qq_session
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,7 +169,7 @@ class QQMusicQRLogin:
 
     def __init__(self):
         """Initialize QR login client."""
-        self._session = requests.Session()
+        self._session = create_qq_session()
         self._session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
             'Referer': 'https://y.qq.com/',

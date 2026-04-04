@@ -7,6 +7,9 @@ import time
 from enum import Enum
 from typing import Dict
 
+import requests
+from requests.adapters import HTTPAdapter
+
 
 class SongFileType:
     """Song file type mappings for different quality levels."""
@@ -152,6 +155,28 @@ _QUALITY_LABEL_KEYS = {
     "aac_48": "qqmusic_quality_aac_48",
     "aac_24": "qqmusic_quality_aac_24",
 }
+
+
+def create_qq_session(pool_size: int = 20, pool_block: bool = True) -> requests.Session:
+    """
+    Create a requests session tuned for concurrent QQ Music API access.
+
+    Args:
+        pool_size: Max number of kept/reused connections per host.
+        pool_block: Whether to block instead of creating throwaway sockets.
+
+    Returns:
+        Configured requests session.
+    """
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=pool_size,
+        pool_maxsize=pool_size,
+        pool_block=pool_block,
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def get_guid() -> str:

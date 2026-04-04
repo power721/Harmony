@@ -1,4 +1,5 @@
 from services.cloud.qqmusic.client import QQMusicClient
+from services.cloud.qqmusic.qr_login import QQMusicQRLogin
 from services.cloud.qqmusic.common import (
     APIConfig,
     parse_quality,
@@ -75,6 +76,26 @@ def test_get_song_url_returns_file_type_for_fallback_quality():
     assert result["quality"] == "ogg_320"
     assert result["file_type"] == {"s": "O800", "e": ".ogg"}
     assert result["extension"] == ".ogg"
+
+
+def test_qqmusic_client_uses_expanded_connection_pool():
+    client = QQMusicClient()
+
+    https_adapter = client.session.get_adapter("https://u.y.qq.com/cgi-bin/musicu.fcg")
+
+    assert https_adapter._pool_connections == 20
+    assert https_adapter._pool_maxsize == 20
+    assert https_adapter._pool_block is True
+
+
+def test_qqmusic_qr_login_uses_expanded_connection_pool():
+    client = QQMusicQRLogin()
+
+    https_adapter = client._session.get_adapter("https://u.y.qq.com/cgi-bin/musicu.fcg")
+
+    assert https_adapter._pool_connections == 20
+    assert https_adapter._pool_maxsize == 20
+    assert https_adapter._pool_block is True
 
 
 def test_selectable_quality_list_includes_extended_levels():
