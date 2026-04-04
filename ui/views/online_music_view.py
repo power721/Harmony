@@ -3170,8 +3170,7 @@ class OnlineMusicView(QWidget):
 
     def _load_top_lists(self):
         """Load top lists."""
-        if self._top_list_worker and isValid(self._top_list_worker) and self._top_list_worker.isRunning():
-            self._top_list_worker.terminate()
+        self._stop_worker(self._top_list_worker, "top_list_worker")
 
         self._top_list_worker = TopListWorker(self._service)
         self._top_list_worker.top_list_loaded.connect(self._on_top_lists_loaded)
@@ -3204,12 +3203,34 @@ class OnlineMusicView(QWidget):
         self._top_list_title.setText(item.text())
 
         # Load songs
-        if self._top_list_worker and isValid(self._top_list_worker) and self._top_list_worker.isRunning():
-            self._top_list_worker.terminate()
+        self._stop_worker(self._top_list_worker, "top_list_worker")
 
         self._top_list_worker = TopListWorker(self._service, self._selected_top_id)
         self._top_list_worker.top_songs_loaded.connect(self._on_top_songs_loaded)
         self._top_list_worker.start()
+
+    def _stop_worker(self, worker, worker_name: str):
+        """Stop a running worker cooperatively without force-terminating threads."""
+        if not worker or not isValid(worker):
+            return
+        if not worker.isRunning():
+            return
+
+        try:
+            worker.requestInterruption()
+        except Exception:
+            logger.debug(f"[OnlineMusicView] requestInterruption failed for {worker_name}", exc_info=True)
+
+        try:
+            worker.quit()
+        except Exception:
+            logger.debug(f"[OnlineMusicView] quit failed for {worker_name}", exc_info=True)
+
+        try:
+            if not worker.wait(1500):
+                logger.warning(f"[OnlineMusicView] Worker did not stop in time: {worker_name}")
+        except Exception:
+            logger.debug(f"[OnlineMusicView] wait failed for {worker_name}", exc_info=True)
 
     def _on_top_songs_loaded(self, top_id: int, songs: List[OnlineTrack]):
         """Handle top songs loaded."""

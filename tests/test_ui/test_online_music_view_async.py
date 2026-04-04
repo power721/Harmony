@@ -1,9 +1,10 @@
 """Async request coordination tests for OnlineMusicView."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from domain.online_music import OnlineTrack, SearchResult, SearchType
 from ui.views.online_music_view import OnlineMusicView
+import ui.views.online_music_view as online_music_view
 
 
 def _make_view_for_search_callbacks():
@@ -133,3 +134,62 @@ def test_current_hotkey_results_update_state():
     OnlineMusicView._on_hotkey_ready(view, hotkeys, 8)
 
     assert view._hotkeys == hotkeys
+
+
+class _FakeSignal:
+    def __init__(self):
+        self.connected = None
+
+    def connect(self, cb):
+        self.connected = cb
+
+
+class _FakeWorker:
+    def __init__(self, running=True):
+        self._running = running
+        self.request_interruption_called = False
+        self.quit_called = False
+        self.wait_called = False
+        self.started = False
+        self.top_list_loaded = _FakeSignal()
+        self.top_songs_loaded = _FakeSignal()
+
+    def isRunning(self):
+        return self._running
+
+    def requestInterruption(self):
+        self.request_interruption_called = True
+        self._running = False
+
+    def quit(self):
+        self.quit_called = True
+
+    def wait(self, _timeout):
+        self.wait_called = True
+        return True
+
+    def start(self):
+        self.started = True
+        self._running = True
+
+
+def test_load_top_lists_stops_existing_worker_cooperatively():
+    """Top-list reload should stop old worker via interruption/quit/wait before starting new one."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._service = object()
+    old_worker = _FakeWorker(running=True)
+    new_worker = _FakeWorker(running=False)
+    view._top_list_worker = old_worker
+    view._on_top_lists_loaded = Mock()
+
+    with patch.object(online_music_view, "isValid", return_value=True), patch.object(
+        online_music_view, "TopListWorker", return_value=new_worker
+    ):
+        OnlineMusicView._load_top_lists(view)
+
+    assert old_worker.request_interruption_called is True
+    assert old_worker.quit_called is True
+    assert old_worker.wait_called is True
+    assert view._top_list_worker is new_worker
+    assert new_worker.top_list_loaded.connected == view._on_top_lists_loaded
+    assert new_worker.started is True
