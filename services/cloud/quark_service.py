@@ -68,9 +68,7 @@ class QuarkDriveService:
             return access_token
 
         # Extract cookies from response
-        cookie_dict = {}
-        for name, value in response_cookies.items():
-            cookie_dict[name] = value
+        cookie_dict = {name: value for name, value in response_cookies.items()}
 
         # Check if __puus is in response cookies
         if '__puus' in cookie_dict:
