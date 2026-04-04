@@ -4,6 +4,7 @@ Base class for track list views with configurable display options.
 """
 
 import logging
+from contextlib import suppress
 from typing import List
 
 from PySide6.QtCore import (
@@ -258,10 +259,8 @@ class CoverLoadWorker(QRunnable):
             qimage = None
             if cover_path:
                 qimage = QImage(cover_path)
-            try:
+            with suppress(RuntimeError):
                 self.callback_signal.emit(self.cache_key, cover_path, qimage)
-            except RuntimeError:
-                pass  # signal source deleted
         except Exception:
             pass
 
@@ -585,10 +584,8 @@ class LocalTracksListView(QWidget):
         except RuntimeError:
             pass
         # Disconnect delegate's class-level signal to prevent leaked connections
-        try:
+        with suppress(RuntimeError):
             self._delegate._cover_loaded_signal.disconnect(self._delegate._on_cover_loaded)
-        except RuntimeError:
-            pass
         self._hover_timer.stop()
         self._cover_popup.hide()
         super().closeEvent(event)
