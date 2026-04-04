@@ -63,6 +63,41 @@ class SqliteSettingsRepository(BaseRepository):
         conn.commit()
         return cursor.rowcount > 0
 
+    def set_many(self, values: Dict[str, Any]) -> bool:
+        """
+        Set multiple setting values in a single transaction.
+
+        Args:
+            values: Mapping of setting keys to values
+
+        Returns:
+            True if all values are persisted successfully
+        """
+        if not values:
+            return True
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        payload = [
+            (key, encode_setting_value(value))
+            for key, value in values.items()
+        ]
+
+        try:
+            cursor.executemany(
+                """
+                INSERT OR REPLACE INTO settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                payload,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+        return True
+
     def get_all(self, keys: List[str]) -> Dict[str, Any]:
         """
         Get multiple setting values.

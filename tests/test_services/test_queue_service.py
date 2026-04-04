@@ -38,6 +38,19 @@ class FakeConfig:
         self.deleted_keys.append(key)
 
 
+class FakeConfigWithBatch(FakeConfig):
+    def __init__(self):
+        super().__init__()
+        self.set_many_calls = []
+
+    def set(self, key, value):
+        raise AssertionError("save_queue should prefer set_many when available")
+
+    def set_many(self, pairs):
+        self.set_many_calls.append(dict(pairs))
+        self.values.update(pairs)
+
+
 class FakeEngine:
     def __init__(self, items=None, current_index=-1, play_mode=PlayMode.SEQUENTIAL):
         self.playlist_items = list(items or [])
@@ -318,6 +331,28 @@ def test_playback_service_save_queue_persists_current_track_identity():
     assert service._config.values["queue_current_track_id"] == 99
     assert service._config.values["queue_current_cloud_file_id"] == ""
     assert service._config.values["queue_current_local_path"] == "/tmp/keep.mp3"
+
+
+def test_playback_service_save_queue_prefers_batch_config_writes():
+    """Queue save should persist settings with set_many when available."""
+    item = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=8,
+        local_path="/tmp/batch.mp3",
+        title="batch",
+    )
+    service = PlaybackService.__new__(PlaybackService)
+    service._engine = FakeEngine(items=[item], current_index=0)
+    service._queue_repo = FakeQueueRepo()
+    service._config = FakeConfigWithBatch()
+    service._is_shutting_down = False
+
+    PlaybackService.save_queue(service)
+
+    assert len(service._config.set_many_calls) == 1
+    assert service._config.values["queue_current_index"] == 0
+    assert service._config.values["queue_current_track_id"] == 8
+    assert service._config.values["queue_current_local_path"] == "/tmp/batch.mp3"
 
 
 def test_playback_service_restore_queue_prefers_current_track_identity_over_index():

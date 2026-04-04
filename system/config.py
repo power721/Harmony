@@ -139,6 +139,24 @@ class ConfigManager:
             self._settings_repo.set(key, value)
             self._cache[key] = value
 
+    def set_many(self, values: Dict[str, Any]):
+        """
+        Set multiple configuration values.
+
+        Args:
+            values: Mapping of keys to values
+        """
+        if not values:
+            return
+
+        with self._cache_lock:
+            if hasattr(self._settings_repo, "set_many"):
+                self._settings_repo.set_many(values)
+            else:
+                for key, value in values.items():
+                    self._settings_repo.set(key, value)
+            self._cache.update(values)
+
     def delete(self, key: str):
         """
         Delete a configuration value.

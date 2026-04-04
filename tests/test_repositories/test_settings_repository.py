@@ -83,3 +83,20 @@ class TestSqliteSettingsRepository:
         assert settings_repo.get("volume") == 70
         assert settings_repo.get("filters") == ["a", "b"]
         assert settings_repo.get("metadata") == {"mode": "shuffle"}
+
+    def test_set_many_persists_multiple_values_in_one_call(self, settings_repo):
+        """Bulk setting values should persist and round-trip with original types."""
+        updated = settings_repo.set_many(
+            {
+                "enabled": True,
+                "volume": 42,
+                "quality": "320",
+                "metadata": {"mode": "shuffle"},
+            }
+        )
+
+        assert updated is True
+        assert settings_repo.get("enabled") is True
+        assert settings_repo.get("volume") == 42
+        assert settings_repo.get("quality") == "320"
+        assert settings_repo.get("metadata") == {"mode": "shuffle"}

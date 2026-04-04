@@ -987,23 +987,21 @@ class PlaybackService(QObject):
         self._queue_repo.save(queue_items)
 
         # Save current index and play mode
-        self._config.set("queue_current_index", current_idx)
-        self._config.set("queue_play_mode", self._engine.play_mode.value)
         current_item = getattr(self._engine, "current_playlist_item", None)
         if current_item is None and 0 <= current_idx < len(items):
             current_item = items[current_idx]
-        self._config.set(
-            "queue_current_track_id",
-            current_item.track_id if current_item and current_item.track_id else 0,
-        )
-        self._config.set(
-            "queue_current_cloud_file_id",
-            current_item.cloud_file_id if current_item and current_item.cloud_file_id else "",
-        )
-        self._config.set(
-            "queue_current_local_path",
-            current_item.local_path if current_item and current_item.local_path else "",
-        )
+        queue_state = {
+            "queue_current_index": current_idx,
+            "queue_play_mode": self._engine.play_mode.value,
+            "queue_current_track_id": current_item.track_id if current_item and current_item.track_id else 0,
+            "queue_current_cloud_file_id": current_item.cloud_file_id if current_item and current_item.cloud_file_id else "",
+            "queue_current_local_path": current_item.local_path if current_item and current_item.local_path else "",
+        }
+        if hasattr(self._config, "set_many"):
+            self._config.set_many(queue_state)
+        else:
+            for key, value in queue_state.items():
+                self._config.set(key, value)
 
         logger.debug(f"[PlaybackService] Saved queue: {len(queue_items)} items, index={current_idx}")
 
@@ -1150,6 +1148,7 @@ class PlaybackService(QObject):
             )
 
         return item
+
 
     def clear_saved_queue(self):
         """Clear the saved play queue from database."""
