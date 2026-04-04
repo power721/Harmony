@@ -20,6 +20,7 @@ Use `uv` for local development.
 - `uv run pytest tests/test_ui/ -m "not slow"` runs faster UI-focused checks.
 - `uv run ruff check .` runs lint checks (install with `uv sync --extra dev` if needed).
 - `./build.sh` runs platform-detected packaging; use `python build.py <linux|macos|windows>` for explicit targets.
+- GitHub Actions use [release.sh](release.sh) to build Linux AppImage.
 
 ## Coding Style & Naming Conventions
 - Follow PEP 8, 4-space indentation, and type annotations.

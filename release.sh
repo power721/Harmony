@@ -177,6 +177,7 @@ build_app() {
       --noconfirm --windowed --clean --onedir
       --additional-hooks-dir=hooks
       --collect-all certifi
+      --hidden-import mpv
       --collect-all qqmusic_api
       --add-data "ui:ui"
       --add-data "translations:translations"
