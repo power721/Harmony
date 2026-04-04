@@ -21,10 +21,12 @@ from domain.track import Track, TrackSource
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
     from infrastructure.audio import PlayerEngine
-    from infrastructure.database import DatabaseManager
     from system.config import ConfigManager
     from services.metadata import CoverService
     from services.online import OnlineDownloadService
+    from repositories.track_repository import SqliteTrackRepository
+    from repositories.favorite_repository import SqliteFavoriteRepository
+    from repositories.cloud_repository import SqliteCloudRepository
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,8 @@ class LocalTrackHandler:
     def __init__(
         self,
         engine: "PlayerEngine",
-        db_manager: "DatabaseManager",
+        track_repo: "SqliteTrackRepository",
+        favorite_repo: "SqliteFavoriteRepository",
         config_manager: "ConfigManager",
         set_source_callback,
         save_queue_callback,
@@ -50,13 +53,15 @@ class LocalTrackHandler:
 
         Args:
             engine: Player engine for playback control
-            db_manager: Database manager for track data
+            track_repo: Track repository
+            favorite_repo: Favorite repository
             config_manager: Configuration manager for settings
             set_source_callback: Callback to set playback source
             save_queue_callback: Callback to save queue
         """
         self._engine = engine
-        self._db = db_manager
+        self._track_repo = track_repo
+        self._favorite_repo = favorite_repo
         self._config = config_manager
         self._set_source = set_source_callback
         self._save_queue = save_queue_callback
@@ -94,7 +99,7 @@ class LocalTrackHandler:
         Args:
             track_id: Database track ID
         """
-        track = self._db.get_track(track_id)
+        track = self._track_repo.get_by_id(track_id)
         if not track:
             logger.error(f"[LocalTrackHandler] Track not found: {track_id}")
             return
@@ -113,7 +118,7 @@ class LocalTrackHandler:
         self._engine.clear_playlist()
         self._engine.cleanup_temp_files()
 
-        tracks = self._db.get_all_tracks()
+        tracks = self._track_repo.get_all(limit=0)
         items = []
         start_index = 0
 
@@ -155,7 +160,7 @@ class LocalTrackHandler:
         self._engine.clear_playlist()
 
         # Batch-load all tracks at once
-        tracks = self._db.get_tracks_by_ids(track_ids)
+        tracks = self._track_repo.get_by_ids(track_ids)
         items = self._filter_and_convert_tracks(tracks)
 
         self._engine.load_playlist_items(items)
@@ -173,7 +178,7 @@ class LocalTrackHandler:
         """Play all tracks in the library."""
         self._set_source("local")
 
-        tracks = self._db.get_all_tracks()
+        tracks = self._track_repo.get_all(limit=0)
         items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
@@ -192,7 +197,7 @@ class LocalTrackHandler:
         """
         logger.debug(f"[LocalTrackHandler] Loading playlist: {playlist_id}")
 
-        tracks = self._db.get_playlist_tracks(playlist_id)
+        tracks = self._track_repo.get_playlist_tracks(playlist_id)
         items = self._filter_and_convert_tracks(tracks)
         self._engine.load_playlist_items(items)
 
@@ -209,7 +214,7 @@ class LocalTrackHandler:
         """
         self._set_source("local")
 
-        tracks = self._db.get_playlist_tracks(playlist_id)
+        tracks = self._track_repo.get_playlist_tracks(playlist_id)
         items = self._filter_and_convert_tracks(tracks)
         start_index = 0
         for i, item in enumerate(items):
@@ -231,7 +236,7 @@ class LocalTrackHandler:
 
     def load_favorites(self):
         """Load all favorite tracks."""
-        tracks = self._db.get_favorites()
+        tracks = self._favorite_repo.get_favorites()
         items = []
 
         for track in tracks:
@@ -258,7 +263,8 @@ class CloudTrackHandler:
     def __init__(
         self,
         engine: "PlayerEngine",
-        db_manager: "DatabaseManager",
+        track_repo: "SqliteTrackRepository",
+        cloud_repo: "SqliteCloudRepository",
         config_manager: "ConfigManager",
         cover_service: Optional["CoverService"],
         set_source_callback,
@@ -270,7 +276,8 @@ class CloudTrackHandler:
 
         Args:
             engine: Player engine for playback control
-            db_manager: Database manager for track data
+            track_repo: Track repository
+            cloud_repo: Cloud repository
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
             set_source_callback: Callback to set playback source
@@ -278,7 +285,8 @@ class CloudTrackHandler:
             metadata_processed_signal: Signal to emit when metadata is processed
         """
         self._engine = engine
-        self._db = db_manager
+        self._track_repo = track_repo
+        self._cloud_repo = cloud_repo
         self._config = config_manager
         self._cover_service = cover_service
         self._set_source = set_source_callback
@@ -290,6 +298,8 @@ class CloudTrackHandler:
         self._cloud_files: List["CloudFile"] = []
         self._cloud_files_by_id: dict = {}  # O(1) lookup by file_id
         self._downloaded_files: dict = {}  # cloud_file_id -> local_path
+        self._metadata_threads: set[threading.Thread] = set()
+        self._metadata_threads_lock = threading.Lock()
 
     @property
     def cloud_account(self) -> Optional["CloudAccount"]:
@@ -402,7 +412,7 @@ class CloudTrackHandler:
             # For already downloaded files, try fast path first
             if local_path:
                 # Try to get existing track record (fast DB lookup)
-                track = self._db.get_track_by_cloud_file_id(cf.file_id)
+                track = self._track_repo.get_by_cloud_file_id(cf.file_id)
                 if track:
                     item.track_id = track.id
                     item.title = track.title or item.title
@@ -460,7 +470,7 @@ class CloudTrackHandler:
 
         # Update cloud_files table with local_path
         if self._cloud_account:
-            self._db.update_cloud_file_local_path(
+            self._cloud_repo.update_file_local_path(
                 cloud_file_id, self._cloud_account.id, local_path
             )
 
@@ -476,7 +486,7 @@ class CloudTrackHandler:
 
         if not self._cloud_account:
             if item.cloud_account_id:
-                self._cloud_account = self._db.get_cloud_account(item.cloud_account_id)
+                self._cloud_account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
                 if not self._cloud_account:
                     return
             else:
@@ -489,7 +499,7 @@ class CloudTrackHandler:
         cloud_file = self._cloud_files_by_id.get(item.cloud_file_id)
 
         if not cloud_file:
-            cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+            cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
             if not cloud_file:
                 logger.error(f"[CloudTrackHandler] CloudFile not found: {item.cloud_file_id}")
                 return
@@ -513,7 +523,7 @@ class CloudTrackHandler:
         cloud_file = self._cloud_files_by_id.get(item.cloud_file_id)
 
         if not cloud_file:
-            cloud_file = self._db.get_cloud_file_by_file_id(item.cloud_file_id)
+            cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
 
         if not cloud_file:
             return
@@ -521,7 +531,7 @@ class CloudTrackHandler:
         # Get cloud account if needed
         account = self._cloud_account
         if not account and item.cloud_account_id:
-            account = self._db.get_cloud_account(item.cloud_account_id)
+            account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
 
         if not account:
             return
@@ -533,8 +543,6 @@ class CloudTrackHandler:
 
     def _process_metadata_async(self, files: List[tuple]):
         """Process metadata in background thread."""
-        import threading
-
         def process():
             for file_id, local_path, provider in files:
                 try:
@@ -542,7 +550,21 @@ class CloudTrackHandler:
                 except Exception as e:
                     logger.error(f"[CloudTrackHandler] Error processing metadata: {e}")
 
-        thread = threading.Thread(target=process, daemon=True)
+        thread_ref: dict[str, Optional[threading.Thread]] = {"thread": None}
+
+        def run_and_cleanup():
+            try:
+                process()
+            finally:
+                thread = thread_ref.get("thread")
+                if thread:
+                    with self._metadata_threads_lock:
+                        self._metadata_threads.discard(thread)
+
+        thread = threading.Thread(target=run_and_cleanup, daemon=True)
+        with self._metadata_threads_lock:
+            self._metadata_threads.add(thread)
+        thread_ref["thread"] = thread
         thread.start()
 
     def _save_to_library(self, file_id: str, local_path: str, source: TrackSource = None) -> str:
@@ -578,10 +600,10 @@ class CloudTrackHandler:
         new_duration = metadata.get("duration", 0)
 
         # Check if track already exists
-        existing = self._db.get_track_by_cloud_file_id(file_id)
+        existing = self._track_repo.get_by_cloud_file_id(file_id)
         if existing:
             if not existing.path or existing.path != local_path:
-                self._db.update_track_path(existing.id, local_path)
+                self._track_repo.update_path(existing.id, local_path)
                 logger.info(f"[CloudTrackHandler] Updated track {existing.id} path: {local_path}")
 
             needs_update = False
@@ -589,7 +611,7 @@ class CloudTrackHandler:
                 needs_update = True
 
             if needs_update and (new_artist or not is_filename_like(new_title)):
-                self._db.update_track(
+                self._update_track_fields(
                     existing.id,
                     title=new_title if not is_filename_like(new_title) else None,
                     artist=new_artist if new_artist else None,
@@ -603,18 +625,18 @@ class CloudTrackHandler:
             if not existing.cover_path and self._cover_service:
                 cover_path = self._fetch_cover(new_title, new_artist, new_album, new_duration, local_path)
                 if cover_path:
-                    self._db.update_track_cover_path(existing.id, cover_path)
+                    self._track_repo.update_cover_path(existing.id, cover_path)
                     return cover_path
 
             return existing.cover_path
 
-        existing_by_path = self._db.get_track_by_path(local_path)
+        existing_by_path = self._track_repo.get_by_path(local_path)
         if existing_by_path:
-            self._db.update_track(existing_by_path.id, cloud_file_id=file_id)
+            self._update_track_fields(existing_by_path.id, cloud_file_id=file_id)
 
             if is_filename_like(existing_by_path.title) or not existing_by_path.artist:
                 if new_artist or not is_filename_like(new_title):
-                    self._db.update_track(
+                    self._update_track_fields(
                         existing_by_path.id,
                         title=new_title if not is_filename_like(new_title) else None,
                         artist=new_artist if new_artist else None,
@@ -624,7 +646,7 @@ class CloudTrackHandler:
             if not existing_by_path.cover_path and self._cover_service:
                 cover_path = self._fetch_cover(new_title, new_artist, new_album, new_duration, local_path)
                 if cover_path:
-                    self._db.update_track_cover_path(existing_by_path.id, cover_path)
+                    self._track_repo.update_cover_path(existing_by_path.id, cover_path)
                     return cover_path
 
             return existing_by_path.cover_path
@@ -651,10 +673,22 @@ class CloudTrackHandler:
             source=source,
         )
 
-        track_id = self._db.add_track(track)
+        track_id = self._track_repo.add(track)
         logger.info(f"[CloudTrackHandler] Added new track {track_id}: {title} - {artist}")
 
         return cover_path
+
+    def _update_track_fields(self, track_id: int, **fields) -> bool:
+        """Update selected track fields via repository."""
+        track = self._track_repo.get_by_id(track_id)
+        if not track:
+            return False
+
+        for key, value in fields.items():
+            if value is not None and hasattr(track, key):
+                setattr(track, key, value)
+
+        return self._track_repo.update(track)
 
     def _fetch_cover(self, title: str, artist: str, album: str, duration: float, local_path: str) -> Optional[str]:
         """Fetch cover for a track."""
@@ -685,7 +719,7 @@ class OnlineTrackHandler(QObject):
     def __init__(
         self,
         engine: "PlayerEngine",
-        db_manager: "DatabaseManager",
+        track_repo: "SqliteTrackRepository",
         config_manager: "ConfigManager",
         cover_service: Optional["CoverService"],
         online_download_service: Optional["OnlineDownloadService"],
@@ -697,7 +731,7 @@ class OnlineTrackHandler(QObject):
 
         Args:
             engine: Player engine for playback control
-            db_manager: Database manager for track data
+            track_repo: Track repository
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
             online_download_service: Service for downloading online tracks
@@ -706,7 +740,7 @@ class OnlineTrackHandler(QObject):
         """
         super().__init__()
         self._engine = engine
-        self._db = db_manager
+        self._track_repo = track_repo
         self._config = config_manager
         self._cover_service = cover_service
         self._online_download_service = online_download_service
@@ -829,7 +863,7 @@ class OnlineTrackHandler(QObject):
         # Update playlist item in engine
         track = None
         if track_id:
-            track = self._db.get_track(track_id)
+            track = self._track_repo.get_by_id(track_id)
 
         if track:
             updated_index = self._engine.update_playlist_item(
@@ -859,22 +893,20 @@ class OnlineTrackHandler(QObject):
     def _save_to_library(self, song_mid: str, local_path: str) -> Optional[int]:
         """Save downloaded online track to library."""
         from services.metadata.metadata_service import MetadataService
-        from services.lyrics.lyrics_service import LyricsService
-        from utils.helpers import is_filename_like
 
         if not local_path or not Path(local_path).exists():
             return None
 
         # Check if track already exists by cloud_file_id (song_mid)
-        existing = self._db.get_track_by_cloud_file_id(song_mid)
+        existing = self._track_repo.get_by_cloud_file_id(song_mid)
         if existing:
-            self._db.update_track_path(existing.id, local_path)
+            self._track_repo.update_path(existing.id, local_path)
             logger.info(f"[OnlineTrackHandler] Updated track {existing.id} with local path")
             return existing.id
 
-        existing_by_path = self._db.get_track_by_path(local_path)
+        existing_by_path = self._track_repo.get_by_path(local_path)
         if existing_by_path:
-            self._db.update_track(existing_by_path.id, cloud_file_id=song_mid)
+            self._update_track_fields(existing_by_path.id, cloud_file_id=song_mid)
             return existing_by_path.id
 
         # Extract metadata
@@ -909,10 +941,22 @@ class OnlineTrackHandler(QObject):
             source=TrackSource.QQ,
         )
 
-        track_id = self._db.add_track(track)
+        track_id = self._track_repo.add(track)
         logger.info(f"[OnlineTrackHandler] Added new track {track_id}: {title} - {artist}")
 
         return track_id
+
+    def _update_track_fields(self, track_id: int, **fields) -> bool:
+        """Update selected track fields via repository."""
+        track = self._track_repo.get_by_id(track_id)
+        if not track:
+            return False
+
+        for key, value in fields.items():
+            if value is not None and hasattr(track, key):
+                setattr(track, key, value)
+
+        return self._track_repo.update(track)
 
     def cleanup_workers(self):
         """Clean up all download workers."""
