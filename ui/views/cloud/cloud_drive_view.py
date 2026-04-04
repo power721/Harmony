@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from domain.cloud import CloudAccount, CloudFile
+from services.cloud.cache_paths import build_cloud_cache_path
 from services.cloud.baidu_service import BaiduDriveService
 from services.cloud.quark_service import QuarkDriveService
 from services.cloud.share_search_service import ShareSearchService, ShareSong
@@ -1257,9 +1258,7 @@ class CloudDriveView(QWidget):
             if not download_dir.is_absolute():
                 download_dir = Path.cwd() / download_dir
 
-            from utils.helpers import sanitize_filename
-            safe_filename = sanitize_filename(file.name)
-            local_file_path = download_dir / safe_filename
+            local_file_path = build_cloud_cache_path(download_dir, file)
 
         file_exists_and_valid = False
         if local_file_path.exists() and file.size:
@@ -1474,8 +1473,6 @@ class CloudDriveView(QWidget):
         if not self._current_account:
             return
 
-        from utils.helpers import sanitize_filename
-
         if self._config_manager:
             download_dir = Path(self._config_manager.get_cloud_download_dir())
         else:
@@ -1484,8 +1481,7 @@ class CloudDriveView(QWidget):
         if not download_dir.is_absolute():
             download_dir = Path.cwd() / download_dir
 
-        safe_filename = sanitize_filename(file.name)
-        local_file_path = download_dir / safe_filename
+        local_file_path = build_cloud_cache_path(download_dir, file)
 
         if local_file_path.exists() and file.size:
             actual_size = local_file_path.stat().st_size

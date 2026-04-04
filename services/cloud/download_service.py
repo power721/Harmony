@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal, QThread
+from services.cloud.cache_paths import build_cloud_cache_path
 
 if TYPE_CHECKING:
     from domain.cloud import CloudFile, CloudAccount
@@ -48,7 +49,6 @@ class CloudDownloadWorker(QThread):
         import time
         from services.cloud.quark_service import QuarkDriveService
         from services.cloud.baidu_service import BaiduDriveService
-        from utils.helpers import sanitize_filename
 
         start_time = time.time()
         file_id = self._cloud_file.file_id
@@ -61,8 +61,7 @@ class CloudDownloadWorker(QThread):
             download_path.mkdir(parents=True, exist_ok=True)
 
             # Determine local file path
-            safe_filename = sanitize_filename(self._cloud_file.name)
-            local_path = download_path / safe_filename
+            local_path = build_cloud_cache_path(download_path, self._cloud_file)
 
             # Check if file already exists
             if local_path.exists() and self._cloud_file.size:
@@ -341,16 +340,12 @@ class CloudDownloadService(QObject):
             if path.exists():
                 return str(path)
 
-        # Check file system
-        from utils.helpers import sanitize_filename
-
         download_path = Path(self._download_dir)
         if not download_path.is_absolute():
             download_path = Path.cwd() / download_path
 
         if cloud_file:
-            safe_filename = sanitize_filename(cloud_file.name)
-            local_path = download_path / safe_filename
+            local_path = build_cloud_cache_path(download_path, cloud_file)
 
             if local_path.exists():
                 # Verify size if available

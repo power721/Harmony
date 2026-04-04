@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QThread, Signal
 
 from domain.cloud import CloudFile
+from services.cloud.cache_paths import build_cloud_cache_path
 from services.cloud.baidu_service import BaiduDriveService
 from services.cloud.quark_service import QuarkDriveService
-from utils.helpers import sanitize_filename
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
@@ -101,9 +101,7 @@ class CloudFileDownloadThread(QThread):
             download_path = Path.cwd() / download_path
         download_path.mkdir(parents=True, exist_ok=True)
 
-        # Use original filename
-        safe_filename = sanitize_filename(self._file.name)
-        local_file_path = download_path / safe_filename
+        local_file_path = build_cloud_cache_path(download_path, self._file)
 
         # Check if file already exists and has correct size
         if local_file_path.exists():
