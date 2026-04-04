@@ -1468,14 +1468,25 @@ class OnlineDetailView(QWidget):
                 image_label.setMinimumSize(pixmap.size())
                 dialog.setFixedSize(pixmap.size())
 
-        if hasattr(self, '_full_cover_loader') and self._full_cover_loader:
-            self._full_cover_loader.terminate()
+        self._stop_full_cover_loader()
 
         self._full_cover_loader = FullCoverLoader(url)
         self._full_cover_loader.loaded.connect(on_cover_loaded)
         self._full_cover_loader.start()
 
         dialog.exec()
+
+    def _stop_full_cover_loader(self):
+        """Stop full-cover loader thread cooperatively."""
+        loader = getattr(self, "_full_cover_loader", None)
+        if not loader or not isValid(loader):
+            self._full_cover_loader = None
+            return
+        if loader.isRunning():
+            loader.requestInterruption()
+            loader.quit()
+            if not loader.wait(1000):
+                logger.warning("[OnlineDetailView] Full cover loader did not stop in time")
 
     def _display_album_detail(self, data: Dict):
         """Display album detail."""
