@@ -554,6 +554,12 @@ class MainWindow(QMainWindow):
         self._artist_view.add_to_playlist.connect(self._add_tracks_to_playlist)
         self._artist_view.download_cover_requested.connect(self._on_download_album_cover)
         self._artist_view.album_clicked.connect(self._on_album_clicked)
+        self._artist_view.remove_from_library_requested.connect(
+            lambda tracks: self._on_album_remove_from_library(tracks, self._refresh_current_artist_detail)
+        )
+        self._artist_view.delete_file_requested.connect(
+            lambda tracks: self._on_album_delete_file(tracks, self._refresh_current_artist_detail)
+        )
         self._artist_view.back_clicked.connect(self._on_back)
 
         # Album view connections
@@ -736,6 +742,22 @@ class MainWindow(QMainWindow):
         """Refresh album detail after track metadata/library changes."""
         if self._album_view.get_album():
             self._album_view.set_album(self._album_view.get_album())
+
+    def _refresh_current_artist_detail(self):
+        """Refresh artist detail and artists list after library changes."""
+        from app.bootstrap import Bootstrap
+
+        current_artist = self._artist_view.get_artist()
+        self._artists_view.refresh()
+        if not current_artist:
+            return
+
+        bootstrap = Bootstrap.instance()
+        latest = bootstrap.library_service.get_artist_by_name(current_artist.name)
+        if latest:
+            self._artist_view.set_artist(latest)
+        elif self._stacked_widget.currentIndex() == 6:
+            self._on_back()
 
     def _on_album_favorites_toggle(self, tracks: list, all_favorited: bool, refresh_callback=None):
         """Toggle favorite status for tracks in a detail view."""

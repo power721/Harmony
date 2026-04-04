@@ -54,6 +54,8 @@ class ArtistView(QWidget):
     insert_to_queue = Signal(list)  # Emits list of Track objects
     add_to_queue = Signal(list)  # Emits list of Track objects
     add_to_playlist = Signal(list)  # Emits list of Track objects
+    remove_from_library_requested = Signal(list)  # Emits list of Track objects
+    delete_file_requested = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
     ALBUMS_BATCH_SIZE = 30
     ALBUMS_LOAD_THRESHOLD_PX = 100
@@ -534,6 +536,8 @@ class ArtistView(QWidget):
         self._tracks_list.insert_to_queue_requested.connect(self.insert_to_queue.emit)
         self._tracks_list.add_to_queue_requested.connect(self.add_to_queue.emit)
         self._tracks_list.add_to_playlist_requested.connect(self.add_to_playlist.emit)
+        self._tracks_list.remove_from_library_requested.connect(self.remove_from_library_requested.emit)
+        self._tracks_list.delete_file_requested.connect(self.delete_file_requested.emit)
 
         layout.addWidget(self._tracks_list)
 

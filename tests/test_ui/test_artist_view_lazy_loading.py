@@ -147,3 +147,31 @@ def test_artist_view_uses_tabs_for_albums_and_tracks(qapp, mock_theme_config):
     view._tab_widget.setCurrentWidget(view._tracks_section)
     qapp.processEvents()
     assert view._tab_widget.currentWidget() is view._tracks_section
+
+
+def test_artist_view_forwards_remove_and_delete_actions(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+
+    library_service = MagicMock()
+    library_service.get_artist_albums.return_value = []
+    library_service.get_artist_tracks.return_value = _build_tracks(1)
+
+    view = ArtistView(library_service=library_service)
+    view.set_artist(Artist(name="Lazy Artist", song_count=1, album_count=1))
+
+    QTest.qWait(30)
+    qapp.processEvents()
+
+    removed_payloads = []
+    deleted_payloads = []
+    view.remove_from_library_requested.connect(lambda tracks: removed_payloads.append(tracks))
+    view.delete_file_requested.connect(lambda tracks: deleted_payloads.append(tracks))
+
+    target_track = view._tracks[0]
+    view._tracks_list.remove_from_library_requested.emit([target_track])
+    view._tracks_list.delete_file_requested.emit([target_track])
+
+    assert len(removed_payloads) == 1
+    assert len(deleted_payloads) == 1
+    assert removed_payloads[0][0].id == target_track.id
+    assert deleted_payloads[0][0].id == target_track.id
