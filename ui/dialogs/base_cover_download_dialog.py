@@ -648,11 +648,7 @@ class BaseCoverDownloadDialog(QDialog):
         self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
 
         # Stop any running download thread
-        if self._download_thread and isValid(self._download_thread) and self._download_thread.isRunning():
-            self._download_thread.requestInterruption()
-            if not self._download_thread.wait(1000):
-                self._download_thread.terminate()
-                self._download_thread.wait()
+        self._stop_thread(self._download_thread, wait_ms=1000)
 
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)
@@ -702,18 +698,19 @@ class BaseCoverDownloadDialog(QDialog):
 
     def _cleanup_threads(self):
         """Clean up any running threads."""
-        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.requestInterruption()
-            self._search_thread.quit()
-            if not self._search_thread.wait(1000):
-                self._search_thread.terminate()
-                self._search_thread.wait()
-        if self._download_thread and isValid(self._download_thread) and self._download_thread.isRunning():
-            self._download_thread.requestInterruption()
-            self._download_thread.quit()
-            if not self._download_thread.wait(1000):
-                self._download_thread.terminate()
-                self._download_thread.wait()
+        self._stop_thread(self._search_thread, wait_ms=1000)
+        self._stop_thread(self._download_thread, wait_ms=1000)
+
+    def _stop_thread(self, thread: QThread, wait_ms: int = 1000):
+        """Stop a thread cooperatively without force termination."""
+        if not (thread and isValid(thread) and thread.isRunning()):
+            return
+        thread.requestInterruption()
+        thread.quit()
+        if not thread.wait(wait_ms):
+            logger.warning(
+                "[BaseCoverDownloadDialog] Thread did not stop in time via cooperative shutdown"
+            )
 
     def reject(self):
         """Handle dialog rejection - clean up threads."""
