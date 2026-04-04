@@ -480,7 +480,6 @@ class MainWindow(QMainWindow):
         self._lyrics_controller = LyricsController(
             lyrics_panel=panel,
             playback_service=self._playback,
-            db_manager=self._db,
             library_service=self._library_service
         )
 

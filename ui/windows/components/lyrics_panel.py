@@ -26,7 +26,6 @@ from ui.widgets.lyrics_widget_pro import LyricsWidget
 
 if TYPE_CHECKING:
     from services.playback import PlaybackService
-    from infrastructure.database import DatabaseManager
     from services.library import LibraryService
 
 logger = logging.getLogger(__name__)
@@ -186,7 +185,6 @@ class LyricsController(QObject):
             self,
             lyrics_panel: LyricsPanel,
             playback_service: "PlaybackService",
-            db_manager: "DatabaseManager",
             library_service: "LibraryService" = None,
             parent=None
     ):
@@ -196,7 +194,6 @@ class LyricsController(QObject):
         Args:
             lyrics_panel: LyricsPanel widget to control
             playback_service: Playback service for current track info
-            db_manager: Database manager for track data
             library_service: Library service for track updates
             parent: Parent QObject
         """
@@ -204,7 +201,6 @@ class LyricsController(QObject):
 
         self._panel = lyrics_panel
         self._playback = playback_service
-        self._db = db_manager
         self._library_service = library_service
 
         self._event_bus = EventBus.instance()
@@ -351,14 +347,14 @@ class LyricsController(QObject):
 
     def _on_cover_downloaded(self, cover_path: str):
         """Handle cover download success."""
-        if not cover_path or not self._lyrics_download_path:
+        if not cover_path or not self._lyrics_download_path or not self._library_service:
             return
 
-        track = self._db.get_track_by_path(self._lyrics_download_path)
+        track = self._library_service.get_track_by_path(self._lyrics_download_path)
         if not track:
             return
 
-        success = self._db.update_track_cover_path(track.id, cover_path)
+        success = self._library_service.update_track_cover_path(track.id, cover_path)
         if success:
             current_item = self._playback.current_track
             if current_item:
@@ -400,10 +396,10 @@ class LyricsController(QObject):
                 )
                 return
         else:
-            if not self._playback.current_track_id:
+            if not self._playback.current_track_id or not self._library_service:
                 return
 
-            track = self._db.get_track(self._playback.current_track_id)
+            track = self._library_service.get_track(self._playback.current_track_id)
             if not track:
                 return
 

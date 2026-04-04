@@ -58,11 +58,10 @@ def test_lyrics_panel_cleanup():
     panel = LyricsPanel()
     mock_playback = Mock()
     mock_playback.current_track = None
-    mock_db = Mock()
     mock_library = Mock()
 
     controller = LyricsController(
-        panel, mock_playback, mock_db, mock_library
+        panel, mock_playback, mock_library
     )
 
     # Start a lyrics loading thread

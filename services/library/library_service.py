@@ -314,6 +314,10 @@ class LibraryService:
         """Update a track's file path."""
         return self._track_repo.update_path(track_id, path)
 
+    def update_track_cover_path(self, track_id: int, cover_path: str) -> bool:
+        """Update a track's cover path."""
+        return self._track_repo.update_cover_path(track_id, cover_path)
+
     def delete_track(self, track_id: int) -> bool:
         """Delete a track from the library."""
         # Get track data before deletion
