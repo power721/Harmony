@@ -1890,16 +1890,14 @@ class OnlineMusicView(QWidget):
         self._playlists_page.clear()
 
         # Convert dicts to OnlinePlaylist objects
-        online_playlists = []
-        for pl in playlists:
-            online_playlists.append(OnlinePlaylist(
+        online_playlists = [OnlinePlaylist(
                 id=str(pl.get("id", "")),
                 title=pl.get("title", ""),
                 cover_url=pl.get("cover_url", ""),
                 creator=pl.get("creator", ""),
                 song_count=pl.get("song_count", 0),
                 play_count=pl.get("play_count", 0),
-            ))
+            ) for pl in playlists]
 
         self._playlists_page.load_data(online_playlists)
         self._results_info.setText(title)
@@ -1957,14 +1955,12 @@ class OnlineMusicView(QWidget):
         self._singers_page.clear()
 
         # Convert dicts to OnlineArtist objects
-        artists = []
-        for singer in singers:
-            artists.append(OnlineArtist(
+        artists = [OnlineArtist(
                 mid=singer.get("mid", ""),
                 name=singer.get("name", ""),
                 avatar_url=singer.get("cover_url", ""),
                 fan_count=singer.get("fan_count", 0),
-            ))
+            ) for singer in singers]
 
         self._singers_page.load_data(artists)
         self._results_info.setText(title)
