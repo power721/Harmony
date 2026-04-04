@@ -149,10 +149,7 @@ def parse_char_word_lrc(text: str) -> List[LyricLine]:
 
         words = []
         for i, (t, ch) in enumerate(chars):
-            if i < len(chars) - 1:
-                dur = chars[i + 1][0] - t
-            else:
-                dur = 1.0
+            dur = chars[i + 1][0] - t if i < len(chars) - 1 else 1.0
             words.append(LyricWord(t, dur, ch))
 
         lyrics.append(LyricLine(chars[0][0], "".join(c[1] for c in chars), words))
@@ -206,10 +203,7 @@ def parse_yrc(text: str) -> List[LyricLine]:
             ch = wm.group(3)
 
             # ✅ 防御式
-            if offset > line_dur:
-                t = offset
-            else:
-                t = line_time + offset
+            t = offset if offset > line_dur else line_time + offset
 
             words.append(LyricWord(ms_to_s(t), ms_to_s(dur), ch))
             full.append(ch)
