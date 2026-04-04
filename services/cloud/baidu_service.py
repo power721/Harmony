@@ -52,6 +52,7 @@ class BaiduDriveService:
 
     # Class-level session for connection pooling
     _session = None
+    bdstoken = ""
 
     @staticmethod
     def _safe_json_parse(response: requests.Response, context: str = "") -> Optional[Dict]:
@@ -460,9 +461,11 @@ class BaiduDriveService:
             _rate_limit()
             url = f"{cls.BASE_URL}/api/filemanager"
 
-            csrf_token = ""
-            if access_token:
-                csrf_token = cls._get_bdstoken(access_token)
+            csrf_token = cls._get_bdstoken(access_token)
+            if csrf_token:
+                cls.bdstoken = csrf_token
+            else:
+                csrf_token = cls.bdstoken
 
             params = {
                 "opera": "delete",
