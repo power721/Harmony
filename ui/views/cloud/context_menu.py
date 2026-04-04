@@ -37,6 +37,7 @@ class CloudFileContextMenu(QObject):
         download_cover_requested: Emitted when user wants to download cover
         open_file_location_requested: Emitted when user wants to open file location
         open_in_cloud_requested: Emitted when user wants to open in cloud drive
+        delete_from_cloud_requested: Emitted when user wants to delete cloud file
     """
 
     _STYLE_TEMPLATE = """
@@ -68,6 +69,7 @@ class CloudFileContextMenu(QObject):
     download_cover_requested = Signal(CloudFile)
     open_file_location_requested = Signal(CloudFile)
     open_in_cloud_requested = Signal(CloudFile)
+    delete_from_cloud_requested = Signal(CloudFile)
 
     def __init__(
             self,
@@ -94,6 +96,7 @@ class CloudFileContextMenu(QObject):
             current_audio_files: list = None,
             account_id: int = None,
             share_mode: bool = False,
+            can_delete_from_cloud: bool = False,
     ):
         """
         Show the context menu for a file.
@@ -194,6 +197,17 @@ class CloudFileContextMenu(QObject):
         # Open in cloud drive action
         open_cloud_action = menu.addAction(t("open_in_cloud_drive"))
         open_cloud_action.triggered.connect(lambda: self.open_in_cloud_requested.emit(file))
+
+        if can_delete_from_cloud:
+            menu.addSeparator()
+            delete_action = menu.addAction(t("delete_cloud_file"))
+            if share_mode:
+                delete_action.setEnabled(False)
+                delete_action.setText(f"{t('delete_cloud_file')} ({t('save_first')})")
+            else:
+                delete_action.triggered.connect(
+                    lambda: self.delete_from_cloud_requested.emit(file)
+                )
 
         menu.exec_(QCursor.pos())
 

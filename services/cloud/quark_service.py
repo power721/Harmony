@@ -535,6 +535,69 @@ class QuarkDriveService:
         return None, None
 
     @classmethod
+    def delete_files(cls, access_token: str, file_ids) -> tuple:
+        """Delete one or more files from Quark Drive.
+
+        Args:
+            access_token: Quark cookie string.
+            file_ids: Single file ID or list of file IDs.
+
+        Returns:
+            tuple: (success, updated_access_token or None)
+        """
+        if isinstance(file_ids, str):
+            target_ids = [file_ids]
+        else:
+            target_ids = [str(fid) for fid in (file_ids or []) if str(fid).strip()]
+
+        if not target_ids:
+            return False, None
+
+        try:
+            url = f"{cls.BASE_URL}/1/clouddrive/file/delete"
+            params = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "uc_param_str": "",
+            }
+            payload = {
+                "action_type": 2,
+                "filelist": target_ids,
+                "exclude_fids": [],
+            }
+            headers = cls.HEADERS.copy()
+            headers["Cookie"] = access_token
+            headers["Content-Type"] = "application/json"
+
+            response = cls._get_session().post(
+                url,
+                params=params,
+                json=payload,
+                headers=headers,
+                timeout=30,
+            )
+
+            updated_token = cls._update_cookie_from_response(access_token, response.cookies)
+            data = cls._safe_json_parse(response, "delete files")
+            if data is None:
+                return False, None
+
+            success = data.get("status") == 200 or data.get("code") == 0
+            if not success:
+                logger.warning(
+                    f"Quark delete files failed: status={data.get('status')}, "
+                    f"code={data.get('code')}, message={data.get('message')}"
+                )
+                return False, None
+
+            if updated_token != access_token:
+                return True, updated_token
+            return True, None
+        except Exception as e:
+            logger.error(f"Quark delete files error: {e}", exc_info=True)
+            return False, None
+
+    @classmethod
     def get_account_info(cls, access_token: str, account_email: str) -> tuple:
         """Get account information including VIP status and nickname.
 

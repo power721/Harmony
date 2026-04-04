@@ -574,6 +574,7 @@ class CloudDriveView(QWidget):
         self._file_context_menu.download_cover_requested.connect(self._download_cover)
         self._file_context_menu.open_file_location_requested.connect(self._open_file_location)
         self._file_context_menu.open_in_cloud_requested.connect(self._open_in_cloud_drive)
+        self._file_context_menu.delete_from_cloud_requested.connect(self._delete_cloud_file)
 
         # Account context menu signals
         self._account_context_menu.get_info_requested.connect(self._get_account_info)
@@ -1621,6 +1622,10 @@ class CloudDriveView(QWidget):
             self._current_audio_files,
             self._current_account.id if self._current_account else None,
             share_mode=self._share_mode and self._is_share_file(file),
+            can_delete_from_cloud=(
+                bool(self._current_account)
+                and self._current_account.provider in ("quark", "baidu")
+            ),
         )
 
     def _show_account_context_menu(self, pos):
@@ -1985,7 +1990,8 @@ class CloudDriveView(QWidget):
 
         if self._current_account:
             if self._current_account.provider == "baidu":
-                url = f"https://pan.baidu.com/disk/main#/index?path={file.metadata}"
+                logger.debug(file)
+                url = f"https://pan.baidu.com/disk/main#/index?category=all&path={file.parent_id}"
             else:
                 hierarchy_segments = self._build_quark_hierarchy_segments()
                 if file.file_type == "folder" and file.file_id:
@@ -2003,6 +2009,60 @@ class CloudDriveView(QWidget):
                     else:
                         url = "https://pan.quark.cn/list#/list/all"
             webbrowser.open(url)
+
+    def _delete_cloud_file(self, file: CloudFile):
+        """Delete a file from cloud drive."""
+        if not self._current_account:
+            return
+
+        if self._share_mode and self._is_share_file(file):
+            self._status_label.setText(t("cloud_file_delete_not_supported"))
+            return
+
+        provider = self._current_account.provider
+        if provider not in ("quark", "baidu"):
+            MessageDialog.warning(self, t("warning"), t("cloud_file_delete_not_supported"))
+            return
+
+        reply = MessageDialog.question(
+            self,
+            t("delete_cloud_file"),
+            t("delete_cloud_file_confirm").format(name=file.name),
+            Yes | No,
+            No,
+        )
+        if reply != Yes:
+            return
+
+        if provider == "quark":
+            ok, updated_token = QuarkDriveService.delete_files(
+                self._current_account.access_token,
+                file.file_id,
+            )
+            if updated_token:
+                self._cloud_account_service.update_token(self._current_account.id, updated_token)
+                self._current_account.access_token = updated_token
+        else:
+            baidu_path = (file.metadata or "").strip()
+            if not baidu_path:
+                msg = t("cloud_file_delete_failed").format(name=file.name)
+                self._status_label.setText(msg)
+                MessageDialog.warning(self, t("error"), msg)
+                return
+            ok, _ = BaiduDriveService.delete_files(
+                self._current_account.access_token,
+                baidu_path,
+            )
+
+        if ok:
+            if self._current_playing_file_id == file.file_id:
+                self._current_playing_file_id = ""
+            self._load_files()
+            self._status_label.setText(t("cloud_file_deleted").format(name=file.name))
+        else:
+            msg = t("cloud_file_delete_failed").format(name=file.name)
+            self._status_label.setText(msg)
+            MessageDialog.warning(self, t("error"), msg)
 
     @staticmethod
     def _format_quark_hierarchy_segment(fid: str, folder_name: str) -> str:

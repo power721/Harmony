@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
 from domain.cloud import CloudFile, CloudAccount
+from ui.dialogs.message_dialog import Yes, No
 from ui.views.cloud.cloud_drive_view import CloudDriveView
 from ui.views.cloud.file_table import CloudFileTable
 from ui.views.cloud.context_menu import CloudFileContextMenu, CloudAccountContextMenu
@@ -211,6 +212,7 @@ class TestCloudFileContextMenu:
         assert hasattr(menu, 'download_cover_requested')
         assert hasattr(menu, 'open_file_location_requested')
         assert hasattr(menu, 'open_in_cloud_requested')
+        assert hasattr(menu, 'delete_from_cloud_requested')
 
 
 class TestCloudAccountContextMenu:
@@ -515,3 +517,104 @@ class TestCloudDriveView:
         mock_open.assert_called_once_with(
             "https://pan.quark.cn/list#/list/all/fid1-name1/fid2-name2/fid3-name3"
         )
+
+    def test_delete_cloud_file_calls_quark_delete_and_refresh(self, qapp, mock_config):
+        """Delete cloud file should call Quark API and refresh list on success."""
+        ThemeManager.instance(mock_config)
+        cloud_account_service = Mock()
+        view = CloudDriveView(
+            cloud_account_service=cloud_account_service,
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="old_token",
+        )
+        file = CloudFile(
+            file_id="fid-to-delete",
+            parent_id="0",
+            name="song.mp3",
+            file_type="audio",
+        )
+
+        with patch("ui.views.cloud.cloud_drive_view.MessageDialog.question", return_value=Yes), patch(
+            "ui.views.cloud.cloud_drive_view.QuarkDriveService.delete_files",
+            return_value=(True, "new_token"),
+        ) as mock_delete, patch.object(view, "_load_files") as mock_load_files:
+            view._delete_cloud_file(file)
+
+        mock_delete.assert_called_once_with("old_token", "fid-to-delete")
+        cloud_account_service.update_token.assert_called_once_with(1, "new_token")
+        assert view._current_account.access_token == "new_token"
+        mock_load_files.assert_called_once()
+
+    def test_delete_cloud_file_cancelled_by_user(self, qapp, mock_config):
+        """Canceling the confirmation dialog should not call delete API."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="old_token",
+        )
+        file = CloudFile(
+            file_id="fid-to-delete",
+            parent_id="0",
+            name="song.mp3",
+            file_type="audio",
+        )
+
+        with patch("ui.views.cloud.cloud_drive_view.MessageDialog.question", return_value=No), patch(
+            "ui.views.cloud.cloud_drive_view.QuarkDriveService.delete_files"
+        ) as mock_delete:
+            view._delete_cloud_file(file)
+
+        mock_delete.assert_not_called()
+
+    def test_delete_cloud_file_calls_baidu_delete_and_refresh(self, qapp, mock_config):
+        """Delete cloud file should call Baidu API and refresh list on success."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="baidu",
+            account_name="baidu-test",
+            access_token="baidu_token",
+        )
+        file = CloudFile(
+            file_id="123456",
+            parent_id="/music",
+            name="song.mp3",
+            file_type="audio",
+            metadata="/music/song.mp3",
+        )
+
+        with patch("ui.views.cloud.cloud_drive_view.MessageDialog.question", return_value=Yes), patch(
+            "ui.views.cloud.cloud_drive_view.BaiduDriveService.delete_files",
+            return_value=(True, None),
+        ) as mock_delete, patch.object(view, "_load_files") as mock_load_files:
+            view._delete_cloud_file(file)
+
+        mock_delete.assert_called_once_with("baidu_token", "/music/song.mp3")
+        mock_load_files.assert_called_once()

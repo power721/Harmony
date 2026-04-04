@@ -439,6 +439,70 @@ class BaiduDriveService:
         return None, None
 
     @classmethod
+    def delete_files(cls, access_token: str, file_paths) -> tuple:
+        """Delete one or more files from Baidu Drive.
+
+        Args:
+            access_token: Cookie string.
+            file_paths: One path string or a list of path strings.
+
+        Returns:
+            tuple: (success, updated_access_token or None)
+        """
+        if isinstance(file_paths, str):
+            target_paths = [file_paths]
+        else:
+            target_paths = [str(path) for path in (file_paths or []) if str(path).strip()]
+
+        if not target_paths:
+            return False, None
+
+        try:
+            _rate_limit()
+            url = f"{cls.BASE_URL}/rest/2.0/xpan/file"
+            params = {
+                "method": "filemanager",
+                "opera": "delete",
+            }
+            data = {
+                "async": "0",
+                "filelist": json.dumps(target_paths, ensure_ascii=False),
+                "ondup": "fail",
+            }
+            headers = {
+                "User-Agent": cls.HEADERS.get("User-Agent", ""),
+                "Referer": cls.HEADERS.get("Referer", ""),
+                "Origin": "https://pan.baidu.com",
+                "Cookie": access_token,
+            }
+
+            response = cls._get_session().post(
+                url,
+                params=params,
+                data=data,
+                headers=headers,
+                timeout=30,
+            )
+
+            if not response.text:
+                logger.error("Baidu delete: empty response")
+                return False, None
+
+            payload = cls._safe_json_parse(response, "delete files")
+            if payload is None:
+                return False, None
+
+            errno = payload.get("errno", -1)
+            if errno != 0:
+                logger.error(f"Baidu delete error: {cls._get_errmsg(errno)}")
+                return False, None
+
+            return True, None
+        except Exception as e:
+            logger.error(f"Baidu delete files error: {e}", exc_info=True)
+            return False, None
+
+    @classmethod
     def get_account_info(cls, access_token: str, account_email: str) -> tuple:
         """Get account information including VIP status and nickname.
 
