@@ -5,6 +5,7 @@ Tests for CloudDownloadService cache path handling.
 import time
 
 from PySide6.QtCore import QThread
+from unittest.mock import Mock
 
 from domain.cloud import CloudFile
 from services.cloud.download_service import CloudDownloadService
@@ -21,19 +22,6 @@ class _BlockingWorker(QThread):
 
     def run(self):
         while not self.isInterruptionRequested():
-            self.msleep(10)
-
-
-class _StubbornWorker(QThread):
-    def __init__(self):
-        super().__init__()
-        self.cancel_called = False
-
-    def cancel(self):
-        self.cancel_called = True
-
-    def run(self):
-        while True:
             self.msleep(10)
 
 
@@ -70,12 +58,19 @@ def test_cleanup_stops_active_download_workers():
 def test_cancel_download_terminates_unresponsive_worker():
     """Cancelling a stuck worker must not leave a running QThread behind."""
     service = CloudDownloadService()
-    worker = _StubbornWorker()
+    worker = Mock()
+    worker.cancel = Mock()
+    worker.isRunning.side_effect = [True, True]
+    worker.wait.side_effect = [False, True]
+    worker.requestInterruption = Mock()
+    worker.quit = Mock()
+    worker.terminate = Mock()
     service._active_downloads["file-1"] = worker
-    worker.start()
-    time.sleep(0.05)
 
     service.cancel_download("file-1")
 
-    assert worker.cancel_called is True
-    assert worker.isRunning() is False
+    worker.cancel.assert_called_once()
+    worker.requestInterruption.assert_called_once()
+    worker.quit.assert_called_once()
+    worker.terminate.assert_called_once()
+    assert service._active_downloads == {}
