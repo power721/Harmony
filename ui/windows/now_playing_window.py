@@ -915,10 +915,13 @@ class NowPlayingWindow(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def eventFilter(self, obj, event):
-        if obj == self._cover_label and event.type() == QEvent.MouseButtonPress:
-            if event.button() == Qt.LeftButton:
-                self._toggle_cover_mode()
-                return True
+        if (
+            obj == self._cover_label
+            and event.type() == QEvent.MouseButtonPress
+            and event.button() == Qt.LeftButton
+        ):
+            self._toggle_cover_mode()
+            return True
         return super().eventFilter(obj, event)
 
     def _toggle_maximized(self):
