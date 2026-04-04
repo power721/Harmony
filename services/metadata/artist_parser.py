@@ -140,8 +140,7 @@ def _try_split_by_known(artist_name: str, known_artists: Set[str]) -> List[str]:
                 break
         if not matched:
             # No match found — collect remaining words as individual candidates
-            for k in range(i, len(parts)):
-                result.append(parts[k])
+            result.extend(parts[i:])
             break
 
     if len(result) <= 1:
