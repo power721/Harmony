@@ -5,6 +5,7 @@ This service provides a unified interface for downloading files from cloud stora
 with support for caching, progress tracking, and download cancellation.
 """
 
+import atexit
 import logging
 import threading
 from pathlib import Path
@@ -215,6 +216,7 @@ class CloudDownloadService(QObject):
         self._downloads_lock = threading.Lock()
         self._cached_paths: Dict[str, str] = {}  # file_id -> local_path
         self._download_dir = "data/cloud_downloads"
+        atexit.register(self.cleanup)
 
     def set_download_dir(self, directory: str):
         """Set the download directory."""
@@ -312,8 +314,7 @@ class CloudDownloadService(QObject):
                 worker = None
 
         if worker:
-            worker.cancel()
-            worker.wait(1000)  # Wait up to 1 second
+            self._stop_worker(worker, file_id)
             return True
         return False
 
@@ -401,3 +402,23 @@ class CloudDownloadService(QObject):
             file_ids = list(self._active_downloads.keys())
         for file_id in file_ids:
             self.cancel_download(file_id)
+
+    def _stop_worker(self, worker: CloudDownloadWorker, file_id: str = ""):
+        """Stop a worker thread, forcing termination when cooperative cancel is insufficient."""
+        try:
+            worker.cancel()
+        except Exception:
+            logger.debug("[CloudDownloadService] Worker cancel raised during cleanup: %s", file_id, exc_info=True)
+
+        if not worker.isRunning():
+            return
+
+        worker.requestInterruption()
+        worker.quit()
+        if worker.wait(1000):
+            return
+
+        logger.warning("[CloudDownloadService] Worker did not stop in time, terminating: %s", file_id)
+        worker.terminate()
+        if not worker.wait(1000):
+            logger.error("[CloudDownloadService] Worker still running after terminate timeout: %s", file_id)
