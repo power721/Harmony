@@ -919,10 +919,19 @@ class OnlineTrackHandler(QObject):
         logger.info("[OnlineTrackHandler] Cleaning up download workers")
         with self._download_lock:
             for song_mid, worker in list(self._download_workers.items()):
-                if worker and isValid(worker) and worker.isRunning():
-                    worker.requestInterruption()
-                    worker.quit()
-                    if not worker.wait(1000):
-                        worker.terminate()
-                    worker.deleteLater()
+                self._stop_download_worker(worker, song_mid, wait_ms=1000)
             self._download_workers.clear()
+
+    def _stop_download_worker(self, worker, song_mid: str, wait_ms: int = 1000):
+        """Stop and cleanup a download worker cooperatively."""
+        if not (worker and isValid(worker)):
+            return
+
+        if worker.isRunning():
+            worker.requestInterruption()
+            worker.quit()
+            if not worker.wait(wait_ms):
+                logger.warning(
+                    f"[OnlineTrackHandler] Worker did not stop in time via cooperative shutdown: {song_mid}"
+                )
+        worker.deleteLater()
