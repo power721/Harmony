@@ -95,7 +95,7 @@ class CoverController(QObject):
 
     def cancel_all(self):
         with self._lock:
-            for token, future in self._futures.items():
+            for future in self._futures.values():
                 future.cancel()
             self._futures.clear()
 
