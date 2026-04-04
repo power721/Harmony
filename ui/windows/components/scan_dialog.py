@@ -14,6 +14,7 @@ Features:
 import logging
 import os
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -683,10 +684,8 @@ class ScanController(QObject):
 
         if self.dialog:
             # Disconnect cancel to avoid double-fire
-            try:
+            with suppress(RuntimeError):
                 self.dialog.rejected.disconnect(self._on_cancel)
-            except RuntimeError:
-                pass
             self.dialog.set_progress(100)
             self.dialog.close()
 
