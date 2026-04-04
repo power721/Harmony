@@ -1268,10 +1268,12 @@ class PlaybackService(QObject):
             return 0
 
         added_count = 0
-        audio_files = []
-
-        for ext in MetadataService.SUPPORTED_FORMATS:
-            audio_files.extend(path.rglob(f"*{ext}"))
+        supported_exts = {ext.lower() for ext in MetadataService.SUPPORTED_FORMATS}
+        audio_files = [
+            file_path
+            for file_path in path.rglob("*")
+            if file_path.is_file() and file_path.suffix.lower() in supported_exts
+        ]
 
         total = len(audio_files)
 
