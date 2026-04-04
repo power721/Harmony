@@ -250,19 +250,7 @@ class LyricsController(QObject):
         current_version = self._lyrics_load_version
 
         # Clean up old thread
-        if self._lyrics_thread and isValid(self._lyrics_thread):
-            if self._lyrics_thread.isRunning():
-                self._lyrics_thread.requestInterruption()
-                if not self._lyrics_thread.wait(500):
-                    self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait(100)
-            try:
-                self._lyrics_thread.finished.disconnect()
-                self._lyrics_thread.lyrics_ready.disconnect()
-            except RuntimeError:
-                pass
-            self._lyrics_thread.deleteLater()
-            self._lyrics_thread = None
+        self._stop_lyrics_loader_thread(wait_ms=500, cleanup_signals=True)
 
         # Create new loader
         self._lyrics_thread = LyricsLoader(
@@ -332,14 +320,7 @@ class LyricsController(QObject):
 
     def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
         """Download lyrics for a specific song."""
-        if self._lyrics_download_thread and isValid(
-                self._lyrics_download_thread
-        ) and self._lyrics_download_thread.isRunning():
-            self._lyrics_download_thread.quit()
-            if not self._lyrics_download_thread.wait(100):
-                self._lyrics_download_thread.terminate()
-                if not self._lyrics_download_thread.wait(500):
-                    logger.warning("[LyricsController] Existing lyrics download thread did not stop after terminate")
+        self._stop_lyrics_download_thread(wait_ms=500, cleanup_signals=True)
 
         self._lyrics_download_thread = LyricsDownloadWorker(
             self._lyrics_download_path,
@@ -557,41 +538,54 @@ class LyricsController(QObject):
 
     def cleanup(self):
         """Clean up worker threads before destruction."""
-        # Clean up lyrics loader thread
-        if self._lyrics_thread and isValid(self._lyrics_thread):
-            if self._lyrics_thread.isRunning():
-                logger.debug("[LyricsController] Stopping lyrics thread")
-                self._lyrics_thread.requestInterruption()
-                self._lyrics_thread.quit()
-                if not self._lyrics_thread.wait(1000):
-                    logger.warning("[LyricsController] Lyrics thread did not stop gracefully, terminating")
-                    self._lyrics_thread.terminate()
-                    if not self._lyrics_thread.wait(1000):
-                        logger.warning("[LyricsController] Lyrics thread still running after terminate timeout")
+        self._stop_lyrics_loader_thread(wait_ms=1000, cleanup_signals=True)
+        self._stop_lyrics_download_thread(wait_ms=1000, cleanup_signals=True)
+
+    def _stop_lyrics_loader_thread(self, wait_ms: int = 1000, cleanup_signals: bool = False):
+        """Stop lyrics loader thread cooperatively."""
+        thread = getattr(self, "_lyrics_thread", None)
+        if not thread or not isValid(thread):
+            self._lyrics_thread = None
+            return
+
+        if thread.isRunning():
+            logger.debug("[LyricsController] Stopping lyrics thread")
+            thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning("[LyricsController] Lyrics thread did not stop in time")
+
+        if cleanup_signals:
             try:
-                self._lyrics_thread.finished.disconnect()
-                self._lyrics_thread.lyrics_ready.disconnect()
+                thread.finished.disconnect()
+                thread.lyrics_ready.disconnect()
             except RuntimeError:
                 pass
-            self._lyrics_thread.deleteLater()
+            thread.deleteLater()
             self._lyrics_thread = None
 
-        # Clean up lyrics download thread
-        if self._lyrics_download_thread and isValid(self._lyrics_download_thread):
-            if self._lyrics_download_thread.isRunning():
-                logger.debug("[LyricsController] Stopping lyrics download thread")
-                self._lyrics_download_thread.quit()
-                if not self._lyrics_download_thread.wait(1000):
-                    logger.warning("[LyricsController] Lyrics download thread did not stop gracefully, terminating")
-                    self._lyrics_download_thread.terminate()
-                    if not self._lyrics_download_thread.wait(1000):
-                        logger.warning("[LyricsController] Lyrics download thread still running after terminate timeout")
+    def _stop_lyrics_download_thread(self, wait_ms: int = 1000, cleanup_signals: bool = False):
+        """Stop lyrics download thread cooperatively."""
+        thread = getattr(self, "_lyrics_download_thread", None)
+        if not thread or not isValid(thread):
+            self._lyrics_download_thread = None
+            return
+
+        if thread.isRunning():
+            logger.debug("[LyricsController] Stopping lyrics download thread")
+            if hasattr(thread, "requestInterruption"):
+                thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning("[LyricsController] Lyrics download thread did not stop in time")
+
+        if cleanup_signals:
             try:
-                self._lyrics_download_thread.finished.disconnect()
-                self._lyrics_download_thread.lyrics_downloaded.disconnect()
-                self._lyrics_download_thread.download_failed.disconnect()
-                self._lyrics_download_thread.cover_downloaded.disconnect()
+                thread.finished.disconnect()
+                thread.lyrics_downloaded.disconnect()
+                thread.download_failed.disconnect()
+                thread.cover_downloaded.disconnect()
             except RuntimeError:
                 pass
-            self._lyrics_download_thread.deleteLater()
+            thread.deleteLater()
             self._lyrics_download_thread = None
