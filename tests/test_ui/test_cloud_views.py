@@ -482,3 +482,36 @@ class TestCloudDriveView:
 
         rendered_html = QLabel.text(view._path_label).lower()
         assert "color:#ffffff" in rendered_html
+
+    def test_open_in_cloud_drive_preserves_quark_hierarchy_for_folder(self, qapp, mock_config):
+        """Quark open-in-cloud should preserve fid-name hierarchy for selected folder."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._fid_path = ["fid1", "fid2"]
+        view._path_label.setText("/name1/name2")
+        folder = CloudFile(
+            file_id="fid3",
+            parent_id="fid2",
+            name="name3",
+            file_type="folder",
+        )
+
+        with patch("webbrowser.open") as mock_open:
+            view._open_in_cloud_drive(folder)
+
+        mock_open.assert_called_once_with(
+            "https://pan.quark.cn/list#/list/all/fid1-name1/fid2-name2/fid3-name3"
+        )

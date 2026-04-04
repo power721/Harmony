@@ -14,6 +14,7 @@ import shutil
 from html import escape
 from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
+from urllib.parse import quote
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
@@ -1986,8 +1987,44 @@ class CloudDriveView(QWidget):
             if self._current_account.provider == "baidu":
                 url = f"https://pan.baidu.com/disk/main#/index?path={file.metadata}"
             else:
-                url = f"https://pan.quark.cn/list#/list/{file.parent_id}"
+                hierarchy_segments = self._build_quark_hierarchy_segments()
+                if file.file_type == "folder" and file.file_id:
+                    folder_fid = (file.file_id or "").strip().strip("/")
+                    if folder_fid and folder_fid != "0":
+                        hierarchy_segments.append(self._format_quark_hierarchy_segment(folder_fid, file.name))
+
+                if hierarchy_segments:
+                    joined = "/".join(hierarchy_segments)
+                    url = f"https://pan.quark.cn/list#/list/all/{joined}"
+                else:
+                    target_fid = (file.parent_id or "").strip().strip("/")
+                    if target_fid and target_fid != "0":
+                        url = f"https://pan.quark.cn/list#/list/all/{quote(target_fid, safe='')}"
+                    else:
+                        url = "https://pan.quark.cn/list#/list/all"
             webbrowser.open(url)
+
+    @staticmethod
+    def _format_quark_hierarchy_segment(fid: str, folder_name: str) -> str:
+        """Format one Quark route segment as fid-name (name optional)."""
+        encoded_fid = quote((fid or "").strip().strip("/"), safe="")
+        clean_name = (folder_name or "").strip()
+        if not clean_name:
+            return encoded_fid
+        encoded_name = quote(clean_name, safe="")
+        return f"{encoded_fid}-{encoded_name}"
+
+    def _build_quark_hierarchy_segments(self) -> List[str]:
+        """Build Quark route hierarchy from current breadcrumb and fid path."""
+        fids = [str(fid).strip().strip("/") for fid in self._fid_path if str(fid).strip().strip("/") not in ("", "0")]
+        breadcrumb = self._path_label.text() if self._path_label else "/"
+        names = [part for part in breadcrumb.strip("/").split("/") if part]
+
+        segments: List[str] = []
+        for idx, fid in enumerate(fids):
+            folder_name = names[idx] if idx < len(names) else ""
+            segments.append(self._format_quark_hierarchy_segment(fid, folder_name))
+        return segments
 
     # === Account Operations ===
 
