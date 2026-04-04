@@ -164,6 +164,17 @@ def test_schedule_next_track_preload_replaces_previous_target(monkeypatch):
         assert len(second_timer.intervals) > first_intervals
 
 
+def test_schedule_next_track_preload_skips_when_service_is_shutting_down(monkeypatch):
+    service, timers = make_service(monkeypatch)
+    service._engine._next_item = make_cloud_item("cloud-shutdown")
+    service._is_shutting_down = True
+
+    PlaybackService._schedule_next_track_preload(service)
+
+    assert timers == []
+    assert service._pending_next_preload_cloud_file_id is None
+
+
 def test_next_track_preload_timeout_skips_when_target_is_no_longer_next(monkeypatch):
     service, timers = make_service(monkeypatch)
     service._engine._next_item = make_cloud_item("cloud-5")

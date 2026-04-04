@@ -1626,6 +1626,10 @@ class PlaybackService(QObject):
 
     def _schedule_next_track_preload(self):
         """Schedule delayed preload for the immediate next track."""
+        if getattr(self, "_is_shutting_down", False):
+            self._cancel_pending_next_track_preload()
+            return
+
         next_item = self._get_next_preload_candidate()
         if not next_item or not next_item.cloud_file_id:
             self._cancel_pending_next_track_preload()
