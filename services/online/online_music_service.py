@@ -193,13 +193,14 @@ class OnlineMusicService:
             if data.get("code") == 0:
                 # YGKing returns group[].toplist[] structure
                 groups = data.get("data", {}).get("group", [])
-                top_lists = []
-                for group in groups:
-                    for top_list in group.get("toplist", []):
-                        top_lists.append({
-                            'id': top_list.get('topId', ''),
-                            'title': top_list.get('title', ''),
-                        })
+                top_lists = [
+                    {
+                        'id': top_list.get('topId', ''),
+                        'title': top_list.get('title', ''),
+                    }
+                    for group in groups
+                    for top_list in group.get("toplist", [])
+                ]
                 return top_lists
 
             return []
@@ -385,19 +386,19 @@ class OnlineMusicService:
             page = (begin // number) + 1 if number > 0 else 1
             search_result = self._search_ygking(singer_name, SearchType.ALBUM, page, number)
 
-            albums = []
-            for album in search_result.albums:
-                # Filter albums that belong to this singer
-                if album.singer_mid == singer_mid or singer_name in album.singer_name:
-                    albums.append({
-                        "mid": album.mid,
-                        "name": album.name,
-                        "singer_mid": singer_mid,
-                        "singer_name": album.singer_name,
-                        "cover_url": album.cover_url,
-                        "song_count": album.song_count,
-                        "publish_date": album.publish_date,
-                    })
+            albums = [
+                {
+                    "mid": album.mid,
+                    "name": album.name,
+                    "singer_mid": singer_mid,
+                    "singer_name": album.singer_name,
+                    "cover_url": album.cover_url,
+                    "song_count": album.song_count,
+                    "publish_date": album.publish_date,
+                }
+                for album in search_result.albums
+                if album.singer_mid == singer_mid or singer_name in album.singer_name
+            ]
 
             return {'albums': albums, 'total': search_result.total}
 
