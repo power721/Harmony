@@ -8,6 +8,7 @@ import tempfile
 import os
 
 from repositories.artist_repository import SqliteArtistRepository
+from repositories.track_repository import SqliteTrackRepository
 from domain.artist import Artist
 
 
@@ -309,6 +310,35 @@ class TestSqliteArtistRepository:
         album_repo = SqliteAlbumRepository(populated_db)
         albums = album_repo.get_all(use_cache=True)
         assert len(albums) >= 2  # At least Album 1, 2, 3
+
+    def test_rebuild_with_albums_keeps_artist_stats_and_cover_when_junction_stale(self, populated_db):
+        """
+        Rebuilding from settings should not leave artists with 0 stats or missing covers
+        when track_artists was stale/empty.
+        """
+        conn = sqlite3.connect(populated_db)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE artists SET cover_path = '/covers/artist_a.jpg' WHERE name = 'Artist A'")
+        cursor.execute("DELETE FROM track_artists")
+        conn.commit()
+        conn.close()
+
+        artist_repo = SqliteArtistRepository(populated_db)
+        track_repo = SqliteTrackRepository(populated_db)
+
+        # Simulate settings dialog flow: rebuild albums/artists, then rebuild junction table.
+        artist_repo.rebuild_with_albums()
+        track_repo.rebuild_track_artists()
+
+        artists = {artist.name: artist for artist in artist_repo.get_all(use_cache=True)}
+        assert "Artist A" in artists
+        assert "Artist B" in artists
+
+        assert artists["Artist A"].song_count == 3
+        assert artists["Artist A"].album_count == 2
+        assert artists["Artist A"].cover_path == "/covers/artist_a.jpg"
+        assert artists["Artist B"].song_count == 2
+        assert artists["Artist B"].album_count == 1
 
     def test_get_all_album_count(self, artist_repo, populated_db):
         """Test that album_count is correctly calculated."""

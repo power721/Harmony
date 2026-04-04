@@ -163,9 +163,10 @@ class SqliteArtistRepository(BaseRepository):
         """)
         existing_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
 
-        # Single query to get all distinct artist strings with cover paths
+        # Single query to load all track-level artist strings with cover paths.
+        # We must keep track granularity here so song_count remains accurate.
         cursor.execute("""
-            SELECT DISTINCT artist, cover_path FROM tracks
+            SELECT artist, cover_path FROM tracks
             WHERE artist IS NOT NULL AND artist != ''
         """)
         rows = cursor.fetchall()
@@ -256,8 +257,6 @@ class SqliteArtistRepository(BaseRepository):
         Returns:
             Total count of albums and artists created/updated
         """
-        from services.metadata import split_artists, normalize_artist_name
-
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -266,11 +265,6 @@ class SqliteArtistRepository(BaseRepository):
             SELECT name, artist, cover_path FROM albums
         """)
         existing_album_covers = {f"{row['name']}|{row['artist']}": row['cover_path'] for row in cursor.fetchall()}
-
-        cursor.execute("""
-            SELECT name, cover_path FROM artists
-        """)
-        existing_artist_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
 
         # Rebuild albums
         cursor.execute("DELETE FROM albums")
@@ -295,36 +289,21 @@ class SqliteArtistRepository(BaseRepository):
                 [(cover, name.split("|", 1)[0], name.split("|", 1)[1]) for name, cover in existing_album_covers.items()]
             )
 
-        # Get artist data from junction table before clearing
+        # Rebuild artists from tracks directly (do not depend on track_artists staleness).
         cursor.execute("""
-            SELECT
-                a.name,
-                a.normalized_name,
-                COUNT(DISTINCT ta.track_id) as song_count,
-                COUNT(DISTINCT t.album) as album_count
-            FROM track_artists ta
-            JOIN tracks t ON ta.track_id = t.id
-            JOIN artists a ON ta.artist_id = a.id
-            GROUP BY a.id
+            SELECT COUNT(*) as count
+            FROM tracks
+            WHERE artist IS NOT NULL AND artist != ''
         """)
-        artist_data = cursor.fetchall()
+        has_artist_tracks = (cursor.fetchone() or {"count": 0})["count"] > 0
 
-        # Rebuild artists
-        cursor.execute("DELETE FROM artists")
+        if has_artist_tracks:
+            self.refresh()
+        else:
+            cursor.execute("DELETE FROM artists")
 
-        for row in artist_data:
-            cursor.execute("""
-                INSERT INTO artists (name, normalized_name, song_count, album_count, cover_path)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                row["name"],
-                row["normalized_name"],
-                row["song_count"],
-                row["album_count"],
-                existing_artist_covers.get(row["name"])
-            ))
-
-        artists_count = len(artist_data)
+        cursor.execute("SELECT COUNT(*) as count FROM artists")
+        artists_count = (cursor.fetchone() or {"count": 0})["count"]
 
         conn.commit()
 
