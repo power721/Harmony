@@ -3,12 +3,11 @@ Baidu Drive cloud storage service.
 """
 import json
 import logging
-import threading
-import traceback
-import time
+import os
 import re
-from typing import Optional, Dict, List
-from urllib.parse import quote
+import threading
+import time
+from typing import Optional, Dict
 
 import requests
 
@@ -191,7 +190,7 @@ class BaiduDriveService:
             }
 
             response = cls._get_session().get(url, params=params, headers=cls.HEADERS,
-                                    timeout=10, allow_redirects=True)
+                                              timeout=10, allow_redirects=True)
 
             # Extract cookies from both the response and the redirect chain
             bduss = ''
@@ -459,21 +458,32 @@ class BaiduDriveService:
 
         try:
             _rate_limit()
-            url = f"{cls.BASE_URL}/rest/2.0/xpan/file"
+            url = f"{cls.BASE_URL}/api/filemanager"
+
+            csrf_token = ""
+            if access_token:
+                csrf_token = cls._get_bdstoken(access_token)
+                logger.debug(csrf_token)
+
             params = {
-                "method": "filemanager",
                 "opera": "delete",
+                "async": "2",
+                "onnest": "fail",
+                "bdstoken": csrf_token,
+                "newVerify": "1",
+                "clienttype": "0",
+                "app_id": "250528",
+                "web": "1",
             }
             data = {
-                "async": "0",
                 "filelist": json.dumps(target_paths, ensure_ascii=False),
-                "ondup": "fail",
             }
             headers = {
                 "User-Agent": cls.HEADERS.get("User-Agent", ""),
                 "Referer": cls.HEADERS.get("Referer", ""),
                 "Origin": "https://pan.baidu.com",
                 "Cookie": access_token,
+                "X-Requested-With": "XMLHttpRequest",
             }
 
             response = cls._get_session().post(
@@ -501,6 +511,32 @@ class BaiduDriveService:
         except Exception as e:
             logger.error(f"Baidu delete files error: {e}", exc_info=True)
             return False, None
+
+    @classmethod
+    def _get_bdstoken(cls, cookie):
+        """获取 bdstoken"""
+        try:
+            url = "https://pan.baidu.com/api/gettemplatevariable"
+            params = {
+                'clienttype': 0,
+                'app_id': 250528,
+                'web': 1,
+                'fields': '["bdstoken"]'
+            }
+            headers = {
+                "User-Agent": cls.HEADERS.get("User-Agent", ""),
+                "Referer": cls.HEADERS.get("Referer", ""),
+                "Origin": "https://pan.baidu.com",
+                "Cookie": cookie,
+                "X-Requested-With": "XMLHttpRequest",
+            }
+            resp = cls._get_session().get(url, params=params, headers=headers)
+            data = resp.json()
+            if data.get('errno') == 0:
+                return data.get('result', {}).get('bdstoken')
+            return None
+        except:
+            return None
 
     @classmethod
     def get_account_info(cls, access_token: str, account_email: str) -> tuple:
@@ -648,7 +684,7 @@ class BaiduDriveService:
                 }
 
                 r = cls._get_session().get(url, headers=headers,
-                                allow_redirects=False, timeout=10)
+                                           allow_redirects=False, timeout=10)
 
                 real_url = r.headers.get('Location')
                 if real_url:
@@ -663,10 +699,10 @@ class BaiduDriveService:
             }
 
             with HttpClient.shared(default_headers=cls.HEADERS, timeout=120).stream(
-                "GET",
-                url,
-                headers=headers,
-                timeout=120,
+                    "GET",
+                    url,
+                    headers=headers,
+                    timeout=120,
             ) as response:
                 with open(dest_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):

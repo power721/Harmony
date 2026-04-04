@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton, QProgressBar, QScrollArea, QWidget,
     QListWidget, QListWidgetItem, QSplitter, QGraphicsDropShadowEffect, QLineEdit
 )
+from shiboken6 import isValid
 
 from services.metadata import CoverService
 from system.i18n import t
@@ -647,7 +648,7 @@ class BaseCoverDownloadDialog(QDialog):
         self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
 
         # Stop any running download thread
-        if self._download_thread and self._download_thread.isRunning():
+        if self._download_thread and isValid(self._download_thread) and self._download_thread.isRunning():
             self._download_thread.requestInterruption()
             if not self._download_thread.wait(1000):
                 self._download_thread.terminate()
@@ -701,13 +702,13 @@ class BaseCoverDownloadDialog(QDialog):
 
     def _cleanup_threads(self):
         """Clean up any running threads."""
-        if self._search_thread and self._search_thread.isRunning():
+        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
             self._search_thread.requestInterruption()
             self._search_thread.quit()
             if not self._search_thread.wait(1000):
                 self._search_thread.terminate()
                 self._search_thread.wait()
-        if self._download_thread and self._download_thread.isRunning():
+        if self._download_thread and isValid(self._download_thread) and self._download_thread.isRunning():
             self._download_thread.requestInterruption()
             self._download_thread.quit()
             if not self._download_thread.wait(1000):

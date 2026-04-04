@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal, QThread
+from shiboken6 import isValid
 from services.cloud.cache_paths import build_cloud_cache_path
 
 if TYPE_CHECKING:
@@ -410,7 +411,7 @@ class CloudDownloadService(QObject):
         except Exception:
             logger.debug("[CloudDownloadService] Worker cancel raised during cleanup: %s", file_id, exc_info=True)
 
-        if not worker.isRunning():
+        if not isValid(worker) or not worker.isRunning():
             return
 
         worker.requestInterruption()

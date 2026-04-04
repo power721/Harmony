@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal, QTimer
+from shiboken6 import isValid
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
@@ -503,7 +504,7 @@ class PlaybackService(QObject):
         logger.info("[PlaybackService] Cleaning up online download workers")
         with self._online_download_lock:
             for song_mid, worker in list(self._online_download_workers.items()):
-                if worker.isRunning():
+                if worker and isValid(worker) and worker.isRunning():
                     worker.requestInterruption()
                     worker.quit()
                     if not worker.wait(1000):
@@ -1343,7 +1344,7 @@ class PlaybackService(QObject):
         with self._online_download_lock:
             if song_mid in self._online_download_workers:
                 existing = self._online_download_workers[song_mid]
-                if existing.isRunning():
+                if existing and isValid(existing) and existing.isRunning():
                     logger.info(f"[PlaybackService] Already downloading: {song_mid}")
                     return
                 else:
@@ -1687,7 +1688,8 @@ class PlaybackService(QObject):
         # Skip if already downloading
         song_mid = item.cloud_file_id
         with self._online_download_lock:
-            if song_mid in self._online_download_workers and self._online_download_workers[song_mid].isRunning():
+            worker = self._online_download_workers.get(song_mid)
+            if worker and isValid(worker) and worker.isRunning():
                 return
 
         logger.info(f"[PlaybackService] Preloading online track: {song_mid} {item.title} - {item.artist}")

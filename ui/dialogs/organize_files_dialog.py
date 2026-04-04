@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QFileDialog, QProgressBar,
     QWidget, QGraphicsDropShadowEffect,
 )
+from shiboken6 import isValid
 
 from domain import PlaylistItem
 from domain.track import Track
@@ -500,7 +501,7 @@ class OrganizeFilesDialog(QDialog):
 
     def closeEvent(self, event):
         """Clean up on close."""
-        if self.organize_thread and self.organize_thread.isRunning():
+        if self.organize_thread and isValid(self.organize_thread) and self.organize_thread.isRunning():
             self.organize_thread.terminate()
             self.organize_thread.wait()
         super().closeEvent(event)

@@ -9,6 +9,7 @@ This module provides a unified abstraction for downloading tracks from:
 import logging
 from typing import TYPE_CHECKING, Optional, Dict, Callable
 from PySide6.QtCore import QThread, Signal, QObject
+from shiboken6 import isValid
 
 from domain.track import TrackSource
 
@@ -134,7 +135,7 @@ class DownloadManager(QObject):
         # Check if already downloading
         if song_mid in self._download_workers:
             worker = self._download_workers[song_mid]
-            if worker.isRunning():
+            if worker and isValid(worker) and worker.isRunning():
                 logger.info(f"[DownloadManager] Already downloading: {song_mid}")
                 return True
             else:
@@ -195,7 +196,7 @@ class DownloadManager(QObject):
         # Check if already downloading
         if song_mid in self._download_workers:
             worker = self._download_workers[song_mid]
-            if worker.isRunning():
+            if worker and isValid(worker) and worker.isRunning():
                 logger.info(f"[DownloadManager] Already downloading: {song_mid}")
                 return True
             else:
@@ -333,7 +334,7 @@ class DownloadManager(QObject):
         """Cancel all active downloads and cleanup workers."""
         logger.info("[DownloadManager] Cleaning up download workers")
         for song_mid, worker in list(self._download_workers.items()):
-            if worker.isRunning():
+            if worker and isValid(worker) and worker.isRunning():
                 worker.requestInterruption()
                 worker.quit()
                 if not worker.wait(1000):

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QCompleter,
     QApplication,
 )
+from shiboken6 import isValid
 
 from ui.dialogs.message_dialog import MessageDialog
 from ui.widgets.recommend_card import RecommendSection
@@ -3169,7 +3170,7 @@ class OnlineMusicView(QWidget):
 
     def _load_top_lists(self):
         """Load top lists."""
-        if self._top_list_worker and self._top_list_worker.isRunning():
+        if self._top_list_worker and isValid(self._top_list_worker) and self._top_list_worker.isRunning():
             self._top_list_worker.terminate()
 
         self._top_list_worker = TopListWorker(self._service)
@@ -3203,7 +3204,7 @@ class OnlineMusicView(QWidget):
         self._top_list_title.setText(item.text())
 
         # Load songs
-        if self._top_list_worker and self._top_list_worker.isRunning():
+        if self._top_list_worker and isValid(self._top_list_worker) and self._top_list_worker.isRunning():
             self._top_list_worker.terminate()
 
         self._top_list_worker = TopListWorker(self._service, self._selected_top_id)

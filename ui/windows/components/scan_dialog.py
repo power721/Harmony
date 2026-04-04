@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QProgressBar, QPushButton, QWidget, QGraphicsDropShadowEffect,
 )
+from shiboken6 import isValid
 
 from domain.track import Track
 from services import MetadataService
@@ -708,7 +709,7 @@ class ScanController(QObject):
         if not self.thread:
             return
 
-        if self.thread.isRunning():
+        if isValid(self.thread) and self.thread.isRunning():
             self.thread.quit()
             if not self.thread.wait(5000):
                 logger.warning("[ScanController] Thread did not quit in time")

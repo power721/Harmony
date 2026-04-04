@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QMenu,
 )
+from shiboken6 import isValid
 
 from domain.online_music import OnlineTrack, OnlineAlbum, OnlineSinger, AlbumInfo
 from services.online import OnlineMusicService, OnlineDownloadService
@@ -1166,7 +1167,7 @@ class OnlineDetailView(QWidget):
 
         # Clean up old worker if exists
         if hasattr(self, '_detail_worker') and self._detail_worker:
-            if self._detail_worker.isRunning():
+            if isValid(self._detail_worker) and self._detail_worker.isRunning():
                 self._detail_worker.quit()
                 self._detail_worker.wait()
             self._detail_worker.deleteLater()
@@ -1684,7 +1685,7 @@ class OnlineDetailView(QWidget):
 
         # Clean up old worker if exists
         if hasattr(self, '_album_list_worker') and self._album_list_worker:
-            if self._album_list_worker.isRunning():
+            if isValid(self._album_list_worker) and self._album_list_worker.isRunning():
                 self._album_list_worker.quit()
                 self._album_list_worker.wait()
             self._album_list_worker.deleteLater()
@@ -1936,7 +1937,7 @@ class OnlineDetailView(QWidget):
 
         # Clean up old worker if exists
         if hasattr(self, '_all_tracks_worker') and self._all_tracks_worker:
-            if self._all_tracks_worker.isRunning():
+            if isValid(self._all_tracks_worker) and self._all_tracks_worker.isRunning():
                 self._all_tracks_worker.quit()
                 self._all_tracks_worker.wait()
             self._all_tracks_worker.deleteLater()

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QProgressBar,
 )
+from shiboken6 import isValid
 
 from system.i18n import t
 
@@ -60,10 +61,10 @@ class CoverLoader(QThread):
 
     def __del__(self):
         """Ensure thread is properly stopped before deletion."""
-        if self.isRunning():
+        if isValid(self) and self.isRunning():
             self.requestInterruption()
             self.wait(500)
-            if self.isRunning():
+            if isValid(self) and self.isRunning():
                 self.terminate()
 
 

@@ -466,10 +466,10 @@ class LyricsDownloadDialog(QDialog):
             self._search_thread.cancel()
             self._search_thread.wait(500)  # Wait up to 500ms for clean shutdown
             # Force terminate if still running (shouldn't happen normally)
-            if self._search_thread.isRunning():
+            if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
                 self._search_thread.requestInterruption()
                 self._search_thread.wait(3000)  # Wait up to 3 seconds
-                if self._search_thread.isRunning():
+                if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
                     logger.warning("[LyricsDownloadDialog] Thread did not stop gracefully")
         super().closeEvent(event)
 
