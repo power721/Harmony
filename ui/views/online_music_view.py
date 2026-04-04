@@ -1105,6 +1105,7 @@ class OnlineMusicView(QWidget):
         tabs = QTabBar()
         tabs.setObjectName("searchTypeTabs")
         tabs.setExpanding(False)
+        tabs.setCursor(Qt.PointingHandCursor)
 
         # Add tabs
         tabs.addTab(t("songs"))

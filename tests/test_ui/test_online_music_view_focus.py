@@ -27,6 +27,7 @@ def test_click_outside_search_input_clears_focus(qtbot):
         qtbot.mouseClick(view._stack, Qt.LeftButton)
 
         qtbot.waitUntil(lambda: not view._search_input.hasFocus())
+        assert view._tabs.cursor().shape() == Qt.PointingHandCursor
 
 
 def test_ranking_track_activation_plays_selected_track():

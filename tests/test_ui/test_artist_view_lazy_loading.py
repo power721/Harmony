@@ -4,12 +4,14 @@ import os
 from unittest.mock import MagicMock, Mock
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from domain.album import Album
 from domain.artist import Artist
 from domain.track import Track, TrackSource
+from system.i18n import t
 from system.theme import ThemeManager
 from ui.views.artist_view import ArtistView
 
@@ -131,3 +133,30 @@ def test_artist_view_albums_lazy_load_in_batches(qapp, mock_theme_config):
         guard += 1
 
     assert len(view._album_cards) == len(albums)
+
+
+def test_artist_view_uses_tabs_for_albums_and_tracks(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+
+    library_service = MagicMock()
+    library_service.get_artist_albums.return_value = _build_albums(1)
+    library_service.get_artist_tracks.return_value = _build_tracks(1)
+
+    view = ArtistView(library_service=library_service)
+    view.set_artist(Artist(name="Lazy Artist", song_count=1, album_count=1))
+
+    QTest.qWait(30)
+    qapp.processEvents()
+
+    assert view._tab_widget.count() == 2
+    assert view._tab_widget.currentWidget() is view._albums_section
+    assert view._tab_widget.tabText(1) == t("track")
+    assert "border-bottom: 2px solid" in view._tab_widget.styleSheet()
+    assert view._tab_widget.tabBar().cursor().shape() == Qt.PointingHandCursor
+    assert view._albums_scroll_area.maximumHeight() > 10000
+    assert not hasattr(view, "_albums_title_label")
+    assert not hasattr(view, "_tracks_title_label")
+
+    view._tab_widget.setCurrentWidget(view._tracks_section)
+    qapp.processEvents()
+    assert view._tab_widget.currentWidget() is view._tracks_section

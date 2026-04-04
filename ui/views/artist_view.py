@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QMenu,
     QDialog,
+    QTabWidget,
 )
 
 from domain.album import Album
@@ -60,9 +61,9 @@ class ArtistView(QWidget):
     add_to_playlist = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
     ALBUMS_BATCH_SIZE = 30
-    ALBUMS_LOAD_THRESHOLD_PX = 200
+    ALBUMS_LOAD_THRESHOLD_PX = 100
     TRACKS_BATCH_SIZE = 30
-    TRACKS_LOAD_THRESHOLD_PX = 200
+    TRACKS_LOAD_THRESHOLD_PX = 100
 
     def __init__(
             self,
@@ -122,13 +123,9 @@ class ArtistView(QWidget):
         self._header = self._create_header()
         content_layout.addWidget(self._header)
 
-        # Albums section
-        self._albums_section = self._create_albums_section()
-        content_layout.addWidget(self._albums_section)
-
-        # Tracks section
-        self._tracks_section = self._create_tracks_section()
-        content_layout.addWidget(self._tracks_section)
+        # Detail tabs (albums / tracks)
+        self._tab_widget = self._create_tab_widget()
+        content_layout.addWidget(self._tab_widget)
 
         scroll_area.setWidget(self._content)
         layout.addWidget(scroll_area)
@@ -276,28 +273,6 @@ class ArtistView(QWidget):
                 }}
             """)
 
-        # Update albums title
-        if hasattr(self, '_albums_title_label'):
-            self._albums_title_label.setStyleSheet(f"""
-                QLabel {{
-                    color: {theme.highlight};
-                    font-size: 24px;
-                    font-weight: bold;
-                    padding: 10px;
-                }}
-            """)
-
-        # Update tracks title
-        if hasattr(self, '_tracks_title_label'):
-            self._tracks_title_label.setStyleSheet(f"""
-                QLabel {{
-                    color: {theme.highlight};
-                    font-size: 24px;
-                    font-weight: bold;
-                    padding: 10px;
-                }}
-            """)
-
         # Update tracks table
         if hasattr(self, '_tracks_table'):
             self._tracks_table.setStyleSheet(f"""
@@ -369,6 +344,30 @@ class ArtistView(QWidget):
         # Update loading label
         if hasattr(self, '_loading_label'):
             self._loading_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 14px;")
+
+        # Update detail tabs
+        if hasattr(self, '_tab_widget'):
+            self._tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
+            self._tab_widget.setStyleSheet(f"""
+                QTabWidget::pane {{
+                    border: none;
+                    background: transparent;
+                }}
+                QTabBar::tab {{
+                    background: transparent;
+                    color: {theme.text_secondary};
+                    border: none;
+                    border-bottom: 2px solid transparent;
+                    padding: 8px 18px;
+                }}
+                QTabBar::tab:selected {{
+                    color: {theme.highlight};
+                    border-bottom: 2px solid {theme.highlight};
+                }}
+                QTabBar::tab:hover:!selected {{
+                    color: {theme.highlight};
+                }}
+            """)
 
     def _create_header(self) -> QWidget:
         """Create artist header with cover and info."""
@@ -520,24 +519,12 @@ class ArtistView(QWidget):
         layout.setContentsMargins(20, 20, 20, 0)
         layout.setSpacing(16)
 
-        # Section title - same style as library view
-        self._albums_title_label = QLabel(t("albums"))
-        self._albums_title_label.setStyleSheet(f"""
-            QLabel {{
-                color: {theme.highlight};
-                font-size: 24px;
-                font-weight: bold;
-                padding: 10px;
-            }}
-        """)
-        layout.addWidget(self._albums_title_label)
-
         # Scroll area for albums
         self._albums_scroll_area = QScrollArea()
         self._albums_scroll_area.setWidgetResizable(True)
         self._albums_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._albums_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._albums_scroll_area.setMaximumHeight(600)  # ~2 rows of album cards
+        self._albums_scroll_area.setMinimumHeight(720)
         self._albums_scroll_area.setStyleSheet(f"""
             QScrollArea {{
                 background-color: transparent;
@@ -567,9 +554,44 @@ class ArtistView(QWidget):
 
         self._albums_scroll_area.setWidget(self._albums_container)
         self._albums_scroll_area.verticalScrollBar().valueChanged.connect(self._on_albums_scroll_changed)
-        layout.addWidget(self._albums_scroll_area)
+        layout.addWidget(self._albums_scroll_area, 1)
 
         return section
+
+    def _create_tab_widget(self) -> QTabWidget:
+        """Create tab container for albums and tracks sections."""
+        from system.theme import ThemeManager
+        theme = ThemeManager.instance().current_theme
+
+        tab_widget = QTabWidget()
+        tab_widget.setDocumentMode(True)
+        tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
+        tab_widget.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: none;
+                background: transparent;
+            }}
+            QTabBar::tab {{
+                background: transparent;
+                color: {theme.text_secondary};
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: 8px 18px;
+            }}
+            QTabBar::tab:selected {{
+                color: {theme.highlight};
+                border-bottom: 2px solid {theme.highlight};
+            }}
+            QTabBar::tab:hover:!selected {{
+                color: {theme.highlight};
+            }}
+        """)
+
+        self._albums_section = self._create_albums_section()
+        self._tracks_section = self._create_tracks_section()
+        tab_widget.addTab(self._albums_section, t("albums"))
+        tab_widget.addTab(self._tracks_section, t("track"))
+        return tab_widget
 
     def _create_tracks_section(self) -> QWidget:
         """Create tracks table section with same style as library view."""
@@ -580,18 +602,6 @@ class ArtistView(QWidget):
         layout = QVBoxLayout(section)
         layout.setContentsMargins(20, 20, 20, 0)
         layout.setSpacing(16)
-
-        # Section title
-        self._tracks_title_label = QLabel(t("all_tracks"))
-        self._tracks_title_label.setStyleSheet(f"""
-            QLabel {{
-                color: {theme.highlight};
-                font-size: 24px;
-                font-weight: bold;
-                padding: 10px;
-            }}
-        """)
-        layout.addWidget(self._tracks_title_label)
 
         # Tracks table - same style as LibraryView
         self._tracks_table = QTableWidget()
@@ -1099,11 +1109,9 @@ class ArtistView(QWidget):
         self._shuffle_btn.setText(t("shuffle"))
         self._back_btn.setText(t("back"))
 
-        # Update albums section title
-        self._albums_title_label.setText(t("albums"))
-
-        # Update tracks section title
-        self._tracks_title_label.setText(t("all_tracks"))
+        # Update tab labels
+        self._tab_widget.setTabText(0, t("albums"))
+        self._tab_widget.setTabText(1, t("track"))
 
         # Update table headers
         self._tracks_table.setHorizontalHeaderLabels(
