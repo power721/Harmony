@@ -685,6 +685,11 @@ class CloudDriveView(QWidget):
         self._share_prev_btn.setVisible(False)
         self._share_next_btn.setVisible(False)
         self._share_page_label.setVisible(False)
+        if self._current_account:
+            self._last_playing_fid = self._current_account.last_playing_fid
+            self._last_position = self._current_account.last_position
+            # TODO: fix file path
+            self._update_file_view()
 
     def _search_shares_page(self, page: int):
         """Search cloud share entries by page."""
