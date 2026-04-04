@@ -154,8 +154,7 @@ class QQMusicLyricsSource(LyricsSource):
             from services.lyrics.qqmusic_lyrics import search_from_qqmusic
             search_results = search_from_qqmusic(title, artist, limit)
 
-            for item in search_results:
-                results.append(LyricsSearchResult(
+            results.extend(LyricsSearchResult(
                     id=item.get('id', ''),
                     title=item.get('title', ''),
                     artist=item.get('artist', ''),
@@ -163,7 +162,7 @@ class QQMusicLyricsSource(LyricsSource):
                     duration=item.get('duration'),
                     source='qqmusic',
                     cover_url=item.get('cover_url'),
-                ))
+                ) for item in search_results)
 
         except Exception as e:
             logger.error(f"Error searching from QQ Music: {e}")
@@ -215,15 +214,14 @@ class KugouLyricsSource(LyricsSource):
             data = r.json()
 
             candidates = data.get("candidates", [])
-            for item in candidates:
-                results.append(LyricsSearchResult(
+            results.extend(LyricsSearchResult(
                     id=str(item['id']),
                     title=item.get('name', item.get('song', '')),
                     artist=item.get('singer', ''),
                     album='',
                     source='kugou',
                     accesskey=item.get('accesskey', '')
-                ))
+                ) for item in candidates)
 
         except Exception as e:
             logger.debug(f"Kugou search error: {e}")
