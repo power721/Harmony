@@ -94,7 +94,7 @@ class SqliteQueueRepository(BaseRepository):
                                        (item.position, item.source, item.track_id,
                                         item.cloud_file_id, item.cloud_account_id, item.local_path,
                                         item.title, item.artist, item.album, item.duration,
-                                        item.created_at or datetime.now(),
+                                        (item.created_at or datetime.now()).isoformat(sep=" "),
                                         int(item.download_failed))
                                        for item in items
                                    ])

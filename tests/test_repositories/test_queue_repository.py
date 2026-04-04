@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+import warnings
 
 from repositories.queue_repository import SqliteQueueRepository
 from domain.playback import PlayQueueItem
@@ -227,6 +228,21 @@ class TestSqliteQueueRepository:
         assert len(loaded) == 2
         assert loaded[0].download_failed is False
         assert loaded[1].download_failed is True
+
+    def test_save_does_not_use_deprecated_sqlite_datetime_adapter(self, queue_repo):
+        """Saving queue items should not rely on sqlite3's deprecated implicit datetime adapter."""
+        items = [
+            PlayQueueItem(position=0, source="Local", track_id=1, title="Song 1"),
+        ]
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert queue_repo.save(items) is True
+
+        assert not any(
+            issubclass(w.category, DeprecationWarning) and "datetime adapter" in str(w.message)
+            for w in caught
+        )
 
 
 class TestQueueRepositoryBoundaryCases:
