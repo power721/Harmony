@@ -157,6 +157,8 @@ class PlaybackService(QObject):
         self._max_concurrent_preloads = 1  # Limit concurrent preloads to prevent overwhelming
         self._preload_attempts: dict = {}  # cloud_file_id -> attempt count
         self._max_preload_attempts = 2  # Max retry attempts per file
+        self._next_preload_timer = None
+        self._pending_next_preload_cloud_file_id: Optional[str] = None
 
         # Queue save debouncing
         self._save_queue_timer = None
@@ -181,6 +183,9 @@ class PlaybackService(QObject):
     def _connect_engine_signals(self):
         """Connect engine signals to internal handlers and EventBus."""
         self._engine.current_track_changed.connect(self._on_track_changed)
+        playlist_changed = getattr(self._engine, "playlist_changed", None)
+        if playlist_changed is not None:
+            playlist_changed.connect(self._on_playlist_changed)
         self._engine.state_changed.connect(self._on_state_changed)
         self._engine.position_changed.connect(self._event_bus.position_changed.emit)
         self._engine.duration_changed.connect(self._event_bus.duration_changed.emit)
@@ -957,6 +962,7 @@ class PlaybackService(QObject):
         self._pending_save = False
         if getattr(self, "_save_queue_timer", None) is not None:
             self._save_queue_timer.stop()
+        self._cancel_pending_next_track_preload()
 
     def save_queue(self, force: bool = False):
         """Save the current play queue to database."""
@@ -1272,7 +1278,7 @@ class PlaybackService(QObject):
                         self.save_queue()
 
             # Preload next track
-            self._preload_next_cloud_track()
+            self._schedule_next_track_preload()
 
             # Persist current queue/index on user-driven track switches.
             # Skip when engine is stopped to avoid restore-time transient switches
@@ -1293,6 +1299,11 @@ class PlaybackService(QObject):
         """Handle play mode change - save to config and emit to EventBus."""
         self._config.set_play_mode(mode.value)
         self._event_bus.play_mode_changed.emit(mode.value)
+        self._schedule_next_track_preload()
+
+    def _on_playlist_changed(self, *_args):
+        """Handle queue mutations by refreshing delayed next-track preload."""
+        self._schedule_next_track_preload()
 
     def _on_track_needs_download(self, item):
         """Handle track that needs download."""
@@ -1575,35 +1586,97 @@ class PlaybackService(QObject):
         track_id = self._track_repo.add(track)
         return track_id
 
-    def _preload_next_cloud_track(self):
-        """Preload the next track in the queue (cloud or online)."""
-        # TODO: delay
-
+    def _get_next_preload_candidate(self) -> Optional[PlaylistItem]:
+        """Return the immediate next item eligible for cloud/online preloading."""
         # Don't preload if stopped
         if self._engine.state == PlaybackState.STOPPED:
-            return
+            return None
 
         # Single track loop modes - don't preload
         if self._engine.play_mode in (PlayMode.LOOP, PlayMode.RANDOM_TRACK_LOOP):
-            return
+            return None
 
         # Get next item
         next_item = self._engine.get_next_item()
         if not next_item:
-            return
+            return None
 
         # Skip if not needing download or local file already exists
         if not next_item.needs_download or (next_item.local_path and Path(next_item.local_path).exists()):
+            return None
+
+        if next_item.source == TrackSource.QQ or next_item.is_cloud:
+            return next_item
+
+        return None
+
+    def _ensure_next_preload_timer(self):
+        """Create and return the single-shot timer used for next-track preload."""
+        if getattr(self, "_next_preload_timer", None) is None:
+            self._next_preload_timer = QTimer()
+            self._next_preload_timer.setSingleShot(True)
+            self._next_preload_timer.timeout.connect(self._on_next_track_preload_timeout)
+        return self._next_preload_timer
+
+    def _cancel_pending_next_track_preload(self):
+        """Cancel any pending delayed next-track preload dispatch."""
+        self._pending_next_preload_cloud_file_id = None
+        timer = getattr(self, "_next_preload_timer", None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+
+    def _dispatch_preload_for_item(self, item: PlaylistItem):
+        """Dispatch preload to the existing QQ/cloud handlers."""
+        if item.source == TrackSource.QQ:
+            self._preload_online_track(item)
+        elif item.is_cloud:
+            self._preload_cloud_track(item)
+
+    def _schedule_next_track_preload(self):
+        """Schedule delayed preload for the immediate next track."""
+        if getattr(self, "_is_shutting_down", False):
+            self._cancel_pending_next_track_preload()
             return
 
-        # Handle online music preload
-        if next_item.source == TrackSource.QQ:
-            self._preload_online_track(next_item)
+        next_item = self._get_next_preload_candidate()
+        if not next_item or not next_item.cloud_file_id:
+            self._cancel_pending_next_track_preload()
             return
 
-        # Handle cloud file preload
-        if next_item.is_cloud:
-            self._preload_cloud_track(next_item)
+        target_cloud_file_id = next_item.cloud_file_id
+        timer = self._ensure_next_preload_timer()
+        if (
+            self._pending_next_preload_cloud_file_id == target_cloud_file_id
+            and timer.isActive()
+        ):
+            return
+
+        if self._pending_next_preload_cloud_file_id != target_cloud_file_id:
+            self._cancel_pending_next_track_preload()
+
+        self._pending_next_preload_cloud_file_id = target_cloud_file_id
+        timer.start(10000)
+
+    def _on_next_track_preload_timeout(self):
+        """Handle delayed next-track preload timer timeout."""
+        pending_cloud_file_id = self._pending_next_preload_cloud_file_id
+        self._pending_next_preload_cloud_file_id = None
+        if not pending_cloud_file_id:
+            return
+
+        next_item = self._get_next_preload_candidate()
+        if not next_item or next_item.cloud_file_id != pending_cloud_file_id:
+            return
+
+        self._dispatch_preload_for_item(next_item)
+
+    def _preload_next_cloud_track(self):
+        """Preload the next track in the queue (cloud or online)."""
+        next_item = self._get_next_preload_candidate()
+        if not next_item:
+            return
+
+        self._dispatch_preload_for_item(next_item)
 
     def _preload_online_track(self, item: PlaylistItem):
         """Preload an online track."""
@@ -1621,7 +1694,7 @@ class PlaybackService(QObject):
         self._download_online_track(item)
 
     def _preload_cloud_track(self, item: PlaylistItem):
-        """Preload a cloud track with delay."""
+        """Preload a cloud track."""
         from services.cloud.download_service import CloudDownloadService
 
         # Skip if already downloaded
@@ -1700,24 +1773,16 @@ class PlaybackService(QObject):
                 self._preload_attempts[item.cloud_file_id] = attempts
             return
 
-        # Schedule preload with delay
-        logger.info(
-            f"[PlaybackService] Scheduling cloud track preload in 10 seconds (attempt {attempts + 1}): {item.title}")
-
-        def start_preload():
-            # Remove from scheduled set
-            with self._preload_scheduled_lock:
-                self._scheduled_preloads.discard(item.cloud_file_id)
-
+        try:
             # Check again if still need to download (might have been cancelled or already downloaded)
             if item.local_path:
                 return
-            logger.info(f"[PlaybackService] Starting preload for cloud track: {item.title}")
+            logger.info(f"[PlaybackService] Starting preload for cloud track (attempt {attempts + 1}): {item.title}")
             service.set_download_dir(self._config.get_cloud_download_dir())
             service.download_file(cloud_file, account)
-
-        # Use QTimer for non-blocking delay
-        QTimer.singleShot(10000, start_preload)
+        finally:
+            with self._preload_scheduled_lock:
+                self._scheduled_preloads.discard(item.cloud_file_id)
 
     def _save_cloud_track_to_library(self, file_id: str, local_path: str, source: TrackSource = None) -> str:
         """
@@ -2086,7 +2151,7 @@ class PlaybackService(QObject):
 
         # Note: Queue is saved once after batch completes (see _on_metadata_batch_complete)
         # Preload next cloud track
-        self._preload_next_cloud_track()
+        self._schedule_next_track_preload()
 
     def _on_metadata_batch_complete(self):
         """Handle batch metadata processing completion - save queue once."""
