@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from domain.cloud import CloudFile, CloudAccount
+from ui.views.cloud.cloud_drive_view import CloudDriveView
 from ui.views.cloud.file_table import CloudFileTable
 from ui.views.cloud.context_menu import CloudFileContextMenu, CloudAccountContextMenu
 from system.theme import ThemeManager
@@ -314,3 +315,53 @@ class TestCloudAccount:
 
         assert account.last_playing_fid == "file123"
         assert account.last_position == 45.5
+
+
+class TestCloudDriveView:
+    """Tests for CloudDriveView share-search state handling."""
+
+    def test_clear_share_search_results_restores_previous_path(self, qapp, mock_config):
+        """Clearing share search should restore pre-share folder path/state."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+
+        view._pre_share_browse_state = {
+            "parent_id": "fid-music-pop",
+            "path_label": "/Music/Pop",
+            "fid_path": ["fid-music", "fid-music-pop"],
+            "navigation_history": [("0", "/"), ("fid-music", "/Music")],
+            "back_enabled": True,
+        }
+
+        view._share_mode = True
+        view._share_results_list.addItem("dummy-result")
+        view._current_parent_id = "share-folder-fid"
+        view._path_label.setText("/share/album")
+        view._fid_path = ["share-folder-fid"]
+        view._navigation_history = []
+        view._back_btn.setEnabled(False)
+
+        with patch.object(view, "_update_file_view") as mock_update:
+            view._clear_share_search_results()
+
+        assert view._current_parent_id == "fid-music-pop"
+        assert view._path_label.text() == "/Music/Pop"
+        assert view._fid_path == ["fid-music", "fid-music-pop"]
+        assert view._navigation_history == [("0", "/"), ("fid-music", "/Music")]
+        assert view._back_btn.isEnabled() is True
+        assert view._pre_share_browse_state is None
+        mock_update.assert_called_once()

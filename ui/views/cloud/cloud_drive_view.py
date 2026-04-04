@@ -266,6 +266,7 @@ class CloudDriveView(QWidget):
         self._share_search_page = 1
         self._share_search_total_pages = 0
         self._share_search_limit = 20
+        self._pre_share_browse_state: Optional[dict] = None
 
         # Batch download state
         self._download_queue: List[CloudFile] = []
@@ -670,6 +671,10 @@ class CloudDriveView(QWidget):
         """Clear share search results and hide pagination controls."""
         if self._share_mode:
             self._clear_share_mode(reset_view=reset_view)
+        if reset_view:
+            self._restore_pre_share_browse_state()
+        else:
+            self._pre_share_browse_state = None
         self._share_search_keyword = ""
         self._share_search_result = None
         self._share_search_input.blockSignals(True)
@@ -688,7 +693,6 @@ class CloudDriveView(QWidget):
         if self._current_account:
             self._last_playing_fid = self._current_account.last_playing_fid
             self._last_position = self._current_account.last_position
-            # TODO: fix file path
             self._update_file_view()
 
     def _search_shares_page(self, page: int):
@@ -791,6 +795,7 @@ class CloudDriveView(QWidget):
             self._status_label.setText(t("cloud_share_parse_failed"))
             return
 
+        self._capture_pre_share_browse_state()
         self._share_pwd_id = pwd_id
         self._share_stoken = stoken
         self._share_root_title = song.name or song.title or "share"
@@ -838,6 +843,31 @@ class CloudDriveView(QWidget):
         self._update_share_save_button_state()
         if reset_view and self._current_account and not has_results:
             self._update_file_view()
+
+    def _capture_pre_share_browse_state(self):
+        """Store normal cloud browsing state before entering share mode."""
+        if self._share_mode or not self._current_account:
+            return
+        self._pre_share_browse_state = {
+            "parent_id": self._current_parent_id,
+            "path_label": self._path_label.text(),
+            "fid_path": list(self._fid_path),
+            "navigation_history": list(self._navigation_history),
+            "back_enabled": self._back_btn.isEnabled(),
+        }
+
+    def _restore_pre_share_browse_state(self):
+        """Restore normal cloud browsing state after leaving share search."""
+        state = self._pre_share_browse_state
+        if not state:
+            return
+
+        self._current_parent_id = state.get("parent_id", "0")
+        self._path_label.setText(state.get("path_label", "/"))
+        self._fid_path = list(state.get("fid_path", []))
+        self._navigation_history = list(state.get("navigation_history", []))
+        self._back_btn.setEnabled(bool(state.get("back_enabled", False)))
+        self._pre_share_browse_state = None
 
     def _load_share_folder(self, pdir_fid: str, path_text: str):
         """Load one folder in current parsed share."""
