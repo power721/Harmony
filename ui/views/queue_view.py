@@ -1507,8 +1507,8 @@ class QueueView(QWidget):
         Args:
             track_ids: List of track IDs to add
         """
-        for track_id in track_ids:
-            track = self._library_service.get_track(track_id)
+        tracks = self._get_tracks_by_ids(track_ids)
+        for track in tracks:
             if track:
                 from pathlib import Path
                 from domain.track import TrackSource
@@ -1539,8 +1539,8 @@ class QueueView(QWidget):
         # Insert position is after current track
         insert_index = current_index + 1 if current_index >= 0 else 0
 
-        for track_id in track_ids:
-            track = self._library_service.get_track(track_id)
+        tracks = self._get_tracks_by_ids(track_ids)
+        for track in tracks:
             if track:
                 from pathlib import Path
                 from domain.track import TrackSource
@@ -1558,6 +1558,16 @@ class QueueView(QWidget):
                     }
                     self._player.engine.insert_track(insert_index, track_dict)
                     insert_index += 1
+
+    def _get_tracks_by_ids(self, track_ids: List[int]):
+        """Fetch tracks in batch when available, otherwise fall back to per-item lookup."""
+        if not track_ids:
+            return []
+        if hasattr(self._library_service, "get_tracks_by_ids"):
+            tracks = self._library_service.get_tracks_by_ids(track_ids)
+            if tracks is not None:
+                return tracks
+        return [self._library_service.get_track(track_id) for track_id in track_ids]
 
     def closeEvent(self, event):
         """Handle close event."""

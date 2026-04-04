@@ -39,6 +39,10 @@ class MockThemeManager:
     def get_qss(self, template):
         return template
 
+    @staticmethod
+    def get_combobox_style():
+        return ""
+
 
 def make_mock_player(playlist=None, current_index=-1, state_value="stopped"):
     """Create a mock PlaybackService with a mock engine."""
@@ -113,3 +117,44 @@ def test_queue_view_signals():
         # These signals should exist
         assert hasattr(view, 'play_track')
         assert hasattr(view, 'queue_reordered')
+
+
+def test_get_tracks_by_ids_uses_batch_api_when_available():
+    """QueueView should use batch track lookup when library service supports it."""
+    from domain.track import Track, TrackSource
+    from ui.views.queue_view import QueueView
+
+    view = QueueView.__new__(QueueView)
+    view._library_service = MagicMock()
+    view._library_service.get_tracks_by_ids.return_value = [
+        Track(id=1, title="One", source=TrackSource.QQ),
+        Track(id=2, title="Two", source=TrackSource.QQ),
+    ]
+    view._library_service.get_track.side_effect = AssertionError("Should not call per-item lookup")
+
+    tracks = QueueView._get_tracks_by_ids(view, [1, 2])
+
+    assert [track.id for track in tracks] == [1, 2]
+    view._library_service.get_tracks_by_ids.assert_called_once_with([1, 2])
+
+
+def test_get_tracks_by_ids_falls_back_to_single_lookup():
+    """QueueView should keep compatibility with old library services without batch API."""
+    from domain.track import Track, TrackSource
+    from ui.views.queue_view import QueueView
+
+    class LegacyLibraryService:
+        def __init__(self):
+            self.calls = []
+
+        def get_track(self, track_id):
+            self.calls.append(track_id)
+            return Track(id=track_id, title=str(track_id), source=TrackSource.QQ)
+
+    view = QueueView.__new__(QueueView)
+    view._library_service = LegacyLibraryService()
+
+    tracks = QueueView._get_tracks_by_ids(view, [3, 4])
+
+    assert [track.id for track in tracks] == [3, 4]
+    assert view._library_service.calls == [3, 4]
