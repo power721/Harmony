@@ -327,11 +327,10 @@ class OnlineMusicAdapter:
             singers = []
             singer_list = item.get("singer", [])
             if isinstance(singer_list, list):
-                for s in singer_list:
-                    singers.append(OnlineSinger(
+                singers.extend(OnlineSinger(
                         mid=s.get("mid", ""),
                         name=s.get("name", "")
-                    ))
+                    ) for s in singer_list)
 
             # Album info
             album_data = item.get("album", {})
@@ -801,10 +800,8 @@ class OnlineMusicAdapter:
         cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else ""
 
         # Parse songs (YGKing album API may not return songs, need separate call)
-        songs = []
         songs_data = album_data.get("songs") or album_data.get("songList") or []
-        for item in songs_data:
-            songs.append(OnlineMusicAdapter._parse_ygking_detail_song(item))
+        songs = [OnlineMusicAdapter._parse_ygking_detail_song(item) for item in songs_data]
 
         return {
             'mid': album_mid,
@@ -892,9 +889,7 @@ class OnlineMusicAdapter:
 
         # Get songs - songlist is the primary field name
         songlist = playlist_data.get("songlist", []) or playlist_data.get("songs", [])
-        songs = []
-        for item in songlist:
-            songs.append(OnlineMusicAdapter._parse_ygking_detail_song(item))
+        songs = [OnlineMusicAdapter._parse_ygking_detail_song(item) for item in songlist]
 
         # Get total song count
         total = playlist_data.get("total_song_num", 0) or playlist_data.get("songlist_size", 0) or len(songs)
