@@ -1155,7 +1155,6 @@ class MainWindow(QMainWindow):
         # Keep reference to prevent GC
         self._scan_controller = ScanDialog.scan_folder(
             folder=folder,
-            db_manager=self._db,
             cover_service=cover_service,
             library_service=self._library_service,
             parent=self,

@@ -34,7 +34,7 @@ from system.i18n import t
 from system.theme import ThemeManager
 
 if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
+    from services.library import LibraryService
     from services.metadata import CoverService
 
 logger = logging.getLogger(__name__)
@@ -87,15 +87,13 @@ class ScanWorker(QObject):
     def __init__(
             self,
             folder_path: str,
-            db_manager: "DatabaseManager",
-            cover_service: Optional["CoverService"] = None,
             library_service: Optional["LibraryService"] = None,
+            cover_service: Optional["CoverService"] = None,
             batch_size: int = 100,
             enable_cover_extraction: bool = False,
     ):
         super().__init__()
         self.folder_path = folder_path
-        self._db = db_manager
         self._cover_service = cover_service
         self._library_service = library_service
         self._batch_size = max(1, batch_size)
@@ -250,7 +248,7 @@ class ScanWorker(QObject):
         self.status.emit("import", 0, t("importing_music"))
 
         # IMPORTANT:
-        # This method expects your DatabaseManager to support one of:
+        # This method expects LibraryService to support:
         #
         # 1) get_track_index_for_paths(paths: list[str]) -> dict[str, {"size": int, "mtime": float}]
         # 2) fallback per-file get_track_by_path(path)
@@ -342,15 +340,19 @@ class ScanWorker(QObject):
         """
         Load existing tracks index for incremental comparison.
 
-        Preferred DB API:
-            db.get_track_index_for_paths(paths) -> dict[path] = {"size": ..., "mtime": ...}
+        Preferred service API:
+            library_service.get_track_index_for_paths(paths)
+                -> dict[path] = {"size": ..., "mtime": ...}
 
         Fallback:
-            db.get_track_by_path(path)
+            library_service.get_track_by_path(path)
         """
+        if not self._library_service:
+            return {}
+
         try:
-            if hasattr(self._db, "get_track_index_for_paths"):
-                return self._db.get_track_index_for_paths(paths) or {}
+            if hasattr(self._library_service, "get_track_index_for_paths"):
+                return self._library_service.get_track_index_for_paths(paths) or {}
         except Exception:
             logger.exception("[ScanWorker] Bulk track index load failed")
 
@@ -360,7 +362,7 @@ class ScanWorker(QObject):
             if self.is_cancelled():
                 break
             try:
-                existing = self._db.get_track_by_path(path)
+                existing = self._library_service.get_track_by_path(path)
                 if existing:
                     result[path] = {
                         "size": existing.file_size,
@@ -390,16 +392,19 @@ class ScanWorker(QObject):
         """
         if not tracks:
             return
+        if not self._library_service:
+            stats.failed += len(tracks)
+            return
 
         try:
-            if hasattr(self._db, "add_tracks_bulk"):
-                added, skipped = self._db.add_tracks_bulk(tracks)
+            if hasattr(self._library_service, "add_tracks_bulk"):
+                added, skipped = self._library_service.add_tracks_bulk(tracks)
                 stats.added += int(added or 0)
                 stats.skipped += int(skipped or 0)
             else:
                 # fallback
                 for track in tracks:
-                    self._db.add_track(track)
+                    self._library_service.add_track(track)
                     stats.added += 1
 
         except Exception:
@@ -407,7 +412,7 @@ class ScanWorker(QObject):
             # degrade to per-track to salvage partial import
             for track in tracks:
                 try:
-                    self._db.add_track(track)
+                    self._library_service.add_track(track)
                     stats.added += 1
                 except Exception:
                     logger.exception(f"[ScanWorker] Failed fallback add_track: {track.path}")
@@ -601,7 +606,6 @@ class ScanController(QObject):
     def __init__(
             self,
             folder: str,
-            db_manager: "DatabaseManager",
             cover_service: Optional["CoverService"] = None,
             library_service: Optional["LibraryService"] = None,
             parent=None,
@@ -611,7 +615,6 @@ class ScanController(QObject):
     ):
         super().__init__(parent)
         self.folder = folder
-        self.db_manager = db_manager
         self.cover_service = cover_service
         self.library_service = library_service
         self.on_complete = on_complete
@@ -630,9 +633,8 @@ class ScanController(QObject):
         self.thread = QThread(self)
         self.worker = ScanWorker(
             folder_path=self.folder,
-            db_manager=self.db_manager,
-            cover_service=self.cover_service,
             library_service=self.library_service,
+            cover_service=self.cover_service,
             batch_size=self.batch_size,
             enable_cover_extraction=self.enable_cover_extraction,
         )
@@ -730,7 +732,6 @@ class ScanDialog:
     @staticmethod
     def scan_folder(
             folder: str,
-            db_manager: "DatabaseManager",
             cover_service: Optional["CoverService"] = None,
             library_service: Optional["LibraryService"] = None,
             parent=None,
@@ -748,7 +749,6 @@ class ScanDialog:
         """
         controller = ScanController(
             folder=folder,
-            db_manager=db_manager,
             cover_service=cover_service,
             library_service=library_service,
             parent=parent,

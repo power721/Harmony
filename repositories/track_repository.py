@@ -67,6 +67,32 @@ class SqliteTrackRepository(BaseRepository):
         rows = cursor.fetchall()
         return {row["path"]: self._row_to_track(row) for row in rows}
 
+    def get_index_for_paths(self, paths: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
+        """Get path fingerprint index for incremental scan comparisons."""
+        if not paths:
+            return {}
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(paths))
+        try:
+            cursor.execute(
+                f"SELECT path, file_size, file_mtime FROM tracks WHERE path IN ({placeholders})",
+                paths,
+            )
+            rows = cursor.fetchall()
+            return {
+                row["path"]: {"size": row["file_size"], "mtime": row["file_mtime"]}
+                for row in rows
+            }
+        except sqlite3.OperationalError:
+            # Fallback for legacy schema without file fingerprint columns.
+            tracks = self.get_by_paths(paths)
+            return {
+                path: {"size": track.file_size, "mtime": track.file_mtime}
+                for path, track in tracks.items()
+            }
+
     def get_by_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
         """Get multiple tracks by cloud file IDs in batch. Returns dict mapping cloud_file_id -> Track."""
         if not cloud_file_ids:
@@ -402,6 +428,8 @@ class SqliteTrackRepository(BaseRepository):
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],
             source=source,
+            file_size=row["file_size"] if "file_size" in row.keys() else None,
+            file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
         )
 
     # ===== Album Operations =====

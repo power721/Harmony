@@ -125,6 +125,10 @@ class LibraryService:
         """Get a track by cloud file ID."""
         return self._track_repo.get_by_cloud_file_id(cloud_file_id)
 
+    def get_track_index_for_paths(self, paths: List[str]) -> dict[str, dict[str, int | float | None]]:
+        """Get path -> {size, mtime} index for incremental scan."""
+        return self._track_repo.get_index_for_paths(paths)
+
     def get_all_tracks(
             self,
             limit: int = DEFAULT_TRACK_PAGE_SIZE,
@@ -160,6 +164,18 @@ class LibraryService:
             # Refresh albums and artists cache tables
             self._refresh_albums_artist_async()
         return track_id
+
+    def add_tracks_bulk(self, tracks: List[Track]) -> tuple[int, int]:
+        """Add tracks in batch, returning (added, skipped)."""
+        if not tracks:
+            return 0, 0
+
+        added = self._track_repo.batch_add(tracks)
+        skipped = max(0, len(tracks) - added)
+        if added:
+            self._event_bus.tracks_added.emit(added)
+            self._refresh_albums_artist_async()
+        return added, skipped
 
     def _refresh_albums_artist_async(self):
         """Refresh albums and artists tables asynchronously (debounced)."""
