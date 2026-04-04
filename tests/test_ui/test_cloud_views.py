@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from domain.cloud import CloudFile, CloudAccount
 from ui.views.cloud.cloud_drive_view import CloudDriveView
@@ -365,3 +365,82 @@ class TestCloudDriveView:
         assert view._back_btn.isEnabled() is True
         assert view._pre_share_browse_state is None
         mock_update.assert_called_once()
+
+    def test_breadcrumb_click_jumps_to_ancestor_for_quark(self, qapp, mock_config):
+        """Breadcrumb click should jump to selected ancestor path in Quark mode."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._share_mode = False
+        view._path_label.setText("/Music/Pop")
+        view._fid_path = ["fid-music", "fid-pop"]
+        view._current_parent_id = "fid-pop"
+        view._navigation_history = [("0", "/"), ("fid-music", "/Music")]
+        view._back_btn.setEnabled(True)
+
+        with patch.object(view, "_load_files") as mock_load_files:
+            view._on_breadcrumb_clicked("/Music", 1)
+
+        assert view._current_parent_id == "fid-music"
+        assert view._fid_path == ["fid-music"]
+        assert view._path_label.text() == "/Music"
+        assert view._navigation_history == [("0", "/")]
+        assert view._back_btn.isEnabled() is True
+        mock_load_files.assert_called_once()
+
+    def test_breadcrumb_click_jumps_to_ancestor_for_share(self, qapp, mock_config):
+        """Breadcrumb click should jump to selected ancestor in share mode."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._share_mode = True
+        view._share_root_title = "ShareRoot"
+        view._share_history = [("0", "/ShareRoot"), ("fid-a", "/ShareRoot/A")]
+        view._path_label.setText("/ShareRoot/A/B")
+        view._back_btn.setEnabled(True)
+
+        with patch.object(view, "_load_share_folder") as mock_load_share_folder:
+            view._on_breadcrumb_clicked("/ShareRoot/A", 2)
+
+        assert view._share_history == [("0", "/ShareRoot")]
+        mock_load_share_folder.assert_called_once_with("fid-a", "/ShareRoot/A")
+
+    def test_breadcrumb_renders_theme_text_color(self, qapp, mock_config):
+        """Breadcrumb rich text should use theme main text color."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._path_label.setText("/Music/Pop")
+
+        rendered_html = QLabel.text(view._path_label).lower()
+        assert "color:#ffffff" in rendered_html

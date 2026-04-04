@@ -11,6 +11,7 @@ This is a refactored version that uses modular components:
 import json
 import logging
 import shutil
+from html import escape
 from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 
@@ -52,6 +53,69 @@ if TYPE_CHECKING:
     from system.config import ConfigManager
 
 logger = logging.getLogger(__name__)
+
+
+class BreadcrumbLabel(QLabel):
+    """Clickable breadcrumb label that stores plain path text."""
+
+    breadcrumb_clicked = Signal(str, int)
+
+    def __init__(self, path: str = "/", parent=None):
+        super().__init__(parent)
+        self._path_text = "/"
+        self._text_color = "#ffffff"
+        self.setTextFormat(Qt.RichText)
+        self.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.setOpenExternalLinks(False)
+        self.linkActivated.connect(self._on_link_activated)
+        self.setText(path)
+
+    def setText(self, text: str):
+        """Set plain path text and render breadcrumb links."""
+        normalized = self._normalize_path(text)
+        self._path_text = normalized
+        super().setText(self._to_breadcrumb_html(normalized))
+
+    def text(self) -> str:
+        """Return the plain path text instead of rich text."""
+        return self._path_text
+
+    def set_breadcrumb_color(self, color: str):
+        """Set explicit breadcrumb text color for rich text links."""
+        if color:
+            self._text_color = color
+            super().setText(self._to_breadcrumb_html(self._path_text))
+
+    @staticmethod
+    def _normalize_path(path: str) -> str:
+        path = (path or "").strip()
+        if not path:
+            return "/"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        if len(path) > 1:
+            path = path.rstrip("/")
+        return path or "/"
+
+    def _to_breadcrumb_html(self, path: str) -> str:
+        parts = [p for p in path.strip("/").split("/") if p]
+        links = [f'<a href="0" style="text-decoration:none; color:{self._text_color};">/</a>']
+        for idx, part in enumerate(parts, start=1):
+            links.append(
+                f'<a href="{idx}" style="text-decoration:none; color:{self._text_color};">{escape(part)}</a>'
+            )
+        return f" <span style=\"color:{self._text_color};\">&gt;</span> ".join(links)
+
+    def _on_link_activated(self, link: str):
+        """Emit clicked breadcrumb level and target path."""
+        try:
+            level = max(0, int(link))
+        except ValueError:
+            return
+        parts = [p for p in self._path_text.strip("/").split("/") if p]
+        level = min(level, len(parts))
+        target_path = "/" if level == 0 else "/" + "/".join(parts[:level])
+        self.breadcrumb_clicked.emit(target_path, level)
 
 
 class CloudDriveView(QWidget):
@@ -118,6 +182,11 @@ class CloudDriveView(QWidget):
         }
         QLabel#pathLabel {
             color: %text_secondary%;
+            font-size: 14px;
+            padding: 0 10px;
+        }
+        QLabel#breadcrumbPathLabel {
+            color: %text%;
             font-size: 14px;
             padding: 0 10px;
         }
@@ -445,8 +514,9 @@ class CloudDriveView(QWidget):
         toolbar_layout.addWidget(self._back_btn)
 
         # Path label
-        self._path_label = QLabel("/")
-        self._path_label.setObjectName("pathLabel")
+        self._path_label = BreadcrumbLabel("/")
+        self._path_label.setObjectName("breadcrumbPathLabel")
+        self._path_label.breadcrumb_clicked.connect(self._on_breadcrumb_clicked)
         toolbar_layout.addWidget(self._path_label)
 
         layout.addLayout(toolbar_layout)
@@ -1112,6 +1182,63 @@ class CloudDriveView(QWidget):
         self._status_label.setText(f"{len(files)} {t('items')}")
 
     # === Navigation ===
+
+    def _on_breadcrumb_clicked(self, target_path: str, level: int):
+        """Jump directly to selected breadcrumb level."""
+        if target_path == self._path_label.text():
+            return
+
+        if self._share_mode:
+            self._jump_to_share_breadcrumb(target_path)
+            return
+
+        if not self._current_account:
+            return
+
+        if self._current_account.provider == "baidu":
+            self._jump_to_baidu_breadcrumb(target_path)
+            return
+
+        depth = max(0, min(level, len(self._fid_path)))
+        self._fid_path = self._fid_path[:depth]
+        self._navigation_history = self._navigation_history[:depth]
+        self._current_parent_id = self._fid_path[-1] if self._fid_path else "0"
+        self._path_label.setText(target_path)
+        self._back_btn.setEnabled(depth > 0)
+        self._load_files()
+
+    def _jump_to_share_breadcrumb(self, target_path: str):
+        """Jump to an ancestor path while browsing parsed share folders."""
+        root_path = f"/{self._share_root_title}" if self._share_root_title else "/"
+        if target_path == "/":
+            target_path = root_path
+
+        if target_path == root_path:
+            self._share_history = []
+            self._load_share_folder("0", root_path)
+            self._back_btn.setEnabled(False)
+            return
+
+        for idx, (parent_id, path) in enumerate(self._share_history):
+            if path != target_path:
+                continue
+            self._share_history = self._share_history[:idx]
+            self._load_share_folder(parent_id, path)
+            self._back_btn.setEnabled(bool(self._share_history))
+            return
+
+    def _jump_to_baidu_breadcrumb(self, target_path: str):
+        """Jump to an ancestor path for Baidu provider."""
+        normalized = target_path if target_path.startswith("/") else f"/{target_path}"
+        if len(normalized) > 1:
+            normalized = normalized.rstrip("/")
+        depth = 0 if normalized == "/" else len([p for p in normalized.strip("/").split("/") if p])
+        self._navigation_history = self._navigation_history[:depth]
+        self._fid_path = normalized.strip("/").split("/") if normalized != "/" else []
+        self._current_parent_id = normalized
+        self._path_label.setText(normalized)
+        self._back_btn.setEnabled(normalized != "/")
+        self._load_files()
 
     def _navigate_to_folder(self, file: CloudFile):
         """Navigate to a folder."""
@@ -2083,6 +2210,7 @@ class CloudDriveView(QWidget):
         self.setStyleSheet(tm.get_qss(self._STYLE_TEMPLATE))
         self._share_search_input.setStyleSheet(tm.get_qss(self._SEARCH_INPUT_STYLE_TEMPLATE))
         self._share_search_btn.setStyleSheet(tm.get_qss(self._SEARCH_BUTTON_STYLE_TEMPLATE))
+        self._path_label.set_breadcrumb_color(tm.current_theme.text)
 
     def _adjust_share_results_height(self):
         """Keep search results list around half-height when visible."""
