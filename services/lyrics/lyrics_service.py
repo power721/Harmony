@@ -125,8 +125,7 @@ class LyricsService:
                 try:
                     search_results = future.result(timeout=6)
                     # Convert LyricsSearchResult to dict for compatibility
-                    for r in search_results:
-                        results.append({
+                    results.extend({
                             'id': r.id,
                             'title': r.title,
                             'artist': r.artist,
@@ -137,7 +136,7 @@ class LyricsService:
                             'lyrics': r.lyrics,
                             'accesskey': r.accesskey,
                             'supports_yrc': r.supports_yrc,
-                        })
+                        } for r in search_results)
                     logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
 
                     # Call progress callback if provided
@@ -405,8 +404,7 @@ class LyricsService:
                     search_results = future.result(timeout=6)
                     # Convert LyricsSearchResult to SearchResult for MatchScorer
                     from utils.match_scorer import SearchResult
-                    for r in search_results:
-                        all_results.append(SearchResult(
+                    all_results.extend(SearchResult(
                             title=r.title,
                             artist=r.artist,
                             album=r.album,
@@ -414,7 +412,7 @@ class LyricsService:
                             source=r.source,
                             id=r.id,
                             cover_url=r.cover_url,
-                        ))
+                        ) for r in search_results)
                 except Exception as e:
                     logger.debug(f"[LyricsService] {source_name} search failed: {e}")
 
