@@ -77,6 +77,16 @@ def make_cloud_item(cloud_file_id: str) -> PlaylistItem:
     )
 
 
+def make_online_item(cloud_file_id: str) -> PlaylistItem:
+    return PlaylistItem(
+        source=TrackSource.QQ,
+        cloud_file_id=cloud_file_id,
+        title="Online",
+        artist="Artist",
+        needs_download=True,
+    )
+
+
 def make_service(monkeypatch):
     timers: List[FakeTimer] = []
 
@@ -127,7 +137,11 @@ def test_schedule_next_track_preload_reuses_existing_pending_target(monkeypatch)
     PlaybackService._schedule_next_track_preload(service)
     PlaybackService._schedule_next_track_preload(service)
 
-    assert timers[-1].start_count == 1
+    assert len(timers) == 1, "should reuse the same timer instance for duplicate targets"
+    timer = timers[-1]
+    assert timer.start_count == 1
+    assert timer.isActive()
+    assert service._pending_next_preload_cloud_file_id == "cloud-2"
 
 
 def test_schedule_next_track_preload_replaces_previous_target(monkeypatch):
@@ -161,6 +175,8 @@ def test_next_track_preload_timeout_skips_when_target_is_no_longer_next(monkeypa
     timer.fire()
 
     assert not service._preload_cloud_track_calls
+    assert not service._preload_online_track_calls
+    assert service._pending_next_preload_cloud_file_id == "cloud-5"
 
 
 def test_next_track_preload_timeout_dispatches_current_target_once(monkeypatch):
@@ -172,3 +188,20 @@ def test_next_track_preload_timeout_dispatches_current_target_once(monkeypatch):
     timer.fire()
 
     assert service._preload_cloud_track_calls == ["cloud-7"]
+    assert service._preload_online_track_calls == []
+    assert service._pending_next_preload_cloud_file_id is None
+    assert not timer.isActive()
+
+
+def test_next_track_preload_timeout_dispatches_online_target_once(monkeypatch):
+    service, timers = make_service(monkeypatch)
+    service._engine._next_item = make_online_item("qq-1")
+    PlaybackService._schedule_next_track_preload(service)
+
+    timer = timers[-1]
+    timer.fire()
+
+    assert service._preload_online_track_calls == ["qq-1"]
+    assert service._preload_cloud_track_calls == []
+    assert service._pending_next_preload_cloud_file_id is None
+    assert not timer.isActive()
