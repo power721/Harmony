@@ -635,6 +635,7 @@ class OnlineDetailView(QWidget):
         self._albums_total = 0  # Total album count from API
         self._albums_append = False  # Flag for append mode
         self._is_faved = False
+        self._album_request_id = 0
 
         # Pagination state
         self._current_page = 1
@@ -1250,6 +1251,7 @@ class OnlineDetailView(QWidget):
             self._load_cover(avatar_url)
 
         songs = data.get("songs", [])
+        albums = data.get("albums", [])
         total = data.get("total", len(songs))
         page = data.get("page", 1)
         page_size = data.get("page_size", 50)
@@ -1283,10 +1285,7 @@ class OnlineDetailView(QWidget):
         # Update pagination controls
         self._update_pagination()
         self._display_songs(self._tracks)
-
-        # Load artist albums only on first page (not when paginating songs)
-        if self._current_page == 1:
-            self._load_artist_albums()
+        self._on_albums_loaded(albums)
 
     def _update_pagination(self):
         """Update pagination controls visibility and state."""

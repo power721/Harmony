@@ -835,7 +835,7 @@ class QQMusicService:
                         "singerMid": singer_mid,
                         "order": 0,
                         "begin": 0,
-                        "num": 1,
+                        "num": 10,
                         "songNumTag": 0,
                         "singerID": 0
                     }
@@ -939,10 +939,13 @@ class QQMusicService:
                 total_albums = req_3_data.get("total", 0)
 
                 for album in album_list:
+                    album_mid = album.get("albumMid", "")
+                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else ''
                     albums.append({
-                        'mid': album.get("albumMid", ""),
+                        'mid': album_mid,
                         'id': album.get("albumID", 0),
                         'name': album.get("albumName", ""),
+                        'cover_url': cover_url,
                         'singer_name': album.get("singerName", ""),
                         'publish_date': album.get("publishDate", ""),
                     })
