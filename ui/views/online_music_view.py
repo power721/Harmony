@@ -2576,7 +2576,6 @@ class OnlineMusicView(QWidget):
 
     def _on_artist_clicked(self, artist: OnlineArtist):
         """Handle artist click - show artist detail view."""
-        logger.info(f"Artist clicked: {artist.name}, mid: {artist.mid}")
         # Push navigation state if we're coming from search results or grid view
         if self._stack.currentWidget() in [self._results_page]:
             self._navigation_stack.append({
@@ -2588,7 +2587,6 @@ class OnlineMusicView(QWidget):
 
     def _on_album_clicked(self, album: OnlineAlbum):
         """Handle album click - show album detail view."""
-        logger.info(f"Album clicked: {album.name}, mid: {album.mid}")
         # Push navigation state if we're coming from search results or detail view
         current_widget = self._stack.currentWidget()
         if current_widget == self._results_page:
@@ -2608,7 +2606,6 @@ class OnlineMusicView(QWidget):
 
     def _on_playlist_clicked(self, playlist: OnlinePlaylist):
         """Handle playlist click - show playlist detail view."""
-        logger.info(f"Playlist clicked: {playlist.title}, id: {playlist.id}")
         # Push navigation state if we're coming from search results or detail view
         current_widget = self._stack.currentWidget()
         if current_widget == self._results_page:
