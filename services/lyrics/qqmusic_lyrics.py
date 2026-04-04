@@ -563,18 +563,13 @@ def search_artist_from_qqmusic(artist_name: str, limit: int = 10) -> List[dict]:
     """
     client = _get_client()
     artists = client.search_artist(artist_name, limit)
-    results = []
-
-    for artist in artists:
-        results.append({
+    return [{
             'id': artist.get('mid', '') or artist.get('singerMID', ''),
             'name': artist.get('name', '') or artist.get('singerName', ''),
             'singer_mid': artist.get('mid', '') or artist.get('singerMID', ''),
             'album_count': artist.get('albumNum', 0),
             'source': 'qqmusic',
-        })
-
-    return results
+        } for artist in artists]
 
 
 def download_qqmusic_lyrics(mid: str) -> str:
