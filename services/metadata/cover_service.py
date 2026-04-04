@@ -330,8 +330,7 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    for r in search_results:
-                        all_results.append(SearchResult(
+                    all_results.extend(SearchResult(
                             title=r.title,
                             artist=r.artist,
                             album=r.album,
@@ -340,7 +339,7 @@ class CoverService:
                             id=r.id,
                             cover_url=r.cover_url,
                             album_mid=getattr(r, 'album_mid', None),
-                        ))
+                        ) for r in search_results)
                     logger.debug(f"{source_name} found {len(search_results)} results")
                 except Exception as e:
                     logger.warning(f"Error searching cover from {source_name}: {e}")
@@ -397,8 +396,7 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    for r in search_results:
-                        all_search_results.append(SearchResult(
+                    all_search_results.extend(SearchResult(
                             title=r.title,
                             artist=r.artist,
                             album=r.album,
@@ -407,7 +405,7 @@ class CoverService:
                             id=r.id,
                             cover_url=r.cover_url,
                             album_mid=getattr(r, 'album_mid', None),
-                        ))
+                        ) for r in search_results)
                 except Exception as e:
                     logger.error(f"Error searching {source_name} covers: {e}", exc_info=True)
 
