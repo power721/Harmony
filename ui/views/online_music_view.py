@@ -855,6 +855,7 @@ class OnlineMusicView(QWidget):
         self._search_request_id = 0
         self._top_list_worker: Optional[TopListWorker] = None
         self._completion_worker: Optional[CompletionWorker] = None
+        self._completion_request_id = 0
         self._completion_timer: Optional[QTimer] = None
         self._selected_top_id: Optional[int] = None
         self._top_lists_loaded = False  # Track if top lists have been loaded
@@ -2362,17 +2363,25 @@ class OnlineMusicView(QWidget):
         if not keyword or len(keyword) < 1:
             return
 
-        # Cancel previous completion worker
-        if self._completion_worker and self._completion_worker.isRunning():
-            self._completion_worker.terminate()
+        self._completion_request_id += 1
+        request_id = self._completion_request_id
 
         # Note: Completion API works without login too
         self._completion_worker = CompletionWorker(self._qqmusic_service, keyword)
-        self._completion_worker.completion_ready.connect(self._on_completion_ready)
+        self._completion_worker.completion_ready.connect(
+            lambda suggestions, rid=request_id: self._on_completion_ready(suggestions, rid)
+        )
         self._completion_worker.start()
 
-    def _on_completion_ready(self, suggestions: List[Dict[str, Any]]):
+    def _on_completion_ready(
+            self,
+            suggestions: List[Dict[str, Any]],
+            request_id: int | None = None
+    ):
         """Handle completion suggestions ready."""
+        if request_id is not None and request_id != self._completion_request_id:
+            return
+
         if not suggestions:
             return
 

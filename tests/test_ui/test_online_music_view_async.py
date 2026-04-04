@@ -31,6 +31,16 @@ def _make_view_for_search_callbacks():
     return view
 
 
+def _make_view_for_completion_callbacks():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._completion_request_id = 0
+    view._completer = Mock()
+    view._search_input = Mock()
+    view._search_input.text.return_value = "current"
+    view._search_input.hasFocus.return_value = True
+    return view
+
+
 def test_stale_search_completion_is_ignored():
     """Older search results should not overwrite the UI after a newer request starts."""
     view = _make_view_for_search_callbacks()
@@ -67,3 +77,26 @@ def test_current_search_completion_updates_ui():
     assert view._current_tracks == result.tracks
     view._display_tracks.assert_called_once_with(result.tracks)
     view._stack.setCurrentWidget.assert_called_once_with(view._results_page)
+
+
+def test_stale_completion_results_are_ignored():
+    """Older completion suggestions should not overwrite the current query."""
+    view = _make_view_for_completion_callbacks()
+    view._completion_request_id = 4
+
+    OnlineMusicView._on_completion_ready(view, [{"hint": "old"}], 3)
+
+    view._completer.setModel.assert_not_called()
+    view._completer.complete.assert_not_called()
+
+
+def test_current_completion_results_update_completer():
+    """Current completion suggestions should still update the completer."""
+    view = _make_view_for_completion_callbacks()
+    view._completion_request_id = 5
+
+    OnlineMusicView._on_completion_ready(view, [{"hint": "current song"}], 5)
+
+    view._completer.setModel.assert_called_once()
+    view._completer.setCompletionPrefix.assert_called_once_with("current")
+    view._completer.complete.assert_called_once()
