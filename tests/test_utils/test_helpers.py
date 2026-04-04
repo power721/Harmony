@@ -2,6 +2,7 @@
 Tests for helper utility functions.
 """
 
+import builtins
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -256,11 +257,16 @@ class TestGetCacheDir:
 
     def test_get_cache_dir_frozen_platformdirs_import_error(self):
         """Test get_cache_dir falls back when platformdirs is not available."""
+        real_import = builtins.__import__
+
+        def import_side_effect(name, *args, **kwargs):
+            if name == 'platformdirs':
+                raise ImportError("no module")
+            return real_import(name, *args, **kwargs)
+
         with patch.object(sys, 'frozen', True, create=True), \
-             patch.dict('sys.modules', {'platformdirs': None}):
-            # Force ImportError by raising it when platformdirs is accessed
-            with patch('builtins.__import__', side_effect=ImportError("no module")):
-                result = get_cache_dir()
+             patch('builtins.__import__', side_effect=import_side_effect):
+            result = get_cache_dir()
 
         # Falls back to ~/.cache/Harmony
         assert result == Path.home() / '.cache' / 'Harmony'
