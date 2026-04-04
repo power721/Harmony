@@ -255,7 +255,7 @@ class QQMusicService:
             result = self.client.get_song_url(song_mid, quality=quality)
             urls = result.get('urls', {})
 
-            for mid, url in urls.items():
+            for url in urls.values():
                 if url:
                     return {
                         'url': url,
@@ -740,11 +740,10 @@ class QQMusicService:
                     singer_info = song_info.get('singer', [])
                     singer_list_data = []
                     if isinstance(singer_info, list):
-                        for s in singer_info:
-                            singer_list_data.append({
+                        singer_list_data.extend({
                                 'mid': s.get('mid', ''),
                                 'name': s.get('name', '')
-                            })
+                            } for s in singer_info)
 
                     # Build album info
                     album_data = song_info.get('album', {})
@@ -1036,15 +1035,15 @@ class QQMusicService:
                 return []
 
             groups = result.get('group', [])
-            top_lists = []
-
-            for group in groups:
-                for top_list in group.get('toplist', []):
-                    top_lists.append({
-                        'id': top_list.get('topId', ''),
-                        'title': top_list.get('title', ''),
-                        'type': top_list.get('type', 0),
-                    })
+            top_lists = [
+                {
+                    'id': top_list.get('topId', ''),
+                    'title': top_list.get('title', ''),
+                    'type': top_list.get('type', 0),
+                }
+                for group in groups
+                for top_list in group.get('toplist', [])
+            ]
 
             return top_lists
 
