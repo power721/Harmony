@@ -320,6 +320,44 @@ class TestCloudAccount:
 class TestCloudDriveView:
     """Tests for CloudDriveView share-search state handling."""
 
+    def test_batch_download_button_disabled_without_selection(self, qapp, mock_config):
+        """Batch download button should be disabled when no file is selected."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+
+        files = [
+            CloudFile(
+                id=1,
+                account_id=1,
+                file_id="file1",
+                parent_id="0",
+                name="Test Song.mp3",
+                file_type="audio",
+                size=1024000,
+            ),
+        ]
+        view._current_audio_files = files
+        view._batch_download_btn.setVisible(True)
+        view._file_table.populate(files)
+
+        qapp.processEvents()
+        assert view._batch_download_btn.isEnabled() is False
+
+        view._file_table._table.selectRow(0)
+        qapp.processEvents()
+        assert view._batch_download_btn.isEnabled() is True
+
+        view._file_table._table.clearSelection()
+        qapp.processEvents()
+        assert view._batch_download_btn.isEnabled() is False
+
     def test_clear_share_search_results_restores_previous_path(self, qapp, mock_config):
         """Clearing share search should restore pre-share folder path/state."""
         ThemeManager.instance(mock_config)

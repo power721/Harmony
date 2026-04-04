@@ -486,6 +486,7 @@ class CloudDriveView(QWidget):
         self._batch_download_btn.setCursor(Qt.PointingHandCursor)
         self._batch_download_btn.clicked.connect(self._download_selected_files)
         self._batch_download_btn.setVisible(False)
+        self._batch_download_btn.setEnabled(False)
         toolbar_layout.addWidget(self._batch_download_btn)
 
         self._cancel_downloads_btn = QPushButton(t("cancel_downloads"))
@@ -561,7 +562,7 @@ class CloudDriveView(QWidget):
         self._file_table.folder_double_clicked.connect(self._navigate_to_folder)
         self._file_table.audio_double_clicked.connect(self._play_audio_file)
         self._file_table.context_menu_requested.connect(self._show_file_context_menu)
-        self._file_table.selection_changed.connect(self._update_share_save_button_state)
+        self._file_table.selection_changed.connect(self._on_file_table_selection_changed)
 
         # File context menu signals
         self._file_context_menu.play_requested.connect(self._play_audio_file)
@@ -955,6 +956,7 @@ class CloudDriveView(QWidget):
         self._current_parent_id = parent_id
         self._current_audio_files = [f for f in files if f.file_type == "audio"]
         self._file_table.populate(files, self._current_playing_file_id)
+        self._update_batch_download_button_state()
         self._back_btn.setEnabled(bool(self._share_history))
         self._status_label.setText(f"{len(files)} {t('items')}")
 
@@ -1124,6 +1126,7 @@ class CloudDriveView(QWidget):
         self._file_table.populate(saved_files, self._current_playing_file_id)
         self._back_btn.setEnabled(True)
         self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
+        self._update_batch_download_button_state()
         self._play_audio_file(target, start_position=start_position)
 
     # === File Management ===
@@ -1179,6 +1182,7 @@ class CloudDriveView(QWidget):
 
         # Use the CloudFileTable component
         self._file_table.populate(files, self._current_playing_file_id)
+        self._update_batch_download_button_state()
         self._status_label.setText(f"{len(files)} {t('items')}")
 
     # === Navigation ===
@@ -1869,7 +1873,7 @@ class CloudDriveView(QWidget):
         """Handle completion of all batch downloads."""
         self._is_downloading = False
         self._current_download_thread = None
-        self._batch_download_btn.setEnabled(True)
+        self._update_batch_download_button_state()
         self._cancel_downloads_btn.setVisible(False)
 
         self._status_label.setText(
@@ -1887,7 +1891,7 @@ class CloudDriveView(QWidget):
             self._current_download_thread = None
 
         self._is_downloading = False
-        self._batch_download_btn.setEnabled(True)
+        self._update_batch_download_button_state()
         self._cancel_downloads_btn.setVisible(False)
 
         self._status_label.setText("")
@@ -2230,6 +2234,21 @@ class CloudDriveView(QWidget):
             self._path_label.setVisible(True)
             if not self._share_mode:
                 self._batch_download_btn.setVisible(len(self._current_audio_files) > 0)
+                self._update_batch_download_button_state()
+
+    def _on_file_table_selection_changed(self):
+        """Sync toolbar actions with current file table selection."""
+        self._update_batch_download_button_state()
+        self._update_share_save_button_state()
+
+    def _update_batch_download_button_state(self):
+        """Enable batch download only when at least one audio file is selected."""
+        if self._is_downloading:
+            self._batch_download_btn.setEnabled(False)
+            return
+
+        has_selected_audio = bool(self._file_table.get_selected_audio_files())
+        self._batch_download_btn.setEnabled(has_selected_audio)
 
     def _update_share_save_button_state(self):
         """Update visibility/enabled state for 'save selected' action."""
