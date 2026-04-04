@@ -111,16 +111,13 @@ class SqliteGenreRepository(BaseRepository):
         """)
         rows = cursor.fetchall()
 
-        genres = []
-        for row in rows:
-            genres.append(Genre(
+        return [Genre(
                 name=row["name"] or "",
                 cover_path=row["track_cover_path"] or row["album_cover_path"],
                 song_count=row["song_count"] or 0,
                 album_count=row["album_count"] or 0,
                 duration=row["total_duration"] or 0.0,
-            ))
-        return genres
+            ) for row in rows]
 
     def get_by_name(self, name: str) -> Optional[Genre]:
         """
