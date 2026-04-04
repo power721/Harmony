@@ -59,6 +59,8 @@ class ArtistView(QWidget):
     add_to_queue = Signal(list)  # Emits list of Track objects
     add_to_playlist = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
+    ALBUMS_BATCH_SIZE = 30
+    ALBUMS_LOAD_THRESHOLD_PX = 200
     TRACKS_BATCH_SIZE = 30
     TRACKS_LOAD_THRESHOLD_PX = 200
 
@@ -75,6 +77,7 @@ class ArtistView(QWidget):
         self._cover_service = cover_service
         self._artist: Artist = None
         self._albums: List[Album] = []
+        self._albums_loaded_count = 0
         self._tracks: List[Track] = []
         self._tracks_loaded_count = 0
         self._album_cards: List[AlbumCard] = []
@@ -530,12 +533,12 @@ class ArtistView(QWidget):
         layout.addWidget(self._albums_title_label)
 
         # Scroll area for albums
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setMaximumHeight(600)  # ~2 rows of album cards
-        scroll_area.setStyleSheet(f"""
+        self._albums_scroll_area = QScrollArea()
+        self._albums_scroll_area.setWidgetResizable(True)
+        self._albums_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._albums_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._albums_scroll_area.setMaximumHeight(600)  # ~2 rows of album cards
+        self._albums_scroll_area.setStyleSheet(f"""
             QScrollArea {{
                 background-color: transparent;
                 border: none;
@@ -562,8 +565,9 @@ class ArtistView(QWidget):
         self._albums_layout.setSpacing(20)
         self._albums_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        scroll_area.setWidget(self._albums_container)
-        layout.addWidget(scroll_area)
+        self._albums_scroll_area.setWidget(self._albums_container)
+        self._albums_scroll_area.verticalScrollBar().valueChanged.connect(self._on_albums_scroll_changed)
+        layout.addWidget(self._albums_scroll_area)
 
         return section
 
@@ -850,15 +854,28 @@ class ArtistView(QWidget):
                 logger.error(f"Error showing cover dialog: {e}")
 
     def _render_albums(self):
-        """Render album cards."""
-        # Clear existing
+        """Render album cards with lazy loading."""
+        self._clear_album_cards()
+        self._albums_loaded_count = 0
+        self._load_next_albums_batch()
+
+    def _clear_album_cards(self):
+        """Remove all rendered album cards."""
         for card in self._album_cards:
             self._albums_layout.removeWidget(card)
             card.deleteLater()
         self._album_cards.clear()
 
-        # Add album cards (show all albums)
-        for i, album in enumerate(self._albums):
+    def _load_next_albums_batch(self):
+        """Append next batch of album cards."""
+        if self._albums_loaded_count >= len(self._albums):
+            return
+
+        start = self._albums_loaded_count
+        end = min(start + self.ALBUMS_BATCH_SIZE, len(self._albums))
+
+        for i in range(start, end):
+            album = self._albums[i]
             card = AlbumCard(album)
             card.clicked.connect(self._on_album_clicked)
             card.download_cover_requested.connect(self._on_download_cover_requested)
@@ -867,6 +884,14 @@ class ArtistView(QWidget):
             col = i % 5
             self._albums_layout.addWidget(card, row, col, Qt.AlignTop | Qt.AlignLeft)
             self._album_cards.append(card)
+
+        self._albums_loaded_count = end
+
+    def _on_albums_scroll_changed(self, value: int):
+        """Load more albums when user scrolls close to section bottom."""
+        scrollbar = self._albums_scroll_area.verticalScrollBar()
+        if value >= max(0, scrollbar.maximum() - self.ALBUMS_LOAD_THRESHOLD_PX):
+            self._load_next_albums_batch()
 
     def _render_tracks(self):
         """Render tracks table with lazy loading."""

@@ -7,6 +7,7 @@ import pytest
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from domain.album import Album
 from domain.artist import Artist
 from domain.track import Track, TrackSource
 from system.theme import ThemeManager
@@ -52,6 +53,18 @@ def _build_tracks(count: int) -> list[Track]:
     ]
 
 
+def _build_albums(count: int) -> list[Album]:
+    return [
+        Album(
+            name=f"Album {i + 1}",
+            artist="Lazy Artist",
+            song_count=10,
+            duration=1800,
+        )
+        for i in range(count)
+    ]
+
+
 def test_artist_view_tracks_lazy_load_in_batches(qapp, mock_theme_config):
     ThemeManager.instance(mock_theme_config)
 
@@ -84,3 +97,37 @@ def test_artist_view_tracks_lazy_load_in_batches(qapp, mock_theme_config):
         guard += 1
 
     assert view._tracks_table.rowCount() == len(tracks)
+
+
+def test_artist_view_albums_lazy_load_in_batches(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+
+    albums = _build_albums(95)
+    artist = Artist(name="Lazy Artist", song_count=0, album_count=len(albums))
+
+    library_service = MagicMock()
+    library_service.get_artist_albums.return_value = albums
+    library_service.get_artist_tracks.return_value = []
+
+    view = ArtistView(library_service=library_service)
+    view.set_artist(artist)
+
+    QTest.qWait(30)
+    qapp.processEvents()
+
+    # Initial render should only load first batch.
+    assert len(view._album_cards) == view.ALBUMS_BATCH_SIZE
+
+    # Simulate scrolling near the end to trigger load-more.
+    view._on_albums_scroll_changed(view._albums_scroll_area.verticalScrollBar().maximum())
+    qapp.processEvents()
+    assert len(view._album_cards) == view.ALBUMS_BATCH_SIZE * 2
+
+    # Continue loading until all cards are rendered.
+    guard = 0
+    while len(view._album_cards) < len(albums) and guard < len(albums):
+        view._on_albums_scroll_changed(view._albums_scroll_area.verticalScrollBar().maximum())
+        qapp.processEvents()
+        guard += 1
+
+    assert len(view._album_cards) == len(albums)
