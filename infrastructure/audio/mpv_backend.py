@@ -315,6 +315,7 @@ class MpvAudioBackend(AudioBackend):
         self._emit_state_if_changed()
 
     def _on_position_observed(self, value):
+        self._mark_media_ready_if_active()
         if value is None:
             return
         try:
@@ -323,6 +324,7 @@ class MpvAudioBackend(AudioBackend):
             return
 
     def _on_duration_observed(self, value):
+        self._mark_media_ready_if_active()
         if value is None:
             return
         try:
@@ -331,16 +333,13 @@ class MpvAudioBackend(AudioBackend):
             return
 
     def _on_pause_observed(self, _value):
+        self._mark_media_ready_if_active()
         self._emit_state_if_changed()
 
     def _on_idle_observed(self, value):
         is_idle = bool(value)
-        if not is_idle and not self._media_ready:
-            self._media_ready = True
-            if self._pending_seek_ms is not None:
-                self._seek_now(self._pending_seek_ms)
-                self._pending_seek_ms = None
-            self.media_loaded.emit()
+        if not is_idle:
+            self._mark_media_ready_if_active()
         elif is_idle and self._media_ready and not self._explicit_stop:
             # Fallback for environments where eof-reached callback is unreliable.
             # Guard against transient idle transitions by requiring EOF evidence.
@@ -377,6 +376,18 @@ class MpvAudioBackend(AudioBackend):
             return
         self._end_notified = True
         self.end_of_media.emit()
+
+    def _mark_media_ready_if_active(self):
+        """Mark media ready when mpv is active even if idle transition was missed."""
+        if self._media_ready:
+            return
+        if bool(self._safe_get_property("idle-active", True)):
+            return
+        self._media_ready = True
+        if self._pending_seek_ms is not None:
+            self._seek_now(self._pending_seek_ms)
+            self._pending_seek_ms = None
+        self.media_loaded.emit()
 
     def _should_treat_idle_as_end(self) -> bool:
         """Decide whether an idle transition should be treated as end-of-media."""

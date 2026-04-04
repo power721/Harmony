@@ -298,3 +298,28 @@ def test_mpv_backend_ignores_eof_signal_when_not_near_end(monkeypatch):
     player.trigger("eof-reached", True)
 
     assert ended == []
+
+
+def test_mpv_backend_marks_media_loaded_on_duration_update_after_active_replace(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    loaded = []
+    backend.media_loaded.connect(lambda: loaded.append(True))
+
+    # Simulate previous track already active; replacing source may not produce
+    # a fresh idle-active transition in some mpv environments.
+    player._props["idle-active"] = False
+    backend._media_ready = True
+
+    backend.set_source("/tmp/next.ogg")
+    assert backend._media_ready is False
+
+    # New track metadata arrives while mpv still reports active timeline.
+    player.trigger("duration", 210.0)
+
+    assert backend._media_ready is True
+    assert loaded == [True]

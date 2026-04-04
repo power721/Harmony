@@ -261,6 +261,9 @@ class LibraryView(QWidget):
         self._player.engine.current_track_changed.connect(
             self._on_current_track_changed
         )
+        self._player.engine.current_track_pending.connect(
+            self._on_current_track_changed
+        )
         self._player.engine.state_changed.connect(self._on_player_state_changed)
 
         # Connect to file organization events

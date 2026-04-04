@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
 from infrastructure.network import HttpClient
+from services._singleflight import SingleFlight
 from utils.helpers import get_cache_dir
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+_qqmusic_cover_singleflight: SingleFlight[Optional[str]] = SingleFlight()
 
 
 class CoverService:
@@ -264,30 +267,36 @@ class CoverService:
             return str(cached_cover)
 
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
-
-            # Get cover URL
-            cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
-            if not cover_url:
-                logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
-                return None
-
-            logger.debug(f"[CoverService] Got cover URL for song_mid={song_mid}, album_mid={album_mid}: {cover_url}")
-
-            # 同一个专辑的歌曲封面基本一样，但是每次都要get_qqmusic_cover_url
-            cache_key = hashlib.md5(cover_url.encode()).hexdigest()
-            cached_cover = self._get_cached_cover(cache_key)
-            if cached_cover and cached_cover.exists():
-                return str(cached_cover)
-
-            # Download cover
-            cover_data = self.http_client.get_content(cover_url, timeout=5)
-            if cover_data:
-                return self._save_cover_to_cache(cover_data, cache_key)
+            request_key = ("qqmusic_cover", song_mid or "", album_mid or "", artist or "", title or "")
+            return _qqmusic_cover_singleflight.do(
+                request_key,
+                lambda: self._fetch_online_cover_by_mid(song_mid, album_mid),
+            )
 
         except Exception as e:
             logger.error(f"[CoverService] Error getting online cover: {e}")
 
+        return None
+
+    def _fetch_online_cover_by_mid(self, song_mid: str, album_mid: str | None) -> Optional[str]:
+        """Fetch QQ Music cover bytes by song/album mid and cache the result."""
+        from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+
+        cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
+        if not cover_url:
+            logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
+            return None
+
+        logger.debug(f"[CoverService] Got cover URL for song_mid={song_mid}, album_mid={album_mid}: {cover_url}")
+
+        cache_key = hashlib.md5(cover_url.encode()).hexdigest()
+        cached_cover = self._get_cached_cover(cache_key)
+        if cached_cover and cached_cover.exists():
+            return str(cached_cover)
+
+        cover_data = self.http_client.get_content(cover_url, timeout=5)
+        if cover_data:
+            return self._save_cover_to_cache(cover_data, cache_key)
         return None
 
     def _fetch_online_cover(self, title: str, artist: str, album: str, cache_key: str, duration: float = None) -> \

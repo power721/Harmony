@@ -28,6 +28,7 @@ from utils.lrc_parser import (
     QRC_WORD_RE,
     QRC_XML_RE,
 )
+import logging
 
 
 class TestLyricLine:
@@ -879,3 +880,41 @@ class TestMsToS:
     def test_ms_to_s_fractional(self):
         assert ms_to_s(100) == 0.1
         assert ms_to_s(10) == 0.01
+
+
+class TestDetectAndParseCache:
+    """Test detect_and_parse caching behavior."""
+
+    def test_detect_and_parse_reuses_cached_qrc_parse(self, monkeypatch):
+        qrc_text = (
+            '<QrcInfos><Lyric_1 LyricContent="[1000,1000]A(0,500)B(500,500)"/>'
+            "</QrcInfos>"
+        )
+        calls = {"count": 0}
+
+        def fake_parse_qrc(text):
+            calls["count"] += 1
+            return [LyricLine(1.0, "AB")]
+
+        monkeypatch.setattr("utils.lrc_parser.parse_qrc", fake_parse_qrc)
+
+        first = detect_and_parse(qrc_text)
+        second = detect_and_parse(qrc_text)
+
+        assert calls["count"] == 1
+        assert first[0].text == "AB"
+        assert second[0].text == "AB"
+        assert first is not second
+
+    def test_detect_and_parse_logs_qrc_detection_once_when_cached(self, caplog):
+        qrc_text = (
+            '<QrcInfos><Lyric_1 LyricContent="[2000,1000]C(0,500)D(500,500)"/>'
+            "</QrcInfos>"
+        )
+
+        with caplog.at_level(logging.INFO, logger="utils.lrc_parser"):
+            detect_and_parse(qrc_text)
+            detect_and_parse(qrc_text)
+
+        messages = [record.message for record in caplog.records if "QRC XML" in record.message]
+        assert len(messages) == 1

@@ -195,7 +195,10 @@ class NowPlayingWindow(QWidget):
 
     def __init__(self, playback: PlaybackService, parent=None):
         super().__init__(parent)
+        from app import Bootstrap
+
         self._playback = playback
+        self._config = Bootstrap.instance().config
         self._cover_load_version = 0
         self._current_cover_path = ""
         self._lyrics_thread: Optional[LyricsLoader] = None
@@ -215,6 +218,7 @@ class NowPlayingWindow(QWidget):
         self._cover_anim_timer.timeout.connect(self._update_cover_rotation)
 
         self._setup_ui()
+        self._restore_window_settings()
         self._setup_connections()
 
         from system.theme import ThemeManager
@@ -296,7 +300,7 @@ class NowPlayingWindow(QWidget):
         root.addLayout(body, 1)
 
         # Reuse main PlayerControls and hide the left info/cover section.
-        self._player_controls = PlayerControls(self._playback, self)
+        self._player_controls = PlayerControls(self._playback, self, instance_name="now-playing")
         self._player_controls.setFixedHeight(116)
         self._player_controls.set_info_placeholder_width(180)
         self._player_controls.set_sleep_timer_visible(False)
@@ -336,6 +340,7 @@ class NowPlayingWindow(QWidget):
 
         engine = self._playback.engine
         engine.current_track_changed.connect(self._on_track_changed)
+        engine.current_track_pending.connect(self._on_pending_track_changed)
         engine.position_changed.connect(self._on_position_changed)
         engine.duration_changed.connect(self._on_duration_changed)
         engine.state_changed.connect(self._on_state_changed)
@@ -395,6 +400,14 @@ class NowPlayingWindow(QWidget):
 
     def _on_track_changed(self, track_dict: dict):
         """Update cover/lyrics when track changes."""
+        self._apply_track_info(track_dict, load_cover=True, load_lyrics=True)
+
+    def _on_pending_track_changed(self, track_dict: dict):
+        """Update lightweight track info while download is pending."""
+        self._apply_track_info(track_dict, load_cover=False, load_lyrics=False)
+
+    def _apply_track_info(self, track_dict: dict, load_cover: bool, load_lyrics: bool):
+        """Apply track metadata and optionally trigger heavy loaders."""
         if not track_dict:
             self._current_duration = 0.0
             self._progress_slider.setValue(0)
@@ -425,8 +438,17 @@ class NowPlayingWindow(QWidget):
         self._current_track_title = window_title
         self.setWindowTitle(window_title)
 
-        self._load_cover_async(track_dict)
-        self._load_lyrics_async(track_dict)
+        if load_cover:
+            self._load_cover_async(track_dict)
+        else:
+            self._current_cover_path = ""
+            self._set_default_cover()
+
+        if load_lyrics:
+            self._load_lyrics_async(track_dict)
+        else:
+            self._lyrics_widget.set_lyrics("")
+
         self._update_favorite_state()
 
     def _on_position_changed(self, position_ms: int):
@@ -891,10 +913,27 @@ class NowPlayingWindow(QWidget):
     def _toggle_maximized(self):
         if self.isMaximized():
             self.showNormal()
-            self._max_btn.setIcon(get_icon(IconName.MAXIMIZE, None))
         else:
             self.showMaximized()
-            self._max_btn.setIcon(get_icon(IconName.MINIMIZE, None))
+        self._sync_maximize_button_icon()
+
+    def _sync_maximize_button_icon(self):
+        icon = IconName.MINIMIZE if self.isMaximized() else IconName.MAXIMIZE
+        self._max_btn.setIcon(get_icon(icon, None))
+
+    def _restore_window_settings(self):
+        geometry = self._config.get_now_playing_geometry()
+        if geometry:
+            self.restoreGeometry(geometry)
+
+        if self._config.get_now_playing_maximized():
+            self.showMaximized()
+
+        self._sync_maximize_button_icon()
+
+    def _save_window_settings(self):
+        self._config.set_now_playing_geometry(bytes(self.saveGeometry()))
+        self._config.set_now_playing_maximized(self.isMaximized())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -904,6 +943,8 @@ class NowPlayingWindow(QWidget):
 
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
+        self._save_window_settings()
+
         if self._lyrics_thread and isValid(self._lyrics_thread):
             if self._lyrics_thread.isRunning():
                 self._lyrics_thread.requestInterruption()

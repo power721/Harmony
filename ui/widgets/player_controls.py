@@ -179,16 +179,18 @@ class PlayerControls(QWidget):
         }
     """
 
-    def __init__(self, player: PlaybackService, parent=None):
+    def __init__(self, player: PlaybackService, parent=None, instance_name: str = "default"):
         """
         Initialize player controls.
 
         Args:
             player: Player controller instance
             parent: Parent widget
+            instance_name: Stable label used for instance-aware logging
         """
         super().__init__(parent)
         self._player = player
+        self._instance_name = instance_name or "default"
         self._current_duration = 0
         self._is_seeking = False
         self._skip_seek_on_release = False
@@ -222,6 +224,11 @@ class PlayerControls(QWidget):
             cloud_file_id = current_track.get("cloud_file_id")
             is_fav = self._player.is_favorite(track_id, cloud_file_id)
             self._update_favorite_button_style(is_fav)
+
+    def _format_log_message(self, message: str) -> str:
+        """Format log output with a stable instance label."""
+        instance_name = getattr(self, "_instance_name", "") or "default"
+        return f"[PlayerControls:{instance_name}] {message}"
 
     def _setup_ui(self):
         """Setup the user interface."""
@@ -554,6 +561,7 @@ class PlayerControls(QWidget):
         self._player.engine.position_changed.connect(self._on_position_changed)
         self._player.engine.duration_changed.connect(self._on_duration_changed)
         self._player.engine.current_track_changed.connect(self._on_track_changed)
+        self._player.engine.current_track_pending.connect(self._on_pending_track_changed)
         self._player.engine.play_mode_changed.connect(self._on_play_mode_changed)
         self._player.engine.volume_changed.connect(self._on_volume_changed_from_engine)
 
@@ -596,6 +604,7 @@ class PlayerControls(QWidget):
             self._player.engine.position_changed.disconnect(self._on_position_changed)
             self._player.engine.duration_changed.disconnect(self._on_duration_changed)
             self._player.engine.current_track_changed.disconnect(self._on_track_changed)
+            self._player.engine.current_track_pending.disconnect(self._on_pending_track_changed)
             self._player.engine.play_mode_changed.disconnect(self._on_play_mode_changed)
             self._player.engine.volume_changed.disconnect(self._on_volume_changed_from_engine)
 
@@ -1189,6 +1198,14 @@ class PlayerControls(QWidget):
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
+        self._apply_track_info(track_dict, load_cover=True)
+
+    def _on_pending_track_changed(self, track_dict: dict):
+        """Handle track selection that still needs download."""
+        self._apply_track_info(track_dict, load_cover=False)
+
+    def _apply_track_info(self, track_dict: dict, load_cover: bool):
+        """Apply track metadata and optionally start cover loading."""
         if track_dict:
             # Reset progress state so new track won't reuse stale duration/position.
             self._current_duration = 0.0
@@ -1221,11 +1238,11 @@ class PlayerControls(QWidget):
 
             # Clear cover immediately, load in background
             self._cover_label.clear()
-            # Increment version to invalidate any pending cover loads
             self._cover_load_version += 1
-            current_version = self._cover_load_version
-            # Use QTimer to delay cover loading so UI doesn't block
-            QTimer.singleShot(100, lambda v=current_version, t=track_dict: self._load_cover_art_async(t, v))
+            if load_cover:
+                current_version = self._cover_load_version
+                # Use QTimer to delay cover loading so UI doesn't block
+                QTimer.singleShot(100, lambda v=current_version, t=track_dict: self._load_cover_art_async(t, v))
         else:
             self._current_duration = 0.0
             self._progress_slider.setValue(0)
@@ -1260,7 +1277,7 @@ class PlayerControls(QWidget):
             cover_path = track_dict.get("cover_path")
             if cover_path:
                 if Path(cover_path).exists():
-                    logger.debug(f"[PlayerControls] Found cover_path in track_dict: {cover_path}")
+                    logger.debug(self._format_log_message(f"Found cover_path in track_dict: {cover_path}"))
                     return cover_path
 
             # Check if this is an online QQ Music track
@@ -1270,7 +1287,7 @@ class PlayerControls(QWidget):
 
             if is_online and cloud_file_id:
                 # For online QQ Music tracks, get cover directly by song_mid
-                logger.debug(f"[PlayerControls] Getting cover for online track: song_mid={cloud_file_id}")
+                logger.debug(self._format_log_message(f"Getting cover for online track: song_mid={cloud_file_id}"))
                 try:
                     cover_service = self._player.cover_service
                     if cover_service:
@@ -1283,7 +1300,7 @@ class PlayerControls(QWidget):
                         if cover_path:
                             return cover_path
                 except Exception as e:
-                    logger.error(f"[PlayerControls] Error getting online cover: {e}")
+                    logger.error(self._format_log_message(f"Error getting online cover: {e}"))
 
             # Fall back to getting cover (embedded, cached, or online)
             path = track_dict.get("path", "")
@@ -1302,7 +1319,7 @@ class PlayerControls(QWidget):
 
             try:
                 cover_path = self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
-                logger.debug(f"[PlayerControls] get_track_cover returned: {cover_path}")
+                logger.debug(self._format_log_message(f"get_track_cover returned: {cover_path}"))
                 if cover_path:
                     return cover_path
 
@@ -1310,7 +1327,7 @@ class PlayerControls(QWidget):
                 if album and artist:
                     album_cover = self._get_album_cover(album, artist)
                     if album_cover:
-                        logger.debug(f"[PlayerControls] Using album cover fallback: {album_cover}")
+                        logger.debug(self._format_log_message(f"Using album cover fallback: {album_cover}"))
                         return album_cover
             except Exception as e:
                 logger.error(f"Cover load error for track {track_dict.get('title', 'Unknown')}: {e}", exc_info=True)
@@ -1325,10 +1342,15 @@ class PlayerControls(QWidget):
 
             def run(self):
                 cover_path = self.load_func()
-                logger.info(f"[PlayerControls] Worker emitting cover_path: {cover_path}, version: {self.version}")
+                logger.info(
+                    controls._format_log_message(
+                        f"Worker emitting cover_path: {cover_path}, version: {self.version}"
+                    )
+                )
                 self.signal.emit(cover_path or "", self.version)
 
         # Run in Qt thread pool
+        controls = self
         worker = CoverLoadWorker(load_cover, self._cover_loaded, version)
         QThreadPool.globalInstance().start(worker)
 

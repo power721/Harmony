@@ -66,24 +66,19 @@ class LyricsLoader(QThread):
             # For online QQ Music tracks, get lyrics directly by song_mid
             if self._is_online and self._song_mid:
                 logger.debug(f"[LyricsLoader] Getting lyrics for online track: song_mid={self._song_mid}")
-
-                # First check if local lyrics file exists
-                if self._path and self._path not in ('.', '', '/'):
-                    local_lyrics = LyricsService._get_local_lyrics(self._path)
-                    if local_lyrics:
-                        elapsed = time.time() - start_time
-                        logger.debug(f"[LyricsLoader] Found local lyrics in {elapsed:.2f}s")
-                        self.lyrics_ready.emit(local_lyrics)
-                        return
-
-                # No local lyrics, download from QQ Music
-                lyrics = LyricsService.get_lyrics_by_qqmusic_mid(self._song_mid)
+                had_local_lyrics = bool(
+                    self._path
+                    and self._path not in ('.', '', '/')
+                    and LyricsService._get_local_lyrics(self._path)
+                )
+                lyrics = LyricsService.get_online_track_lyrics(self._song_mid, self._path)
                 elapsed = time.time() - start_time
-                logger.debug(f"[LyricsLoader] Got lyrics in {elapsed:.2f}s")
-                # Save lyrics if we have a valid local path (file downloaded)
-                if lyrics and self._path and self._path not in ('.', '', '/'):
-                    LyricsService.save_lyrics(self._path, lyrics)
-                    logger.debug(f"[LyricsLoader] Saved lyrics for online track to {self._path}")
+                if had_local_lyrics:
+                    logger.debug(f"[LyricsLoader] Found local lyrics in {elapsed:.2f}s")
+                else:
+                    logger.debug(f"[LyricsLoader] Got lyrics in {elapsed:.2f}s")
+                    if lyrics and self._path and self._path not in ('.', '', '/'):
+                        logger.debug(f"[LyricsLoader] Saved lyrics for online track to {self._path}")
             else:
                 # For local tracks, use the normal flow
                 lyrics = LyricsService.get_lyrics(self._path, self._title, self._artist)

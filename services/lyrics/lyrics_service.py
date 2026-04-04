@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, List
 import requests
 
+from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
 from .qqmusic_lyrics import download_qqmusic_lyrics
@@ -31,6 +32,8 @@ except ImportError:
 
 # Shared HTTP client instance
 _shared_http_client = None
+_qqmusic_lyrics_singleflight: SingleFlight[str] = SingleFlight()
+_online_track_lyrics_singleflight: SingleFlight[str] = SingleFlight()
 
 
 def _get_http_client():
@@ -239,10 +242,39 @@ class LyricsService:
             Lyrics content (QRC or LRC format) or empty string
         """
         try:
-            return download_qqmusic_lyrics(song_mid)
+            return _qqmusic_lyrics_singleflight.do(
+                ("qqmusic_lyrics", song_mid),
+                lambda: download_qqmusic_lyrics(song_mid),
+            )
         except Exception as e:
             logger.error(f"Error downloading QQ Music lyrics: {e}", exc_info=True)
             return ""
+
+    @classmethod
+    def get_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
+        """
+        Load or download lyrics for an online QQ Music track once per song/path.
+
+        This wraps the local-file check, online fetch, and local save in a shared
+        single-flight call so multiple windows do not repeat the same work.
+        """
+        return _online_track_lyrics_singleflight.do(
+            ("online_track_lyrics", song_mid, track_path or ""),
+            lambda: cls._load_or_download_online_track_lyrics(song_mid, track_path),
+        )
+
+    @classmethod
+    def _load_or_download_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
+        """Internal helper for online QQ Music lyrics retrieval."""
+        if track_path and track_path not in (".", "", "/"):
+            local_lyrics = cls._get_local_lyrics(track_path)
+            if local_lyrics:
+                return local_lyrics
+
+        lyrics = cls.get_lyrics_by_qqmusic_mid(song_mid)
+        if lyrics and track_path and track_path not in (".", "", "/"):
+            cls.save_lyrics(track_path, lyrics)
+        return lyrics
 
     @classmethod
     def download_and_save_lyrics(cls, track_path: str, title: str, artist: str) -> bool:

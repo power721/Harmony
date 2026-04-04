@@ -24,7 +24,8 @@ class PlayerEngine(QObject):
         position_changed: Emitted when playback position changes (position_ms)
         duration_changed: Emitted when track duration changes (duration_ms)
         state_changed: Emitted when player state changes (PlaybackState)
-        current_track_changed: Emitted when current track changes
+        current_track_changed: Emitted when current playable track changes
+        current_track_pending: Emitted when a selected track still needs download
         volume_changed: Emitted when volume changes (volume 0-100)
         track_finished: Emitted when current track finishes playing
         track_needs_download: Emitted when a cloud track needs to be downloaded
@@ -34,6 +35,7 @@ class PlayerEngine(QObject):
     duration_changed = Signal(int)
     state_changed = Signal(PlaybackState)
     current_track_changed = Signal(object)  # PlaylistItem or dict (backward compat)
+    current_track_pending = Signal(object)  # PlaylistItem or dict awaiting download
     volume_changed = Signal(int)
     track_finished = Signal()
     error_occurred = Signal(str)
@@ -561,6 +563,8 @@ class PlayerEngine(QObject):
 
     def play(self):
         """Start or resume playback."""
+        should_skip_current = False
+
         with self._playlist_lock:
             if self._current_index < 0 and self._playlist:
                 self._current_index = 0
@@ -575,15 +579,23 @@ class PlayerEngine(QObject):
                     return
 
                 # Check if current track needs download or file doesn't exist
-                if item.needs_download or not item.local_path or not Path(item.local_path).exists():
+                if self._item_needs_download(item):
                     item.needs_download = True
                     self.track_needs_download.emit(item)
                     return
+                if self._item_is_missing_local_file(item):
+                    self._emit_missing_local_track_error(item)
+                    should_skip_current = True
+                else:
+                    current_index = self._current_index
+                    local_path = item.local_path
 
-                current_index = self._current_index
-                local_path = item.local_path
             else:
                 return
+
+        if should_skip_current:
+            self.play_next()
+            return
 
         # Load track if not already loaded (outside lock)
         current_source = self._backend.get_source_path()
@@ -631,7 +643,7 @@ class PlayerEngine(QObject):
                 return
 
         if item_copy:
-            self.current_track_changed.emit(item_copy.to_dict())
+            self.current_track_pending.emit(item_copy.to_dict())
             self.track_needs_download.emit(item_copy)
             return
 
@@ -666,7 +678,7 @@ class PlayerEngine(QObject):
                 return
 
         if item_copy:
-            self.current_track_changed.emit(item_copy.to_dict())
+            self.current_track_pending.emit(item_copy.to_dict())
             self.track_needs_download.emit(item_copy)
             return
 
@@ -709,23 +721,14 @@ class PlayerEngine(QObject):
             current_source = self._backend.get_source_path()
             logger.debug(f"[PlayerEngine] play_after_download: index={index}, local_path={local_path}, current_source={current_source}, state={self.state}")
 
-            # Only proceed if the backend source matches the file we're trying to play
-            # If they don't match, it means the user has changed tracks, so just update metadata
-            if current_source and current_source != local_path:
-                # Backend is playing a different file, likely user changed tracks
-                # Just update the playlist item metadata but don't change playback
-                logger.debug(f"[PlayerEngine] Backend playing different file {current_source}, skipping reload for {local_path}")
-                self.current_track_changed.emit(item_copy.to_dict())
-                return
-
-            # Backend is not playing or is playing the same file - safe to proceed
             if current_source == local_path:
                 # Same file - just emit track change to update UI metadata
                 logger.debug(f"[PlayerEngine] Same file {local_path}, just updating metadata")
                 self.current_track_changed.emit(item_copy.to_dict())
                 return
 
-            # No file loaded or same file - safe to load
+            # Current index still points at this item, so loading the downloaded file is safe
+            # even if the backend source is still the previous track after an auto-next.
             self._media_loaded_flag = False  # Reset flag for new source
             self._backend.set_source(local_path)
 
@@ -743,54 +746,54 @@ class PlayerEngine(QObject):
 
     def play_next(self):
         """Play the next track. Manual skip ignores single track loop mode."""
-        need_stop = False
-        current_index = -1
-        item = None
-
         with self._playlist_lock:
             if not self._playlist:
                 return
 
-            # Move to next track (manual skip ignores single track loop mode)
-            self._current_index += 1
+            remaining = len(self._playlist)
 
-            if self._current_index >= len(self._playlist):
-                if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
-                    # Reshuffle for random loop mode
-                    if self._play_mode == PlayMode.RANDOM_LOOP:
-                        self._shuffle_playlist_locked()
-                    self._current_index = 0
-                else:
-                    self._current_index = len(self._playlist) - 1
-                    need_stop = True
+            while remaining > 0:
+                remaining -= 1
 
-            current_index = self._current_index
-            if 0 <= current_index < len(self._playlist):
+                # Move to next track (manual skip ignores single track loop mode)
+                self._current_index += 1
+
+                if self._current_index >= len(self._playlist):
+                    if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                        # Reshuffle for random loop mode
+                        if self._play_mode == PlayMode.RANDOM_LOOP:
+                            self._shuffle_playlist_locked()
+                        self._current_index = 0
+                    else:
+                        self._current_index = len(self._playlist) - 1
+                        self.stop()
+                        return
+
+                current_index = self._current_index
+                if not (0 <= current_index < len(self._playlist)):
+                    return
+
                 item = self._playlist[current_index]
 
-        if need_stop:
-            self.stop()
-            return
+                if self._item_is_missing_local_file(item):
+                    self._emit_missing_local_track_error(item)
+                    continue
 
-        if item is None:
-            return
+                break
+            else:
+                self.stop()
+                return
 
         self._load_track(current_index)
 
-        # Check if track needs download or file doesn't exist
-        needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
-
-        if needs_download:
+        if self._item_needs_download(item):
             item.needs_download = True
             self.track_needs_download.emit(item)
-        elif item.local_path and Path(item.local_path).exists():
+        elif self._item_has_local_file(item):
             self._backend.play()
 
     def play_previous(self):
         """Play the previous track. Manual skip ignores single track loop mode."""
-        current_index = -1
-        item = None
-
         with self._playlist_lock:
             if not self._playlist:
                 return
@@ -813,29 +816,40 @@ class PlayerEngine(QObject):
                 self._backend.play()
         else:
             with self._playlist_lock:
-                self._current_index -= 1
-                if self._current_index < 0:
-                    if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
-                        self._current_index = len(self._playlist) - 1
-                    else:
-                        self._current_index = 0
+                remaining = len(self._playlist)
 
-                current_index = self._current_index
-                if 0 <= current_index < len(self._playlist):
+                while remaining > 0:
+                    remaining -= 1
+
+                    self._current_index -= 1
+                    if self._current_index < 0:
+                        if self._play_mode in (PlayMode.PLAYLIST_LOOP, PlayMode.RANDOM_LOOP):
+                            self._current_index = len(self._playlist) - 1
+                        else:
+                            self._current_index = 0
+                            return
+
+                    current_index = self._current_index
+                    if not (0 <= current_index < len(self._playlist)):
+                        return
+
                     item = self._playlist[current_index]
 
-            if item is None:
-                return
+                    if self._item_is_missing_local_file(item):
+                        self._emit_missing_local_track_error(item)
+                        continue
+
+                    break
+                else:
+                    self.stop()
+                    return
 
             self._load_track(current_index)
 
-            # Check if track needs download or file doesn't exist
-            needs_download = item.needs_download or not item.local_path or not Path(item.local_path).exists()
-
-            if needs_download:
+            if self._item_needs_download(item):
                 item.needs_download = True
                 self.track_needs_download.emit(item)
-            elif item.local_path and Path(item.local_path).exists():
+            elif self._item_has_local_file(item):
                 self._backend.play()
 
     def seek(self, position_ms: int):
@@ -1117,9 +1131,9 @@ class PlayerEngine(QObject):
             item = self._playlist[index]
 
             # Skip loading if path is empty or file doesn't exist (for cloud files not yet downloaded)
-            if not item.local_path or item.needs_download or not Path(item.local_path).exists():
+            if self._item_needs_download(item):
                 item_dict = item.to_dict()
-                self.current_track_changed.emit(item_dict)
+                self.current_track_pending.emit(item_dict)
                 return
 
             local_path = item.local_path
@@ -1186,3 +1200,22 @@ class PlayerEngine(QObject):
     def _on_error(self, error_string: str):
         """Handle playback error."""
         self.error_occurred.emit(error_string)
+
+    def _item_has_local_file(self, item: PlaylistItem) -> bool:
+        """Whether the playlist item has a playable local file on disk."""
+        return bool(item.local_path) and Path(item.local_path).exists()
+
+    def _item_needs_download(self, item: PlaylistItem) -> bool:
+        """Whether the playlist item should be handled by the download pipeline."""
+        return item.is_cloud and (item.needs_download or not self._item_has_local_file(item))
+
+    def _item_is_missing_local_file(self, item: PlaylistItem) -> bool:
+        """Whether a local-library item points to a missing file."""
+        return item.is_local and not self._item_has_local_file(item)
+
+    def _emit_missing_local_track_error(self, item: PlaylistItem):
+        """Emit a consistent error when a local queue entry no longer exists on disk."""
+        track_name = item.title or item.local_path or "Unknown Track"
+        message = f"Local track file not found: {track_name}"
+        logger.warning("[PlayerEngine] %s", message)
+        self.error_occurred.emit(message)

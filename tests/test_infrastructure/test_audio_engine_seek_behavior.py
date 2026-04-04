@@ -96,3 +96,42 @@ def test_play_after_download_does_not_force_seek_zero():
         # This prevents race condition where play() is called before media is loaded
         assert engine._pending_play is True
         assert engine._backend.play_calls == 0  # play() not called directly anymore
+
+
+def test_play_after_download_reloads_when_current_index_already_advanced():
+    with tempfile.TemporaryDirectory() as tmp:
+        previous_path = str(Path(tmp) / "previous.mp3")
+        next_path = str(Path(tmp) / "next.mp3")
+        Path(previous_path).write_bytes(b"previous")
+        Path(next_path).write_bytes(b"next")
+
+        current_item = PlaylistItem(
+            source=TrackSource.QQ,
+            cloud_file_id="song_1",
+            local_path=previous_path,
+            title="Previous",
+            needs_download=False,
+        )
+        next_item = PlaylistItem(
+            source=TrackSource.QQ,
+            cloud_file_id="song_2",
+            local_path="",
+            title="Next",
+            needs_download=True,
+        )
+
+        engine = PlayerEngine.__new__(PlayerEngine)
+        engine._playlist_lock = threading.RLock()
+        engine._playlist = [current_item, next_item]
+        engine._current_index = 1
+        engine._backend = _FakeBackend()
+        engine._backend._source_path = previous_path
+        engine.current_track_changed = SimpleNamespace(emit=lambda _x: None)
+        engine._pending_seek = 0
+        engine._pending_play = False
+        engine._media_loaded_flag = False
+
+        PlayerEngine.play_after_download(engine, 1, next_path)
+
+        assert engine._backend.set_source_calls == [next_path]
+        assert engine._pending_play is True

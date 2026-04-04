@@ -437,7 +437,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(content_widget, 1)
 
         # Player controls
-        self._player_controls = PlayerControls(self._player)
+        self._player_controls = PlayerControls(self._player, instance_name="main")
         main_layout.addWidget(self._player_controls)
 
         # Resize grip for frameless window
@@ -498,6 +498,7 @@ class MainWindow(QMainWindow):
         self._event_bus.track_changed.connect(self._on_track_changed)
         self._event_bus.position_changed.connect(self._on_position_changed)
         self._event_bus.playback_state_changed.connect(self._on_playback_state_changed)
+        self._playback.engine.current_track_pending.connect(self._on_pending_track_changed)
 
         # Cloud download events
         self._event_bus.download_completed.connect(self._on_cloud_download_completed)
@@ -1432,6 +1433,36 @@ class MainWindow(QMainWindow):
             self._title_bar.clear_accent_color()
 
         # Save current track title for backward compat
+        self._current_track_title = f"{title} - {artist}" if artist else title
+        if self._current_track_title:
+            self.setWindowTitle(self._current_track_title)
+
+    def _on_pending_track_changed(self, track_item):
+        """Handle lightweight UI updates while a selected track downloads."""
+        if isinstance(track_item, PlaylistItem):
+            track_id = track_item.track_id
+            title = track_item.title
+            artist = track_item.artist
+        elif isinstance(track_item, dict):
+            track_id = track_item.get("id")
+            title = track_item.get("title", "")
+            artist = track_item.get("artist", "")
+        else:
+            return
+
+        if track_id and track_id > 0:
+            self._library_view._select_track_by_id(track_id)
+            self._queue_view._select_track_by_id(track_id)
+
+        self._lyrics_panel.set_no_lyrics()
+
+        if title:
+            self._title_bar.set_track_title(title, artist)
+            self._title_bar.clear_accent_color()
+        else:
+            self._title_bar.clear_track_title()
+            self._title_bar.clear_accent_color()
+
         self._current_track_title = f"{title} - {artist}" if artist else title
         if self._current_track_title:
             self.setWindowTitle(self._current_track_title)

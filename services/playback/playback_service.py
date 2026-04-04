@@ -1348,7 +1348,7 @@ class PlaybackService(QObject):
                 return
 
             # Create worker while holding lock to prevent race condition
-            logger.info(f"[PlaybackService] Downloading online track: {song_mid}")
+            logger.info(f"[PlaybackService] Downloading online track: {song_mid} {item.title} - {item.artist}")
 
             # Download in background thread
             from PySide6.QtCore import QThread
@@ -1424,6 +1424,19 @@ class PlaybackService(QObject):
 
     def _on_cloud_download_error(self, file_id: str, error_message: str):
         """Handle cloud file download error - mark item as failed and skip."""
+        matching_item = None
+        for item in self._engine.playlist_items:
+            if item.cloud_file_id == file_id:
+                matching_item = item
+                break
+
+        if matching_item and matching_item.source == TrackSource.QQ:
+            logger.debug(
+                "[PlaybackService] Ignoring download_error EventBus signal for QQ track: %s",
+                file_id,
+            )
+            return
+
         logger.warning(f"[PlaybackService] Cloud download failed: {file_id} - {error_message}")
 
         # Mark as failed in engine
@@ -1604,7 +1617,7 @@ class PlaybackService(QObject):
             if song_mid in self._online_download_workers and self._online_download_workers[song_mid].isRunning():
                 return
 
-        logger.info(f"[PlaybackService] Preloading online track: {item.title}")
+        logger.info(f"[PlaybackService] Preloading online track: {song_mid} {item.title} - {item.artist}")
         self._download_online_track(item)
 
     def _preload_cloud_track(self, item: PlaylistItem):

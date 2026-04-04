@@ -321,6 +321,7 @@ class MiniPlayer(QWidget):
         self._player.engine.position_changed.connect(self._on_position_changed)
         self._player.engine.duration_changed.connect(self._on_duration_changed)
         self._player.engine.current_track_changed.connect(self._on_track_changed)
+        self._player.engine.current_track_pending.connect(self._on_pending_track_changed)
 
         # Setup keyboard shortcuts for mini player
         self._setup_shortcuts()
@@ -494,6 +495,14 @@ class MiniPlayer(QWidget):
 
     def _on_track_changed(self, track_dict: dict):
         """Handle track change."""
+        self._apply_track_info(track_dict, load_cover=True, load_lyrics=True)
+
+    def _on_pending_track_changed(self, track_dict: dict):
+        """Handle track selection while the file is downloading."""
+        self._apply_track_info(track_dict, load_cover=False, load_lyrics=False)
+
+    def _apply_track_info(self, track_dict: dict, load_cover: bool, load_lyrics: bool):
+        """Update track labels and optionally load cover/lyrics."""
         if track_dict:
             # Update UI immediately
             title = track_dict.get("title", t("unknown"))
@@ -512,11 +521,15 @@ class MiniPlayer(QWidget):
             if self._current_track_title:
                 self.setWindowTitle(self._current_track_title)
 
-            # Load cover asynchronously to avoid blocking
-            self._load_cover_async(track_dict)
+            if load_cover:
+                self._load_cover_async(track_dict)
+            else:
+                self._set_default_cover()
 
-            # Load lyrics asynchronously
-            self._load_lyrics_async(track_dict)
+            if load_lyrics:
+                self._load_lyrics_async(track_dict)
+            else:
+                self.lyrics.set_lyrics("")
         else:
             self._title_label.setText(t("not_playing"))
             self._artist_label.setText("")

@@ -50,6 +50,8 @@ class SettingKey:
     UI_LANGUAGE = "ui.language"
     UI_GEOMETRY = "ui.geometry"
     UI_SPLITTER = "ui.splitter"
+    UI_NOW_PLAYING_GEOMETRY = "ui.now_playing_geometry"
+    UI_NOW_PLAYING_MAXIMIZED = "ui.now_playing_maximized"
     UI_VIEW_TYPE = "ui.view_type"  # "library", "album", "artist", etc.
     UI_VIEW_DATA = "ui.view_data"  # JSON data for view-specific state
     UI_START_IN_NOW_PLAYING = "ui.start_in_now_playing"  # Restore now playing window on next launch
@@ -440,6 +442,51 @@ class ConfigManager:
             state: Splitter state bytes from saveState()
         """
         self.set(SettingKey.UI_SPLITTER, base64.b64encode(state).decode('utf-8'))
+
+    def get_now_playing_geometry(self) -> Optional[bytes]:
+        """
+        Get the saved now-playing window geometry.
+
+        Returns:
+            Geometry bytes or None
+        """
+        geometry_b64 = self.get(SettingKey.UI_NOW_PLAYING_GEOMETRY)
+        if geometry_b64:
+            try:
+                return base64.b64decode(geometry_b64)
+            except (ValueError, binascii.Error):
+                return None
+        return None
+
+    def set_now_playing_geometry(self, geometry: bytes):
+        """
+        Set the now-playing window geometry.
+
+        Args:
+            geometry: Geometry bytes from saveGeometry()
+        """
+        self.set(
+            SettingKey.UI_NOW_PLAYING_GEOMETRY,
+            base64.b64encode(geometry).decode("utf-8"),
+        )
+
+    def get_now_playing_maximized(self) -> bool:
+        """
+        Get whether the now-playing window should restore maximized.
+
+        Returns:
+            True if now-playing was maximized
+        """
+        return self.get(SettingKey.UI_NOW_PLAYING_MAXIMIZED, False)
+
+    def set_now_playing_maximized(self, enabled: bool):
+        """
+        Set whether the now-playing window should restore maximized.
+
+        Args:
+            enabled: True if now-playing is maximized
+        """
+        self.set(SettingKey.UI_NOW_PLAYING_MAXIMIZED, enabled)
 
     def get_view_type(self) -> str:
         """

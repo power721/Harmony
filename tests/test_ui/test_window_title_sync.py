@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from domain.playback import PlaybackState
 from ui.windows.main_window import MainWindow
 from ui.windows.mini_player import MiniPlayer
 from ui.windows.now_playing_window import NowPlayingWindow
@@ -35,9 +34,8 @@ def test_main_window_track_change_updates_window_title_immediately():
     fake.setWindowTitle.assert_called_once_with("Next Song - Singer")
 
 
-def test_now_playing_track_change_updates_window_title_even_if_state_not_playing():
+def test_now_playing_apply_track_info_updates_window_title_even_if_state_not_playing():
     fake = SimpleNamespace()
-    fake._playback = SimpleNamespace(state=PlaybackState.STOPPED)
     fake._progress_slider = SimpleNamespace(setValue=MagicMock())
     fake._current_time = SimpleNamespace(setText=MagicMock())
     fake._total_time = SimpleNamespace(setText=MagicMock())
@@ -53,22 +51,22 @@ def test_now_playing_track_change_updates_window_title_even_if_state_not_playing
     fake._current_track_title = ""
     fake._current_cover_path = ""
 
-    NowPlayingWindow._on_track_changed(
+    NowPlayingWindow._apply_track_info(
         fake,
         {
             "title": "Another Song",
             "artist": "Another Artist",
             "album": "Album",
         },
+        load_cover=True,
+        load_lyrics=True,
     )
 
     fake.setWindowTitle.assert_called_once_with("Another Song - Another Artist")
 
 
-def test_mini_player_track_change_updates_window_title_even_if_state_not_playing():
+def test_mini_player_apply_track_info_updates_window_title_even_if_state_not_playing():
     fake = SimpleNamespace()
-    fake._playback = None
-    fake._player = SimpleNamespace(engine=SimpleNamespace(state=PlaybackState.STOPPED))
     fake._title_label = SimpleNamespace(setText=MagicMock())
     fake._artist_label = SimpleNamespace(setText=MagicMock())
     fake._album_label = SimpleNamespace(setText=MagicMock())
@@ -78,13 +76,15 @@ def test_mini_player_track_change_updates_window_title_even_if_state_not_playing
     fake.setWindowTitle = MagicMock()
     fake._current_track_title = ""
 
-    MiniPlayer._on_track_changed(
+    MiniPlayer._apply_track_info(
         fake,
         {
             "title": "Mini Song",
             "artist": "Mini Artist",
             "album": "Mini Album",
         },
+        load_cover=True,
+        load_lyrics=True,
     )
 
     fake.setWindowTitle.assert_called_once_with("Mini Song - Mini Artist")

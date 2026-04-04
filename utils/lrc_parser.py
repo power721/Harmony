@@ -1,6 +1,7 @@
 import logging
 import re
 import bisect
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -299,6 +300,40 @@ def fix_durations(lines: List[LyricLine]):
                 w.duration = max(0, end - w.time)
 
 
+def _clone_lines(lines: List[LyricLine]) -> List[LyricLine]:
+    """Return a deep-enough copy for consumers to mutate independently."""
+    cloned_lines: List[LyricLine] = []
+    for line in lines:
+        cloned_words = [
+            LyricWord(word.time, word.duration, word.text)
+            for word in line.words
+        ]
+        cloned_line = LyricLine(line.time, line.text, cloned_words, line.duration)
+        cloned_line.end = line.end
+        cloned_lines.append(cloned_line)
+    return cloned_lines
+
+
+@lru_cache(maxsize=128)
+def _detect_and_parse_cached(text: str) -> tuple[LyricLine, ...]:
+    """Parse lyrics text once and reuse the parsed result across widgets."""
+    if "<QrcInfos>" in text:
+        logger.info("[lrc_parser] 检测到 QRC XML 格式，使用 QRC 解析器")
+        lines = parse_qrc(text)
+    elif QRC_WORD_RE.search(text) and not YRC_WORD_RE.search(text):
+        logger.info("[lrc_parser] 检测到 QRC 格式，使用 QRC 解析器")
+        lines = parse_qrc(text)
+    elif YRC_WORD_RE.search(text):
+        logger.info("[lrc_parser] 检测到 YRC 格式，使用 YRC 解析器")
+        lines = parse_yrc(text)
+    elif CHAR_WORD_RE.search(text):
+        logger.info("CHAR")
+        lines = parse_char_word_lrc(text)
+    else:
+        lines = parse_lrc(text)
+    return tuple(lines)
+
+
 # =========================
 # 检测入口（修复优先级）
 # =========================
@@ -307,24 +342,7 @@ def detect_and_parse(text: str) -> List[LyricLine]:
 
     if not text:
         return []
-
-    if "<QrcInfos>" in text:
-        logger.info("[lrc_parser] 检测到 QRC XML 格式，使用 QRC 解析器")
-        return parse_qrc(text)
-
-    if QRC_WORD_RE.search(text) and not YRC_WORD_RE.search(text):
-        logger.info("[lrc_parser] 检测到 QRC 格式，使用 QRC 解析器")
-        return parse_qrc(text)
-
-    if YRC_WORD_RE.search(text):
-        logger.info("[lrc_parser] 检测到 YRC 格式，使用 YRC 解析器")
-        return parse_yrc(text)
-
-    if CHAR_WORD_RE.search(text):
-        logger.info("CHAR")
-        return parse_char_word_lrc(text)
-
-    return parse_lrc(text)
+    return _clone_lines(list(_detect_and_parse_cached(text)))
 
 
 # =========================
