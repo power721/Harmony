@@ -10,6 +10,7 @@ Features:
 """
 import logging
 import threading
+from contextlib import suppress
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation
@@ -644,10 +645,8 @@ class MiniPlayer(QWidget):
             for signal_name in ("finished", "lyrics_ready"):
                 signal = getattr(thread, signal_name, None)
                 if signal is not None:
-                    try:
+                    with suppress(RuntimeError):
                         signal.disconnect()
-                    except RuntimeError:
-                        pass
             thread.deleteLater()
             self._lyrics_thread = None
 
