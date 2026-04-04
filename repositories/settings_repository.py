@@ -2,10 +2,10 @@
 SQLite implementation of SettingsRepository.
 """
 
-import json
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from repositories.base_repository import BaseRepository
+from system.setting_value_codec import decode_setting_value, encode_setting_value
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -34,10 +34,7 @@ class SqliteSettingsRepository(BaseRepository):
         row = cursor.fetchone()
 
         if row:
-            try:
-                return json.loads(row["value"])
-            except (json.JSONDecodeError, TypeError):
-                return row["value"]
+            return decode_setting_value(row["value"])
         return default
 
     def set(self, key: str, value: Any) -> bool:
@@ -54,13 +51,7 @@ class SqliteSettingsRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Serialize value to JSON for consistent storage
-        if isinstance(value, (dict, list, tuple)):
-            value_str = json.dumps(value)
-        elif isinstance(value, bool):
-            value_str = "true" if value else "false"
-        else:
-            value_str = str(value)
+        value_str = encode_setting_value(value)
 
         cursor.execute(
             """
@@ -96,10 +87,7 @@ class SqliteSettingsRepository(BaseRepository):
 
         result = {}
         for row in rows:
-            try:
-                result[row["key"]] = json.loads(row["value"])
-            except (json.JSONDecodeError, TypeError):
-                result[row["key"]] = row["value"]
+            result[row["key"]] = decode_setting_value(row["value"])
         return result
 
     def delete(self, key: str) -> bool:

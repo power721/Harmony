@@ -2745,7 +2745,7 @@ class DatabaseManager:
         Returns:
             Setting value or default
         """
-        import json
+        from system.setting_value_codec import decode_setting_value
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -2753,12 +2753,7 @@ class DatabaseManager:
         row = cursor.fetchone()
 
         if row:
-            value = row["value"]
-            # Try to parse JSON for complex types
-            try:
-                return json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                return value
+            return decode_setting_value(row["value"])
         return default
 
     def set_setting(self, key: str, value) -> bool:
@@ -2772,12 +2767,9 @@ class DatabaseManager:
         Returns:
             True if successful
         """
-        import json
-        # Serialize value to string
-        if isinstance(value, str):
-            value_str = value
-        else:
-            value_str = json.dumps(value)
+        from system.setting_value_codec import encode_setting_value
+
+        value_str = encode_setting_value(value)
 
         future = self._submit_write(self._do_set_setting, key, value_str)
         return future.result(timeout=10.0)
@@ -2809,7 +2801,7 @@ class DatabaseManager:
         Returns:
             Dict of key-value pairs
         """
-        import json
+        from system.setting_value_codec import decode_setting_value
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -2821,11 +2813,7 @@ class DatabaseManager:
 
         result = {}
         for row in cursor.fetchall():
-            value = row["value"]
-            try:
-                result[row["key"]] = json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                result[row["key"]] = value
+            result[row["key"]] = decode_setting_value(row["value"])
 
         return result
 
