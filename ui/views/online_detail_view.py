@@ -185,12 +185,10 @@ class AllTracksWorker(QThread):
             try:
                 # Parse singers
                 singers_data = song.get("singer", [])
-                singers = []
-                for s in singers_data:
-                    singers.append(OnlineSinger(
+                singers = [OnlineSinger(
                         mid=s.get("mid", ""),
                         name=s.get("name", "")
-                    ))
+                    ) for s in singers_data]
 
                 # Parse album
                 album_data = song.get("album", {})
