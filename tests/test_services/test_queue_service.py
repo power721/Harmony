@@ -243,17 +243,22 @@ def test_playback_service_on_track_changed_schedules_queue_save():
     service._event_bus = type("Bus", (), {"emit_track_change": lambda *args, **kwargs: None})()
     service._history_repo = type("History", (), {"add": lambda *args, **kwargs: None})()
     service._track_repo = None
-    service._preload_next_cloud_track = lambda: None
+    service._schedule_next_track_preload_called = 0
     service._schedule_save_queue_called = 0
 
-    def _schedule():
+    def _schedule_next_preload():
+        service._schedule_next_track_preload_called += 1
+
+    def _schedule_save():
         service._schedule_save_queue_called += 1
 
-    service._schedule_save_queue = _schedule
+    service._schedule_next_track_preload = _schedule_next_preload
+    service._schedule_save_queue = _schedule_save
 
     PlaybackService._on_track_changed(service, {"id": 42})
 
     assert service._schedule_save_queue_called == 1
+    assert service._schedule_next_track_preload_called == 1
 
 
 def test_playback_service_on_track_changed_skips_save_when_stopped():
@@ -270,17 +275,22 @@ def test_playback_service_on_track_changed_skips_save_when_stopped():
     service._event_bus = type("Bus", (), {"emit_track_change": lambda *args, **kwargs: None})()
     service._history_repo = type("History", (), {"add": lambda *args, **kwargs: None})()
     service._track_repo = None
-    service._preload_next_cloud_track = lambda: None
+    service._schedule_next_track_preload_called = 0
     service._schedule_save_queue_called = 0
 
-    def _schedule():
+    def _schedule_next_preload():
+        service._schedule_next_track_preload_called += 1
+
+    def _schedule_save():
         service._schedule_save_queue_called += 1
 
-    service._schedule_save_queue = _schedule
+    service._schedule_next_track_preload = _schedule_next_preload
+    service._schedule_save_queue = _schedule_save
 
     PlaybackService._on_track_changed(service, {"id": 7})
 
     assert service._schedule_save_queue_called == 0
+    assert service._schedule_next_track_preload_called == 1
 
 
 def test_playback_service_save_queue_persists_current_track_identity():
