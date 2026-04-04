@@ -6,6 +6,7 @@ a single thread to prevent "database is locked" errors.
 """
 
 import logging
+import inspect
 import queue
 import sqlite3
 import threading
@@ -44,6 +45,8 @@ class DBWriteWorker:
         self._running = False
         self._conn: Optional[sqlite3.Connection] = None
         self._start_lock = threading.Lock()
+        self._conn_signature_cache: dict[Callable, bool] = {}
+        self._conn_signature_cache_lock = threading.Lock()
 
         self._start()
 
@@ -96,9 +99,7 @@ class DBWriteWorker:
 
                 try:
                     # Inject connection if callable expects 'conn' parameter
-                    import inspect
-                    sig = inspect.signature(func)
-                    if 'conn' in sig.parameters and 'conn' not in kwargs:
+                    if self._callable_accepts_conn(func) and 'conn' not in kwargs:
                         kwargs['conn'] = self._get_connection()
 
                     result = func(*args, **kwargs)
@@ -127,6 +128,30 @@ class DBWriteWorker:
             self._conn = None
 
         logger.info("[DBWriteWorker] Stopped")
+
+    def _callable_accepts_conn(self, func: Callable) -> bool:
+        """Return whether callable accepts a `conn` kwarg, with cached signature analysis."""
+        try:
+            with self._conn_signature_cache_lock:
+                cached = self._conn_signature_cache.get(func)
+            if cached is not None:
+                return cached
+        except TypeError:
+            # Unhashable callables cannot be cached.
+            pass
+
+        try:
+            accepts_conn = "conn" in inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            accepts_conn = False
+
+        try:
+            with self._conn_signature_cache_lock:
+                self._conn_signature_cache[func] = accepts_conn
+        except TypeError:
+            pass
+
+        return accepts_conn
 
     def submit(self, func: Callable, *args, **kwargs) -> Future:
         """
