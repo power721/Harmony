@@ -69,21 +69,20 @@ class ShareSearchService:
                 return ShareSearchResult(limit=limit, page=page)
 
             payload = response.json() or {}
-            songs = []
-            for raw in payload.get("songs", []) or []:
-                songs.append(
-                    ShareSong(
-                        id=str(raw.get("id", "")),
-                        title=raw.get("title", "") or "",
-                        artist=raw.get("artist", "") or "",
-                        name=raw.get("name", "") or "",
-                        link0=raw.get("link0", "") or "",
-                        link1=raw.get("link1", "") or "",
-                        link2=raw.get("link2", "") or "",
-                        created_time=raw.get("createdTime", "") or "",
-                        scraped_at=raw.get("scrapedAt", "") or "",
-                    )
+            songs = [
+                ShareSong(
+                    id=str(raw.get("id", "")),
+                    title=raw.get("title", "") or "",
+                    artist=raw.get("artist", "") or "",
+                    name=raw.get("name", "") or "",
+                    link0=raw.get("link0", "") or "",
+                    link1=raw.get("link1", "") or "",
+                    link2=raw.get("link2", "") or "",
+                    created_time=raw.get("createdTime", "") or "",
+                    scraped_at=raw.get("scrapedAt", "") or "",
                 )
+                for raw in payload.get("songs", []) or []
+            ]
 
             return ShareSearchResult(
                 limit=int(payload.get("limit", limit) or limit),
