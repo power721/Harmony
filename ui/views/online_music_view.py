@@ -2779,6 +2779,17 @@ class OnlineMusicView(QWidget):
             return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
         return ""
 
+    def _build_track_metadata(self, track: OnlineTrack) -> Dict[str, Any]:
+        """Build standardized metadata payload for online track playback/queue actions."""
+        return {
+            "title": track.title,
+            "artist": track.singer_name,
+            "album": track.album_name,
+            "duration": track.duration,
+            "album_mid": track.album.mid if track.album else "",
+            "cover_url": self._get_cover_url(track),
+        }
+
     def _on_play_all_from_detail(self, tracks: List[OnlineTrack], index: int = 0):
         """Handle play all from detail view."""
         if not tracks:
@@ -2787,14 +2798,7 @@ class OnlineMusicView(QWidget):
         # Build list of (song_mid, metadata) for all tracks
         tracks_data = []
         for track in tracks:
-            metadata = {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }
+            metadata = self._build_track_metadata(track)
             tracks_data.append((track.mid, metadata))
 
         # Emit signal to play all tracks, starting from first
@@ -2804,14 +2808,7 @@ class OnlineMusicView(QWidget):
         """Handle add all to queue from detail view."""
         tracks_data = []
         for track in tracks:
-            metadata = {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }
+            metadata = self._build_track_metadata(track)
             tracks_data.append((track.mid, metadata))
         self.add_multiple_to_queue.emit(tracks_data)
 
@@ -2819,14 +2816,7 @@ class OnlineMusicView(QWidget):
         """Handle insert all to queue from detail view."""
         tracks_data = []
         for track in tracks:
-            metadata = {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }
+            metadata = self._build_track_metadata(track)
             tracks_data.append((track.mid, metadata))
         self.insert_multiple_to_queue.emit(tracks_data)
 
@@ -2858,14 +2848,7 @@ class OnlineMusicView(QWidget):
         """Play all songs from top list starting from given index."""
         tracks_data = []
         for track in self._current_tracks:
-            metadata = {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }
+            metadata = self._build_track_metadata(track)
             tracks_data.append((track.mid, metadata))
 
         self.play_online_tracks.emit(start_index, tracks_data)
@@ -2873,14 +2856,7 @@ class OnlineMusicView(QWidget):
     def _play_track(self, track: OnlineTrack):
         """Play an online track."""
         # Build metadata from track info
-        metadata = {
-            "title": track.title,
-            "artist": track.singer_name,
-            "album": track.album_name,
-            "duration": track.duration,
-            "album_mid": track.album.mid if track.album else "",
-            "cover_url": self._get_cover_url(track),
-        }
+        metadata = self._build_track_metadata(track)
 
         # Check cache
         if self._download_service.is_cached(track.mid):
@@ -2934,14 +2910,7 @@ class OnlineMusicView(QWidget):
         if song_mid == track.mid and local_path:
             logger.info(f"Emitting play_online_track: {song_mid}, {local_path}")
             # Build metadata from track info
-            metadata = {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }
+            metadata = self._build_track_metadata(track)
             self.play_online_track.emit(song_mid, local_path, metadata)
         else:
             logger.warning(f"Download failed or mismatch: mid={song_mid}, track.mid={track.mid}, path={local_path}")
@@ -3115,12 +3084,6 @@ class OnlineMusicView(QWidget):
             cover_url=cover_url
         )
 
-    def _get_cover_url(self, track: OnlineTrack) -> str:
-        """Get cover URL for online track."""
-        if track.album and track.album.mid:
-            return f"https://y.qq.com/music/photo_new/T002R300x300M000{track.album.mid}.jpg"
-        return ""
-
     def _play_selected_tracks(self, tracks: List[OnlineTrack]):
         """Play selected tracks."""
         if not tracks:
@@ -3130,42 +3093,21 @@ class OnlineMusicView(QWidget):
         if len(tracks) > 1:
             tracks_data = []
             for track in tracks[1:]:
-                tracks_data.append((track.mid, {
-                    "title": track.title,
-                    "artist": track.singer_name,
-                    "album": track.album_name,
-                    "duration": track.duration,
-                    "album_mid": track.album.mid if track.album else "",
-                    "cover_url": self._get_cover_url(track),
-                }))
+                tracks_data.append((track.mid, self._build_track_metadata(track)))
             self.add_multiple_to_queue.emit(tracks_data)
 
     def _add_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Add selected tracks to queue."""
         tracks_data = []
         for track in tracks:
-            tracks_data.append((track.mid, {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }))
+            tracks_data.append((track.mid, self._build_track_metadata(track)))
         self.add_multiple_to_queue.emit(tracks_data)
 
     def _insert_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Insert selected tracks after current playing track."""
         tracks_data = []
         for track in tracks:
-            tracks_data.append((track.mid, {
-                "title": track.title,
-                "artist": track.singer_name,
-                "album": track.album_name,
-                "duration": track.duration,
-                "album_mid": track.album.mid if track.album else "",
-                "cover_url": self._get_cover_url(track),
-            }))
+            tracks_data.append((track.mid, self._build_track_metadata(track)))
         self.insert_multiple_to_queue.emit(tracks_data)
 
     def _load_top_lists(self):

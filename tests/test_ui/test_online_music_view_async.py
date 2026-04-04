@@ -193,3 +193,28 @@ def test_load_top_lists_stops_existing_worker_cooperatively():
     assert view._top_list_worker is new_worker
     assert new_worker.top_list_loaded.connected == view._on_top_lists_loaded
     assert new_worker.started is True
+
+
+def test_build_track_metadata_uses_unified_fields():
+    """Track metadata helper should populate standard online playback fields."""
+    from domain.online_music import AlbumInfo, OnlineSinger
+
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    track = OnlineTrack(
+        mid="song-mid",
+        title="Song",
+        singer=[OnlineSinger(name="Singer")],
+        album=AlbumInfo(mid="album-mid", name="Album"),
+        duration=210,
+    )
+
+    metadata = OnlineMusicView._build_track_metadata(view, track)
+
+    assert metadata == {
+        "title": "Song",
+        "artist": "Singer",
+        "album": "Album",
+        "duration": 210,
+        "album_mid": "album-mid",
+        "cover_url": "https://y.qq.com/music/photo_new/T002R300x300M000album-mid.jpg",
+    }
