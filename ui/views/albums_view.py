@@ -731,15 +731,7 @@ class AlbumsView(QWidget):
 
     def _do_load_albums(self):
         """Actually load albums in background."""
-        # Wait for existing worker to finish
-        if self._load_worker and isValid(self._load_worker):
-            if self._load_worker.isRunning():
-                self._load_worker.wait(1000)
-                if self._load_worker.isRunning():
-                    self._load_worker.terminate()
-                    self._load_worker.wait()
-            self._load_worker.deleteLater()
-            self._load_worker = None
+        self._stop_load_worker(wait_ms=1000, clear_ref=True)
 
         self._load_worker = LoadAlbumsWorker(self._library)
         self._load_worker.finished.connect(self._on_albums_loaded)
@@ -757,8 +749,21 @@ class AlbumsView(QWidget):
         self._loading.hide()
         self._list_view.show()
 
-        if self._load_worker:
-            self._load_worker.deleteLater()
+        self._stop_load_worker(wait_ms=1000, clear_ref=True)
+
+    def _stop_load_worker(self, wait_ms: int = 1000, clear_ref: bool = False):
+        """Stop and cleanup the background load worker cooperatively."""
+        worker = self._load_worker
+        if worker and isValid(worker):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.quit()
+                if not worker.wait(wait_ms):
+                    logger.warning(
+                        "[AlbumsView] Load worker did not stop in time via cooperative shutdown"
+                    )
+            worker.deleteLater()
+        if clear_ref:
             self._load_worker = None
 
     def _update_count_label(self):
