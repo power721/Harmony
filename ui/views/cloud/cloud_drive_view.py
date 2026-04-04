@@ -1890,17 +1890,28 @@ class CloudDriveView(QWidget):
     def _cancel_downloads(self):
         """Cancel all pending downloads."""
         self._download_queue.clear()
-
-        if self._current_download_thread:
-            self._current_download_thread.terminate()
-            self._current_download_thread.wait(2000)
-            self._current_download_thread = None
+        self._stop_current_download_thread(wait_ms=2000)
 
         self._is_downloading = False
         self._update_batch_download_button_state()
         self._cancel_downloads_btn.setVisible(False)
 
         self._status_label.setText("")
+
+    def _stop_current_download_thread(self, wait_ms: int = 2000):
+        """Stop current download thread cooperatively."""
+        thread = self._current_download_thread
+        if not thread:
+            return
+
+        if thread.isRunning():
+            thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning(
+                    "[CloudDriveView] Download thread did not stop in time via cooperative shutdown"
+                )
+        self._current_download_thread = None
 
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for a cloud file."""
