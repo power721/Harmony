@@ -41,6 +41,18 @@ def _make_view_for_completion_callbacks():
     return view
 
 
+def _make_view_for_hotkey_callbacks():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._hotkey_request_id = 0
+    view._hotkeys = []
+    view._hotkey_popup = None
+    view._config = None
+    view._search_input = Mock()
+    view._search_input.text.return_value = ""
+    view._search_input.hasFocus.return_value = False
+    return view
+
+
 def test_stale_search_completion_is_ignored():
     """Older search results should not overwrite the UI after a newer request starts."""
     view = _make_view_for_search_callbacks()
@@ -100,3 +112,24 @@ def test_current_completion_results_update_completer():
     view._completer.setModel.assert_called_once()
     view._completer.setCompletionPrefix.assert_called_once_with("current")
     view._completer.complete.assert_called_once()
+
+
+def test_stale_hotkey_results_are_ignored():
+    """Older hotkey results should not replace newer state."""
+    view = _make_view_for_hotkey_callbacks()
+    view._hotkey_request_id = 7
+
+    OnlineMusicView._on_hotkey_ready(view, [{"k": "old"}], 6)
+
+    assert view._hotkeys == []
+
+
+def test_current_hotkey_results_update_state():
+    """Current hotkey results should still refresh cached hotkeys."""
+    view = _make_view_for_hotkey_callbacks()
+    view._hotkey_request_id = 8
+    hotkeys = [{"k": "new"}]
+
+    OnlineMusicView._on_hotkey_ready(view, hotkeys, 8)
+
+    assert view._hotkeys == hotkeys

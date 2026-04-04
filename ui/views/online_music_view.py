@@ -863,6 +863,7 @@ class OnlineMusicView(QWidget):
 
         # Hotkey state
         self._hotkey_worker: Optional[HotkeyWorker] = None
+        self._hotkey_request_id = 0
         self._hotkey_popup: Optional[HotkeyPopup] = None
         self._hotkeys: List[Dict[str, Any]] = []  # Cached hotkeys
 
@@ -2259,15 +2260,24 @@ class OnlineMusicView(QWidget):
         if not self._qqmusic_service:
             return
 
-        if self._hotkey_worker and self._hotkey_worker.isRunning():
-            self._hotkey_worker.terminate()
+        self._hotkey_request_id += 1
+        request_id = self._hotkey_request_id
 
         self._hotkey_worker = HotkeyWorker(self._qqmusic_service)
-        self._hotkey_worker.hotkey_ready.connect(self._on_hotkey_ready)
+        self._hotkey_worker.hotkey_ready.connect(
+            lambda hotkeys, rid=request_id: self._on_hotkey_ready(hotkeys, rid)
+        )
         self._hotkey_worker.start()
 
-    def _on_hotkey_ready(self, hotkeys: List[Dict[str, Any]]):
+    def _on_hotkey_ready(
+            self,
+            hotkeys: List[Dict[str, Any]],
+            request_id: int | None = None
+    ):
         """Handle hotkey suggestions ready."""
+        if request_id is not None and request_id != self._hotkey_request_id:
+            return
+
         if hotkeys:
             self._hotkeys = hotkeys
             # Show popup if search input is still empty and focused
