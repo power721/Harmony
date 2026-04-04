@@ -334,12 +334,17 @@ class DownloadManager(QObject):
         """Cancel all active downloads and cleanup workers."""
         logger.info("[DownloadManager] Cleaning up download workers")
         for song_mid, worker in list(self._download_workers.items()):
-            if worker and isValid(worker) and worker.isRunning():
-                worker.requestInterruption()
-                worker.quit()
-                if not worker.wait(1000):
-                    logger.warning(f"[DownloadManager] Worker did not stop in time, terminating: {song_mid}")
-                    worker.terminate()
-                    if not worker.wait(1000):
-                        logger.error(f"[DownloadManager] Worker still running after terminate timeout: {song_mid}")
+            self._stop_worker(worker, song_mid, wait_ms=1000)
         self._download_workers.clear()
+
+    def _stop_worker(self, worker: Optional[QThread], worker_id: str, wait_ms: int = 1000):
+        """Stop a download worker cooperatively."""
+        if not (worker and isValid(worker) and worker.isRunning()):
+            return
+
+        worker.requestInterruption()
+        worker.quit()
+        if not worker.wait(wait_ms):
+            logger.warning(
+                f"[DownloadManager] Worker did not stop in time via cooperative shutdown: {worker_id}"
+            )
