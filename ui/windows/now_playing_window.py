@@ -3,6 +3,7 @@ Now playing window with large cover and synchronized lyrics.
 """
 import logging
 import threading
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
@@ -839,10 +840,8 @@ class NowPlayingWindow(QWidget):
             for signal_name in ("finished", "lyrics_ready"):
                 signal = getattr(thread, signal_name, None)
                 if signal is not None:
-                    try:
+                    with suppress(RuntimeError):
                         signal.disconnect()
-                    except RuntimeError:
-                        pass
             thread.deleteLater()
             self._lyrics_thread = None
 
