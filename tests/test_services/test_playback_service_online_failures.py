@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -54,3 +55,27 @@ def test_cloud_download_error_still_handles_real_cloud_track():
     )
     service._engine.play_next.assert_called_once()
     service._schedule_save_queue.assert_called_once()
+
+
+def test_cleanup_download_workers_stops_running_worker_without_terminate():
+    """Worker cleanup should use cooperative stop and avoid force terminate."""
+    service = PlaybackService.__new__(PlaybackService)
+    worker = Mock()
+    worker.isRunning.return_value = True
+    worker.wait.return_value = False  # Simulate timeout
+    service._online_download_lock = threading.Lock()
+    service._online_download_workers = {"song_mid_1": worker}
+
+    from services.playback import playback_service as playback_module
+    original_is_valid = playback_module.isValid
+    playback_module.isValid = lambda _obj: True
+    try:
+        PlaybackService.cleanup_download_workers(service)
+    finally:
+        playback_module.isValid = original_is_valid
+
+    worker.requestInterruption.assert_called_once()
+    worker.quit.assert_called_once()
+    worker.wait.assert_called_once_with(1000)
+    worker.terminate.assert_not_called()
+    assert service._online_download_workers == {}

@@ -508,10 +508,7 @@ class PlaybackService(QObject):
                     worker.requestInterruption()
                     worker.quit()
                     if not worker.wait(1000):
-                        logger.warning(f"[PlaybackService] Worker did not stop in time, terminating: {song_mid}")
-                        worker.terminate()
-                        if not worker.wait(1000):
-                            logger.error(f"[PlaybackService] Worker still running after terminate timeout: {song_mid}")
+                        logger.warning(f"[PlaybackService] Worker did not stop in time: {song_mid}")
             self._online_download_workers.clear()
 
     def play_next(self):
