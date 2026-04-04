@@ -457,16 +457,13 @@ class SqliteTrackRepository(BaseRepository):
         """)
         rows = cursor.fetchall()
 
-        albums = []
-        for row in rows:
-            albums.append(Album(
+        return [Album(
                 name=row["name"] or "",
                 artist=row["artist"] or "",
                 cover_path=row["cover_path"],
                 song_count=row["song_count"] or 0,
                 duration=row["total_duration"] or 0.0,
-            ))
-        return albums
+            ) for row in rows]
 
     def get_album_tracks(self, album_name: str, artist: str = None) -> List[Track]:
         """
