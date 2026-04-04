@@ -135,11 +135,16 @@ def test_schedule_next_track_preload_replaces_previous_target(monkeypatch):
     service._engine._next_item = make_cloud_item("cloud-3")
     PlaybackService._schedule_next_track_preload(service)
 
+    first_timer = timers[-1]
+    assert first_timer.isActive()
+
     service._engine._next_item = make_cloud_item("cloud-4")
     PlaybackService._schedule_next_track_preload(service)
 
-    timer = timers[-1]
-    assert timer.start_count == 2
+    second_timer = timers[-1]
+    assert first_timer.stop_count >= 1
+    assert not first_timer.isActive()
+    assert second_timer.start_count == 1
     assert service._pending_next_preload_cloud_file_id == "cloud-4"
 
 
@@ -149,7 +154,6 @@ def test_next_track_preload_timeout_skips_when_target_is_no_longer_next(monkeypa
     PlaybackService._schedule_next_track_preload(service)
 
     timer = timers[-1]
-    timer.timeout.connect(lambda: PlaybackService._on_next_preload_timeout(service))
 
     service._engine._next_item = make_cloud_item("cloud-6")
     timer.fire()
@@ -163,7 +167,6 @@ def test_next_track_preload_timeout_dispatches_current_target_once(monkeypatch):
     PlaybackService._schedule_next_track_preload(service)
 
     timer = timers[-1]
-    timer.timeout.connect(lambda: PlaybackService._on_next_preload_timeout(service))
     timer.fire()
 
     assert service._preload_cloud_track_calls == ["cloud-7"]
