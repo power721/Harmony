@@ -176,7 +176,7 @@ def test_next_track_preload_timeout_skips_when_target_is_no_longer_next(monkeypa
 
     assert not service._preload_cloud_track_calls
     assert not service._preload_online_track_calls
-    assert service._pending_next_preload_cloud_file_id == "cloud-5"
+    assert service._pending_next_preload_cloud_file_id is None
 
 
 def test_next_track_preload_timeout_dispatches_current_target_once(monkeypatch):
