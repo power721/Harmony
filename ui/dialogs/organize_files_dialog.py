@@ -501,10 +501,20 @@ class OrganizeFilesDialog(QDialog):
 
     def closeEvent(self, event):
         """Clean up on close."""
-        if self.organize_thread and isValid(self.organize_thread) and self.organize_thread.isRunning():
-            self.organize_thread.terminate()
-            self.organize_thread.wait()
+        self._stop_organize_thread(wait_ms=1000)
         super().closeEvent(event)
+
+    def _stop_organize_thread(self, wait_ms: int = 1000):
+        """Stop organize worker cooperatively."""
+        thread = self.organize_thread
+        if not (thread and isValid(thread) and thread.isRunning()):
+            return
+        thread.requestInterruption()
+        thread.quit()
+        if not thread.wait(wait_ms):
+            logger.warning(
+                "[OrganizeFilesDialog] Organize thread did not stop in time via cooperative shutdown"
+            )
 
     def refresh_theme(self):
         """Refresh theme when changed."""
