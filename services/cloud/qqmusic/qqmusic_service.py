@@ -833,7 +833,7 @@ class QQMusicService:
                     "method": "GetAlbumList",
                     "param": {
                         "singerMid": singer_mid,
-                        "order": 1,
+                        "order": 0,
                         "begin": 0,
                         "num": 10,
                         "songNumTag": 0,

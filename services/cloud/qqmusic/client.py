@@ -631,7 +631,7 @@ class QQMusicClient:
         """
         params = {
             'singerMid': singer_mid,
-            'order': 1,  # 1 = 按时间排序
+            'order': 0,
             'number': number,
             'begin': begin,
         }
