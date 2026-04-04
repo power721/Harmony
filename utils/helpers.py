@@ -207,10 +207,7 @@ def is_filename_like(title: str) -> bool:
         return True
 
     # Check for common filename patterns like [网站], (伴奏) at the end
-    if '[' in title and ']' in title:
-        return True
-
-    return False
+    return bool('[' in title and ']' in title)
 
 
 def format_relative_time(dt: datetime) -> str:
