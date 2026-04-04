@@ -183,6 +183,9 @@ class PlaybackService(QObject):
     def _connect_engine_signals(self):
         """Connect engine signals to internal handlers and EventBus."""
         self._engine.current_track_changed.connect(self._on_track_changed)
+        playlist_changed = getattr(self._engine, "playlist_changed", None)
+        if playlist_changed is not None:
+            playlist_changed.connect(self._on_playlist_changed)
         self._engine.state_changed.connect(self._on_state_changed)
         self._engine.position_changed.connect(self._event_bus.position_changed.emit)
         self._engine.duration_changed.connect(self._event_bus.duration_changed.emit)
@@ -1296,6 +1299,11 @@ class PlaybackService(QObject):
         """Handle play mode change - save to config and emit to EventBus."""
         self._config.set_play_mode(mode.value)
         self._event_bus.play_mode_changed.emit(mode.value)
+        self._schedule_next_track_preload()
+
+    def _on_playlist_changed(self, *_args):
+        """Handle queue mutations by refreshing delayed next-track preload."""
+        self._schedule_next_track_preload()
 
     def _on_track_needs_download(self, item):
         """Handle track that needs download."""
