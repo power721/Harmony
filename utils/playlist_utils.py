@@ -55,9 +55,8 @@ def add_tracks_to_playlist(
             t("no_playlists_message"),
             Yes | No,
         )
-        if reply == Yes:
-            if hasattr(parent, "window") and parent.window():
-                parent.window()._nav_playlists.click()
+        if reply == Yes and hasattr(parent, "window") and parent.window():
+            parent.window()._nav_playlists.click()
         return False
 
     # If only one playlist, add directly without showing dialog
