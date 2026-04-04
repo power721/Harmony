@@ -3,6 +3,7 @@ Online tracks list view for displaying online music tracks.
 """
 
 import logging
+from contextlib import suppress
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QPoint, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect
@@ -136,10 +137,8 @@ class OnlineCoverLoadWorker(QRunnable):
             qimage = None
             if cover_path:
                 qimage = QImage(cover_path)
-            try:
+            with suppress(RuntimeError):
                 self.callback_signal.emit(self.cache_key, cover_path, qimage)
-            except RuntimeError:
-                pass  # signal source deleted
         except Exception:
             pass
 
@@ -419,10 +418,8 @@ class OnlineTracksListView(QWidget):
 
     def closeEvent(self, event):
         """Clean up event bus connections before closing."""
-        try:
+        with suppress(RuntimeError):
             EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
-        except RuntimeError:
-            pass
         self._hover_timer.stop()
         self._cover_popup.hide()
         super().closeEvent(event)

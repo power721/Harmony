@@ -53,6 +53,8 @@ def test_online_tracks_cover_hover_starts_timer_on_cover_area():
 
         assert view._hovered_row == 0
         assert view._hover_timer.isActive()
+        view.close()
+        app.processEvents()
 
 
 def test_online_tracks_handle_mouse_leave_is_idempotent_when_idle():
@@ -85,3 +87,5 @@ def test_online_tracks_handle_mouse_leave_is_idempotent_when_idle():
         view._handle_mouse_leave()
 
         view._cover_popup.schedule_hide.assert_not_called()
+        view.close()
+        app.processEvents()
