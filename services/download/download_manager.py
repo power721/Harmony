@@ -18,7 +18,6 @@ from domain.track import TrackSource
 if TYPE_CHECKING:
     from domain.playlist_item import PlaylistItem
     from system.config import ConfigManager
-    from infrastructure.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -54,28 +53,28 @@ class DownloadManager(QObject):
         """
         super().__init__(parent)  # 必须调用父类__init__以支持Signal/Slot
         self._config = None
-        self._db = None
+        self._cloud_repo = None
         self._playback_service = None
         self._download_workers: Dict[str, QThread] = {}  # Track active downloads
         self._download_handlers: Dict[str, tuple[Callable, Callable]] = {}
         self._download_lock = threading.Lock()
         logger.debug("[DownloadManager] Initialized")
 
-    def set_dependencies(self, config: Optional["ConfigManager"] = None,
-                        db_manager: Optional["DatabaseManager"] = None,
-                        playback_service = None,
-                        cloud_repo = None):
+    def set_dependencies(
+            self,
+            config: Optional["ConfigManager"] = None,
+            playback_service=None,
+            cloud_repo=None
+    ):
         """
         Set dependencies for download services.
 
         Args:
             config: ConfigManager instance
-            db_manager: DatabaseManager instance
             playback_service: PlaybackService instance (for callbacks)
             cloud_repo: Cloud repository
         """
         self._config = config
-        self._db = db_manager
         self._playback_service = playback_service
         self._cloud_repo = cloud_repo
         logger.debug("[DownloadManager] Dependencies set")
@@ -248,10 +247,9 @@ class DownloadManager(QObject):
             True if download was initiated
         """
         from services.cloud.download_service import CloudDownloadService
-        from domain.cloud import CloudFile
 
-        if not self._db:
-            logger.error("[DownloadManager] Database manager not available")
+        if not self._cloud_repo:
+            logger.error("[DownloadManager] Cloud repository not available")
             return False
 
         # Find cloud file

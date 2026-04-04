@@ -1,10 +1,13 @@
 """DownloadManager cleanup behavior tests."""
 
+import inspect
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import app.bootstrap as bootstrap_module
+import services.cloud.download_service as cloud_download_module
 import services.download.download_manager as download_manager_module
+from domain.track import TrackSource
 from services.download.download_manager import DownloadManager
 
 
@@ -108,3 +111,45 @@ def test_download_manager_uses_lock_for_worker_registry():
     """Worker registry should be protected by a lock to avoid data races."""
     manager = DownloadManager()
     assert hasattr(manager, "_download_lock")
+
+
+def test_set_dependencies_does_not_accept_database_manager():
+    """DownloadManager should not expose DatabaseManager dependency."""
+    params = inspect.signature(DownloadManager.set_dependencies).parameters
+    assert "db_manager" not in params
+
+
+def test_download_cloud_track_uses_cloud_repository_dependency(monkeypatch):
+    """Cloud downloads should depend on cloud_repo/config only (no DB manager)."""
+    fake_service = SimpleNamespace(
+        set_download_dir=MagicMock(),
+        download_file=MagicMock(),
+    )
+    monkeypatch.setattr(
+        cloud_download_module.CloudDownloadService,
+        "instance",
+        classmethod(lambda cls: fake_service),
+    )
+
+    cloud_file = SimpleNamespace(file_id="f1")
+    cloud_account = SimpleNamespace(id=1)
+    cloud_repo = SimpleNamespace(
+        get_file_by_file_id=MagicMock(return_value=cloud_file),
+        get_account_by_id=MagicMock(return_value=cloud_account),
+    )
+    manager = DownloadManager()
+    manager.set_dependencies(
+        config=SimpleNamespace(get_cloud_download_dir=MagicMock(return_value="/tmp/downloads")),
+        playback_service=None,
+        cloud_repo=cloud_repo,
+    )
+    item = SimpleNamespace(
+        source=TrackSource.QUARK,
+        cloud_file_id="f1",
+        cloud_account_id=1,
+        title="Track A",
+    )
+
+    assert manager._download_cloud_track(item) is True
+    fake_service.set_download_dir.assert_called_once_with("/tmp/downloads")
+    fake_service.download_file.assert_called_once_with(cloud_file, cloud_account)
