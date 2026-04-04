@@ -6,12 +6,11 @@ Provides unified interface for online music search and browsing.
 import logging
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 
-import requests
-
 from domain.online_music import (
     OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
     SearchResult, SearchType
 )
+from infrastructure.network import HttpClient
 from services.cloud.qqmusic.common import parse_quality
 from .adapter import OnlineMusicAdapter, ApiSource
 
@@ -43,8 +42,7 @@ class OnlineMusicService:
         """
         self._config = config_manager
         self._qqmusic = qqmusic_service
-        self._http_client = requests.Session()
-        self._http_client.headers.update({
+        self._http_client = HttpClient.shared(default_headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
         })

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-import requests
+from infrastructure.network import HttpClient
 
 
 @dataclass
@@ -53,6 +53,7 @@ class ShareSearchService:
     """Service for querying shared cloud music links."""
 
     BASE_URL = "https://music.har01d.cn/api/search"
+    _http_client = HttpClient.shared()
 
     @classmethod
     def search(cls, query: str, page: int = 1, limit: int = 20, timeout: int = 10) -> ShareSearchResult:
@@ -63,7 +64,7 @@ class ShareSearchService:
         }
 
         try:
-            response = requests.get(cls.BASE_URL, params=params, timeout=timeout)
+            response = cls._http_client.get(cls.BASE_URL, params=params, timeout=timeout)
             if response.status_code != 200:
                 return ShareSearchResult(limit=limit, page=page)
 

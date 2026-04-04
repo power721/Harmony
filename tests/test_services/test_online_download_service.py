@@ -28,9 +28,9 @@ class TestOnlineDownloadService:
 
     @patch("services.online.download_service.EventBus")
     @patch.object(OnlineDownloadService, "_extract_metadata", return_value=None)
-    @patch("requests.get")
+    @patch("services.online.download_service.HttpClient.shared")
     def test_download_uses_returned_file_type_instead_of_guessing_url(
-        self, mock_requests_get, mock_extract_metadata, mock_event_bus, tmp_path
+        self, mock_http_client_shared, mock_extract_metadata, mock_event_bus, tmp_path
     ):
         """Downloader should use explicit playback file type metadata instead of URL guessing."""
         event_bus = MagicMock()
@@ -40,7 +40,15 @@ class TestOnlineDownloadService:
         response.headers = {"content-length": "35"}
         response.iter_content.return_value = [b"OggS" + b"\x00" * 24 + b"\x01vorbis"]
         response.raise_for_status.return_value = None
-        mock_requests_get.return_value = response
+        response.close = MagicMock()
+
+        stream_context = MagicMock()
+        stream_context.__enter__.return_value = response
+        stream_context.__exit__.return_value = False
+
+        http_client = MagicMock()
+        http_client.stream.return_value = stream_context
+        mock_http_client_shared.return_value = http_client
 
         online_service = MagicMock()
         online_service.get_playback_url_info.return_value = {
@@ -61,5 +69,14 @@ class TestOnlineDownloadService:
         assert not (tmp_path / "song.flac").exists()
         online_service.get_playback_url_info.assert_called_once_with("song", "flac")
         online_service.get_playback_url.assert_not_called()
+        http_client.stream.assert_called_once_with(
+            "GET",
+            "https://example.com/audio.flac",
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://y.qq.com/',
+            },
+            timeout=60,
+        )
         event_bus.download_completed.emit.assert_called_once_with("song", str(tmp_path / "song.ogg"))
         mock_extract_metadata.assert_called_once_with("song", str(tmp_path / "song.ogg"))

@@ -120,7 +120,7 @@ class CloudDownloadWorker(QThread):
 
     def _download_file(self, url: str, dest_path: str, service) -> bool:
         """Download file from URL to destination."""
-        import requests
+        from infrastructure.network import HttpClient
 
         try:
             # Use service's download_file method if available
@@ -140,38 +140,33 @@ class CloudDownloadWorker(QThread):
                     "Cookie": self._account.access_token
                 }
 
-            response = requests.get(url, headers=headers, timeout=60, stream=True)
+            with HttpClient.shared().stream("GET", url, headers=headers, timeout=60) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                last_emitted_mb = 0  # Track last emitted MB threshold
 
-            if response.status_code != 200:
-                logger.error(f"[CloudDownloadWorker] HTTP {response.status_code}")
-                return False
+                with open(dest_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if self._cancelled:
+                            f.close()
+                            if Path(dest_path).exists():
+                                Path(dest_path).unlink()
+                            return False
 
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            last_emitted_mb = 0  # Track last emitted MB threshold
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
 
-            with open(dest_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if self._cancelled:
-                        f.close()
-                        if Path(dest_path).exists():
-                            Path(dest_path).unlink()
-                        return False
-
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-
-                        # Emit progress every 1MB threshold crossed
-                        if total_size > 0:
-                            current_mb = downloaded // (1024 * 1024)
-                            if current_mb > last_emitted_mb:
-                                last_emitted_mb = current_mb
-                                self.download_progress.emit(
-                                    self._cloud_file.file_id,
-                                    downloaded,
-                                    total_size
-                                )
+                            # Emit progress every 1MB threshold crossed
+                            if total_size > 0:
+                                current_mb = downloaded // (1024 * 1024)
+                                if current_mb > last_emitted_mb:
+                                    last_emitted_mb = current_mb
+                                    self.download_progress.emit(
+                                        self._cloud_file.file_id,
+                                        downloaded,
+                                        total_size
+                                    )
 
             return True
 

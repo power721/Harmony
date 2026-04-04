@@ -7,6 +7,7 @@ import logging
 import os
 from typing import Dict, Optional, Callable, Any, TYPE_CHECKING
 
+from infrastructure.network import HttpClient
 from services.cloud.qqmusic.common import parse_quality
 from system.event_bus import EventBus
 from services.metadata.metadata_service import MetadataService
@@ -186,36 +187,28 @@ class OnlineDownloadService:
 
         # Download file
         try:
-            import requests
-
             logger.info(f"Downloading: {song_mid} {song_title} - {quality}")
 
             # Emit download started event
             self._event_bus.download_started.emit(song_mid)
 
-            response = requests.get(
-                url,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://y.qq.com/',
-                },
-                stream=True,
-                timeout=60
-            )
-            response.raise_for_status()
-
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-
-            # Write to temp file first
+            request_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://y.qq.com/',
+            }
             temp_path = cached_path + ".tmp"
-            with open(temp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if progress_callback:
-                            progress_callback(downloaded, total_size)
+            with HttpClient.shared().stream("GET", url, headers=request_headers, timeout=60) as response:
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+
+                # Write to temp file first
+                with open(temp_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if progress_callback:
+                                progress_callback(downloaded, total_size)
 
             final_path = self._get_final_download_path(song_mid, cached_path, temp_path)
             os.replace(temp_path, final_path)
@@ -316,11 +309,10 @@ class OnlineDownloadService:
 
         # Fallback to direct API call
         try:
-            import requests
             url = f"https://api.ygking.top/api/song/detail"
             params = {"mid": song_mid}
 
-            response = requests.get(url, params=params, timeout=10)
+            response = HttpClient.shared().get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 

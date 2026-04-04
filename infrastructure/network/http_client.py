@@ -2,11 +2,14 @@
 HTTP client wrapper for network requests.
 """
 
+from contextlib import contextmanager
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+import threading
+from typing import Dict, Any, Optional, Iterator
 
 import requests
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +17,23 @@ logger = logging.getLogger(__name__)
 class HttpClient:
     """Wrapper around requests library with common configuration and connection pooling."""
 
-    def __init__(self, default_headers: Dict[str, str] = None, timeout: int = 30):
+    DEFAULT_TIMEOUT = 30
+    DEFAULT_POOL_CONNECTIONS = 20
+    DEFAULT_POOL_MAXSIZE = 20
+    DEFAULT_HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    _shared_clients = {}
+    _shared_lock = threading.Lock()
+
+    def __init__(
+        self,
+        default_headers: Dict[str, str] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        pool_connections: int = DEFAULT_POOL_CONNECTIONS,
+        pool_maxsize: int = DEFAULT_POOL_MAXSIZE,
+        pool_block: bool = True,
+    ):
         """
         Initialize HTTP client.
 
@@ -22,15 +41,114 @@ class HttpClient:
             default_headers: Default headers for all requests
             timeout: Default timeout in seconds
         """
-        self.default_headers = default_headers or {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        self.default_headers = default_headers or self.DEFAULT_HEADERS.copy()
         self.timeout = timeout
-        self._session = requests.Session()
-        self._session.headers.update(self.default_headers)
+        self._session = self._create_session(
+            default_headers=self.default_headers,
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            pool_block=pool_block,
+        )
+
+    @classmethod
+    def _create_session(
+        cls,
+        default_headers: Dict[str, str],
+        pool_connections: int,
+        pool_maxsize: int,
+        pool_block: bool,
+    ) -> requests.Session:
+        """Create a requests session with a mounted pooled adapter."""
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            pool_block=pool_block,
+        )
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        session.headers.update(default_headers)
+        return session
+
+    @classmethod
+    def shared(
+        cls,
+        default_headers: Dict[str, str] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        pool_connections: int = DEFAULT_POOL_CONNECTIONS,
+        pool_maxsize: int = DEFAULT_POOL_MAXSIZE,
+        pool_block: bool = True,
+    ) -> "HttpClient":
+        """Get or create a shared HttpClient for the given configuration."""
+        headers = default_headers or cls.DEFAULT_HEADERS.copy()
+        key = (
+            timeout,
+            tuple(sorted(headers.items())),
+            pool_connections,
+            pool_maxsize,
+            pool_block,
+        )
+        with cls._shared_lock:
+            client = cls._shared_clients.get(key)
+            if client is None:
+                client = cls(
+                    default_headers=headers,
+                    timeout=timeout,
+                    pool_connections=pool_connections,
+                    pool_maxsize=pool_maxsize,
+                    pool_block=pool_block,
+                )
+                cls._shared_clients[key] = client
+            return client
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        params: Dict = None,
+        json: Any = None,
+        data: Any = None,
+        headers: Dict = None,
+        timeout: int = None,
+        stream: bool = False,
+        **request_kwargs,
+    ) -> requests.Response:
+        """Make an HTTP request using the configured shared session."""
+        method = method.upper()
+        request_timeout = timeout or self.timeout
+        if method == "GET":
+            return self._session.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=request_timeout,
+                stream=stream,
+                **request_kwargs,
+            )
+        if method == "POST":
+            return self._session.post(
+                url,
+                json=json,
+                data=data,
+                headers=headers,
+                timeout=request_timeout,
+                stream=stream,
+                **request_kwargs,
+            )
+        return self._session.request(
+            method,
+            url,
+            params=params,
+            json=json,
+            data=data,
+            headers=headers,
+            timeout=request_timeout,
+            stream=stream,
+            **request_kwargs,
+        )
 
     def get(self, url: str, params: Dict = None, headers: Dict = None,
-            timeout: int = None) -> requests.Response:
+            timeout: int = None, **request_kwargs) -> requests.Response:
         """
         Make a GET request.
 
@@ -43,8 +161,37 @@ class HttpClient:
         Returns:
             Response object
         """
-        return self._session.get(url, params=params, headers=headers,
-                                 timeout=timeout or self.timeout)
+        return self.request("GET", url, params=params, headers=headers, timeout=timeout, **request_kwargs)
+
+    @contextmanager
+    def stream(
+        self,
+        method: str,
+        url: str,
+        params: Dict = None,
+        json: Any = None,
+        data: Any = None,
+        headers: Dict = None,
+        timeout: int = None,
+        **request_kwargs,
+    ) -> Iterator[requests.Response]:
+        """Open a streamed response and always close it after use."""
+        response = self.request(
+            method,
+            url,
+            params=params,
+            json=json,
+            data=data,
+            headers=headers,
+            timeout=timeout,
+            stream=True,
+            **request_kwargs,
+        )
+        try:
+            response.raise_for_status()
+            yield response
+        finally:
+            response.close()
 
     def get_content(self, url: str, params: Dict = None, headers: Dict = None,
                     timeout: int = None) -> Optional[bytes]:
@@ -61,15 +208,14 @@ class HttpClient:
             Response content as bytes, or None if request failed
         """
         try:
-            response = self.get(url, params=params, headers=headers, timeout=timeout)
-            response.raise_for_status()
-            return response.content
+            with self.stream("GET", url, params=params, headers=headers, timeout=timeout) as response:
+                return response.content
         except Exception as e:
             logger.error(f"GET content failed for {url}: {e}")
             return None
 
     def post(self, url: str, json: Any = None, data: Any = None,
-             headers: Dict = None, timeout: int = None) -> requests.Response:
+             headers: Dict = None, timeout: int = None, **request_kwargs) -> requests.Response:
         """
         Make a POST request.
 
@@ -83,8 +229,7 @@ class HttpClient:
         Returns:
             Response object
         """
-        return self._session.post(url, json=json, data=data, headers=headers,
-                                  timeout=timeout or self.timeout)
+        return self.request("POST", url, json=json, data=data, headers=headers, timeout=timeout, **request_kwargs)
 
     def download(self, url: str, dest_path: str, headers: Dict = None,
                  chunk_size: int = 8192, progress_callback=None) -> bool:
@@ -104,25 +249,22 @@ class HttpClient:
         response = None
 
         try:
-            response = self._session.get(url, headers=headers, stream=True,
-                                         timeout=self.timeout)
-            response.raise_for_status()
+            with self.stream("GET", url, headers=headers, timeout=self.timeout) as response:
+                try:
+                    total_size = int(response.headers.get('content-length', 0))
+                except (ValueError, TypeError):
+                    total_size = 0
+                downloaded = 0
 
-            try:
-                total_size = int(response.headers.get('content-length', 0))
-            except (ValueError, TypeError):
-                total_size = 0
-            downloaded = 0
+                with open(dest_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if progress_callback:
+                                progress_callback(downloaded, total_size)
 
-            with open(dest_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if progress_callback:
-                            progress_callback(downloaded, total_size)
-
-            return True
+                return True
 
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
@@ -133,9 +275,6 @@ class HttpClient:
                 except OSError:
                     pass
             return False
-        finally:
-            if response:
-                response.close()
 
     def close(self):
         """Close the session and release resources."""

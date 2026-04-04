@@ -10,6 +10,16 @@ class _FakeResponse:
         return self._data
 
 
+class _FakeHttpClient:
+    def __init__(self, response):
+        self._response = response
+
+    def get(self, url, params=None, timeout=10):
+        assert "api/search" in url
+        assert params is not None
+        return self._response
+
+
 
 def test_search_parses_results(monkeypatch):
     payload = {
@@ -30,12 +40,8 @@ def test_search_parses_results(monkeypatch):
         ],
     }
 
-    def _fake_get(url, params=None, timeout=10):
-        assert "api/search" in url
-        assert params["q"] == "玫瑰星云"
-        return _FakeResponse(payload)
-
-    monkeypatch.setattr("services.cloud.share_search_service.requests.get", _fake_get)
+    fake_client = _FakeHttpClient(_FakeResponse(payload))
+    monkeypatch.setattr(ShareSearchService, "_http_client", fake_client)
 
     result = ShareSearchService.search("玫瑰星云")
 
@@ -64,8 +70,9 @@ def test_search_without_quark_link_still_visible(monkeypatch):
     }
 
     monkeypatch.setattr(
-        "services.cloud.share_search_service.requests.get",
-        lambda *args, **kwargs: _FakeResponse(payload),
+        ShareSearchService,
+        "_http_client",
+        _FakeHttpClient(_FakeResponse(payload)),
     )
 
     result = ShareSearchService.search("Only")

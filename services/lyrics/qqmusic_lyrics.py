@@ -7,7 +7,8 @@ falls back to remote API (api.ygking.top) for public access.
 import logging
 import threading
 from typing import List, Optional, TYPE_CHECKING
-import requests
+
+from infrastructure.network import HttpClient
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
@@ -40,8 +41,8 @@ class QQMusicClient:
         Args:
             timeout: Request timeout in seconds
         """
-        self.session = requests.Session()
         self.timeout = timeout
+        self.session = HttpClient.shared(default_headers=self.HEADERS, timeout=timeout)
         self._local_client = None
         self._has_credentials = False
 
@@ -223,7 +224,7 @@ class QQMusicClient:
         }
 
         try:
-            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, timeout=self.timeout)
             data = r.json()
             songs = data.get("data", {}).get("list", [])
 
@@ -307,7 +308,7 @@ class QQMusicClient:
         }
 
         try:
-            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, timeout=self.timeout)
             data = r.json()
             lyric = data.get('data', {}).get('lyric')
             if lyric:
@@ -366,9 +367,13 @@ class QQMusicClient:
             # Fallback to remote API
             try:
                 url = f"{self.REMOTE_BASE_URL}/song/cover"
-                r = self.session.get(url, params={"mid": mid, "size": size},
-                              headers=self.HEADERS, timeout=self.timeout,
-                              allow_redirects=False)
+                r = self.session.get(
+                    url,
+                    params={"mid": mid, "size": size},
+                    headers=self.HEADERS,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                )
 
                 if r.status_code == 302:
                     return r.headers.get('Location')
@@ -435,7 +440,7 @@ class QQMusicClient:
         }
 
         try:
-            r = self.session.get(url, params=params, headers=self.HEADERS, timeout=self.timeout)
+            r = self.session.get(url, params=params, timeout=self.timeout)
             data = r.json()
             artists = data.get("data", {}).get("list", [])
             logger.debug(f"Artist search via remote API: {len(artists)} results")

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional, List
-import requests
 
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
@@ -205,7 +204,7 @@ class LyricsService:
             try:
                 # Use song detail API to get cover URL
                 detail_url = f"https://music.163.com/api/song/detail?ids=[{song_id}]"
-                response = requests.get(
+                response = _get_http_client().get(
                     detail_url,
                     headers=cls.HEADERS,
                     timeout=3

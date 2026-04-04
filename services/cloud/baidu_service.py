@@ -13,6 +13,7 @@ from urllib.parse import quote
 import requests
 
 from domain import CloudFile
+from infrastructure.network import HttpClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ class BaiduDriveService:
     def _get_session(cls):
         """Get or create the shared session for connection pooling."""
         if cls._session is None:
-            cls._session = requests.Session()
+            cls._session = HttpClient.shared(default_headers=cls.HEADERS, timeout=30)._session
         return cls._session
 
     BASE_URL = "https://pan.baidu.com"
@@ -597,16 +598,19 @@ class BaiduDriveService:
                 'Cookie': access_token,
             }
 
-            response = cls._get_session().get(url, headers=headers, timeout=120, stream=True)
-
-            if response.status_code == 200:
+            with HttpClient.shared(default_headers=cls.HEADERS, timeout=120).stream(
+                "GET",
+                url,
+                headers=headers,
+                timeout=120,
+            ) as response:
                 with open(dest_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
 
-                if os.path.exists(dest_path):
-                    return True
+            if os.path.exists(dest_path):
+                return True
             return False
         except Exception as e:
             logger.error(f"Baidu download error: {e}", exc_info=True)

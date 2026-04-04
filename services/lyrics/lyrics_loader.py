@@ -197,14 +197,14 @@ class LyricsDownloadWorker(QThread):
                 return
 
             # Download cover image
-            import requests
             from pathlib import Path
+            from infrastructure.network import HttpClient
 
-            response = requests.get(cover_url, headers=LyricsService.HEADERS, timeout=10)
-            if response.status_code != 200:
-                return
-
-            cover_data = response.content
+            cover_data = HttpClient.shared().get_content(
+                cover_url,
+                headers=LyricsService.HEADERS,
+                timeout=10,
+            )
             if not cover_data:
                 return
 

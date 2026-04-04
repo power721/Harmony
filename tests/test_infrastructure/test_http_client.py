@@ -80,6 +80,16 @@ class TestHttpClient:
         client = HttpClient(timeout=120)
         assert client.timeout == 120
 
+    def test_initialization_mounts_expanded_connection_pool(self):
+        """Test HttpClient configures a larger reusable connection pool."""
+        client = HttpClient()
+
+        adapter = client._session.get_adapter("https://example.com")
+
+        assert adapter._pool_connections == 20
+        assert adapter._pool_maxsize == 20
+        assert adapter._pool_block is True
+
     def test_close_method(self):
         """Test close method releases resources."""
         client = HttpClient()
@@ -92,6 +102,21 @@ class TestHttpClient:
         """Test HttpClient can be used as context manager."""
         with HttpClient() as client:
             assert client is not None
+
+    def test_shared_reuses_client_for_same_configuration(self):
+        """Test shared client lookup reuses the same instance."""
+        HttpClient._shared_clients = {}
+        try:
+            client1 = HttpClient.shared(timeout=15, default_headers={"User-Agent": "TestAgent"})
+            client2 = HttpClient.shared(timeout=15, default_headers={"User-Agent": "TestAgent"})
+            client3 = HttpClient.shared(timeout=20, default_headers={"User-Agent": "TestAgent"})
+
+            assert client1 is client2
+            assert client1 is not client3
+        finally:
+            for client in HttpClient._shared_clients.values():
+                client.close()
+            HttpClient._shared_clients = {}
 
 
 class TestGetContent:
@@ -201,6 +226,34 @@ class TestGetContent:
         result = client.get_content("http://example.com/slow")
 
         assert result is None
+
+
+class TestStream:
+    """Test HttpClient.stream helper."""
+
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_stream_closes_response_after_use(self, mock_session_class):
+        """Test stream helper closes responses after the context exits."""
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        client = HttpClient()
+        with client.stream("GET", "http://example.com/file") as response:
+            assert response is mock_response
+
+        mock_session.get.assert_called_once_with(
+            "http://example.com/file",
+            params=None,
+            headers=None,
+            timeout=30,
+            stream=True,
+        )
+        mock_response.raise_for_status.assert_called_once()
+        mock_response.close.assert_called_once()
 
 
 class TestDownload:

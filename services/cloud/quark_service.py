@@ -9,6 +9,7 @@ import traceback
 import requests
 
 from domain import CloudFile
+from infrastructure.network import HttpClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class QuarkDriveService:
     def _get_session(cls):
         """Get or create the shared session for connection pooling."""
         if cls._session is None:
-            cls._session = requests.Session()
+            cls._session = HttpClient.shared(default_headers=cls.HEADERS, timeout=30)._session
         return cls._session
 
     @classmethod
@@ -230,7 +231,7 @@ class QuarkDriveService:
             headers = cls.HEADERS.copy()
             headers['Cookie'] = access_token
 
-            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response = cls._get_session().get(url, params=params, headers=headers, timeout=30)
 
             # Check for updated cookies
             updated_token = cls._update_cookie_from_response(access_token, response.cookies)
@@ -551,7 +552,7 @@ class QuarkDriveService:
 
             url1 = "https://drive-pc.quark.cn/1/clouddrive/member?pr=ucpro&fr=pc&uc_param_str=&fetch_subscribe=true&_ch=home&fetch_identity=true"
 
-            response1 = requests.get(url1, headers=headers, timeout=30)
+            response1 = cls._get_session().get(url1, headers=headers, timeout=30)
 
             if response1.status_code != 200:
                 logger.debug(f"Failed to get member info: {response1.status_code}")
@@ -567,7 +568,7 @@ class QuarkDriveService:
             # Second call: Get account nickname
             url2 = "https://pan.quark.cn/account/info?fr=pc&platform=pc"
 
-            response2 = requests.get(url2, headers=headers, timeout=30)
+            response2 = cls._get_session().get(url2, headers=headers, timeout=30)
 
             # Check for updated cookies from second response
             updated_token = cls._update_cookie_from_response(updated_token, response2.cookies)
@@ -657,9 +658,12 @@ class QuarkDriveService:
                     "cookie": access_token
                 }
 
-            response = requests.get(url, headers=headers, timeout=60, stream=True)
-
-            if response.status_code == 200:
+            with HttpClient.shared(default_headers=cls.HEADERS, timeout=60).stream(
+                "GET",
+                url,
+                headers=headers,
+                timeout=60,
+            ) as response:
                 downloaded_size = 0
                 chunk_count = 0
 
@@ -670,12 +674,10 @@ class QuarkDriveService:
                             downloaded_size += len(chunk)
                             chunk_count += 1
 
-                # Verify file was created
-                import os
-                if os.path.exists(dest_path):
-                    return True
-                else:
-                    return False
+            # Verify file was created
+            import os
+            if os.path.exists(dest_path):
+                return True
             else:
                 return False
         except Exception as e:
