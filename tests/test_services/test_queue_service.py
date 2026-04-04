@@ -108,6 +108,31 @@ class FakeTrackRepo:
         return None
 
 
+class FakeBatchRestoreTrackRepo:
+    def __init__(self, track_by_id):
+        self._track_by_id = track_by_id
+        self.get_by_ids_calls = []
+
+    def get_by_ids(self, track_ids):
+        self.get_by_ids_calls.append(list(track_ids))
+        return [self._track_by_id[track_id] for track_id in track_ids if track_id in self._track_by_id]
+
+    def get_by_cloud_file_ids(self, cloud_file_ids):
+        return {}
+
+    def get_by_paths(self, paths):
+        return {}
+
+    def get_by_id(self, track_id):
+        raise AssertionError("restore_queue should use batch enrichment, not get_by_id")
+
+    def get_by_cloud_file_id(self, cloud_file_id):
+        raise AssertionError("restore_queue should use batch enrichment, not get_by_cloud_file_id")
+
+    def get_by_path(self, path):
+        raise AssertionError("restore_queue should use batch enrichment, not get_by_path")
+
+
 class FakePagedTrackRepo(FakeTrackRepo):
     def __init__(self, pages):
         super().__init__()
@@ -399,6 +424,60 @@ def test_playback_service_restore_queue_prefers_current_track_identity_over_inde
     assert restored is True
     assert service._engine.current_index == 0
     assert service._engine.loaded_track_index == 0
+
+
+def test_playback_service_restore_queue_uses_batch_metadata_enrichment():
+    """Restore should enrich local queue items using batch repository lookups."""
+    queue_item = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=10,
+        local_path="/tmp/missing.mp3",
+        title="old-title",
+    )
+    track_repo = FakeBatchRestoreTrackRepo(
+        {
+            10: Track(
+                id=10,
+                path="/tmp/missing.mp3",
+                title="new-title",
+                artist="new-artist",
+                album="new-album",
+                duration=123.0,
+                source=TrackSource.LOCAL,
+            )
+        }
+    )
+    service = PlaybackService.__new__(PlaybackService)
+    service._engine = FakeRestoreEngine()
+    service._queue_repo = type(
+        "Repo",
+        (),
+        {"load": lambda self: [queue_item.to_play_queue_item(0)]},
+    )()
+    service._track_repo = track_repo
+    service._config = type(
+        "Cfg",
+        (),
+        {
+            "get": lambda self, key, default=None: {
+                "queue_current_index": 0,
+                "queue_play_mode": PlayMode.SEQUENTIAL.value,
+                "queue_current_track_id": 10,
+                "queue_current_cloud_file_id": "",
+                "queue_current_local_path": "/tmp/missing.mp3",
+            }.get(key, default)
+        },
+    )()
+    service._set_source = lambda source: None
+    service._cloud_repo = type("CloudRepo", (), {"get_account_by_id": lambda self, _id: None})()
+    service._cloud_account = None
+
+    restored = PlaybackService.restore_queue(service)
+
+    assert restored is True
+    assert track_repo.get_by_ids_calls == [[10]]
+    assert service._engine.playlist_items[0].title == "new-title"
+    assert service._engine.playlist_items[0].artist == "new-artist"
 
 
 def test_play_local_library_reads_tracks_in_pages(monkeypatch):
