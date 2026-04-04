@@ -218,3 +218,32 @@ def test_build_track_metadata_uses_unified_fields():
         "album_mid": "album-mid",
         "cover_url": "https://y.qq.com/music/photo_new/T002R300x300M000album-mid.jpg",
     }
+
+
+def test_build_tracks_payload_keeps_order_and_metadata():
+    """Payload builder should preserve track order and include built metadata."""
+    from domain.online_music import AlbumInfo, OnlineSinger
+
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    tracks = [
+        OnlineTrack(
+            mid="m1",
+            title="Song 1",
+            singer=[OnlineSinger(name="Singer 1")],
+            album=AlbumInfo(mid="a1", name="Album 1"),
+            duration=101,
+        ),
+        OnlineTrack(
+            mid="m2",
+            title="Song 2",
+            singer=[OnlineSinger(name="Singer 2")],
+            album=AlbumInfo(mid="a2", name="Album 2"),
+            duration=202,
+        ),
+    ]
+
+    payload = OnlineMusicView._build_tracks_payload(view, tracks)
+
+    assert [item[0] for item in payload] == ["m1", "m2"]
+    assert payload[0][1]["title"] == "Song 1"
+    assert payload[1][1]["title"] == "Song 2"

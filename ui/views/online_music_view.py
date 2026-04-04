@@ -2790,34 +2790,29 @@ class OnlineMusicView(QWidget):
             "cover_url": self._get_cover_url(track),
         }
 
+    def _build_tracks_payload(self, tracks: List[OnlineTrack]) -> List[tuple[str, Dict[str, Any]]]:
+        """Build `(song_mid, metadata)` payload list while preserving input order."""
+        return [(track.mid, self._build_track_metadata(track)) for track in tracks]
+
     def _on_play_all_from_detail(self, tracks: List[OnlineTrack], index: int = 0):
         """Handle play all from detail view."""
         if not tracks:
             return
 
         # Build list of (song_mid, metadata) for all tracks
-        tracks_data = []
-        for track in tracks:
-            metadata = self._build_track_metadata(track)
-            tracks_data.append((track.mid, metadata))
+        tracks_data = self._build_tracks_payload(tracks)
 
         # Emit signal to play all tracks, starting from first
         self.play_online_tracks.emit(index, tracks_data)
 
     def _on_add_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle add all to queue from detail view."""
-        tracks_data = []
-        for track in tracks:
-            metadata = self._build_track_metadata(track)
-            tracks_data.append((track.mid, metadata))
+        tracks_data = self._build_tracks_payload(tracks)
         self.add_multiple_to_queue.emit(tracks_data)
 
     def _on_insert_all_to_queue_from_detail(self, tracks: List[OnlineTrack]):
         """Handle insert all to queue from detail view."""
-        tracks_data = []
-        for track in tracks:
-            metadata = self._build_track_metadata(track)
-            tracks_data.append((track.mid, metadata))
+        tracks_data = self._build_tracks_payload(tracks)
         self.insert_multiple_to_queue.emit(tracks_data)
 
     def _on_prev_page(self):
@@ -2846,10 +2841,7 @@ class OnlineMusicView(QWidget):
 
     def _play_all_from_top_list(self, start_index: int):
         """Play all songs from top list starting from given index."""
-        tracks_data = []
-        for track in self._current_tracks:
-            metadata = self._build_track_metadata(track)
-            tracks_data.append((track.mid, metadata))
+        tracks_data = self._build_tracks_payload(self._current_tracks)
 
         self.play_online_tracks.emit(start_index, tracks_data)
 
@@ -3091,23 +3083,17 @@ class OnlineMusicView(QWidget):
         # Play first track and add rest to queue
         self._play_track(tracks[0])
         if len(tracks) > 1:
-            tracks_data = []
-            for track in tracks[1:]:
-                tracks_data.append((track.mid, self._build_track_metadata(track)))
+            tracks_data = self._build_tracks_payload(tracks[1:])
             self.add_multiple_to_queue.emit(tracks_data)
 
     def _add_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Add selected tracks to queue."""
-        tracks_data = []
-        for track in tracks:
-            tracks_data.append((track.mid, self._build_track_metadata(track)))
+        tracks_data = self._build_tracks_payload(tracks)
         self.add_multiple_to_queue.emit(tracks_data)
 
     def _insert_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Insert selected tracks after current playing track."""
-        tracks_data = []
-        for track in tracks:
-            tracks_data.append((track.mid, self._build_track_metadata(track)))
+        tracks_data = self._build_tracks_payload(tracks)
         self.insert_multiple_to_queue.emit(tracks_data)
 
     def _load_top_lists(self):
