@@ -501,7 +501,6 @@ class LyricsController(QObject):
             track_path = current_track.get("path", "")
             track_title = current_track.get("title", "")
             track_artist = current_track.get("artist", "")
-            track_id = current_track.get("id")
 
             if track_path:
                 self.load_lyrics_async(track_path, track_title, track_artist)

@@ -11,11 +11,10 @@ import threading
 from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal, Qt, QThread
+from PySide6.QtCore import QObject, Signal, QThread
 from shiboken6 import isValid
 
 from domain import PlaylistItem
-from domain.playback import PlayMode
 from domain.track import Track, TrackSource
 
 if TYPE_CHECKING:
@@ -463,7 +462,7 @@ class CloudTrackHandler:
         if online_handler:
             current_item = self._engine.current_playlist_item
             if current_item and current_item.source == TrackSource.QQ:
-                logger.debug(f"[CloudTrackHandler] Skipping for online track")
+                logger.debug("[CloudTrackHandler] Skipping for online track")
                 return
 
         self._downloaded_files[cloud_file_id] = local_path

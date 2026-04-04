@@ -127,7 +127,6 @@ class DownloadManager(QObject):
         Returns:
             True if download was initiated
         """
-        from services.online import OnlineDownloadService
         from app.bootstrap import Bootstrap
 
         song_mid = item.cloud_file_id
@@ -187,7 +186,6 @@ class DownloadManager(QObject):
         Returns:
             True if download was initiated
         """
-        from services.online import OnlineDownloadService
         from app.bootstrap import Bootstrap
 
         if not song_mid:
