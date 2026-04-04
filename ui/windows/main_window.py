@@ -579,6 +579,23 @@ class MainWindow(QMainWindow):
         self._genre_view.insert_to_queue.connect(self._insert_tracks_to_queue)
         self._genre_view.add_to_queue.connect(self._add_tracks_to_queue)
         self._genre_view.add_to_playlist.connect(self._add_tracks_to_playlist)
+        self._genre_view.favorites_toggle_requested.connect(
+            lambda tracks, all_favorited: self._on_album_favorites_toggle(
+                tracks, all_favorited, self._refresh_current_genre_detail
+            )
+        )
+        self._genre_view.edit_info_requested.connect(
+            lambda track: self._on_album_edit_media_info(track, self._refresh_current_genre_detail)
+        )
+        self._genre_view.download_cover_requested.connect(self._on_album_download_track_cover)
+        self._genre_view.open_file_location_requested.connect(self._on_album_open_file_location)
+        self._genre_view.remove_from_library_requested.connect(
+            lambda tracks: self._on_album_remove_from_library(tracks, self._refresh_current_genre_detail)
+        )
+        self._genre_view.delete_file_requested.connect(
+            lambda tracks: self._on_album_delete_file(tracks, self._refresh_current_genre_detail)
+        )
+        self._genre_view.redownload_requested.connect(self._on_playlist_redownload)
         self._genre_view.back_clicked.connect(self._on_back)
 
         # Player controls connections
@@ -714,8 +731,13 @@ class MainWindow(QMainWindow):
         dialog.cover_saved.connect(on_cover_saved)
         dialog.exec()
 
-    def _on_album_favorites_toggle(self, tracks: list, all_favorited: bool):
-        """Toggle favorite status for tracks in album view."""
+    def _refresh_current_album_detail(self):
+        """Refresh album detail after track metadata/library changes."""
+        if self._album_view.get_album():
+            self._album_view.set_album(self._album_view.get_album())
+
+    def _on_album_favorites_toggle(self, tracks: list, all_favorited: bool, refresh_callback=None):
+        """Toggle favorite status for tracks in a detail view."""
         from app.bootstrap import Bootstrap
         from system.event_bus import EventBus
 
@@ -736,23 +758,20 @@ class MainWindow(QMainWindow):
                 service.add_favorite(track_id=track.id)
                 bus.emit_favorite_change(track.id, True, is_cloud=False)
 
-        # Refresh album view to update favorite icons
-        if self._album_view.get_album():
-            self._album_view.set_album(self._album_view.get_album())
+        if refresh_callback:
+            refresh_callback()
+        else:
+            self._refresh_current_album_detail()
 
-    def _on_album_edit_media_info(self, track):
-        """Edit media info for a track in album view."""
+    def _on_album_edit_media_info(self, track, refresh_callback=None):
+        """Edit media info for a track in a detail view."""
         if not track or not track.id:
             return
         from ui.dialogs import EditMediaInfoDialog
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
         dialog = EditMediaInfoDialog([track.id], bootstrap.library_service, self)
-        # Refresh album view when tracks are updated
-        def on_tracks_updated():
-            if self._album_view.get_album():
-                self._album_view.set_album(self._album_view.get_album())
-        dialog.tracks_updated.connect(on_tracks_updated)
+        dialog.tracks_updated.connect(refresh_callback or self._refresh_current_album_detail)
         dialog.exec()
 
     def _on_album_download_track_cover(self, track):
@@ -806,7 +825,7 @@ class MainWindow(QMainWindow):
             logger.error(f"Failed to open file location: {e}", exc_info=True)
             MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
 
-    def _on_album_remove_from_library(self, tracks: list):
+    def _on_album_remove_from_library(self, tracks: list, refresh_callback=None):
         """Remove tracks from library."""
         from ui.dialogs.message_dialog import MessageDialog, Yes, No
         from app.bootstrap import Bootstrap
@@ -824,11 +843,9 @@ class MainWindow(QMainWindow):
         if removed_count > 0:
             success_message = format_count_message("remove_from_library_success", removed_count)
             MessageDialog.information(self, t("remove_from_library"), success_message)
-            # Refresh album view
-            if self._album_view.get_album():
-                self._album_view.set_album(self._album_view.get_album())
+            (refresh_callback or self._refresh_current_album_detail)()
 
-    def _on_album_delete_file(self, tracks: list):
+    def _on_album_delete_file(self, tracks: list, refresh_callback=None):
         """Delete files from disk and library."""
         from ui.dialogs.message_dialog import MessageDialog, Yes, No
         from app.bootstrap import Bootstrap
@@ -848,9 +865,23 @@ class MainWindow(QMainWindow):
             if track.path and os.path.exists(track.path):
                 os.remove(track.path)
             bootstrap.library_service.delete_track(track.id)
-        # Refresh album view
-        if self._album_view.get_album():
-            self._album_view.set_album(self._album_view.get_album())
+        (refresh_callback or self._refresh_current_album_detail)()
+
+    def _refresh_current_genre_detail(self):
+        """Refresh genre detail and genre list after track metadata/library changes."""
+        from app.bootstrap import Bootstrap
+
+        current_genre = self._genre_view.get_genre()
+        self._genres_view.refresh()
+        if not current_genre:
+            return
+
+        bootstrap = Bootstrap.instance()
+        latest = bootstrap.library_service.get_genre_by_name(current_genre.name)
+        if latest:
+            self._genre_view.set_genre(latest)
+        elif self._stacked_widget.currentIndex() == 10:
+            self._on_back()
 
     def _on_artist_clicked(self, artist):
         """Handle artist card click."""
