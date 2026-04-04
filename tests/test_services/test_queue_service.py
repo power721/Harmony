@@ -240,11 +240,17 @@ def test_playback_service_on_track_changed_schedules_queue_save():
         title="demo",
     )
     service._engine.state = PlaybackState.PLAYING
+    service._engine.play_mode = PlayMode.SEQUENTIAL
     service._event_bus = type("Bus", (), {"emit_track_change": lambda *args, **kwargs: None})()
     service._history_repo = type("History", (), {"add": lambda *args, **kwargs: None})()
     service._track_repo = None
     service._schedule_next_track_preload_called = 0
     service._schedule_save_queue_called = 0
+
+    def _fail_preload():
+        raise AssertionError("PlaybackService._on_track_changed did not switch to _schedule_next_track_preload")
+
+    service._preload_next_cloud_track = _fail_preload
 
     def _schedule_next_preload():
         service._schedule_next_track_preload_called += 1
