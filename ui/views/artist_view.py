@@ -59,6 +59,8 @@ class ArtistView(QWidget):
     add_to_queue = Signal(list)  # Emits list of Track objects
     add_to_playlist = Signal(list)  # Emits list of Track objects
     download_cover_requested = Signal(object)  # Emits Album object
+    TRACKS_BATCH_SIZE = 30
+    TRACKS_LOAD_THRESHOLD_PX = 200
 
     def __init__(
             self,
@@ -74,6 +76,7 @@ class ArtistView(QWidget):
         self._artist: Artist = None
         self._albums: List[Album] = []
         self._tracks: List[Track] = []
+        self._tracks_loaded_count = 0
         self._album_cards: List[AlbumCard] = []
         self._current_cover_path: str = None  # Store current cover path
 
@@ -711,6 +714,7 @@ class ArtistView(QWidget):
         self._tracks_table.doubleClicked.connect(self._on_track_double_clicked)
         self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
+        self._tracks_table.verticalScrollBar().valueChanged.connect(self._on_tracks_scroll_changed)
 
         layout.addWidget(self._tracks_table)
 
@@ -865,47 +869,69 @@ class ArtistView(QWidget):
             self._album_cards.append(card)
 
     def _render_tracks(self):
-        """Render tracks table."""
-        # Show all tracks (no limit)
-        self._tracks_table.setRowCount(len(self._tracks))
+        """Render tracks table with lazy loading."""
+        self._tracks_table.setRowCount(0)
+        self._tracks_loaded_count = 0
+        self._load_next_tracks_batch()
 
-        for i, track in enumerate(self._tracks):
-            # Number
-            num_item = QTableWidgetItem(str(i + 1))
-            num_item.setTextAlignment(Qt.AlignCenter)
-            self._tracks_table.setItem(i, 0, num_item)
+    def _load_next_tracks_batch(self):
+        """Append the next batch of tracks into the table."""
+        if self._tracks_loaded_count >= len(self._tracks):
+            return
 
-            # Source
-            from domain.track import TrackSource
-            source_map = {
-                TrackSource.LOCAL: t("source_local"),
-                TrackSource.QUARK: t("source_quark"),
-                TrackSource.BAIDU: t("source_baidu"),
-                TrackSource.QQ: t("source_qq"),
-            }
-            source_text = source_map.get(track.source, t("source_local"))
-            source_item = QTableWidgetItem(source_text)
-            self._tracks_table.setItem(i, 1, source_item)
+        start = self._tracks_loaded_count
+        end = min(start + self.TRACKS_BATCH_SIZE, len(self._tracks))
+        self._tracks_table.setRowCount(end)
 
-            # Title
-            title_item = QTableWidgetItem(track.title or track.display_name)
-            self._tracks_table.setItem(i, 2, title_item)
+        for row in range(start, end):
+            self._set_track_row(row, self._tracks[row])
 
-            # Artist
-            artist_item = QTableWidgetItem(track.artist or "")
-            self._tracks_table.setItem(i, 3, artist_item)
+        self._tracks_loaded_count = end
 
-            # Album
-            album_item = QTableWidgetItem(track.album or "")
-            self._tracks_table.setItem(i, 4, album_item)
+    def _set_track_row(self, row: int, track: Track):
+        """Render a single track row in the table."""
+        # Number
+        num_item = QTableWidgetItem(str(row + 1))
+        num_item.setTextAlignment(Qt.AlignCenter)
+        self._tracks_table.setItem(row, 0, num_item)
 
-            # Duration
-            duration_item = QTableWidgetItem(format_duration(track.duration))
-            duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self._tracks_table.setItem(i, 5, duration_item)
+        # Source
+        from domain.track import TrackSource
+        source_map = {
+            TrackSource.LOCAL: t("source_local"),
+            TrackSource.QUARK: t("source_quark"),
+            TrackSource.BAIDU: t("source_baidu"),
+            TrackSource.QQ: t("source_qq"),
+        }
+        source_text = source_map.get(track.source, t("source_local"))
+        source_item = QTableWidgetItem(source_text)
+        self._tracks_table.setItem(row, 1, source_item)
 
-            # Store track ID in item data
-            title_item.setData(Qt.UserRole, track.id)
+        # Title
+        title_item = QTableWidgetItem(track.title or track.display_name)
+        self._tracks_table.setItem(row, 2, title_item)
+
+        # Artist
+        artist_item = QTableWidgetItem(track.artist or "")
+        self._tracks_table.setItem(row, 3, artist_item)
+
+        # Album
+        album_item = QTableWidgetItem(track.album or "")
+        self._tracks_table.setItem(row, 4, album_item)
+
+        # Duration
+        duration_item = QTableWidgetItem(format_duration(track.duration))
+        duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._tracks_table.setItem(row, 5, duration_item)
+
+        # Store track ID in item data
+        title_item.setData(Qt.UserRole, track.id)
+
+    def _on_tracks_scroll_changed(self, value: int):
+        """Load more tracks when user scrolls close to table bottom."""
+        scrollbar = self._tracks_table.verticalScrollBar()
+        if value >= max(0, scrollbar.maximum() - self.TRACKS_LOAD_THRESHOLD_PX):
+            self._load_next_tracks_batch()
 
     def _on_play_all(self):
         """Handle play all button click."""
