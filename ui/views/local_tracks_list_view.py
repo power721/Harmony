@@ -41,6 +41,26 @@ from utils.helpers import format_duration
 logger = logging.getLogger(__name__)
 
 
+def _get_active_theme():
+    """Return current theme, falling back to the default preset if singleton is unavailable."""
+    from system.theme import PRESET_THEMES, ThemeManager
+
+    try:
+        return ThemeManager.instance().current_theme
+    except ValueError:
+        return PRESET_THEMES["dark"]
+
+
+def _register_theme_widget_if_available(widget: QWidget) -> None:
+    """Register widget for theme refresh when ThemeManager singleton already exists."""
+    from system.theme import ThemeManager
+
+    try:
+        ThemeManager.instance().register_widget(widget)
+    except ValueError:
+        return
+
+
 def _resolve_local_cover_path(track: Track) -> str | None:
     """Resolve cover path for a local track (can run on worker or UI thread)."""
     if not track:
@@ -277,8 +297,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         if parent_view and (option.rect.bottom() < 0 or option.rect.top() > parent_view.height()):
             return
 
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
+        theme = _get_active_theme()
 
         track = index.data(LocalTrackModel.TrackRole)
         is_favorite = index.data(LocalTrackModel.IsFavoriteRole)
@@ -520,8 +539,7 @@ class LocalTracksListView(QWidget):
         self._hover_timer.timeout.connect(self._show_cover_popup)
         self._hovered_row = -1
         self._last_cover_pos = QPoint()
-        from system.theme import ThemeManager
-        ThemeManager.instance().register_widget(self)
+        _register_theme_widget_if_available(self)
         self._setup_ui()
         self._setup_connections()
         self._context_menu = LocalTrackContextMenu(self)
@@ -766,8 +784,7 @@ class LocalTracksListView(QWidget):
         return None
 
     def _apply_viewport_bg(self):
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
+        theme = _get_active_theme()
         background_color = theme.background if self._model.rowCount() == 0 else theme.background_alt
         self._list_view.setStyleSheet(
             "QListView, QListView::viewport { "

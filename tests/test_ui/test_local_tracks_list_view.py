@@ -7,9 +7,11 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from domain.track import Track, TrackSource
+from system.theme import ThemeManager
 from ui.views.history_list_view import HistoryListView
 from ui.views.local_tracks_list_view import LocalTracksListView
 
@@ -111,6 +113,31 @@ def test_local_tracks_list_view_uses_theme_background_for_empty_state():
         stylesheet = view._list_view.styleSheet()
         assert theme.background in stylesheet
         assert theme.background_alt not in stylesheet
+
+
+def test_local_tracks_list_view_falls_back_when_theme_manager_is_uninitialized():
+    """View construction and delegate paint should not require ThemeManager singleton."""
+    app = QApplication.instance() or QApplication([])
+    ThemeManager._instance = None
+
+    view = LocalTracksListView()
+    view.resize(900, 300)
+    view.show()
+    app.processEvents()
+
+    view.load_tracks(
+        [Track(id=11, path="/music/11.mp3", title="Fallback", source=TrackSource.LOCAL)],
+        favorite_ids=set(),
+    )
+    app.processEvents()
+
+    option = QStyleOptionViewItem()
+    index = view._model.index(0)
+    option.rect = view._list_view.visualRect(index)
+    pixmap = QPixmap(option.rect.size())
+    painter = QPainter(pixmap)
+    view._delegate.paint(painter, option, index)
+    painter.end()
 
 
 def test_history_list_view_cover_hover_works_with_history_delegate():
