@@ -211,6 +211,29 @@ def test_save_clears_persisted_queue_when_engine_playlist_is_empty():
     assert set(config.deleted_keys) == {"queue_current_index", "queue_play_mode"}
 
 
+def test_queue_service_save_prefers_batch_config_writes():
+    """QueueService.save should use set_many when the config supports it."""
+    item = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=5,
+        local_path="/tmp/queue.mp3",
+        title="queue",
+    )
+    repo = FakeQueueRepo()
+    config = FakeConfigWithBatch()
+    service = QueueService(
+        queue_repo=repo,
+        config_manager=config,
+        engine=FakeEngine(items=[item], current_index=0),
+    )
+
+    service.save()
+
+    assert len(config.set_many_calls) == 1
+    assert config.values["queue_current_index"] == 0
+    assert config.values["queue_play_mode"] == PlayMode.SEQUENTIAL.value
+
+
 def test_playback_service_save_queue_clears_persisted_state_when_empty():
     """PlaybackService.save_queue should also clear stale queue persistence."""
     service = PlaybackService.__new__(PlaybackService)

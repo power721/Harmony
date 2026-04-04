@@ -53,8 +53,15 @@ class QueueService:
         self._queue_repo.save(queue_items)
 
         # Save current index and play mode
-        self._config.set("queue_current_index", current_idx)
-        self._config.set("queue_play_mode", self._engine.play_mode.value)
+        queue_state = {
+            "queue_current_index": current_idx,
+            "queue_play_mode": self._engine.play_mode.value,
+        }
+        if hasattr(self._config, "set_many"):
+            self._config.set_many(queue_state)
+        else:
+            for key, value in queue_state.items():
+                self._config.set(key, value)
 
         logger.debug(f"[QueueService] Saved queue: {len(queue_items)} items, index={current_idx}")
 
