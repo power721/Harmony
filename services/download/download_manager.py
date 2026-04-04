@@ -7,6 +7,8 @@ This module provides a unified abstraction for downloading tracks from:
 - Local sources (no-op)
 """
 import logging
+import threading
+from contextlib import suppress
 from typing import TYPE_CHECKING, Optional, Dict, Callable
 from PySide6.QtCore import QThread, Signal, QObject
 from shiboken6 import isValid
@@ -55,6 +57,8 @@ class DownloadManager(QObject):
         self._db = None
         self._playback_service = None
         self._download_workers: Dict[str, QThread] = {}  # Track active downloads
+        self._download_handlers: Dict[str, tuple[Callable, Callable]] = {}
+        self._download_lock = threading.Lock()
         logger.debug("[DownloadManager] Initialized")
 
     def set_dependencies(self, config: Optional["ConfigManager"] = None,
@@ -133,15 +137,13 @@ class DownloadManager(QObject):
             return False
 
         # Check if already downloading
-        if song_mid in self._download_workers:
-            worker = self._download_workers[song_mid]
-            if worker and isValid(worker) and worker.isRunning():
+        worker = self._get_worker(song_mid)
+        if worker:
+            if isValid(worker) and worker.isRunning():
                 logger.info(f"[DownloadManager] Already downloading: {song_mid}")
                 return True
-            else:
-                # Clean up finished worker - safe to delete since it's not running
-                del self._download_workers[song_mid]
-                worker.deleteLater()
+            # Stale worker replacement path
+            self._remove_worker(song_mid, expected_worker=worker)
 
         # Get download service
         bootstrap = Bootstrap.instance()
@@ -155,17 +157,17 @@ class DownloadManager(QObject):
         # Create download worker
         worker = self._OnlineDownloadWorker(service, song_mid, item.title, item)
 
+        download_handler = self._on_online_download_finished
+
         # Clean up worker ONLY after thread has fully stopped
         def on_thread_finished():
-            if song_mid in self._download_workers:
-                worker_obj = self._download_workers.pop(song_mid)
-                worker_obj.deleteLater()
+            self._remove_worker(song_mid, expected_worker=worker)
 
-        worker.download_finished.connect(self._on_online_download_finished)
+        worker.download_finished.connect(download_handler)
         worker.finished.connect(on_thread_finished)
 
         # Start download
-        self._download_workers[song_mid] = worker
+        self._register_worker(song_mid, worker, download_handler, on_thread_finished)
         worker.start()
 
         return True
@@ -194,14 +196,12 @@ class DownloadManager(QObject):
             return False
 
         # Check if already downloading
-        if song_mid in self._download_workers:
-            worker = self._download_workers[song_mid]
-            if worker and isValid(worker) and worker.isRunning():
+        worker = self._get_worker(song_mid)
+        if worker:
+            if isValid(worker) and worker.isRunning():
                 logger.info(f"[DownloadManager] Already downloading: {song_mid}")
                 return True
-            else:
-                del self._download_workers[song_mid]
-                worker.deleteLater()
+            self._remove_worker(song_mid, expected_worker=worker)
 
         # Get download service
         bootstrap = Bootstrap.instance()
@@ -224,15 +224,15 @@ class DownloadManager(QObject):
         worker = self._OnlineDownloadWorker(service, song_mid, title, item,
                                              quality=quality, force=force)
 
-        def on_thread_finished():
-            if song_mid in self._download_workers:
-                worker_obj = self._download_workers.pop(song_mid)
-                worker_obj.deleteLater()
+        download_handler = self._on_online_download_finished
 
-        worker.download_finished.connect(self._on_online_download_finished)
+        def on_thread_finished():
+            self._remove_worker(song_mid, expected_worker=worker)
+
+        worker.download_finished.connect(download_handler)
         worker.finished.connect(on_thread_finished)
 
-        self._download_workers[song_mid] = worker
+        self._register_worker(song_mid, worker, download_handler, on_thread_finished)
         worker.start()
 
         return True
@@ -288,11 +288,14 @@ class DownloadManager(QObject):
             song_mid: Song MID
             local_path: Local path of downloaded file (empty if failed)
         """
-        # Don't delete worker here - it will be deleted in on_thread_finished callback
-        # Just disconnect the signal
-        if song_mid in self._download_workers:
-            worker = self._download_workers[song_mid]
-            worker.download_finished.disconnect(self._on_online_download_finished)
+        # Worker lifecycle is finalized in on_thread_finished callback.
+        # Only perform guarded signal disconnect here to avoid duplicate callbacks.
+        worker = self._get_worker(song_mid)
+        handlers = self._get_worker_handlers(song_mid)
+        if worker and isValid(worker) and handlers:
+            download_handler, _ = handlers
+            with suppress(RuntimeError, TypeError):
+                worker.download_finished.disconnect(download_handler)
 
         if not local_path:
             logger.error(f"[DownloadManager] Online download failed: {song_mid}")
@@ -333,9 +336,12 @@ class DownloadManager(QObject):
     def cleanup(self):
         """Cancel all active downloads and cleanup workers."""
         logger.info("[DownloadManager] Cleaning up download workers")
-        for song_mid, worker in list(self._download_workers.items()):
+        with self._download_lock:
+            workers = list(self._download_workers.items())
+
+        for song_mid, worker in workers:
             self._stop_worker(worker, song_mid, wait_ms=1000)
-        self._download_workers.clear()
+            self._remove_worker(song_mid, expected_worker=worker)
 
     def _stop_worker(self, worker: Optional[QThread], worker_id: str, wait_ms: int = 1000):
         """Stop a download worker cooperatively."""
@@ -348,3 +354,46 @@ class DownloadManager(QObject):
             logger.warning(
                 f"[DownloadManager] Worker did not stop in time via cooperative shutdown: {worker_id}"
             )
+
+    def _get_worker(self, song_mid: str) -> Optional[QThread]:
+        """Get worker by ID under lock."""
+        with self._download_lock:
+            return self._download_workers.get(song_mid)
+
+    def _get_worker_handlers(self, song_mid: str) -> Optional[tuple[Callable, Callable]]:
+        """Get connected signal handlers for a worker under lock."""
+        with self._download_lock:
+            return self._download_handlers.get(song_mid)
+
+    def _register_worker(
+            self,
+            song_mid: str,
+            worker: QThread,
+            download_handler: Callable,
+            finished_handler: Callable
+    ):
+        """Register worker and handlers under lock."""
+        with self._download_lock:
+            self._download_workers[song_mid] = worker
+            self._download_handlers[song_mid] = (download_handler, finished_handler)
+
+    def _remove_worker(self, song_mid: str, expected_worker: Optional[QThread] = None):
+        """Remove and cleanup worker under lock, optionally checking identity."""
+        with self._download_lock:
+            worker = self._download_workers.get(song_mid)
+            if not worker:
+                return
+            if expected_worker is not None and worker is not expected_worker:
+                return
+            self._download_workers.pop(song_mid, None)
+            handlers = self._download_handlers.pop(song_mid, None)
+
+        if worker and isValid(worker) and handlers:
+            download_handler, finished_handler = handlers
+            with suppress(RuntimeError, TypeError):
+                worker.download_finished.disconnect(download_handler)
+            with suppress(RuntimeError, TypeError):
+                worker.finished.disconnect(finished_handler)
+
+        if worker and isValid(worker):
+            worker.deleteLater()
