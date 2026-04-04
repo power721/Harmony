@@ -44,6 +44,7 @@ class SleepTimerService(QObject):
         self._remaining: int = 0
         self._is_active = False
         self._original_volume: Optional[int] = None
+        self._track_finished_connected = False
 
         # QTimer for countdown
         self._timer = QTimer()
@@ -84,11 +85,8 @@ class SleepTimerService(QObject):
             logger.info(f"Started sleep timer: {config.value} seconds, action={config.action}")
         else:
             # Track mode: listen to track_finished event
-            try:
-                self._event_bus.track_finished.disconnect(self._on_track_finished)
-            except TypeError:
-                pass
-            self._event_bus.track_finished.connect(self._on_track_finished)
+            self._disconnect_track_finished()
+            self._connect_track_finished()
             logger.info(f"Started sleep timer: {config.value} tracks, action={config.action}")
 
         self.timer_started.emit()
@@ -105,10 +103,7 @@ class SleepTimerService(QObject):
 
         # Disconnect track finished signal if in track mode
         if self._config and self._config.mode == 'track':
-            try:
-                self._event_bus.track_finished.disconnect(self._on_track_finished)
-            except RuntimeError:
-                pass  # Already disconnected
+            self._disconnect_track_finished()
 
         # Restore volume if we saved it
         if self._original_volume is not None:
@@ -135,9 +130,7 @@ class SleepTimerService(QObject):
     def _on_track_finished(self):
         """Track finished handler for track count mode."""
         # Disconnect immediately to prevent re-entry
-        try:
-            self._event_bus.track_finished.disconnect(self._on_track_finished)
-        except RuntimeError:
+        if not self._disconnect_track_finished():
             return  # Already disconnected, skip
 
         self._remaining -= 1
@@ -153,7 +146,7 @@ class SleepTimerService(QObject):
             self._trigger_action()
         else:
             # Re-connect for next track
-            self._event_bus.track_finished.connect(self._on_track_finished)
+            self._connect_track_finished()
 
     def _trigger_action(self):
         """Trigger the configured action."""
@@ -212,6 +205,27 @@ class SleepTimerService(QObject):
         elif action == 'shutdown':
             logger.info("Sleep timer: shutting down system")
             self._shutdown_system()
+
+    def _connect_track_finished(self):
+        """Connect track-finished handler once."""
+        if self._track_finished_connected:
+            return
+        self._event_bus.track_finished.connect(self._on_track_finished)
+        self._track_finished_connected = True
+
+    def _disconnect_track_finished(self) -> bool:
+        """Disconnect track-finished handler when currently connected."""
+        if not self._track_finished_connected:
+            return False
+
+        try:
+            self._event_bus.track_finished.disconnect(self._on_track_finished)
+        except (RuntimeError, TypeError):
+            self._track_finished_connected = False
+            return False
+
+        self._track_finished_connected = False
+        return True
 
     def _shutdown_system(self):
         """Shutdown the system (cross-platform)."""

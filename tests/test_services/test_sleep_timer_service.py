@@ -1,10 +1,16 @@
 """Tests for SleepTimerService."""
 
-import pytest
+import warnings
 from unittest.mock import Mock, MagicMock, patch
-from PySide6.QtCore import QTimer
+
+import pytest
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from services.playback.sleep_timer_service import SleepTimerService, SleepTimerConfig
+
+
+class _QtEventBus(QObject):
+    track_finished = Signal()
 
 
 @pytest.fixture
@@ -75,6 +81,25 @@ class TestSleepTimerService:
 
         # Clean up
         sleep_timer_service.cancel()
+
+    def test_start_track_mode_does_not_warn_when_signal_not_preconnected(self, mock_playback_service):
+        """Test starting track mode does not warn when no prior track signal connection exists."""
+        event_bus = _QtEventBus()
+        sleep_timer_service = SleepTimerService(mock_playback_service, event_bus)
+        config = SleepTimerConfig(
+            mode='track',
+            value=1,
+            action='stop',
+            fade_out=False
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            sleep_timer_service.start(config)
+
+        sleep_timer_service.cancel()
+
+        assert not any("Failed to disconnect" in str(w.message) for w in caught)
 
     def test_cancel_timer(self, sleep_timer_service, mock_event_bus):
         """Test canceling timer."""
