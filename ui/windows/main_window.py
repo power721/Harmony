@@ -8,6 +8,7 @@ Refactored to use modular components:
 - ScanDialog: Music folder scanning
 """
 import logging
+from contextlib import suppress
 
 from app import Bootstrap
 from domain.playback import PlaybackState
@@ -1242,10 +1243,8 @@ class MainWindow(QMainWindow):
 
         import os
         if track.path and os.path.exists(track.path):
-            try:
+            with suppress(OSError):
                 os.remove(track.path)
-            except OSError:
-                pass
 
         online_download_service.download_track(
             song_mid=song_mid,
@@ -1737,10 +1736,8 @@ class MainWindow(QMainWindow):
     def _switch_now_playing_to_mini(self):
         """Switch from now-playing window directly to mini player."""
         if self._now_playing_window is not None and self._now_playing_window.isVisible():
-            try:
+            with suppress(Exception):
                 self._now_playing_window.closed.disconnect(self._on_now_playing_closed)
-            except Exception:
-                pass
             self._now_playing_window.close()
             self._now_playing_window.closed.connect(self._on_now_playing_closed)
 
@@ -1757,10 +1754,8 @@ class MainWindow(QMainWindow):
     def _switch_mini_to_now_playing(self):
         """Switch from mini player directly to now-playing window."""
         if self._mini_player is not None:
-            try:
+            with suppress(Exception):
                 self._mini_player.closed.disconnect(self._on_mini_player_closed)
-            except Exception:
-                pass
             self._mini_player.close()
             self._mini_player = None
 
@@ -2023,10 +2018,8 @@ class MainWindow(QMainWindow):
             logger.debug("Restored play queue from database")
             # Guard against spurious end-of-media events during backend warm-up.
             # This prevents an immediate auto-advance before restore completes.
-            try:
+            with suppress(Exception):
                 self._player.engine.set_prevent_auto_next(True)
-            except Exception:
-                pass
 
             # Check if we should auto-play
             was_playing = self._config.get_was_playing()
@@ -2040,10 +2033,8 @@ class MainWindow(QMainWindow):
 
             def restore_queue_state():
                 # Re-enable auto-next after restoration completes
-                try:
+                with suppress(Exception):
                     self._player.engine.set_prevent_auto_next(False)
-                except Exception:
-                    pass
 
                 current_item = self._player.current_track
                 logger.debug(f"restore_queue_state: {current_item} playback_position={playback_position} was_playing={was_playing}")
@@ -2087,10 +2078,8 @@ class MainWindow(QMainWindow):
 
                     def restore_cloud_state():
                         # Re-enable auto-next after restoration completes
-                        try:
+                        with suppress(Exception):
                             self._player.engine.set_prevent_auto_next(False)
-                        except Exception:
-                            pass
 
                         # Extract parent_id from last_fid_path
                         # last_fid_path is like "/fid1/fid2/fid3", we need the last segment
@@ -2125,10 +2114,8 @@ class MainWindow(QMainWindow):
         if current_track_id and current_track_id > 0:
             def restore_later():
                 # Re-enable auto-next after restoration completes
-                try:
+                with suppress(Exception):
                     self._player.engine.set_prevent_auto_next(False)
-                except Exception:
-                    pass
 
                 track = self._db.get_track(current_track_id)
                 if track:
@@ -2162,10 +2149,8 @@ class MainWindow(QMainWindow):
         is_now_playing_visible = self._now_playing_window is not None and self._now_playing_window.isVisible()
         self._config.set_start_in_now_playing(bool(is_now_playing_visible))
         if self._now_playing_window is not None and self._now_playing_window.isVisible():
-            try:
+            with suppress(Exception):
                 self._now_playing_window.closed.disconnect(self._on_now_playing_closed)
-            except Exception:
-                pass
             self._now_playing_window.close()
 
         # Save window settings using QSettings (Qt native format)
@@ -2284,22 +2269,14 @@ class MainWindow(QMainWindow):
                 logger.error(f"Error cleaning up lyrics controller: {e}")
 
         # Disconnect EventBus signals to prevent memory leaks and callbacks to destroyed objects
-        try:
+        with suppress(RuntimeError):
             self._event_bus.track_changed.disconnect(self._on_track_changed)
-        except RuntimeError:
-            pass  # Already disconnected
-        try:
+        with suppress(RuntimeError):
             self._event_bus.position_changed.disconnect(self._on_position_changed)
-        except RuntimeError:
-            pass
-        try:
+        with suppress(RuntimeError):
             self._event_bus.playback_state_changed.disconnect(self._on_playback_state_changed)
-        except RuntimeError:
-            pass
-        try:
+        with suppress(RuntimeError):
             self._event_bus.download_completed.disconnect(self._on_cloud_download_completed)
-        except RuntimeError:
-            pass
 
         # Close database
         self._db.close()
