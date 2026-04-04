@@ -4,6 +4,7 @@ Queue view for managing the current playback queue.
 
 import ast
 import logging
+from contextlib import suppress
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QAbstractListModel, QModelIndex, QRunnable, QThreadPool, QRect, \
@@ -266,10 +267,8 @@ class CoverLoadWorker(QRunnable):
             qimage = None
             if cover_path:
                 qimage = QImage(cover_path)
-            try:
+            with suppress(RuntimeError):
                 self.callback_signal.emit(self.track_id, cover_path, qimage)
-            except RuntimeError:
-                pass  # signal source deleted (e.g., delegate GC'd during test)
         except Exception:
             pass
 
