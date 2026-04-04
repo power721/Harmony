@@ -463,7 +463,6 @@ class BaiduDriveService:
             csrf_token = ""
             if access_token:
                 csrf_token = cls._get_bdstoken(access_token)
-                logger.debug(csrf_token)
 
             params = {
                 "opera": "delete",
