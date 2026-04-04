@@ -1575,9 +1575,8 @@ class MainWindow(QMainWindow):
         from pathlib import Path
         try:
             album_obj = self._library_service.get_album_by_name(album, artist)
-            if album_obj and album_obj.cover_path:
-                if Path(album_obj.cover_path).exists():
-                    return album_obj.cover_path
+            if album_obj and album_obj.cover_path and Path(album_obj.cover_path).exists():
+                return album_obj.cover_path
         except Exception as e:
             logger.debug(f"[MainWindow] Error getting album cover: {e}")
         return None
