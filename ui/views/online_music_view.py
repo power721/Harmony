@@ -852,6 +852,7 @@ class OnlineMusicView(QWidget):
         self._current_result: Optional[SearchResult] = None
         self._current_tracks: List[OnlineTrack] = []
         self._search_worker: Optional[SearchWorker] = None
+        self._search_request_id = 0
         self._top_list_worker: Optional[TopListWorker] = None
         self._completion_worker: Optional[CompletionWorker] = None
         self._completion_timer: Optional[QTimer] = None
@@ -2403,9 +2404,8 @@ class OnlineMusicView(QWidget):
 
     def _do_search(self):
         """Execute search."""
-        if self._search_worker and self._search_worker.isRunning():
-            self._search_worker.terminate()
-            self._search_worker = None
+        self._search_request_id += 1
+        request_id = self._search_request_id
 
         self._search_worker = SearchWorker(
             self._service,
@@ -2414,12 +2414,19 @@ class OnlineMusicView(QWidget):
             self._current_page,
             30
         )
-        self._search_worker.search_completed.connect(self._on_search_completed)
-        self._search_worker.search_failed.connect(self._on_search_failed)
+        self._search_worker.search_completed.connect(
+            lambda result, rid=request_id: self._on_search_completed(result, rid)
+        )
+        self._search_worker.search_failed.connect(
+            lambda error, rid=request_id: self._on_search_failed(error, rid)
+        )
         self._search_worker.start()
 
-    def _on_search_completed(self, result: SearchResult):
+    def _on_search_completed(self, result: SearchResult, request_id: int | None = None):
         """Handle search completion."""
+        if request_id is not None and request_id != self._search_request_id:
+            return
+
         self._current_result = result
         self._stack.setCurrentWidget(self._results_page)
         self._is_top_list_view = False  # Now viewing search results
@@ -2457,8 +2464,11 @@ class OnlineMusicView(QWidget):
         else:
             self._prev_btn.parentWidget().show()
 
-    def _on_search_failed(self, error: str):
+    def _on_search_failed(self, error: str, request_id: int | None = None):
         """Handle search failure."""
+        if request_id is not None and request_id != self._search_request_id:
+            return
+
         logger.error(f"Search failed: {error}")
         MessageDialog.warning(self, t("error"), t("search_failed") + f": {error}")
 
@@ -2617,9 +2627,8 @@ class OnlineMusicView(QWidget):
 
     def _load_more_grid(self, search_type: str):
         """Load more items for grid view."""
-        if self._search_worker and self._search_worker.isRunning():
-            self._search_worker.terminate()
-            self._search_worker = None
+        self._search_request_id += 1
+        request_id = self._search_request_id
 
         self._search_worker = SearchWorker(
             self._service,
@@ -2629,13 +2638,23 @@ class OnlineMusicView(QWidget):
             self._grid_page_size
         )
         self._search_worker.search_completed.connect(
-            lambda result: self._on_load_more_completed(result, search_type)
+            lambda result, rid=request_id: self._on_load_more_completed(result, search_type, rid)
         )
-        self._search_worker.search_failed.connect(self._on_load_more_failed)
+        self._search_worker.search_failed.connect(
+            lambda error, rid=request_id: self._on_load_more_failed(error, rid)
+        )
         self._search_worker.start()
 
-    def _on_load_more_completed(self, result: SearchResult, search_type: str):
+    def _on_load_more_completed(
+            self,
+            result: SearchResult,
+            search_type: str,
+            request_id: int | None = None
+    ):
         """Handle load more completion."""
+        if request_id is not None and request_id != self._search_request_id:
+            return
+
         if search_type == SearchType.SINGER:
             self._singers_page.hide_loading()
             self._display_artists(result.artists, is_append=True)
@@ -2649,8 +2668,11 @@ class OnlineMusicView(QWidget):
         # Update total
         self._grid_total = result.total
 
-    def _on_load_more_failed(self, error: str):
+    def _on_load_more_failed(self, error: str, request_id: int | None = None):
         """Handle load more failure."""
+        if request_id is not None and request_id != self._search_request_id:
+            return
+
         logger.error(f"Load more failed: {error}")
         # Hide loading on all grid views
         self._singers_page.hide_loading()
