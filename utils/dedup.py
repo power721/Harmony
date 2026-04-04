@@ -11,6 +11,7 @@ The algorithm keeps the original version (highest priority).
 """
 
 import re
+import os
 import logging
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
@@ -254,13 +255,39 @@ def get_track_key(item: PlaylistItem) -> str:
         Grouping key string (e.g., "黄霄雲 - 淬炼")
     """
     artist = item.artist or "Unknown Artist"
-    title = item.title or ""
+    title = item.title or os.path.basename(item.local_path or "")
 
     # Extract base title without version markers
     version_info = extract_version_info(title)
     base_title = version_info.base_title or title
 
     return f"{artist} - {base_title}".strip()
+
+
+def _extract_item_version_info(item: PlaylistItem) -> VersionInfo:
+    """
+    Extract version info from both title and local filename.
+
+    Some tracks have cleaned metadata titles (e.g., no "(伴奏)") while the
+    actual filename still contains version markers. In that case, combine both
+    sources to avoid picking a lower-quality version.
+    """
+    title = item.title or ""
+    title_info = extract_version_info(title) if title else VersionInfo()
+
+    filename = os.path.basename(item.local_path or "")
+    filename_info = extract_version_info(filename) if filename else VersionInfo()
+
+    base_title = title_info.base_title or title or filename_info.base_title or filename
+
+    return VersionInfo(
+        is_live=title_info.is_live or filename_info.is_live,
+        has_instrumental=title_info.has_instrumental or filename_info.has_instrumental,
+        has_harmony=title_info.has_harmony or filename_info.has_harmony,
+        has_special_version=title_info.has_special_version or filename_info.has_special_version,
+        base_title=base_title,
+        raw_title=title or filename,
+    )
 
 
 def deduplicate_playlist_items(items: List[PlaylistItem]) -> List[PlaylistItem]:
@@ -318,7 +345,7 @@ def deduplicate_playlist_items(items: List[PlaylistItem]) -> List[PlaylistItem]:
             # Multiple versions, select highest priority
             scored_items: List[Tuple[int, PlaylistItem]] = []
             for item in group_items:
-                version_info = extract_version_info(item.title or "")
+                version_info = _extract_item_version_info(item)
                 score = version_info.priority_score
                 scored_items.append((score, item))
 
@@ -355,7 +382,7 @@ def deduplicate_playlist_items_strict(items: List[PlaylistItem]) -> List[Playlis
     result: List[PlaylistItem] = []
 
     for item in items:
-        version_info = extract_version_info(item.title or "")
+        version_info = _extract_item_version_info(item)
         # Only keep if no version markers
         if version_info.priority_score == 100:
             result.append(item)
@@ -392,7 +419,7 @@ def get_version_summary(items: List[PlaylistItem]) -> dict:
         key = get_track_key(item)
         groups.add(key)
 
-        version_info = extract_version_info(item.title or "")
+        version_info = _extract_item_version_info(item)
         score = version_info.priority_score
 
         if score == 100:

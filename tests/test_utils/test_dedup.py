@@ -227,6 +227,27 @@ class TestDeduplicatePlaylistItems:
         assert len(result) == 1
         assert result[0].title == "Song"
 
+    def test_uses_local_filename_markers_when_titles_are_same(self):
+        """Should use local filename markers when metadata titles are identical."""
+        items = [
+            PlaylistItem(
+                source=TrackSource.LOCAL,
+                title="11次心跳",
+                artist="火箭少女101",
+                local_path="/music/火箭少女101 - 11次心跳 (伴奏)[putaojie.com].flac",
+            ),
+            PlaylistItem(
+                source=TrackSource.LOCAL,
+                title="11次心跳",
+                artist="火箭少女101",
+                local_path="/music/火箭少女101 - 11次心跳[putaojie.com].flac",
+            ),
+        ]
+
+        result = deduplicate_playlist_items(items)
+        assert len(result) == 1
+        assert result[0].local_path.endswith("火箭少女101 - 11次心跳[putaojie.com].flac")
+
 
 class TestDeduplicatePlaylistItemsStrict:
     """Test strict deduplication (remove ALL versions)."""
