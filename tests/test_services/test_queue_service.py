@@ -480,6 +480,65 @@ def test_playback_service_restore_queue_uses_batch_metadata_enrichment():
     assert service._engine.playlist_items[0].artist == "new-artist"
 
 
+def test_playback_service_restore_queue_batch_lookup_deduplicates_ids():
+    """Batch metadata enrichment should deduplicate repeated lookup keys."""
+    first = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=10,
+        local_path="/tmp/missing-1.mp3",
+        title="old-1",
+    )
+    second = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=10,
+        local_path="/tmp/missing-2.mp3",
+        title="old-2",
+    )
+    track_repo = FakeBatchRestoreTrackRepo(
+        {
+            10: Track(
+                id=10,
+                path="/tmp/missing-1.mp3",
+                title="new-title",
+                artist="new-artist",
+                album="new-album",
+                duration=123.0,
+                source=TrackSource.LOCAL,
+            )
+        }
+    )
+
+    service = PlaybackService.__new__(PlaybackService)
+    service._engine = FakeRestoreEngine()
+    service._queue_repo = type(
+        "Repo",
+        (),
+        {"load": lambda self: [first.to_play_queue_item(0), second.to_play_queue_item(1)]},
+    )()
+    service._track_repo = track_repo
+    service._config = type(
+        "Cfg",
+        (),
+        {
+            "get": lambda self, key, default=None: {
+                "queue_current_index": 0,
+                "queue_play_mode": PlayMode.SEQUENTIAL.value,
+                "queue_current_track_id": 10,
+                "queue_current_cloud_file_id": "",
+                "queue_current_local_path": "/tmp/missing-1.mp3",
+            }.get(key, default)
+        },
+    )()
+    service._set_source = lambda source: None
+    service._cloud_repo = type("CloudRepo", (), {"get_account_by_id": lambda self, _id: None})()
+    service._cloud_account = None
+
+    restored = PlaybackService.restore_queue(service)
+
+    assert restored is True
+    assert track_repo.get_by_ids_calls == [[10]]
+
+
 def test_play_local_library_reads_tracks_in_pages(monkeypatch):
     """Library playback should page through repository reads instead of one unbounded load."""
     pages = [

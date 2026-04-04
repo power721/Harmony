@@ -1163,6 +1163,9 @@ class PlaybackService(QObject):
         track_ids = [item.track_id for item in items if item.track_id and item.is_local]
         cloud_file_ids = [item.cloud_file_id for item in items if item.is_cloud and item.cloud_file_id]
         paths = [item.local_path for item in items if item.local_path and not item.cloud_file_id]
+        track_ids = list(dict.fromkeys(track_ids))
+        cloud_file_ids = list(dict.fromkeys(cloud_file_ids))
+        paths = list(dict.fromkeys(paths))
 
         id_map = {track.id: track for track in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
 
