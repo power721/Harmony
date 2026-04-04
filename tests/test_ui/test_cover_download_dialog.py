@@ -135,6 +135,22 @@ def sample_artist():
 class TestTrackCoverDownloadDialog:
     """Test track cover download with TrackSearchStrategy."""
 
+    def test_hidden_track_dialog_defers_auto_search_until_shown(
+        self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
+    ):
+        """Constructing the dialog should not start background search before it is shown."""
+        strategy = TrackSearchStrategy(sample_tracks, mock_track_repo, mock_event_bus)
+
+        with patch.object(CoverController, "search", return_value="token") as mock_search:
+            dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+            assert mock_search.call_count == 0
+
+            dialog.show()
+            app.processEvents()
+
+            assert mock_search.call_count == 1
+            dialog.reject()
+
     def test_dialog_reject_shuts_down_cover_controller(
         self, app, sample_tracks, mock_cover_service, mock_track_repo, mock_event_bus
     ):
@@ -211,6 +227,24 @@ class TestTrackCoverDownloadDialog:
 
 class TestAlbumCoverDownloadDialog:
     """Test album cover download with AlbumSearchStrategy."""
+
+    def test_hidden_album_dialog_defers_auto_search_until_shown(
+        self, app, sample_album, mock_cover_service, mock_library_service, mock_event_bus
+    ):
+        """Single-item dialog should not auto-search until it becomes visible."""
+        strategy = AlbumSearchStrategy(
+            sample_album, mock_library_service, mock_event_bus
+        )
+
+        with patch.object(CoverController, "search", return_value="token") as mock_search:
+            dialog = UniversalCoverDownloadDialog(strategy, mock_cover_service)
+            assert mock_search.call_count == 0
+
+            dialog.show()
+            app.processEvents()
+
+            assert mock_search.call_count == 1
+            dialog.reject()
 
     def test_dialog_initialization_with_album(
         self, app, sample_album, mock_cover_service, mock_library_service, mock_event_bus

@@ -51,6 +51,7 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._current_index = 0
         self._current_result = None  # For lazy fetch
         self._current_token = None  # Track current search token
+        self._pending_auto_search = False
 
         # Create controller and connect signals
         self._controller = CoverController(parent=self)
@@ -287,16 +288,19 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
             item = self._items[0]
             self._set_default_search_query(item)
             self._display_existing_cover(item)
-            self._search_covers()
+            self._pending_auto_search = True
             return
 
         # Multi-item - populate combo
+        self._combo.blockSignals(True)
         self._combo.clear()
         for item in self._items:
             self._combo.addItem(self._strategy.get_display_text(item))
 
         self._combo.setCurrentIndex(0)
-        self._on_item_changed(0)
+        self._combo.blockSignals(False)
+        self._update_current_item(0, auto_search=False)
+        self._pending_auto_search = True
 
     def _set_default_search_query(self, item):
         """Set initial query text for current item if input exists."""
@@ -308,6 +312,10 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _on_item_changed(self, index: int):
         """Handle item selection change."""
+        self._update_current_item(index, auto_search=True)
+
+    def _update_current_item(self, index: int, auto_search: bool):
+        """Update UI for the selected item and optionally trigger auto-search."""
         if index < 0 or index >= len(self._items):
             return
 
@@ -334,8 +342,12 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         self._display_existing_cover(item)
         self._set_default_search_query(item)
 
-        # Auto search
-        self._search_covers()
+        if auto_search:
+            if self.isVisible():
+                self._pending_auto_search = False
+                self._search_covers()
+            else:
+                self._pending_auto_search = True
 
     def _build_details_text(self, item) -> str:
         """Build details text for item."""
@@ -624,6 +636,13 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
         """Cleanup on close."""
         self._controller.shutdown()
         super().closeEvent(event)
+
+    def showEvent(self, event):
+        """Start deferred auto-search only after the dialog becomes visible."""
+        super().showEvent(event)
+        if self._pending_auto_search:
+            self._pending_auto_search = False
+            self._search_covers()
 
     def reject(self):
         """Handle dialog rejection."""
