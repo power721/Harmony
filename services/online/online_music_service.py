@@ -290,7 +290,8 @@ class OnlineMusicService:
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            result = self._qqmusic.get_singer_info(singer_mid, page=page, page_size=page_size)
+            # Use batch request to get both detail and follow status
+            result = self._qqmusic.get_singer_info_with_follow_status(singer_mid, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug(f"QQ Music returned no artist detail, falling back to YGKing")
@@ -418,7 +419,8 @@ class OnlineMusicService:
         """
         # Prefer QQ Music API for detail
         if self._has_qqmusic_credential() and self._qqmusic:
-            result = self._qqmusic.get_album_info(album_mid, page=page, page_size=page_size)
+            # Use batch request to get both detail and fav status
+            result = self._qqmusic.get_album_info_with_fav_status(album_mid, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug(f"QQ Music returned no album detail, falling back to YGKing")
@@ -509,8 +511,10 @@ class OnlineMusicService:
             Playlist detail dict or None
         """
         # Prefer QQ Music API for detail
+        # Use batch API for all pages since QQ Music max return is 30 songs
+        # First page includes fav status query, subsequent pages don't need it
         if self._has_qqmusic_credential() and self._qqmusic:
-            result = self._qqmusic.get_playlist_info(playlist_id, page=page, page_size=page_size)
+            result = self._qqmusic.get_playlist_info_with_fav_status(playlist_id, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug(f"QQ Music returned no playlist detail, falling back to YGKing")

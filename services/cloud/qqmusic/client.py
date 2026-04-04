@@ -815,6 +815,64 @@ class QQMusicClient:
         params = {"uin": uin, "v_playlistId": [playlist_id], "opertype": 2}
         return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
 
+    def make_batch_request(self, requests: Dict[str, Dict]) -> Dict:
+        """
+        Make a batch API request with multiple sub-requests.
+
+        Args:
+            requests: Dict of {req_key: {"module": str, "method": str, "param": dict}}
+                    Example: {"req_1": {"module": "Music", "method": "GetSongInfo", "param": {...}}}
+
+        Returns:
+            Full response dict with all req_N responses
+        """
+        import json
+
+        common = self._build_common_params()
+
+        request_data = {
+            'comm': common,
+        }
+
+        # Add all sub-requests
+        for req_key, req_data in requests.items():
+            request_data[req_key] = {
+                'module': req_data['module'],
+                'method': req_data['method'],
+                'param': req_data['param']
+            }
+
+        # Build headers with Cookie if credential exists
+        headers = {
+            'Content-Type': 'application/json',
+            'Referer': 'https://y.qq.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Origin': 'https://y.qq.com',
+        }
+
+        # Add Cookie header if credential exists
+        if self.credential:
+            cookies = [
+                f"uin={self.credential.get('musicid', '')}",
+                f"qqmusic_key={self.credential.get('musickey', '')}",
+                f"qm_keyst={self.credential.get('musickey', '')}",
+                f"tmeLoginType={self.credential.get('login_type') or self.credential.get('loginType', 2)}",
+            ]
+            headers['Cookie'] = '; '.join(cookies)
+
+        url = APIConfig.ENDPOINT
+        data_to_send = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+
+        response = self.session.post(url, data=data_to_send, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        try:
+            data = response.json()
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON response: {e}") from e
+
+        return data
+
     def get_euin(self) -> str:
         """
         Get encrypted UIN (encrypt_uin) from musicid via profile homepage API.

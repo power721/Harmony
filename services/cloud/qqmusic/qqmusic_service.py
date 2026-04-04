@@ -3,8 +3,6 @@ QQ Music service for Harmony music player.
 Provides high-level interface for QQ Music integration.
 """
 
-import asyncio
-import json
 import logging
 import time
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
@@ -12,7 +10,7 @@ from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from .client import QQMusicClient
 
 if TYPE_CHECKING:
-    from system.config import ConfigManager
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +342,258 @@ class QQMusicService:
             logger.error(f"Get album info failed: {e}", exc_info=True)
             return None
 
+    def get_album_info_with_fav_status(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[
+        Dict[str, Any]]:
+        """
+        Get album information with fav status in a single batch request.
+
+        This is more efficient than calling get_album_info and query_album_fav_status separately.
+
+        Args:
+            album_mid: Album MID
+            page: Page number (1-based)
+            page_size: Songs per page
+
+        Returns:
+            Album information dictionary with fav_status field, or None
+        """
+        from services.online.adapter import OnlineMusicAdapter
+
+        try:
+            uin = str(self.credential.get("musicid", "")) if self.credential else ""
+
+            # Build batch request
+            requests = {
+                "req_1": {
+                    "module": "music.musichallAlbum.AlbumInfoServer",
+                    "method": "GetAlbumDetail",
+                    "param": {
+                        "albumMid": album_mid,
+                        "albumID": 0
+                    }
+                },
+                "req_2": {
+                    "module": "music.musichallAlbum.AlbumSongList",
+                    "method": "GetAlbumSongList",
+                    "param": {
+                        "albumMid": album_mid,
+                        "albumID": 0,
+                        "begin": (page - 1) * page_size,
+                        "num": page_size,
+                        "order": 2
+                    }
+                }
+            }
+
+            # Add fav status query if logged in
+            if self._credential:
+                requests["req_3"] = {
+                    "module": "music.musicasset.AlbumFavRead",
+                    "method": "IsAlbumFan",
+                    "param": {
+                        "uin": int(uin) if uin.isdigit() else uin,
+                        "v_albumMid": [album_mid]
+                    }
+                }
+
+            # Make batch request
+            batch_result = self.client.make_batch_request(requests)
+
+            if not batch_result:
+                logger.warning("Album batch request returned None")
+                return None
+
+            # Parse album info from req_1 and req_2
+            req_1 = batch_result.get("req_1", {})
+            req_2 = batch_result.get("req_2", {})
+
+            if req_1.get("code") != 0 or req_2.get("code") != 0:
+                logger.warning(
+                    f"Album batch request failed: req_1 code={req_1.get('code')}, req_2 code={req_2.get('code')}")
+                return None
+
+            # Combine results - extract data from nested structure
+            req_1_data = req_1.get('data', req_1)
+            req_2_data = req_2.get('data', req_2)
+            result = OnlineMusicAdapter.parse_album_detail(req_1_data, req_2_data)
+            if not result:
+                logger.warning("Failed to parse album detail from batch request")
+                return None
+
+            result['page'] = page
+            result['page_size'] = page_size
+
+            # Parse fav status from req_3 if available
+            if self._credential and "req_3" in batch_result:
+                req_3 = batch_result.get("req_3", {})
+                if req_3.get("code") == 0:
+                    data = req_3.get("data", {})
+                    m_fan = data.get("m_fan", {})
+                    is_fav = m_fan.get(album_mid, False)
+                    result['fav_status'] = is_fav
+                    logger.debug(f"Album fav status from batch request: {is_fav}")
+                else:
+                    result['fav_status'] = False
+            else:
+                result['fav_status'] = False
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Get album info with fav status failed: {e}", exc_info=True)
+            return None
+
+    def get_playlist_info_with_fav_status(self, playlist_id: str, page: int = 1, page_size: int = 50) -> Optional[
+        Dict[str, Any]]:
+        """
+        Get playlist information with fav status in a single batch request.
+
+        This is more efficient than calling get_playlist_info and query_playlist_fav_status separately.
+
+        Args:
+            playlist_id: Playlist ID
+            page: Page number (1-based)
+            page_size: Songs per page
+
+        Returns:
+            Playlist information dictionary with fav_status field, or None
+        """
+        try:
+            # QQ Music API max return is 30 songs per request
+            # Use server-side pagination with song_begin and song_num
+            song_begin = (page - 1) * page_size
+            # Cap at 30 to match API limit
+            song_num = min(page_size, 30)
+
+            # Build batch request using the more complete API
+            requests = {
+                "req_1": {
+                    "module": "music.srfDissInfo.aiDissInfo",
+                    "method": "uniform_get_Dissinfo",
+                    "param": {
+                        "disstid": int(playlist_id),
+                        "userinfo": 1,
+                        "tag": 1,
+                        "orderlist": 1,
+                        "song_begin": song_begin,
+                        "song_num": song_num,
+                        "onlysonglist": 0,
+                        "enc_host_uin": ""
+                    }
+                }
+            }
+
+            # Add fav status query only for first page if logged in
+            if self._credential:
+                requests["req_2"] = {
+                    "module": "music.musicasset.PlaylistFavRead",
+                    "method": "IsPlaylistFan",
+                    "param": {
+                        "v_tid": [int(playlist_id) if str(playlist_id).isdigit() else playlist_id]
+                    }
+                }
+
+            # Make batch request
+            batch_result = self.client.make_batch_request(requests)
+
+            if not batch_result:
+                logger.warning("Playlist batch request returned None")
+                return None
+
+            # Parse playlist info from req_1
+            req_1 = batch_result.get("req_1", {})
+
+            if req_1.get("code") != 0:
+                logger.warning(f"Playlist batch request failed: req_1 code={req_1.get('code')}")
+                return None
+
+            # Extract data from req_1.data - the actual playlist data is nested here
+            req_1_data = req_1.get('data', {})
+
+            # Parse response - API returns paginated songs
+            songs = req_1_data.get('songlist', []) or req_1_data.get('songs', []) or []
+            # Use total_song_num from API if available, otherwise count returned songs
+            total_songs = req_1_data.get('total_song_num', len(songs))
+
+            # Get playlist info from dirinfo (for CgiGetDiss API)
+            dirinfo = req_1_data.get('dirinfo', {})
+
+            # Get playlist name - try multiple locations
+            import re
+            name = ''
+            if dirinfo:
+                name = dirinfo.get('title', '')
+            if not name:
+                name = req_1_data.get('dissname', '') or req_1_data.get('title', '') or req_1_data.get('name', '')
+            if name:
+                name = re.sub(r'<[^>]+>', '', name)  # Remove HTML tags
+
+            # Get creator - try multiple locations
+            creator = ''
+            if dirinfo:
+                creator_data = dirinfo.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('nick', '') or creator_data.get('name', '')
+            if not creator:
+                creator_data = req_1_data.get('creator', {})
+                if isinstance(creator_data, dict):
+                    creator = creator_data.get('name', '') or creator_data.get('nick', '')
+                elif isinstance(creator_data, str):
+                    creator = creator_data
+            if not creator:
+                creator = req_1_data.get('nick', '') or req_1_data.get('nickname', '')
+
+            # Get cover
+            cover = ''
+            if dirinfo:
+                cover = dirinfo.get('picurl', '') or dirinfo.get('picurl2', '')
+            if not cover:
+                cover = req_1_data.get('logo', '') or req_1_data.get('cover', '')
+
+            playlist_result = {
+                'id': dirinfo.get('id', '') if dirinfo else (
+                            req_1_data.get('tid', '') or req_1_data.get('dissid', '') or str(playlist_id)),
+                'name': name,
+                'creator': creator,
+                'cover': cover,
+                'description': dirinfo.get('desc', '') if dirinfo else '',
+                'songs': songs,
+                'total': total_songs,
+                'page': page,
+                'page_size': page_size,
+            }
+
+            # Parse fav status from req_2 if available
+            if self._credential and "req_2" in batch_result:
+                req_2 = batch_result.get("req_2", {})
+                if req_2.get("code") == 0:
+                    req_2_data = req_2.get("data", {})
+                    m_fan = req_2_data.get("m_fan", {})
+
+                    # Try to match with both string and int keys
+                    # API returns string keys like "8035980030"
+                    is_fav = False
+                    playlist_id_str = str(playlist_id)
+                    if playlist_id_str in m_fan:
+                        is_fav = m_fan[playlist_id_str]
+                    elif playlist_id_str.isdigit() and int(playlist_id_str) in m_fan:
+                        is_fav = m_fan[int(playlist_id_str)]
+                    elif playlist_id in m_fan:
+                        is_fav = m_fan[playlist_id]
+
+                    playlist_result['fav_status'] = is_fav
+                    logger.debug(f"Playlist fav status from batch request: {is_fav}")
+                else:
+                    playlist_result['fav_status'] = False
+            else:
+                playlist_result['fav_status'] = False
+
+            return playlist_result
+
+        except Exception as e:
+            logger.error(f"Get playlist info with fav status failed: {e}", exc_info=True)
+            return None
+
     def get_playlist_info(self, playlist_id: str, page: int = 1, page_size: int = 50) -> Optional[Dict[str, Any]]:
         """
         Get playlist information with pagination.
@@ -408,7 +658,8 @@ class QQMusicService:
                 cover = result.get('logo', '') or result.get('cover', '')
 
             return {
-                'id': dirinfo.get('id', '') if dirinfo else (result.get('tid', '') or result.get('dissid', '') or str(playlist_id)),
+                'id': dirinfo.get('id', '') if dirinfo else (
+                            result.get('tid', '') or result.get('dissid', '') or str(playlist_id)),
                 'name': name,
                 'creator': creator,
                 'cover': cover,
@@ -452,7 +703,8 @@ class QQMusicService:
             pic_info = singer_data.get('pic', {})
 
             # Get avatar URL - try different fields
-            avatar = pic_info.get('pic') or pic_info.get('big') or pic_info.get('big_black') or pic_info.get('big_white') or ''
+            avatar = pic_info.get('pic') or pic_info.get('big') or pic_info.get('big_black') or pic_info.get(
+                'big_white') or ''
             # If no avatar in pic, construct from singer_mid
             if not avatar:
                 singer_mid_from_info = basic_info.get('singer_mid', '')
@@ -541,6 +793,187 @@ class QQMusicService:
             logger.error(f"Get singer info failed: {e}", exc_info=True)
             return None
 
+    def get_singer_info_with_follow_status(self, singer_mid: str, page: int = 1, page_size: int = 50) -> Optional[
+        Dict[str, Any]]:
+        """
+        Get singer information with follow status in a single batch request.
+
+        This is more efficient than calling get_singer_info and query_singer_follow_status separately.
+
+        Args:
+            singer_mid: Singer MID
+            page: Page number (1-based)
+            page_size: Songs per page
+
+        Returns:
+            Singer information dictionary with follow_status field, or None
+        """
+        try:
+            # Build batch request using the same API endpoints as the individual calls
+            requests = {
+                "req_1": {
+                    "module": "music.musichallSinger.SingerInfoInter",
+                    "method": "GetSingerDetail",
+                    "param": {
+                        "singer_mids": [singer_mid]
+                    }
+                },
+                "req_2": {
+                    "module": "musichall.song_list_server",
+                    "method": "GetSingerSongList",
+                    "param": {
+                        "singerMid": singer_mid,
+                        "order": 1,
+                        "begin": (page - 1) * page_size,
+                        "num": page_size
+                    }
+                },
+                "req_3": {
+                    "module": "music.musichallAlbum.AlbumListServer",
+                    "method": "GetAlbumList",
+                    "param": {
+                        "singerMid": singer_mid,
+                        "order": 0,
+                        "begin": 0,
+                        "num": 1,
+                        "songNumTag": 0,
+                        "singerID": 0
+                    }
+                }
+            }
+
+            # Add follow status query if logged in
+            if self._credential:
+                requests["req_4"] = {
+                    "module": "Concern.ConcernSystemServer",
+                    "method": "cgi_qry_concern_status",
+                    "param": {
+                        "vec_userinfo": [{"usertype": 1, "userid": singer_mid}],
+                        "opertype": 5,
+                        "encrypt_singerid": 1
+                    }
+                }
+
+            # Make batch request
+            batch_result = self.client.make_batch_request(requests)
+
+            if not batch_result:
+                logger.warning("Batch request returned None")
+                return None
+
+            # Parse singer info from req_1 and req_2
+            req_1 = batch_result.get("req_1", {})
+            req_2 = batch_result.get("req_2", {})
+            req_3 = batch_result.get("req_3", {})
+
+            if req_1.get("code") != 0:
+                logger.warning(f"Batch request failed: req_1 code={req_1.get('code')}")
+                return None
+
+            # Extract singer data from req_1 - data is nested under req_1.data.singer_list
+            req_1_data = req_1.get('data', {})
+            singer_list = req_1_data.get('singer_list', [])
+            if not singer_list:
+                logger.warning(
+                    f"Batch request succeeded but no singer_list found in req_1.data, keys: {list(req_1_data.keys())}")
+                return None
+
+            singer_data = singer_list[0]
+            basic_info = singer_data.get('basic_info', {})
+            ex_info = singer_data.get('ex_info', {})
+            pic_info = singer_data.get('pic', {})
+
+            # Get avatar URL
+            avatar = pic_info.get('pic') or pic_info.get('big') or pic_info.get('big_black') or pic_info.get(
+                'big_white') or ''
+            if not avatar:
+                singer_mid_from_info = basic_info.get('singer_mid', '')
+                has_photo = basic_info.get('has_photo', 0)
+                if has_photo and singer_mid_from_info:
+                    avatar = f"http://y.gtimg.cn/music/photo_new/T001R300x300M000{singer_mid_from_info}_{has_photo}.jpg"
+
+            singer_name = basic_info.get('name', '')
+            desc = ex_info.get('desc', '')
+
+            # Parse songs from req_2
+            songs = []
+            total_songs = 0
+
+            if req_2.get("code") == 0:
+                req_2_data = req_2.get("data", {})
+                song_list = req_2_data.get("songList", [])
+                total_songs = req_2_data.get("totalNum", 0)
+
+                for song in song_list:
+                    song_info = song.get("songInfo", song)
+                    singers = song_info.get("singer", [])
+
+                    # Get album info
+                    album_data = song_info.get("album", {})
+                    albummid = album_data.get("mid", "") or album_data.get("albummid", "")
+                    albumname = album_data.get("name", "") or album_data.get("name", "")
+
+                    songs.append({
+                        'mid': song_info.get("mid", "") or song_info.get("songmid", ""),
+                        'id': song_info.get("id", 0),
+                        'name': song_info.get("name", ""),
+                        'title': song_info.get("name", ""),
+                        'singer': [{'mid': s.get("mid", ""), 'name': s.get("name", "")} for s in singers] if isinstance(
+                            singers, list) else [],
+                        'album': {
+                            'mid': albummid,
+                            'name': albumname
+                        },
+                        'albummid': albummid,
+                        'albumname': albumname,
+                        'interval': song_info.get('interval', 0) or song_info.get('duration', 0),
+                    })
+
+            # Parse albums from req_3
+            albums = []
+            total_albums = 0
+
+            if req_3.get("code") == 0:
+                req_3_data = req_3.get("data", {})
+                album_list = req_3_data.get("albumList", [])
+                total_albums = req_3_data.get("total", 0)
+
+                for album in album_list:
+                    albums.append({
+                        'mid': album.get("albumMid", ""),
+                        'id': album.get("albumID", 0),
+                        'name': album.get("albumName", ""),
+                        'singer_name': album.get("singerName", ""),
+                        'publish_date': album.get("publishDate", ""),
+                    })
+
+            # Parse follow status from req_4 if available
+            follow_status = False
+            if self._credential and "req_4" in batch_result:
+                req_4 = batch_result.get("req_4", {})
+                if req_4.get("code") == 0:
+                    req_4_data = req_4.get("data", {})
+                    singer_status = req_4_data.get("map_singer_status", {})
+                    follow_status = singer_status.get(singer_mid, 0) == 1
+
+            return {
+                'mid': basic_info.get('singer_mid', singer_mid),
+                'name': singer_name,
+                'desc': desc,
+                'avatar': avatar,
+                'album_count': total_albums,
+                'songs': songs,
+                'albums': albums,
+                'total': total_songs,
+                'page': page,
+                'page_size': len(songs),
+                'follow_status': follow_status,
+            }
+
+        except Exception as e:
+            logger.error(f"Get singer info with follow status failed: {e}", exc_info=True)
+            return None
+
     def get_singer_albums(self, singer_mid: str, number: int = 10, begin: int = 0) -> Dict[str, Any]:
         """
         Get singer's album list.
@@ -554,7 +987,6 @@ class QQMusicService:
             Dict with 'albums' list and 'total' count
         """
         try:
-            logger.debug(f"get_singer_albums: singer_mid={singer_mid}, number={number}, begin={begin}")
             result = self.client.get_album_list(singer_mid, number=number, begin=begin)
 
             if not result:
@@ -581,7 +1013,6 @@ class QQMusicService:
                     'album_type': album.get('albumType', ''),
                 })
 
-            logger.debug(f"get_singer_albums: Returning {len(albums)} albums, total={total}")
             return {'albums': albums, 'total': total}
 
         except Exception as e:
@@ -711,8 +1142,8 @@ class QQMusicService:
         if not self._credential:
             return ""
         euin = (
-            self._credential.get("encrypt_uin")
-            or self._credential.get("encryptUin")
+                self._credential.get("encrypt_uin")
+                or self._credential.get("encryptUin")
         )
         if euin:
             return euin

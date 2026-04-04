@@ -1042,6 +1042,9 @@ class OnlineDetailView(QWidget):
         self._is_followed = False
         self._update_follow_btn_style()
 
+        # Note: Follow status will be fetched together with detail in batch request
+        # No need to call _query_follow_status() separately
+
         self._load_detail()
 
     def load_album(self, mid: str, name: str = "", singer_name: str = ""):
@@ -1068,7 +1071,11 @@ class OnlineDetailView(QWidget):
         # Show favorite button for album
         self._fav_btn.show()
         self._follow_btn.hide()
+        self._is_faved = False
         self._update_fav_btn_style()
+
+        # Note: Fav status will be fetched together with detail in batch request
+        # No need to call _query_fav_status() separately
 
         self._load_detail()
 
@@ -1253,20 +1260,25 @@ class OnlineDetailView(QWidget):
             self._total_songs = total
             self._page_size = page_size if page_size > 0 else 30
             self._total_pages = (
-                                            self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
+                                        self._total_songs + self._page_size - 1) // self._page_size if self._total_songs > 0 else 1
 
         self._tracks = self._parse_songs(songs)
 
         # Display stats showing loaded vs total songs and album count
-        album_count = data.get("album_count", 0)
+        self._albums_total = data.get("album_count", 0)
         stats_parts = []
         if total > len(self._tracks):
             stats_parts.append(f"{len(self._tracks)} / {total} {t('songs')}")
         else:
             stats_parts.append(f"{total} {t('songs')}")
-        if album_count > 0:
-            stats_parts.append(f"{album_count} {t('albums')}")
+        if self._albums_total > 0:
+            stats_parts.append(f"{self._albums_total} {t('albums')}")
         self._stats_label.setText(" · ".join(stats_parts))
+
+        # Update follow status from batch request response
+        if "follow_status" in data:
+            self._is_followed = data["follow_status"]
+            self._update_follow_btn_style()
 
         # Update pagination controls
         self._update_pagination()
@@ -1513,6 +1525,12 @@ class OnlineDetailView(QWidget):
         else:
             self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
 
+        # Update fav status from batch request response
+        if "fav_status" in data:
+            self._is_faved = data["fav_status"]
+            logger.info(f"[OnlineDetailView] Album fav status from batch request: {self._is_faved}")
+            self._update_fav_btn_style()
+
         # Update pagination controls
         self._update_pagination()
         self._display_songs(self._tracks)
@@ -1549,6 +1567,12 @@ class OnlineDetailView(QWidget):
             self._stats_label.setText(f"{len(self._tracks)} / {total} {t('songs')}")
         else:
             self._stats_label.setText(f"{len(self._tracks)} {t('songs')}")
+
+        # Update fav status from batch request response
+        if "fav_status" in data:
+            self._is_faved = data["fav_status"]
+            logger.info(f"[OnlineDetailView] Playlist fav status from batch request: {self._is_faved}")
+            self._update_fav_btn_style()
 
         # Update pagination controls
         self._update_pagination()
@@ -1700,8 +1724,6 @@ class OnlineDetailView(QWidget):
                 card.deleteLater()
             self._album_cards.clear()
             self._albums_loaded = 0
-            # Store total count and update stats display
-            self._albums_total = total
             self._update_artist_stats()
 
         if not albums:
@@ -1767,8 +1789,7 @@ class OnlineDetailView(QWidget):
                     padding: 4px 16px;
                 }
                 QPushButton:hover {
-                    color: %danger%;
-                    border-color: %danger%;
+                    border-color: #ff4444;
                 }
             """))
         else:
@@ -1816,8 +1837,7 @@ class OnlineDetailView(QWidget):
                     padding: 4px 16px;
                 }
                 QPushButton:hover {
-                    color: %danger%;
-                    border-color: %danger%;
+                    border-color: #ff4444;
                 }
             """))
         else:
