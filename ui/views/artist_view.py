@@ -17,12 +17,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QFrame,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
     QProgressBar,
-    QAbstractItemView,
-    QMenu,
     QDialog,
     QTabWidget,
 )
@@ -35,8 +30,8 @@ from services.metadata import CoverService
 from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.views.local_tracks_list_view import LocalTracksListView
 from ui.widgets import AlbumCard
-from utils import format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +57,6 @@ class ArtistView(QWidget):
     download_cover_requested = Signal(object)  # Emits Album object
     ALBUMS_BATCH_SIZE = 30
     ALBUMS_LOAD_THRESHOLD_PX = 100
-    TRACKS_BATCH_SIZE = 30
-    TRACKS_LOAD_THRESHOLD_PX = 100
 
     def __init__(
             self,
@@ -80,7 +73,6 @@ class ArtistView(QWidget):
         self._albums: List[Album] = []
         self._albums_loaded_count = 0
         self._tracks: List[Track] = []
-        self._tracks_loaded_count = 0
         self._album_cards: List[AlbumCard] = []
         self._current_cover_path: str = None  # Store current cover path
 
@@ -273,73 +265,8 @@ class ArtistView(QWidget):
                 }}
             """)
 
-        # Update tracks table
-        if hasattr(self, '_tracks_table'):
-            self._tracks_table.setStyleSheet(f"""
-                QTableWidget {{
-                    background-color: {theme.background};
-                    border: none;
-                    border-radius: 8px;
-                    gridline-color: {theme.background_hover};
-                }}
-                QTableWidget::item {{
-                    padding: 12px 8px;
-                    color: {theme.text};
-                    border: none;
-                    border-bottom: 1px solid {theme.background_hover};
-                }}
-                QTableWidget::item:alternate {{
-                    background-color: {theme.background_alt};
-                }}
-                QTableWidget::item:!alternate {{
-                    background-color: {theme.background};
-                }}
-                QTableWidget::item:selected {{
-                    background-color: {theme.highlight};
-                    color: {theme.background};
-                    font-weight: 500;
-                }}
-                QTableWidget::item:selected:!alternate {{
-                    background-color: {theme.highlight};
-                }}
-                QTableWidget::item:selected:alternate {{
-                    background-color: {theme.highlight_hover};
-                }}
-                QTableWidget::item:hover {{
-                    background-color: {theme.background_hover};
-                }}
-                QTableWidget::item:selected:hover {{
-                    background-color: {theme.highlight_hover};
-                }}
-                QTableWidget QHeaderView::section {{
-                    background-color: {theme.background_hover};
-                    color: {theme.highlight};
-                    padding: 14px 12px;
-                    border: none;
-                    border-bottom: 2px solid {theme.highlight};
-                    font-weight: bold;
-                    font-size: 13px;
-                    letter-spacing: 0.5px;
-                }}
-                QTableWidget QTableCornerButton::section {{
-                    background-color: {theme.background_hover};
-                    border: none;
-                    border-bottom: 2px solid {theme.highlight};
-                }}
-                QTableWidget QScrollBar:vertical {{
-                    background-color: {theme.background};
-                    width: 12px;
-                    border-radius: 6px;
-                }}
-                QTableWidget QScrollBar::handle:vertical {{
-                    background-color: {theme.border};
-                    border-radius: 6px;
-                    min-height: 40px;
-                }}
-                QTableWidget QScrollBar::handle:vertical:hover {{
-                    background-color: {theme.background_hover};
-                }}
-            """)
+        if hasattr(self, '_tracks_list'):
+            self._tracks_list.refresh_theme()
 
         # Update loading label
         if hasattr(self, '_loading_label'):
@@ -594,143 +521,21 @@ class ArtistView(QWidget):
         return tab_widget
 
     def _create_tracks_section(self) -> QWidget:
-        """Create tracks table section with same style as library view."""
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
+        """Create tracks list section."""
 
         section = QWidget()
         layout = QVBoxLayout(section)
         layout.setContentsMargins(20, 20, 20, 0)
         layout.setSpacing(16)
 
-        # Tracks table - same style as LibraryView
-        self._tracks_table = QTableWidget()
-        self._tracks_table.setObjectName("tracksTable")
-        self._tracks_table.setColumnCount(6)
-        self._tracks_table.setHorizontalHeaderLabels(
-            ["#", t("source"), t("title"), t("artist"), t("album"), t("duration")]
-        )
+        self._tracks_list = LocalTracksListView(show_index=True, show_source=True)
+        self._tracks_list.track_activated.connect(self._on_track_activated)
+        self._tracks_list.play_requested.connect(self._on_play_requested)
+        self._tracks_list.insert_to_queue_requested.connect(self.insert_to_queue.emit)
+        self._tracks_list.add_to_queue_requested.connect(self.add_to_queue.emit)
+        self._tracks_list.add_to_playlist_requested.connect(self.add_to_playlist.emit)
 
-        # Configure table - same as LibraryView
-        self._tracks_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._tracks_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self._tracks_table.setAlternatingRowColors(True)
-        self._tracks_table.verticalHeader().setVisible(False)
-        self._tracks_table.horizontalHeader().setStretchLastSection(False)
-        self._tracks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._tracks_table.setFocusPolicy(Qt.NoFocus)
-        self._tracks_table.setShowGrid(False)
-
-        # Set column widths - same as LibraryView
-        header = self._tracks_table.horizontalHeader()
-        #: fixed small width
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(0, 50)
-        # Source: fixed small width
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(1, 80)
-        # Title: stretch to fill all remaining space
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        # Artist: fixed width
-        header.setSectionResizeMode(3, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(3, 120)
-        # Album: fixed width
-        header.setSectionResizeMode(4, QHeaderView.Fixed)
-        self._tracks_table.setColumnWidth(4, 150)
-        # Duration: fit content
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-
-        # Styling - same as LibraryView
-        self._tracks_table.setStyleSheet(f"""
-            QTableWidget#tracksTable {{
-                background-color: {theme.background};
-                border: none;
-                border-radius: 8px;
-                gridline-color: {theme.background_hover};
-            }}
-            QTableWidget#tracksTable::item {{
-                padding: 12px 8px;
-                color: {theme.text};
-                border: none;
-                border-bottom: 1px solid {theme.background_hover};
-            }}
-            /* Alternating row colors for better readability */
-            QTableWidget#tracksTable::item:alternate {{
-                background-color: {theme.background_alt};
-            }}
-            QTableWidget#tracksTable::item:!alternate {{
-                background-color: {theme.background};
-            }}
-            /* Selected state with vibrant accent */
-            QTableWidget#tracksTable::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-                font-weight: 500;
-            }}
-            QTableWidget#tracksTable::item:selected:!alternate {{
-                background-color: {theme.highlight};
-            }}
-            QTableWidget#tracksTable::item:selected:alternate {{
-                background-color: {theme.highlight_hover};
-            }}
-            /* Hover effect for interactivity */
-            QTableWidget#tracksTable::item:hover {{
-                background-color: {theme.background_hover};
-            }}
-            QTableWidget#tracksTable::item:selected:hover {{
-                background-color: {theme.highlight_hover};
-            }}
-            /* Remove focus outline */
-            QTableWidget#tracksTable::item:focus {{
-                outline: none;
-                border: none;
-            }}
-            QTableWidget#tracksTable:focus {{
-                outline: none;
-                border: none;
-            }}
-            /* Header styling */
-            QTableWidget#tracksTable QHeaderView::section {{
-                background-color: {theme.background_hover};
-                color: {theme.highlight};
-                padding: 14px 12px;
-                border: none;
-                border-bottom: 2px solid {theme.highlight};
-                border-radius: 0px;
-                font-weight: bold;
-                font-size: 13px;
-                letter-spacing: 0.5px;
-            }}
-            /* First header (top-left corner) */
-            QTableWidget#tracksTable QTableCornerButton::section {{
-                background-color: {theme.background_hover};
-                border: none;
-                border-right: 1px solid {theme.border};
-                border-bottom: 2px solid {theme.highlight};
-            }}
-            /* Scrollbar styling */
-            QTableWidget#tracksTable QScrollBar:vertical {{
-                background-color: {theme.background};
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }}
-            QTableWidget#tracksTable QScrollBar::handle:vertical {{
-                background-color: {theme.border};
-                border-radius: 6px;
-                min-height: 40px;
-            }}
-            QTableWidget#tracksTable QScrollBar::handle:vertical:hover {{
-                background-color: {theme.background_hover};
-            }}
-        """)
-
-        self._tracks_table.doubleClicked.connect(self._on_track_double_clicked)
-        self._tracks_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._tracks_table.customContextMenuRequested.connect(self._show_context_menu)
-        self._tracks_table.verticalScrollBar().valueChanged.connect(self._on_tracks_scroll_changed)
-
-        layout.addWidget(self._tracks_table)
+        layout.addWidget(self._tracks_list)
 
         return section
 
@@ -904,69 +709,13 @@ class ArtistView(QWidget):
             self._load_next_albums_batch()
 
     def _render_tracks(self):
-        """Render tracks table with lazy loading."""
-        self._tracks_table.setRowCount(0)
-        self._tracks_loaded_count = 0
-        self._load_next_tracks_batch()
-
-    def _load_next_tracks_batch(self):
-        """Append the next batch of tracks into the table."""
-        if self._tracks_loaded_count >= len(self._tracks):
-            return
-
-        start = self._tracks_loaded_count
-        end = min(start + self.TRACKS_BATCH_SIZE, len(self._tracks))
-        self._tracks_table.setRowCount(end)
-
-        for row in range(start, end):
-            self._set_track_row(row, self._tracks[row])
-
-        self._tracks_loaded_count = end
-
-    def _set_track_row(self, row: int, track: Track):
-        """Render a single track row in the table."""
-        # Number
-        num_item = QTableWidgetItem(str(row + 1))
-        num_item.setTextAlignment(Qt.AlignCenter)
-        self._tracks_table.setItem(row, 0, num_item)
-
-        # Source
-        from domain.track import TrackSource
-        source_map = {
-            TrackSource.LOCAL: t("source_local"),
-            TrackSource.QUARK: t("source_quark"),
-            TrackSource.BAIDU: t("source_baidu"),
-            TrackSource.QQ: t("source_qq"),
-        }
-        source_text = source_map.get(track.source, t("source_local"))
-        source_item = QTableWidgetItem(source_text)
-        self._tracks_table.setItem(row, 1, source_item)
-
-        # Title
-        title_item = QTableWidgetItem(track.title or track.display_name)
-        self._tracks_table.setItem(row, 2, title_item)
-
-        # Artist
-        artist_item = QTableWidgetItem(track.artist or "")
-        self._tracks_table.setItem(row, 3, artist_item)
-
-        # Album
-        album_item = QTableWidgetItem(track.album or "")
-        self._tracks_table.setItem(row, 4, album_item)
-
-        # Duration
-        duration_item = QTableWidgetItem(format_duration(track.duration))
-        duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self._tracks_table.setItem(row, 5, duration_item)
-
-        # Store track ID in item data
-        title_item.setData(Qt.UserRole, track.id)
-
-    def _on_tracks_scroll_changed(self, value: int):
-        """Load more tracks when user scrolls close to table bottom."""
-        scrollbar = self._tracks_table.verticalScrollBar()
-        if value >= max(0, scrollbar.maximum() - self.TRACKS_LOAD_THRESHOLD_PX):
-            self._load_next_tracks_batch()
+        """Load tracks into the list view."""
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        favorite_ids = set()
+        if bootstrap and hasattr(bootstrap, 'favorites_service'):
+            favorite_ids = bootstrap.favorites_service.get_all_favorite_track_ids()
+        self._tracks_list.load_tracks(self._tracks, favorite_ids)
 
     def _on_play_all(self):
         """Handle play all button click."""
@@ -981,82 +730,27 @@ class ArtistView(QWidget):
             random.shuffle(shuffled)
             self.play_tracks.emit(shuffled, 0)
 
-    def _on_track_double_clicked(self, index):
-        """Handle track double click - play from this track."""
-        item = self._tracks_table.item(index.row(), 2)
-        if item and self._tracks:
-            track_id = item.data(Qt.UserRole)
-            # Find the index of the clicked track
+    def _on_track_activated(self, track: Track):
+        """Handle track activation - play entire artist list from this track."""
+        if track and self._tracks:
             start_index = 0
-            for i, track in enumerate(self._tracks):
-                if track.id == track_id:
+            for i, t_track in enumerate(self._tracks):
+                if t_track.id == track.id:
                     start_index = i
                     break
-            # Play entire track list starting from the clicked track
             self.play_tracks.emit(self._tracks, start_index)
 
-    def _show_context_menu(self, pos):
-        """Show context menu for tracks."""
-        item = self._tracks_table.itemAt(pos)
-        if not item:
+    def _on_play_requested(self, selected_tracks: list):
+        """Handle play from context menu - play full list from first selected track."""
+        if not selected_tracks or not self._tracks:
             return
-
-        # Get selected track IDs
-        selected_rows = set()
-        for selected_item in self._tracks_table.selectedItems():
-            selected_rows.add(selected_item.row())
-
-        selected_tracks = []
-        for row in selected_rows:
-            title_item = self._tracks_table.item(row, 2)
-            if title_item:
-                track_id = title_item.data(Qt.UserRole)
-                for track in self._tracks:
-                    if track.id == track_id:
-                        selected_tracks.append(track)
-                        break
-
-        if not selected_tracks:
-            return
-
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
-
-        menu = QMenu(self)
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {theme.background_alt};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-            }}
-            QMenu::item {{
-                padding: 8px 20px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-        """)
-
-        # Play action
-        play_action = menu.addAction(t("play"))
-        play_action.triggered.connect(lambda: self.play_tracks.emit(selected_tracks))
-
-        # Insert to queue action
-        insert_queue_action = menu.addAction(t("insert_to_queue"))
-        insert_queue_action.triggered.connect(lambda: self.insert_to_queue.emit(selected_tracks))
-
-        # Add to queue action
-        add_queue_action = menu.addAction(t("add_to_queue"))
-        add_queue_action.triggered.connect(lambda: self.add_to_queue.emit(selected_tracks))
-
-        menu.addSeparator()
-
-        # Add to playlist action
-        add_playlist_action = menu.addAction(t("add_to_playlist"))
-        add_playlist_action.triggered.connect(lambda: self.add_to_playlist.emit(selected_tracks))
-
-        menu.exec_(self._tracks_table.mapToGlobal(pos))
+        first_track = selected_tracks[0]
+        start_index = 0
+        for i, t_track in enumerate(self._tracks):
+            if t_track.id == first_track.id:
+                start_index = i
+                break
+        self.play_tracks.emit(self._tracks, start_index)
 
     def _on_album_clicked(self, album: Album):
         """Handle album card click - navigate to album detail."""
@@ -1112,11 +806,6 @@ class ArtistView(QWidget):
         # Update tab labels
         self._tab_widget.setTabText(0, t("albums"))
         self._tab_widget.setTabText(1, t("track"))
-
-        # Update table headers
-        self._tracks_table.setHorizontalHeaderLabels(
-            [t("source"), "#", t("title"), t("artist"), t("album"), t("duration")]
-        )
 
         # Update loading indicator label
         self._loading_label.setText(t("loading_artist"))

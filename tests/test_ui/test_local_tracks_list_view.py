@@ -92,6 +92,37 @@ def test_local_tracks_cover_hover_starts_timer_on_cover_area():
         assert view._hover_timer.isActive()
 
 
+def test_local_tracks_cover_hover_skips_popup_for_default_cover():
+    """Default placeholder cover should not open the large hover popup."""
+    app = QApplication.instance() or QApplication([])
+    theme_manager = MagicMock()
+    theme = MagicMock()
+    theme.background = "#101010"
+    theme.background_alt = "#1a1a1a"
+    theme.background_hover = "#202020"
+    theme.text = "#ffffff"
+    theme.text_secondary = "#b3b3b3"
+    theme.highlight = "#1db954"
+    theme.border = "#404040"
+    type(theme_manager).current_theme = PropertyMock(return_value=theme)
+
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        view = LocalTracksListView()
+        view.show()
+        app.processEvents()
+
+        tracks = [Track(id=30, path="/music/30.mp3", title="No Cover", source=TrackSource.LOCAL)]
+        view.load_tracks(tracks, favorite_ids=set())
+        view._hovered_row = 0
+
+        with patch("ui.views.local_tracks_list_view._resolve_local_cover_path", return_value=None):
+            view._cover_popup.show_cover = MagicMock()
+            view._show_cover_popup()
+
+        assert not view._cover_popup.show_cover.called
+        assert not view._cover_popup.isVisible()
+
+
 def test_local_tracks_list_view_uses_theme_background_for_empty_state():
     """An empty track list should inherit the main theme background."""
     app = QApplication.instance() or QApplication([])

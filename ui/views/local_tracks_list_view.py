@@ -642,6 +642,9 @@ class LocalTracksListView(QWidget):
 
         cache_key = self._delegate._get_cover_cache_key(track)
         cover_path = _resolve_local_cover_path(track)
+        if not cover_path:
+            self._cover_popup.hide()
+            return
         self._cover_popup.show_cover(cover_path, cache_key, self._last_cover_pos)
 
     def _cover_rect_for_item(self, item_rect: QRect) -> QRect:

@@ -67,7 +67,7 @@ def _build_albums(count: int) -> list[Album]:
     ]
 
 
-def test_artist_view_tracks_lazy_load_in_batches(qapp, mock_theme_config):
+def test_artist_view_tracks_use_local_tracks_list_view(qapp, mock_theme_config):
     ThemeManager.instance(mock_theme_config)
 
     tracks = _build_tracks(250)
@@ -83,22 +83,9 @@ def test_artist_view_tracks_lazy_load_in_batches(qapp, mock_theme_config):
     QTest.qWait(30)
     qapp.processEvents()
 
-    # Initial render should only load first batch.
-    assert view._tracks_table.rowCount() == view.TRACKS_BATCH_SIZE
-
-    # Simulate scrolling near the end to trigger load-more.
-    view._on_tracks_scroll_changed(view._tracks_table.verticalScrollBar().maximum())
-    qapp.processEvents()
-    assert view._tracks_table.rowCount() == view.TRACKS_BATCH_SIZE * 2
-
-    # Continue loading until all rows are rendered.
-    guard = 0
-    while view._tracks_table.rowCount() < len(tracks) and guard < len(tracks):
-        view._on_tracks_scroll_changed(view._tracks_table.verticalScrollBar().maximum())
-        qapp.processEvents()
-        guard += 1
-
-    assert view._tracks_table.rowCount() == len(tracks)
+    assert not hasattr(view, "_tracks_table")
+    assert hasattr(view, "_tracks_list")
+    assert view._tracks_list.row_count() == len(tracks)
 
 
 def test_artist_view_albums_lazy_load_in_batches(qapp, mock_theme_config):
