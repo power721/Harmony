@@ -62,11 +62,11 @@ def test_artist_navigation():
     print("\n" + "=" * 50)
     if all_passed:
         print("✓ All tests passed!")
-        return 0
     else:
         print("✗ Some tests failed")
-        return 1
+
+    assert all_passed is True
 
 
 if __name__ == "__main__":
-    exit(test_artist_navigation())
+    test_artist_navigation()
