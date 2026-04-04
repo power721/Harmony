@@ -136,16 +136,18 @@ def test_schedule_next_track_preload_replaces_previous_target(monkeypatch):
     PlaybackService._schedule_next_track_preload(service)
 
     first_timer = timers[-1]
-    assert first_timer.isActive()
+    first_intervals = len(first_timer.intervals)
 
     service._engine._next_item = make_cloud_item("cloud-4")
     PlaybackService._schedule_next_track_preload(service)
 
     second_timer = timers[-1]
     assert first_timer.stop_count >= 1
-    assert not first_timer.isActive()
-    assert second_timer.start_count == 1
     assert service._pending_next_preload_cloud_file_id == "cloud-4"
+    assert second_timer.intervals, "replace must schedule a delay"
+    assert second_timer.intervals[-1] == FEATURE_DELAY_MS
+    if second_timer is first_timer:
+        assert len(second_timer.intervals) > first_intervals
 
 
 def test_next_track_preload_timeout_skips_when_target_is_no_longer_next(monkeypatch):
