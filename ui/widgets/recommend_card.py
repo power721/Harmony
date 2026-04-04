@@ -61,11 +61,16 @@ class CoverLoader(QThread):
 
     def __del__(self):
         """Ensure thread is properly stopped before deletion."""
-        if isValid(self) and self.isRunning():
+        self._stop_thread(wait_ms=500)
+
+    def _stop_thread(self, wait_ms: int = 1000):
+        """Stop worker thread cooperatively without force termination."""
+        if not isValid(self):
+            return
+        if self.isRunning():
             self.requestInterruption()
-            self.wait(500)
-            if isValid(self) and self.isRunning():
-                self.terminate()
+            self.quit()
+            self.wait(wait_ms)
 
 
 class RecommendCard(QWidget):
