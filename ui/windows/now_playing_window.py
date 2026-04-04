@@ -822,21 +822,33 @@ class NowPlayingWindow(QWidget):
         self._cover_label.style().unpolish(self._cover_label)
         self._cover_label.style().polish(self._cover_label)
 
+    def _stop_lyrics_thread(self, wait_ms: int = 1000, cleanup_signals: bool = False):
+        """Stop current lyrics loader thread cooperatively."""
+        thread = getattr(self, "_lyrics_thread", None)
+        if not thread or not isValid(thread):
+            self._lyrics_thread = None
+            return
+
+        if thread.isRunning():
+            thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning("[NowPlayingWindow] Lyrics thread did not stop in time")
+
+        if cleanup_signals:
+            for signal_name in ("finished", "lyrics_ready"):
+                signal = getattr(thread, signal_name, None)
+                if signal is not None:
+                    try:
+                        signal.disconnect()
+                    except RuntimeError:
+                        pass
+            thread.deleteLater()
+            self._lyrics_thread = None
+
     def _load_lyrics_async(self, track_dict: dict):
         """Load lyrics using existing LyricsLoader."""
-        if self._lyrics_thread and isValid(self._lyrics_thread):
-            if self._lyrics_thread.isRunning():
-                self._lyrics_thread.requestInterruption()
-                if not self._lyrics_thread.wait(500):
-                    self._lyrics_thread.terminate()
-                    self._lyrics_thread.wait(100)
-            try:
-                self._lyrics_thread.finished.disconnect()
-                self._lyrics_thread.lyrics_ready.disconnect()
-            except RuntimeError:
-                pass
-            self._lyrics_thread.deleteLater()
-            self._lyrics_thread = None
+        self._stop_lyrics_thread(wait_ms=500, cleanup_signals=True)
 
         path = track_dict.get("path", "")
         title = track_dict.get("title", "")
@@ -945,15 +957,7 @@ class NowPlayingWindow(QWidget):
         """Cleanup and notify main window to restore."""
         self._save_window_settings()
 
-        if self._lyrics_thread and isValid(self._lyrics_thread):
-            if self._lyrics_thread.isRunning():
-                self._lyrics_thread.requestInterruption()
-                self._lyrics_thread.quit()
-                if not self._lyrics_thread.wait(800):
-                    self._lyrics_thread.terminate()
-                    if not self._lyrics_thread.wait(1000):
-                        logger.warning("[NowPlayingWindow] Lyrics thread still running after terminate timeout")
-            self._lyrics_thread = None
+        self._stop_lyrics_thread(wait_ms=800, cleanup_signals=True)
 
         self.closed.emit()
         event.accept()
