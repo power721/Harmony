@@ -158,3 +158,47 @@ def test_get_tracks_by_ids_falls_back_to_single_lookup():
 
     assert [track.id for track in tracks] == [3, 4]
     assert view._library_service.calls == [3, 4]
+
+
+class _FakeSingleShotTimer:
+    def __init__(self):
+        self.active = False
+        self.start_calls = 0
+        self.last_interval = None
+
+    def isActive(self):
+        return self.active
+
+    def start(self, interval):
+        self.start_calls += 1
+        self.last_interval = interval
+        self.active = True
+
+
+def test_schedule_queue_refresh_coalesces_multiple_signals():
+    """Multiple playlist change events should be collapsed into one refresh."""
+    from ui.views.queue_view import QueueView
+
+    view = QueueView.__new__(QueueView)
+    view._playlist_refresh_pending = False
+    view._playlist_refresh_timer = _FakeSingleShotTimer()
+    view._refresh_count = 0
+
+    def _refresh():
+        view._refresh_count += 1
+
+    view._refresh_queue = _refresh
+
+    QueueView._schedule_queue_refresh(view)
+    QueueView._schedule_queue_refresh(view)
+    QueueView._schedule_queue_refresh(view)
+
+    assert view._playlist_refresh_timer.start_calls == 1
+    assert view._playlist_refresh_timer.last_interval == 30
+    assert view._playlist_refresh_pending is True
+
+    view._playlist_refresh_timer.active = False
+    QueueView._on_playlist_refresh_timeout(view)
+
+    assert view._refresh_count == 1
+    assert view._playlist_refresh_pending is False

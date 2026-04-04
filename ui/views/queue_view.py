@@ -899,6 +899,10 @@ class QueueView(QWidget):
         self._hover_timer.timeout.connect(self._show_cover_popup)
         self._hovered_row = -1
         self._last_cover_pos = QPoint()
+        self._playlist_refresh_timer = QTimer(self)
+        self._playlist_refresh_timer.setSingleShot(True)
+        self._playlist_refresh_timer.timeout.connect(self._on_playlist_refresh_timeout)
+        self._playlist_refresh_pending = False
 
         self._setup_ui()
         self._setup_connections()
@@ -1025,7 +1029,7 @@ class QueueView(QWidget):
             self._on_current_track_changed
         )
         self._player.engine.state_changed.connect(self._on_player_state_changed)
-        self._player.engine.playlist_changed.connect(self._refresh_queue)
+        self._player.engine.playlist_changed.connect(self._schedule_queue_refresh)
 
         # Connect to selection changes to update model
         self._list_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
@@ -1177,6 +1181,19 @@ class QueueView(QWidget):
         """Refresh the queue display (can be called externally)."""
         self._refresh_queue()
 
+    def _schedule_queue_refresh(self):
+        """Coalesce frequent playlist updates into a single refresh."""
+        self._playlist_refresh_pending = True
+        if not self._playlist_refresh_timer.isActive():
+            self._playlist_refresh_timer.start(30)
+
+    def _on_playlist_refresh_timeout(self):
+        """Execute a pending coalesced queue refresh."""
+        if not self._playlist_refresh_pending:
+            return
+        self._playlist_refresh_pending = False
+        self._refresh_queue()
+
     def _refresh_queue(self):
         """Refresh the queue display."""
         # Update UI texts
@@ -1186,6 +1203,7 @@ class QueueView(QWidget):
         playlist = self._player.engine.playlist
         current_index = self._player.engine.current_index
         is_playing = self._player.engine.state == PlaybackState.PLAYING
+        self._last_playlist_size = len(playlist)
 
         # Save current selection
         selected_rows = self._model.get_selected_rows()
@@ -1378,9 +1396,8 @@ class QueueView(QWidget):
         # Unblock signals
         self._list_view.blockSignals(False)
 
-        # Refresh the queue display (will be called automatically by playlist_changed signal,
-        # but we also call it here to ensure immediate update)
-        self._refresh_queue()
+        # Trigger a single coalesced refresh after remove operations.
+        self._schedule_queue_refresh()
 
     def _retry_download_selected(self):
         """Retry download for selected failed track."""
