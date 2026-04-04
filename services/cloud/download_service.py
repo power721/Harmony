@@ -405,7 +405,7 @@ class CloudDownloadService(QObject):
             self.cancel_download(file_id)
 
     def _stop_worker(self, worker: CloudDownloadWorker, file_id: str = ""):
-        """Stop a worker thread, forcing termination when cooperative cancel is insufficient."""
+        """Stop a worker thread using cooperative cancellation only."""
         try:
             worker.cancel()
         except Exception:
@@ -419,7 +419,4 @@ class CloudDownloadService(QObject):
         if worker.wait(1000):
             return
 
-        logger.warning("[CloudDownloadService] Worker did not stop in time, terminating: %s", file_id)
-        worker.terminate()
-        if not worker.wait(1000):
-            logger.error("[CloudDownloadService] Worker still running after terminate timeout: %s", file_id)
+        logger.warning("[CloudDownloadService] Worker did not stop in time: %s", file_id)

@@ -55,13 +55,13 @@ def test_cleanup_stops_active_download_workers():
     assert service._active_downloads == {}
 
 
-def test_cancel_download_terminates_unresponsive_worker():
-    """Cancelling a stuck worker must not leave a running QThread behind."""
+def test_cancel_download_uses_cooperative_stop_for_unresponsive_worker():
+    """Cancelling a stuck worker should not force-terminate the thread."""
     service = CloudDownloadService()
     worker = Mock()
     worker.cancel = Mock()
-    worker.isRunning.side_effect = [True, True]
-    worker.wait.side_effect = [False, True]
+    worker.isRunning.return_value = True
+    worker.wait.return_value = False
     worker.requestInterruption = Mock()
     worker.quit = Mock()
     worker.terminate = Mock()
@@ -72,5 +72,6 @@ def test_cancel_download_terminates_unresponsive_worker():
     worker.cancel.assert_called_once()
     worker.requestInterruption.assert_called_once()
     worker.quit.assert_called_once()
-    worker.terminate.assert_called_once()
+    worker.wait.assert_called_once_with(1000)
+    worker.terminate.assert_not_called()
     assert service._active_downloads == {}
