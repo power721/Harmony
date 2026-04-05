@@ -48,6 +48,22 @@ def test_windows_workflow_produces_split_backend_executables():
     assert 'dist/Harmony-${env:APP_VERSION}-windows.zip' not in section
 
 
+def test_find_libmpv_on_windows_prefers_repo_download_dir(tmp_path, monkeypatch):
+    """Windows MPV bundles should resolve a downloaded repo-local mpv runtime first."""
+    repo_root = tmp_path / "repo"
+    bundled_dir = repo_root / "mpv"
+    bundled_dir.mkdir(parents=True)
+    mpv_dll = bundled_dir / "libmpv-2.dll"
+    mpv_dll.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(build.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(build, "PROJECT_ROOT", repo_root)
+    monkeypatch.setattr(build, "sys", types.SimpleNamespace(executable=str(tmp_path / "Python" / "python.exe")))
+    monkeypatch.setenv("PATH", "")
+
+    assert build.find_libmpv(build.AUDIO_BACKEND_MPV) == [(str(mpv_dll), ".")]
+
+
 def test_find_libmpv_on_windows_resolves_chocolatey_layout(tmp_path, monkeypatch):
     """Windows MPV bundles should find mpv-2.dll in the Chocolatey install tree."""
     choco_root = tmp_path / "ProgramData" / "chocolatey"
@@ -91,8 +107,8 @@ def test_find_libmpv_on_windows_resolves_chocolatey_package_variant(tmp_path, mo
     assert build.find_libmpv(build.AUDIO_BACKEND_MPV) == [(str(mpv_dll), ".")]
 
 
-def test_windows_workflow_exports_mpv_runtime_directory():
-    """Windows CI should export the directory containing mpv-2.dll before invoking build.py."""
+def test_windows_workflow_downloads_repo_mpv_runtime():
+    """Windows CI should download libmpv into the repo instead of installing Chocolatey mpv."""
     repo_root = Path(__file__).resolve().parents[1]
     content = (repo_root / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
 
@@ -104,8 +120,8 @@ def test_windows_workflow_exports_mpv_runtime_directory():
     assert build_windows_section, "build.yml must define a build-windows job"
 
     section = build_windows_section.group("section")
-    assert "mpv-2.dll" in section
-    assert "$env:GITHUB_PATH" in section
-    assert "$env:ChocolateyInstall" in section
-    assert "-Recurse -File" in section
-    assert "$_.Name -in @(" in section
+    assert "Download libmpv runtime" in section
+    assert "Invoke-WebRequest" in section
+    assert "http://46.38.157.230/libmpv-2.dll" in section
+    assert "mpv\\libmpv-2.dll" in section
+    assert "choco install mpv" not in section

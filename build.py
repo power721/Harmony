@@ -616,7 +616,11 @@ def find_libmpv(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
                 break
 
     elif current_system == "Windows":
-        search_dirs = [os.path.dirname(sys.executable), str(PROJECT_ROOT)]
+        search_dirs = [
+            str(PROJECT_ROOT / "mpv"),
+            os.path.dirname(sys.executable),
+            str(PROJECT_ROOT),
+        ]
         search_dirs.extend(os.environ.get("PATH", "").split(os.pathsep))
         dll_names = ["mpv-2.dll", "libmpv-2.dll", "mpv.dll"]
 
