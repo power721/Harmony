@@ -84,3 +84,13 @@ def test_plugin_settings_are_namespaced(tmp_path):
 
     assert repo.values["plugins.qqmusic.quality"] == "flac"
     assert config.get_plugin_setting("qqmusic", "quality") == "flac"
+
+
+def test_plugin_secret_is_encrypted_at_rest(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    config.set_plugin_secret("qqmusic", "credential", '{"musicid":"1","musickey":"secret"}')
+
+    assert repo.values["plugins.qqmusic.credential"] != '{"musicid":"1","musickey":"secret"}'
+    assert config.get_plugin_secret("qqmusic", "credential") == '{"musicid":"1","musickey":"secret"}'

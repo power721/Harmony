@@ -417,6 +417,14 @@ class ConfigManager:
         """Set a plugin-scoped setting value."""
         self.set(f"plugins.{plugin_id}.{key}", value)
 
+    def get_plugin_secret(self, plugin_id: str, key: str, default: str = "") -> str:
+        """Get a plugin-scoped secret value and decrypt it."""
+        return self._get_secret(f"plugins.{plugin_id}.{key}", default)
+
+    def set_plugin_secret(self, plugin_id: str, key: str, value: str):
+        """Encrypt and persist a plugin-scoped secret value."""
+        self._set_secret(f"plugins.{plugin_id}.{key}", value)
+
     # ===== UI settings =====
 
     def get_language(self) -> str:

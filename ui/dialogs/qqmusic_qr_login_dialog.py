@@ -483,7 +483,15 @@ class QQMusicQRLoginDialog(QDialog):
 
         try:
             # Save credentials (full credential dict)
-            if hasattr(self.config, "set_plugin_setting"):
+            if hasattr(self.config, "set_plugin_secret"):
+                import json
+
+                self.config.set_plugin_secret(
+                    "qqmusic",
+                    "credential",
+                    json.dumps(credential, ensure_ascii=False),
+                )
+            elif hasattr(self.config, "set_plugin_setting"):
                 self.config.set_plugin_setting("qqmusic", "credential", credential)
             else:
                 self.config.set_qqmusic_credential(credential)

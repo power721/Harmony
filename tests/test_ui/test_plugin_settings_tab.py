@@ -51,8 +51,6 @@ def test_settings_dialog_includes_plugins_tab(monkeypatch, qtbot):
     config.get_cache_cleanup_count.return_value = 100
     config.get_cache_cleanup_interval_hours.return_value = 1
     config.get_audio_engine.return_value = "mpv"
-    config.get_qqmusic_credential.return_value = None
-    config.get_qqmusic_quality.return_value = "320"
 
     fake_manager = Mock()
     fake_manager.list_plugins.return_value = []
@@ -87,8 +85,6 @@ def test_settings_dialog_omits_qqmusic_tab_without_plugin(monkeypatch, qtbot):
     config.get_cache_cleanup_count.return_value = 100
     config.get_cache_cleanup_interval_hours.return_value = 1
     config.get_audio_engine.return_value = "mpv"
-    config.get_qqmusic_credential.return_value = None
-    config.get_qqmusic_quality.return_value = "320"
 
     fake_manager = Mock()
     fake_manager.list_plugins.return_value = []

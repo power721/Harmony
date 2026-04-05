@@ -59,7 +59,7 @@ def test_redownload_qq_track_uses_configured_quality_as_dialog_default(
         bootstrap_module.Bootstrap,
         "instance",
         lambda: SimpleNamespace(
-            config=SimpleNamespace(get_qqmusic_quality=lambda: "flac"),
+            config=SimpleNamespace(get_plugin_setting=lambda *_args, **_kwargs: "flac"),
             online_download_service=SimpleNamespace(delete_cached_file=MagicMock()),
         ),
     )

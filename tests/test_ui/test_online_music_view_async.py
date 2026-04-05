@@ -168,6 +168,27 @@ def test_on_login_clicked_clears_plugin_namespaced_credential():
     view._config.set_plugin_setting.assert_any_call("qqmusic", "nick", "")
 
 
+def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._config = Mock()
+    view._config.get_plugin_secret.return_value = '{"musicid":"1","musickey":"secret"}'
+    view._service = Mock()
+    view._download_service = Mock()
+    view._detail_view = None
+
+    class _FakeQQMusicService:
+        def __init__(self, credential):
+            self.credential = credential
+
+    monkeypatch.setattr("ui.views.online_music_view.QQMusicService", _FakeQQMusicService, raising=False)
+    monkeypatch.setattr("services.cloud.qqmusic.qqmusic_service.QQMusicService", _FakeQQMusicService)
+
+    OnlineMusicView._refresh_qqmusic_service(view)
+
+    view._config.get_plugin_secret.assert_called_once_with("qqmusic", "credential", "")
+    assert view._qqmusic_service.credential["musicid"] == "1"
+
+
 class _FakeSignal:
     def __init__(self):
         self.connected = None

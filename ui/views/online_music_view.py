@@ -1371,7 +1371,12 @@ class OnlineMusicView(QWidget):
         import json
         from services.cloud.qqmusic.qqmusic_service import QQMusicService
 
-        qqmusic_credential = self._config.get("qqmusic.credential") if self._config else None
+        if self._config and hasattr(self._config, "get_plugin_secret"):
+            qqmusic_credential = self._config.get_plugin_secret("qqmusic", "credential", "")
+        elif self._config:
+            qqmusic_credential = self._config.get("qqmusic.credential")
+        else:
+            qqmusic_credential = None
         if qqmusic_credential:
             try:
                 cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
