@@ -154,3 +154,62 @@ def test_install_then_load_uses_installed_relative_module_code(tmp_path: Path):
     _manifest, plugin = PluginLoader().load_plugin(installed_root)
 
     assert plugin.marker() == "from_installed"
+
+
+def test_install_zip_missing_manifest_raises_plugin_install_error(tmp_path: Path):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "missing_manifest.zip",
+        {
+            "plugin_main.py": "class MissingManifestPlugin:\n    pass\n",
+        },
+    )
+
+    with pytest.raises(PluginInstallError):
+        installer.install_zip(plugin_zip)
+
+
+def test_install_zip_does_not_execute_plugin_top_level_code(tmp_path: Path):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "no_exec_on_install.zip",
+        {
+            "plugin.json": json.dumps(
+                {
+                    "id": "no-exec-on-install",
+                    "name": "No Exec On Install",
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "NoExecPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            "plugin_main.py": (
+                "from pathlib import Path\n"
+                "Path(__file__).with_name('import_executed.txt').write_text('1', encoding='utf-8')\n"
+                "class NoExecPlugin:\n"
+                "    plugin_id = 'no-exec-on-install'\n"
+                "    def register(self, context):\n"
+                "        pass\n"
+                "    def unregister(self, context):\n"
+                "        pass\n"
+            ),
+        },
+    )
+
+    installed_root = installer.install_zip(plugin_zip)
+
+    assert not (installed_root / "import_executed.txt").exists()
+    assert not (
+        tmp_path / "temp" / "no_exec_on_install" / "import_executed.txt"
+    ).exists()

@@ -9,7 +9,6 @@ from pathlib import Path
 from harmony_plugin_api.manifest import PluginManifest
 
 from .errors import PluginInstallError
-from .loader import PluginLoader
 
 _FORBIDDEN_ROOT_IMPORTS = {
     "app",
@@ -45,31 +44,53 @@ class PluginInstaller:
     def __init__(self, external_root: Path, temp_root: Path) -> None:
         self._external_root = external_root
         self._temp_root = temp_root
-        self._loader = PluginLoader()
+
+    def _load_manifest(self, plugin_root: Path) -> PluginManifest:
+        manifest_path = plugin_root / "plugin.json"
+        raw = manifest_path.read_text(encoding="utf-8")
+        return PluginManifest.from_dict(json.loads(raw))
+
+    def _validate_entrypoint_structure(
+        self, plugin_root: Path, manifest: PluginManifest
+    ) -> None:
+        entrypoint_path = plugin_root / manifest.entrypoint
+        if not entrypoint_path.exists():
+            raise PluginInstallError(
+                f"Entrypoint file does not exist: {entrypoint_path}"
+            )
+
+        source = entrypoint_path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(entrypoint_path))
+        has_entry_class = any(
+            isinstance(node, ast.ClassDef) and node.name == manifest.entry_class
+            for node in ast.walk(tree)
+        )
+        if not has_entry_class:
+            raise PluginInstallError(
+                f"Entrypoint missing class '{manifest.entry_class}' for '{manifest.id}'"
+            )
 
     def install_zip(self, zip_path: Path) -> Path:
-        extract_root = self._temp_root / zip_path.stem
-        if extract_root.exists():
-            shutil.rmtree(extract_root)
-        extract_root.mkdir(parents=True, exist_ok=True)
-
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(extract_root)
-
-        audit_plugin_imports(extract_root)
-        manifest = PluginManifest.from_dict(
-            json.loads((extract_root / "plugin.json").read_text(encoding="utf-8"))
-        )
         try:
-            self._loader.validate_plugin_structure(extract_root, manifest)
-        except Exception as exc:
-            raise PluginInstallError(
-                f"Invalid plugin package structure for '{manifest.id}': {exc}"
-            ) from exc
+            extract_root = self._temp_root / zip_path.stem
+            if extract_root.exists():
+                shutil.rmtree(extract_root)
+            extract_root.mkdir(parents=True, exist_ok=True)
 
-        self._external_root.mkdir(parents=True, exist_ok=True)
-        final_root = self._external_root / manifest.id
-        if final_root.exists():
-            shutil.rmtree(final_root)
-        shutil.copytree(extract_root, final_root)
-        return final_root
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(extract_root)
+
+            audit_plugin_imports(extract_root)
+            manifest = self._load_manifest(extract_root)
+            self._validate_entrypoint_structure(extract_root, manifest)
+
+            self._external_root.mkdir(parents=True, exist_ok=True)
+            final_root = self._external_root / manifest.id
+            if final_root.exists():
+                shutil.rmtree(final_root)
+            shutil.copytree(extract_root, final_root)
+            return final_root
+        except PluginInstallError:
+            raise
+        except Exception as exc:
+            raise PluginInstallError(f"Failed to install plugin from {zip_path}: {exc}") from exc

@@ -14,7 +14,7 @@ class PluginManager:
         self._context_factory = context_factory
         self._loader = PluginLoader()
         self.registry = PluginRegistry()
-        self._loaded_plugins: dict[str, tuple[object, object]] = {}
+        self._loaded_plugins: dict[str, tuple[object, object, object]] = {}
 
     def discover_roots(self) -> list[tuple[str, Path]]:
         roots = []
@@ -34,20 +34,21 @@ class PluginManager:
         for source, plugin_root in self.discover_roots():
             manifest = None
             state = None
+            plugin = None
+            context = None
             try:
-                if source == "external":
-                    manifest = self._loader.read_manifest(plugin_root)
-                    state = self._state_store.get(manifest.id)
-                    if state and state.get("enabled") is False:
-                        continue
-                    manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
-                else:
-                    manifest, plugin = self._loader.load_plugin(plugin_root)
-                    state = self._state_store.get(manifest.id)
+                manifest = self._loader.read_manifest(plugin_root)
+                if manifest.id in self._loaded_plugins:
+                    continue
 
+                state = self._state_store.get(manifest.id)
+                if source == "external" and state and state.get("enabled") is False:
+                    continue
+
+                manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
                 context = self._context_factory.build(manifest)
                 plugin.register(context)
-                self._loaded_plugins[manifest.id] = (manifest, plugin)
+                self._loaded_plugins[manifest.id] = (manifest, plugin, context)
                 self._state_store.set_enabled(
                     manifest.id,
                     True if state is None else bool(state.get("enabled", True)),
@@ -58,6 +59,11 @@ class PluginManager:
             except Exception as exc:
                 plugin_id = manifest.id if manifest is not None else plugin_root.name
                 version = manifest.version if manifest is not None else ""
+                if plugin is not None and context is not None:
+                    try:
+                        plugin.unregister(context)
+                    except Exception:
+                        pass
                 self.registry.unregister_plugin(plugin_id)
                 self._loaded_plugins.pop(plugin_id, None)
                 self._state_store.set_enabled(

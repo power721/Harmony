@@ -343,3 +343,119 @@ def test_constructor_failure_installs_then_records_runtime_load_error(tmp_path: 
     assert state is not None
     assert state["enabled"] is False
     assert state["load_error"]
+
+
+def test_manager_calls_unregister_when_register_raises(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "broken-unregister"
+    plugin_root.mkdir(parents=True)
+    flag_file = tmp_path / "unregister_called.txt"
+
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "broken-unregister",
+                "name": "Broken Unregister",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "BrokenUnregisterPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "from pathlib import Path\n"
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class BrokenUnregisterPlugin:\n"
+        "    plugin_id = 'broken-unregister'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='broken-unregister',\n"
+        "                entry_id='broken-unregister.sidebar',\n"
+        "                title='Broken Unregister',\n"
+        "                order=5,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "        raise RuntimeError('register failed after partial work')\n"
+        "    def unregister(self, context):\n"
+        f"        Path(r'{flag_file}').write_text('1', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+
+    state = store.get("broken-unregister")
+    assert state is not None
+    assert state["enabled"] is False
+    assert state["load_error"]
+    assert flag_file.exists()
+    assert manager.registry.sidebar_entries() == []
+
+
+def test_manager_load_enabled_plugins_is_idempotent(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "once"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "once",
+                "name": "Once Plugin",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "OncePlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class OncePlugin:\n"
+        "    plugin_id = 'once'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='once',\n"
+        "                entry_id='once.sidebar',\n"
+        "                title='Once',\n"
+        "                order=7,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+    manager.load_enabled_plugins()
+
+    assert len(manager.registry.sidebar_entries()) == 1
