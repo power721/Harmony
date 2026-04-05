@@ -1,0 +1,10 @@
+{
+  "id": "qqmusic",
+  "name": "QQ Music",
+  "version": "1.0.0",
+  "api_version": "1",
+  "entrypoint": "plugin_main.py",
+  "entry_class": "QQMusicPlugin",
+  "capabilities": ["sidebar", "settings_tab", "lyrics_source", "cover", "online_music_provider"],
+  "min_app_version": "0.1.0"
+}
