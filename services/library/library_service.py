@@ -338,9 +338,11 @@ class LibraryService:
 
         result = self._track_repo.delete(track_id)
 
+        if result:
+            # Deletions should update aggregate tables synchronously so the
+            # library reflects the new counts immediately and after restart.
+            self.refresh_albums_artists(immediate=True)
         if result and track:
-            # Refresh albums and artists cache tables
-            self._refresh_albums_artist_async()
             # Emit event to notify other components (e.g., playback queue)
             self._event_bus.track_deleted.emit(track_id)
 
@@ -366,8 +368,8 @@ class LibraryService:
         deleted_count = self._track_repo.delete_batch(track_ids)
 
         if deleted_count > 0:
-            # Refresh albums and artists cache tables once
-            self._refresh_albums_artist_async()
+            # Batch deletions also need immediate aggregate persistence.
+            self.refresh_albums_artists(immediate=True)
             # Emit batch event with all deleted track IDs
             self._event_bus.tracks_deleted.emit(track_ids)
 

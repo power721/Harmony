@@ -156,6 +156,23 @@ class TestLibraryService:
         assert result is True
         mock_track_repo.delete.assert_called_once_with(1)
 
+    def test_delete_track_refreshes_albums_artists_immediately(
+        self,
+        library_service,
+        mock_track_repo,
+        mock_album_repo,
+        mock_artist_repo,
+    ):
+        """Test deleting a track immediately refreshes album/artist cache tables."""
+        mock_track_repo.get_by_id.return_value = Track(id=1, title="Song", album="Album", artist="Artist")
+        mock_track_repo.delete.return_value = True
+
+        result = library_service.delete_track(1)
+
+        assert result is True
+        mock_album_repo.refresh.assert_called_once()
+        mock_artist_repo.refresh.assert_called_once()
+
     # ===== Playlist Operations Tests =====
 
     def test_get_all_playlists(self, library_service, mock_playlist_repo):
@@ -878,6 +895,22 @@ class TestLibraryService:
         assert result == 3
         mock_track_repo.delete_batch.assert_called_once_with([1, 2, 3])
         mock_event_bus.tracks_deleted.emit.assert_called_once_with([1, 2, 3])
+
+    def test_delete_tracks_refreshes_albums_artists_immediately(
+        self,
+        library_service,
+        mock_track_repo,
+        mock_album_repo,
+        mock_artist_repo,
+    ):
+        """Test batch delete immediately refreshes album/artist cache tables."""
+        mock_track_repo.delete_batch.return_value = 2
+
+        result = library_service.delete_tracks([1, 2])
+
+        assert result == 2
+        mock_album_repo.refresh.assert_called_once()
+        mock_artist_repo.refresh.assert_called_once()
 
     def test_delete_tracks_zero_deleted(self, library_service, mock_track_repo, mock_event_bus):
         """Test delete_tracks when no tracks are deleted."""
