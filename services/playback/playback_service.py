@@ -2023,10 +2023,11 @@ class PlaybackService(QObject):
 
         self._track_repo.add(track)
 
-        # Update albums and artists tables
-        # TODO: Move to album_repo/artist_repo incremental update methods
-        self._db.update_albums_on_track_added(album, artist, cover_path, duration)
-        self._db.update_artists_on_track_added(artist, album, cover_path)
+        # Keep library caches in sync through repositories instead of direct DB access.
+        if self._album_repo:
+            self._album_repo.refresh()
+        if self._artist_repo:
+            self._artist_repo.refresh()
 
         # Notify UI to refresh
         self._event_bus.tracks_added.emit(1)
