@@ -585,6 +585,22 @@ class GenresView(QWidget):
         self._list_view.entered.connect(self._on_item_entered)
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
 
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Best-effort signal disconnection for shutdown cleanup."""
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def closeEvent(self, event):
+        """Release event bus subscriptions and background work on close."""
+        self._disconnect_signal(EventBus.instance().tracks_added, self._on_tracks_added)
+        if hasattr(self, "_search_timer"):
+            self._search_timer.stop()
+        self._stop_load_worker(wait_ms=1000, clear_ref=True)
+        super().closeEvent(event)
+
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
         from system.theme import ThemeManager
