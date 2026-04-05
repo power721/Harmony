@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QEvent
-from PySide6.QtGui import QColor, QPixmap, QShortcut, QPainter, QPainterPath, QTransform
+from PySide6.QtGui import QColor, QPixmap, QShortcut, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -730,6 +730,7 @@ class NowPlayingWindow(QWidget):
         """Apply cover if result is still current."""
         if version != self._cover_load_version:
             return
+        self._cover_thread = None
         self._current_cover_path = cover_path
         if not cover_path:
             self._set_default_cover()
@@ -741,6 +742,11 @@ class NowPlayingWindow(QWidget):
         self._cover_source_pixmap = pixmap
         self._cover_angle = 0.0
         self._render_cover()
+
+    def _invalidate_cover_load(self):
+        """Invalidate pending cover worker results and clear thread reference."""
+        self._cover_load_version += 1
+        self._cover_thread = None
 
     def _set_default_cover(self):
         """Set fallback cover when missing."""
@@ -958,6 +964,7 @@ class NowPlayingWindow(QWidget):
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
         self._save_window_settings()
+        self._invalidate_cover_load()
 
         self._stop_lyrics_thread(wait_ms=800, cleanup_signals=True)
 

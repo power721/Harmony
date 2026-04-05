@@ -56,7 +56,7 @@ class MiniPlayer(QWidget):
     """
 
     closed = Signal()  # Signal when mini player is closed
-    _cover_loaded = Signal(str)  # Signal for cover loaded in background thread
+    _cover_loaded = Signal(str, int)  # Signal for versioned cover load results
 
     _CONTAINER_STYLE = """
         QWidget {
@@ -155,6 +155,7 @@ class MiniPlayer(QWidget):
         self._is_hidden = False  # Track auto-hide state
         self._opacity_anim: Optional[QPropertyAnimation] = None  # Opacity animation
         self._cover_thread: Optional[threading.Thread] = None  # Cover loading thread
+        self._cover_load_version = 0
 
         self._setup_ui()
         self._setup_connections()
@@ -328,7 +329,7 @@ class MiniPlayer(QWidget):
         self._setup_shortcuts()
 
         # Connect cover loaded signal
-        self._cover_loaded.connect(self._show_cover)
+        self._cover_loaded.connect(self._on_cover_loaded)
 
         # Initialize with current track info
         self._initialize_current_track()
@@ -551,6 +552,8 @@ class MiniPlayer(QWidget):
 
     def _load_cover_async(self, track_dict: dict):
         """Load cover art in background thread."""
+        self._cover_load_version += 1
+        version = self._cover_load_version
 
         def load_cover():
             from pathlib import Path
@@ -600,13 +603,24 @@ class MiniPlayer(QWidget):
         def worker():
             cover_path = load_cover()
             # Use signal for thread-safe UI update
-            self._cover_loaded.emit(cover_path or "")
+            self._cover_loaded.emit(cover_path or "", version)
 
         # Run in thread
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
+        thread = threading.Thread(target=worker, daemon=True)
         self._cover_thread = thread
         thread.start()
+
+    def _on_cover_loaded(self, cover_path: str, version: int):
+        """Apply cover result only when the worker version is still current."""
+        if version != self._cover_load_version:
+            return
+        self._cover_thread = None
+        self._show_cover(cover_path)
+
+    def _invalidate_cover_load(self):
+        """Invalidate pending cover worker results and clear thread reference."""
+        self._cover_load_version += 1
+        self._cover_thread = None
 
     def _show_cover(self, cover_path: str):
         """Show cover art (called via signal from background thread)."""
@@ -714,6 +728,7 @@ class MiniPlayer(QWidget):
 
     def closeEvent(self, event):
         """Handle close event."""
+        self._invalidate_cover_load()
         # Clean up lyrics thread
         self._stop_lyrics_thread(wait_ms=1000, cleanup_signals=True)
 
