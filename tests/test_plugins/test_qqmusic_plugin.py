@@ -72,3 +72,20 @@ def test_plugin_login_dialog_uses_local_qr_client(qtbot):
     qtbot.addWidget(dialog)
 
     assert isinstance(dialog._client, QQMusicQRLogin)
+
+
+def test_qqmusic_settings_tab_clears_plugin_credentials(qtbot):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "nick": "Tester",
+    }.get(key, default)
+    context = Mock(settings=settings)
+
+    tab = QQMusicSettingsTab(context)
+    qtbot.addWidget(tab)
+
+    tab._clear_credentials()
+
+    settings.set.assert_any_call("credential", None)
+    settings.set.assert_any_call("nick", "")
