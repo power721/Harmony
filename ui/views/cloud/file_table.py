@@ -20,7 +20,6 @@ from system.i18n import t
 from utils import format_duration
 
 if TYPE_CHECKING:
-    from domain.playback import PlaybackState
     from services.playback import PlaybackService
 
 

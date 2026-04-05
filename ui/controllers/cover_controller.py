@@ -11,7 +11,7 @@ Features:
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Dict, Any
 
 from PySide6.QtCore import QObject, Signal
 

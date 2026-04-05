@@ -176,7 +176,6 @@ class OnlineTracksDelegate(QStyledItemDelegate):
         theme = ThemeManager.instance().current_theme
 
         track = index.data(OnlineTracksModel.TrackRole)
-        is_favorite = index.data(OnlineTracksModel.IsFavoriteRole)
         rank = index.data(OnlineTracksModel.RankRole)
         is_vip = index.data(OnlineTracksModel.IsVipRole)
         row = index.data(OnlineTracksModel.IndexRole)

@@ -4,12 +4,11 @@ Extends LocalTracksListView to add played time display.
 """
 
 import logging
-from datetime import datetime
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QSize, QModelIndex, QRect
-from PySide6.QtGui import QColor, QPainter, QCursor
-from PySide6.QtWidgets import QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
+from PySide6.QtGui import QColor, QPainter
+from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
 from domain.track import Track
 from infrastructure.cache.pixmap_cache import CoverPixmapCache

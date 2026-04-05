@@ -12,6 +12,7 @@ which work when the window has focus.
 import logging
 from typing import TYPE_CHECKING
 
+from domain.playback import PlaybackState
 from PySide6.QtCore import Qt, QObject
 from PySide6.QtGui import QKeySequence, QShortcut
 
@@ -21,9 +22,6 @@ logger = logging.getLogger(__name__)
 # Use TYPE_CHECKING to avoid circular import
 if TYPE_CHECKING:
     from services.playback.playback_service import PlaybackService
-
-# Import PlaybackState from domain (no circular dependency)
-from domain.playback import PlaybackState
 
 # Module-level listener reference for cleanup
 _listener = None

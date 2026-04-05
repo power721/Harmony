@@ -20,7 +20,7 @@ from PySide6.QtCore import (
     QRect,
     QItemSelectionModel,
 )
-from PySide6.QtGui import QColor, QPixmap, QPainter, QImage, QCursor
+from PySide6.QtGui import QColor, QPainter, QImage, QCursor
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
