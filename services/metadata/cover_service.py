@@ -47,13 +47,11 @@ class CoverService:
         """Get built-in host cover sources."""
         from services.sources import (
             NetEaseCoverSource,
-            QQMusicCoverSource,
             ITunesCoverSource,
             LastFmCoverSource,
         )
         return [
             NetEaseCoverSource(self.http_client),
-            QQMusicCoverSource(),
             ITunesCoverSource(self.http_client),
             LastFmCoverSource(self.http_client),
         ]
@@ -70,12 +68,10 @@ class CoverService:
         """Get built-in host artist cover sources."""
         from services.sources import (
             NetEaseArtistCoverSource,
-            QQMusicArtistCoverSource,
             ITunesArtistCoverSource,
         )
         return [
             NetEaseArtistCoverSource(self.http_client),
-            QQMusicArtistCoverSource(),
             ITunesArtistCoverSource(self.http_client),
         ]
 

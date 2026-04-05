@@ -35,3 +35,11 @@ def test_lyrics_service_merges_plugin_sources(monkeypatch):
     results = LyricsService.search_songs("Song 1", "Singer 1")
 
     assert any(item["source"] == "lrclib" for item in results)
+
+
+def test_builtin_lyrics_sources_exclude_plugin_owned_sources():
+    sources = LyricsService._get_builtin_sources()
+    names = {source.name for source in sources}
+
+    assert "LRCLIB" not in names
+    assert "QQMusic" not in names

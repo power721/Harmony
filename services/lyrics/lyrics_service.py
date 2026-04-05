@@ -60,14 +60,12 @@ class LyricsService:
         """Get built-in host lyrics sources."""
         from services.sources import (
             NetEaseLyricsSource,
-            QQMusicLyricsSource,
             KugouLyricsSource,
         )
         http_client = _get_http_client()
         return [
             NetEaseLyricsSource(http_client),
             KugouLyricsSource(http_client),
-            QQMusicLyricsSource(),
         ]
 
     @classmethod

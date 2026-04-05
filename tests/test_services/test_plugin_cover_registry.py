@@ -31,3 +31,13 @@ def test_cover_service_merges_plugin_cover_sources(monkeypatch):
 
     assert service._get_sources() == [fake_cover]
     assert service._get_artist_sources() == [fake_artist_cover]
+
+
+def test_builtin_cover_sources_exclude_plugin_owned_sources():
+    service = CoverService(http_client=SimpleNamespace(), sources=None)
+
+    names = {source.name for source in service._get_builtin_sources()}
+    artist_names = {source.name for source in service._get_builtin_artist_sources()}
+
+    assert "QQMusic" not in names
+    assert "QQMusic" not in artist_names
