@@ -446,7 +446,10 @@ class Bootstrap:
                 ready = False
                 try:
                     import dbus
-                    dbus
+                    import dbus.mainloop.glib
+                    import dbus.service
+                    from gi.repository import GLib
+                    _ = (dbus.mainloop.glib, dbus.service, GLib)
                     ready = True
                 except ImportError:
                     pass
