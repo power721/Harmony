@@ -5,7 +5,7 @@ Library service - Manages music library operations.
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from PySide6.QtCore import QTimer
 
@@ -20,6 +20,10 @@ from repositories.artist_repository import SqliteArtistRepository
 from repositories.genre_repository import SqliteGenreRepository
 from services.metadata.metadata_service import MetadataService
 from system.event_bus import EventBus
+
+if TYPE_CHECKING:
+    from domain.genre import Genre
+    from services.metadata.cover_service import CoverService
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +69,6 @@ class LibraryService:
             self._artist_repo.refresh()
         if self._genre_repo:
             self._genre_repo.fix_covers()
-
-    def refresh_albums_artists(self):
-        """Refresh album, artist, and genre tables."""
-        self._album_repo.refresh()
-        self._artist_repo.refresh()
-        if self._genre_repo:
-            self._genre_repo.refresh()
 
     def rebuild_albums_artists(self) -> dict:
         """

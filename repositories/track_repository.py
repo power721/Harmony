@@ -17,6 +17,8 @@ _FTS_FIELD_SPECIFIERS = re.compile(r"\b(?:title|artist|album)\s*:", re.IGNORECAS
 _FTS_UNSAFE_CHARACTERS = re.compile(r"[^\w\s.-]+", re.UNICODE)
 
 if TYPE_CHECKING:
+    from domain.album import Album
+    from domain.artist import Artist
     from infrastructure.database import DatabaseManager
 
 

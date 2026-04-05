@@ -2,6 +2,8 @@
 Tests for LibraryService.
 """
 
+import ast
+import inspect
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
@@ -266,7 +268,7 @@ class TestLibraryService:
         with patch.object(
             library_service, "_create_track_from_file", return_value=None
         ):
-            result = library_service.scan_directory("/music", recursive=False)
+            library_service.scan_directory("/music", recursive=False)
 
             mock_path.glob.assert_called_once_with("*")
 
@@ -612,6 +614,32 @@ class TestLibraryService:
 
         mock_album_repo.refresh.assert_called_once()
         mock_artist_repo.refresh.assert_called_once()
+
+    def test_refresh_albums_artists_defined_once(self):
+        """LibraryService should expose only one refresh_albums_artists entry point."""
+        class_source = inspect.getsource(LibraryService)
+        class_ast = ast.parse(class_source)
+        class_def = next(
+            node for node in class_ast.body
+            if isinstance(node, ast.ClassDef) and node.name == "LibraryService"
+        )
+        method_count = sum(
+            1 for node in class_def.body
+            if isinstance(node, ast.FunctionDef) and node.name == "refresh_albums_artists"
+        )
+
+        assert method_count == 1
+
+    def test_refresh_albums_artists_without_immediate_uses_debounce(
+        self, library_service, mock_album_repo, mock_artist_repo
+    ):
+        """Default refresh should debounce via timer instead of refreshing repos directly."""
+        with patch.object(library_service._refresh_timer, "start") as mock_start:
+            library_service.refresh_albums_artists()
+
+        mock_start.assert_called_once_with(500)
+        mock_album_repo.refresh.assert_not_called()
+        mock_artist_repo.refresh.assert_not_called()
 
     def test_rebuild_albums_artists(self, library_service, mock_album_repo, mock_artist_repo, mock_track_repo, mock_event_bus):
         """Test rebuild_albums_artists rebuilds both tables."""
