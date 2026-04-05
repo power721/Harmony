@@ -1443,11 +1443,9 @@ class OnlineMusicView(QWidget):
 
     def _show_login_dialog(self):
         """Show QQ Music login dialog."""
-        from ui.dialogs.qqmusic_qr_login_dialog import QQMusicQRLoginDialog
+        from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 
-        dialog = QQMusicQRLoginDialog(self)
-        # Connect to credentials signal to refresh immediately on success
-        dialog.credentials_obtained.connect(self._on_credentials_obtained)
+        dialog = QQMusicLoginDialog(self)
         dialog.exec()
 
     def _on_credentials_obtained(self, credential: dict):

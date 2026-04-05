@@ -168,6 +168,22 @@ def test_on_login_clicked_clears_plugin_namespaced_credential():
     view._config.set_plugin_setting.assert_any_call("qqmusic", "nick", "")
 
 
+def test_show_login_dialog_uses_plugin_local_dialog(monkeypatch):
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._on_credentials_obtained = Mock()
+    dialog = Mock()
+    dialog_ctor = Mock(return_value=dialog)
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.login_dialog.QQMusicLoginDialog",
+        dialog_ctor,
+    )
+
+    OnlineMusicView._show_login_dialog(view)
+
+    dialog_ctor.assert_called_once_with(view)
+    dialog.exec.assert_called_once_with()
+
+
 def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
     view = OnlineMusicView.__new__(OnlineMusicView)
     view._config = Mock()
