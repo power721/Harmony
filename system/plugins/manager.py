@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
+from infrastructure import HttpClient
+from .installer import PluginInstaller
 from .loader import PluginLoader
 from .registry import PluginRegistry
 
@@ -13,6 +16,10 @@ class PluginManager:
         self._state_store = state_store
         self._context_factory = context_factory
         self._loader = PluginLoader()
+        self._installer = PluginInstaller(
+            external_root=external_root,
+            temp_root=external_root.parent / "tmp",
+        )
         self.registry = PluginRegistry()
         self._loaded_plugins: dict[str, tuple[object, object, object]] = {}
 
@@ -76,3 +83,33 @@ class PluginManager:
                     version=version,
                     load_error=str(exc),
                 )
+
+    def list_plugins(self) -> list[dict]:
+        plugins = []
+        for source, plugin_root in self.discover_roots():
+            manifest = self._loader.read_manifest(plugin_root)
+            state = self._state_store.get(manifest.id) or {}
+            plugins.append(
+                {
+                    "id": manifest.id,
+                    "name": manifest.name,
+                    "version": manifest.version,
+                    "source": source,
+                    "enabled": bool(state.get("enabled", True)),
+                    "load_error": state.get("load_error"),
+                }
+            )
+        return plugins
+
+    def install_zip(self, zip_path: str | Path) -> Path:
+        return self._installer.install_zip(Path(zip_path))
+
+    def install_from_url(self, url: str) -> Path:
+        parsed = urlparse(url)
+        archive_name = Path(parsed.path).name or "plugin.zip"
+        download_path = self._installer._temp_root / archive_name
+        download_path.parent.mkdir(parents=True, exist_ok=True)
+        response = HttpClient.shared().get(url, timeout=60)
+        response.raise_for_status()
+        download_path.write_bytes(response.content)
+        return self.install_zip(download_path)

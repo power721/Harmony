@@ -1,11 +1,11 @@
 """
 General Settings Dialog for configuring AI, AcoustID, and QQ Music.
 """
-import importlib.util
 import logging
 import os
 from typing import Optional
 
+from app.bootstrap import Bootstrap
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
@@ -20,6 +20,7 @@ from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.plugin_management_tab import PluginManagementTab
 from ui.dialogs.progress_dialog import ProgressDialog
 from services.cloud.qqmusic.common import (
     get_selectable_qualities,
@@ -856,6 +857,16 @@ class GeneralSettingsDialog(QDialog):
         tab_widget.addTab(repair_tab, t("repair_tab"))
         tab_widget.addTab(ai_tab, t("ai_tab"))
         tab_widget.addTab(acoustid_tab, t("acoustid_tab"))
+        bootstrap = Bootstrap.instance()
+        tab_widget.addTab(
+            PluginManagementTab(bootstrap.plugin_manager, self),
+            t("plugins_tab"),
+        )
+        for spec in bootstrap.plugin_manager.registry.settings_tabs():
+            tab_widget.addTab(
+                spec.widget_factory(bootstrap.plugin_manager, self),
+                spec.title,
+            )
 
         layout.addWidget(tab_widget)
 
