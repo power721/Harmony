@@ -16,3 +16,5 @@ AppDir
 *.AppImage
 
 .worktrees/
+
+.codex
