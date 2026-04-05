@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -13,6 +14,22 @@ from .errors import PluginLoadError
 
 
 class PluginLoader:
+    def _package_name(self, manifest_id: str, plugin_root: Path) -> str:
+        safe_id = re.sub(r"[^0-9a-zA-Z_]", "_", manifest_id)
+        root_hash = hashlib.sha1(
+            str(plugin_root.resolve()).encode("utf-8")
+        ).hexdigest()[:12]
+        return f"_harmony_plugin_{safe_id}_{root_hash}"
+
+    def _purge_package_modules(self, package_name: str) -> None:
+        names = [
+            module_name
+            for module_name in sys.modules
+            if module_name == package_name or module_name.startswith(f"{package_name}.")
+        ]
+        for module_name in names:
+            sys.modules.pop(module_name, None)
+
     def read_manifest(self, plugin_root: Path) -> PluginManifest:
         return PluginManifest.from_dict(
             json.loads((plugin_root / "plugin.json").read_text(encoding="utf-8"))
@@ -25,13 +42,11 @@ class PluginLoader:
         if not module_path.exists():
             raise PluginLoadError(f"Entrypoint file does not exist: {module_path}")
 
-        safe_id = re.sub(r"[^0-9a-zA-Z_]", "_", manifest.id)
-        package_name = f"_harmony_plugin_{safe_id}"
-        package_module = sys.modules.get(package_name)
-        if package_module is None:
-            package_module = types.ModuleType(package_name)
-            package_module.__path__ = [str(plugin_root)]
-            sys.modules[package_name] = package_module
+        package_name = self._package_name(manifest.id, plugin_root)
+        self._purge_package_modules(package_name)
+        package_module = types.ModuleType(package_name)
+        package_module.__path__ = [str(plugin_root)]
+        sys.modules[package_name] = package_module
 
         entrypoint_module = Path(manifest.entrypoint).with_suffix("")
         module_name = f"{package_name}.{'.'.join(entrypoint_module.parts)}"
