@@ -262,3 +262,39 @@ def test_install_zip_replacement_is_transactional_on_copy_failure(
 
     assert existing_root.exists()
     assert (existing_root / "version.txt").read_text(encoding="utf-8") == "old"
+
+
+def test_install_zip_rejects_reserved_suffix_plugin_id(tmp_path: Path):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "bad_suffix.zip",
+        {
+            "plugin.json": json.dumps(
+                {
+                    "id": "qqmusic.backup",
+                    "name": "Bad Suffix",
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "BadSuffixPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            "plugin_main.py": (
+                "class BadSuffixPlugin:\n"
+                "    plugin_id = 'qqmusic.backup'\n"
+                "    def register(self, context):\n"
+                "        pass\n"
+                "    def unregister(self, context):\n"
+                "        pass\n"
+            ),
+        },
+    )
+
+    with pytest.raises(PluginInstallError):
+        installer.install_zip(plugin_zip)

@@ -45,6 +45,12 @@ class PluginInstaller:
         self._external_root = external_root
         self._temp_root = temp_root
 
+    def _validate_plugin_id(self, plugin_id: str) -> None:
+        if plugin_id.endswith(".staging") or plugin_id.endswith(".backup"):
+            raise PluginInstallError(
+                f"Plugin id uses reserved suffix: {plugin_id}"
+            )
+
     def _load_manifest(self, plugin_root: Path) -> PluginManifest:
         manifest_path = plugin_root / "plugin.json"
         raw = manifest_path.read_text(encoding="utf-8")
@@ -82,6 +88,7 @@ class PluginInstaller:
 
             audit_plugin_imports(extract_root)
             manifest = self._load_manifest(extract_root)
+            self._validate_plugin_id(manifest.id)
             self._validate_entrypoint_structure(extract_root, manifest)
 
             self._external_root.mkdir(parents=True, exist_ok=True)
