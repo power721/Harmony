@@ -344,7 +344,7 @@ def detect_and_parse(text: str) -> List[LyricLine]:
 # =========================
 
 def build_word_index(lines: List[LyricLine]) -> List[LyricWord]:
-    return sorted([w for l in lines for w in l.words], key=lambda w: w.time)
+    return sorted([word for line in lines for word in line.words], key=lambda word: word.time)
 
 
 def find_current_word(words: List[LyricWord], t: float) -> Optional[LyricWord]:

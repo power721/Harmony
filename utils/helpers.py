@@ -230,7 +230,6 @@ def format_relative_time(dt: datetime) -> str:
     else:
         # If it has timezone, convert to local
         from datetime import timezone
-        utc_tz = timezone.utc
         local_offset = timedelta(hours=8)  # Beijing timezone
         dt_local = dt.astimezone(timezone(local_offset))
 
