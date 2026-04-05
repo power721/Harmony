@@ -329,6 +329,12 @@ jobs:
           $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
           Get-Command mpv -ErrorAction Stop
           mpv --version
+          $mpvDll = Get-ChildItem "C:\ProgramData\chocolatey\lib\mpv" -Recurse -Filter "mpv-2.dll" | Select-Object -First 1
+          if (-not $mpvDll) {
+            throw "mpv-2.dll not found after Chocolatey install"
+          }
+          "HARMONY_MPV_RUNTIME_DIR=$($mpvDll.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $mpvDll.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build executable
         env:
@@ -336,6 +342,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "windows-artifacts" | Out-Null
           $env:PATH = "C:\Windows\System32;" + $env:PATH
+          if ($env:HARMONY_MPV_RUNTIME_DIR) {
+            $env:PATH = "$env:HARMONY_MPV_RUNTIME_DIR;$env:PATH"
+          }
           uv run python build.py windows --audio-backend-bundle qt
           Copy-Item -Path "dist/Harmony.exe" -Destination "windows-artifacts/Harmony-${env:APP_VERSION}-windows-QT.exe"
           uv run python build.py windows --audio-backend-bundle mpv

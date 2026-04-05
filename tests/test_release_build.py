@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import types
 
 import build
 
@@ -45,3 +46,41 @@ def test_windows_workflow_produces_split_backend_executables():
     assert "Harmony-${env:APP_VERSION}-windows-MPV.exe" in section
     assert "Create portable zip" not in section
     assert 'dist/Harmony-${env:APP_VERSION}-windows.zip' not in section
+
+
+def test_find_libmpv_on_windows_resolves_chocolatey_layout(tmp_path, monkeypatch):
+    """Windows MPV bundles should find mpv-2.dll in the Chocolatey install tree."""
+    choco_root = tmp_path / "ProgramData" / "chocolatey"
+    shim_dir = choco_root / "bin"
+    runtime_dir = choco_root / "lib" / "mpv" / "tools" / "mpv"
+    shim_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+
+    (shim_dir / "mpv.exe").write_text("", encoding="utf-8")
+    mpv_dll = runtime_dir / "mpv-2.dll"
+    mpv_dll.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(build.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(build, "PROJECT_ROOT", tmp_path / "repo")
+    monkeypatch.setattr(build, "sys", types.SimpleNamespace(executable=str(tmp_path / "Python" / "python.exe")))
+    monkeypatch.setattr(build.shutil, "which", lambda name: str(shim_dir / "mpv.exe") if name == "mpv" else None)
+    monkeypatch.setenv("PATH", str(shim_dir))
+
+    assert build.find_libmpv(build.AUDIO_BACKEND_MPV) == [(str(mpv_dll), ".")]
+
+
+def test_windows_workflow_exports_mpv_runtime_directory():
+    """Windows CI should export the directory containing mpv-2.dll before invoking build.py."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+
+    build_windows_section = re.search(
+        r"build-windows:\n(?P<section>.*?)(?:\n  release:|\Z)",
+        content,
+        re.DOTALL,
+    )
+    assert build_windows_section, "build.yml must define a build-windows job"
+
+    section = build_windows_section.group("section")
+    assert "mpv-2.dll" in section
+    assert "$env:GITHUB_PATH" in section

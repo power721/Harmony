@@ -618,11 +618,40 @@ def find_libmpv(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
     elif current_system == "Windows":
         search_dirs = [os.path.dirname(sys.executable), str(PROJECT_ROOT)]
         search_dirs.extend(os.environ.get("PATH", "").split(os.pathsep))
+
+        runtime_dir = os.environ.get("HARMONY_MPV_RUNTIME_DIR")
+        if runtime_dir:
+            search_dirs.append(runtime_dir)
+
+        mpv_executable = shutil.which("mpv")
+        if mpv_executable:
+            mpv_path = Path(mpv_executable)
+            search_dirs.append(str(mpv_path.parent))
+
+            choco_root = mpv_path.parent.parent if mpv_path.parent.name.lower() == "bin" else None
+            if choco_root and choco_root.name.lower() == "chocolatey":
+                search_dirs.extend([
+                    str(choco_root / "lib" / "mpv" / "tools"),
+                    str(choco_root / "lib" / "mpv" / "tools" / "mpv"),
+                ])
+
+        chocolatey_root = os.environ.get("ChocolateyInstall")
+        if chocolatey_root:
+            search_dirs.extend([
+                os.path.join(chocolatey_root, "lib", "mpv", "tools"),
+                os.path.join(chocolatey_root, "lib", "mpv", "tools", "mpv"),
+            ])
+
         dll_names = ["mpv-2.dll", "libmpv-2.dll", "mpv.dll"]
+        seen_dirs = set()
 
         for search_dir in search_dirs:
             if not search_dir:
                 continue
+            normalized_dir = os.path.normcase(os.path.normpath(search_dir))
+            if normalized_dir in seen_dirs:
+                continue
+            seen_dirs.add(normalized_dir)
             for dll_name in dll_names:
                 dll_path = os.path.join(search_dir, dll_name)
                 if os.path.exists(dll_path):
