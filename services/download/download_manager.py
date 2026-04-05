@@ -328,11 +328,15 @@ class DownloadManager(QObject):
 
         for song_mid, worker in workers:
             self._stop_worker(worker, song_mid, wait_ms=1000)
-            self._remove_worker(song_mid, expected_worker=worker)
 
     def _stop_worker(self, worker: Optional[QThread], worker_id: str, wait_ms: int = 1000):
         """Stop a download worker cooperatively."""
-        if not (worker and isValid(worker) and worker.isRunning()):
+        if not worker:
+            self._remove_worker(worker_id)
+            return
+
+        if not isValid(worker) or not worker.isRunning():
+            self._remove_worker(worker_id, expected_worker=worker)
             return
 
         worker.requestInterruption()
@@ -341,6 +345,9 @@ class DownloadManager(QObject):
             logger.warning(
                 f"[DownloadManager] Worker did not stop in time via cooperative shutdown: {worker_id}"
             )
+            return
+
+        self._remove_worker(worker_id, expected_worker=worker)
 
     def _get_worker(self, song_mid: str) -> Optional[QThread]:
         """Get worker by ID under lock."""

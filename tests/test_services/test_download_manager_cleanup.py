@@ -61,6 +61,29 @@ def test_stop_worker_uses_cooperative_shutdown(monkeypatch):
     fake_worker.terminate.assert_not_called()
 
 
+def test_stop_worker_cleans_up_stale_registry_entries(monkeypatch):
+    """Stopped workers should still be removed from the registry."""
+    manager = DownloadManager()
+    fake_worker = SimpleNamespace(
+        isRunning=MagicMock(return_value=False),
+        deleteLater=MagicMock(),
+        download_finished=SimpleNamespace(disconnect=MagicMock()),
+        finished=SimpleNamespace(disconnect=MagicMock()),
+    )
+    manager._download_workers["song-mid"] = fake_worker
+    manager._download_handlers["song-mid"] = (
+        manager._on_online_download_finished,
+        lambda: None,
+    )
+    monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
+
+    DownloadManager._stop_worker(manager, fake_worker, "song-mid", wait_ms=250)
+
+    assert "song-mid" not in manager._download_workers
+    assert "song-mid" not in manager._download_handlers
+    fake_worker.deleteLater.assert_called_once()
+
+
 def test_redownload_replaces_stale_worker_and_disconnects_old_signals(monkeypatch):
     """Replacing stale worker should disconnect old signals before deleteLater."""
     manager = DownloadManager()
