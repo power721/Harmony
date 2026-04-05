@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import zipfile
 
 from system.plugins.installer import PluginInstaller
@@ -755,3 +756,73 @@ def test_manager_ignores_external_installer_scratch_directories(tmp_path: Path):
     assert [item.plugin_id for item in manager.registry.sidebar_entries()] == [
         "real-plugin"
     ]
+
+
+def test_manager_loads_real_builtin_plugins_from_repository(tmp_path: Path):
+    class _UiBridge:
+        def __init__(self):
+            self.sidebar_entries = []
+            self.settings_tabs = []
+
+        def register_sidebar_entry(self, spec):
+            self.sidebar_entries.append(spec)
+
+        def register_settings_tab(self, spec):
+            self.settings_tabs.append(spec)
+
+    class _ServiceBridge:
+        def __init__(self):
+            self.lyrics_sources = []
+            self.cover_sources = []
+            self.artist_cover_sources = []
+            self.online_providers = []
+            self.media = object()
+
+        def register_lyrics_source(self, source):
+            self.lyrics_sources.append(source)
+
+        def register_cover_source(self, source):
+            self.cover_sources.append(source)
+
+        def register_artist_cover_source(self, source):
+            self.artist_cover_sources.append(source)
+
+        def register_online_music_provider(self, provider):
+            self.online_providers.append(provider)
+
+    class _BuiltinContextFactory:
+        def __init__(self):
+            self.ui = _UiBridge()
+            self.services = _ServiceBridge()
+
+        def build(self, manifest):
+            return SimpleNamespace(
+                plugin_id=manifest.id,
+                manifest=manifest,
+                logger=object(),
+                http=SimpleNamespace(get=lambda *_args, **_kwargs: None),
+                events=object(),
+                settings=SimpleNamespace(
+                    get=lambda *_args, **_kwargs: None,
+                    set=lambda *_args, **_kwargs: None,
+                ),
+                storage=SimpleNamespace(),
+                ui=self.ui,
+                services=self.services,
+            )
+
+    root = Path(__file__).resolve().parents[2]
+    store = PluginStateStore(tmp_path / "state.json")
+    context_factory = _BuiltinContextFactory()
+    manager = PluginManager(
+        builtin_root=root / "plugins" / "builtin",
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=context_factory,
+    )
+
+    manager.load_enabled_plugins()
+
+    loaded_ids = set(manager._loaded_plugins)
+    assert "lrclib" in loaded_ids
+    assert "qqmusic" in loaded_ids
