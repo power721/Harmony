@@ -35,6 +35,9 @@ def test_playback_service_wires_download_manager_dependencies(monkeypatch):
     bootstrap._artist_repo = object()
 
     assert bootstrap.playback_service is fake_playback
+    bootstrap_module.PlaybackService.assert_called_once()
+    _, kwargs = bootstrap_module.PlaybackService.call_args
+    assert "db_manager" not in kwargs
 
     fake_manager.set_dependencies.assert_called_once_with(
         config=bootstrap._config,

@@ -404,7 +404,7 @@ class MainWindow(QMainWindow):
                 qqmusic_service = QQMusicService(cred_dict)
             except Exception:
                 pass
-        self._online_music_view = OnlineMusicView(self._config, self._db, qqmusic_service)
+        self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
 
         self._stacked_widget.addWidget(self._library_view)  # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)  # 1

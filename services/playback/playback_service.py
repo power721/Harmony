@@ -30,7 +30,6 @@ from utils.helpers import get_cache_dir
 
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
-    from infrastructure.database import DatabaseManager
     from services.metadata import CoverService
     from services.online import OnlineDownloadService
     from repositories.track_repository import SqliteTrackRepository
@@ -96,7 +95,6 @@ class PlaybackService(QObject):
 
     def __init__(
             self,
-            db_manager: 'DatabaseManager' = None,
             config_manager: ConfigManager = None,
             cover_service: 'CoverService' = None,
             online_download_service: 'OnlineDownloadService' = None,
@@ -114,7 +112,6 @@ class PlaybackService(QObject):
         Initialize the playback service.
 
         Args:
-            db_manager: Database manager (deprecated, for backward compat)
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
             online_download_service: Service for downloading online tracks (QQ Music)
@@ -130,7 +127,6 @@ class PlaybackService(QObject):
         """
         super().__init__(parent)
 
-        self._db = db_manager
         self._config = config_manager
         self._cover_service = cover_service
         self._online_download_service = online_download_service

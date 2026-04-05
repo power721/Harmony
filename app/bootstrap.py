@@ -213,7 +213,6 @@ class Bootstrap:
         """Get playback service."""
         if self._playback_service is None:
             self._playback_service = PlaybackService(
-                db_manager=self.db,
                 config_manager=self.config,
                 cover_service=self.cover_service,
                 online_download_service=self.online_download_service,

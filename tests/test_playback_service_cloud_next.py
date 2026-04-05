@@ -7,7 +7,7 @@ is not populated during queue restoration.
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 from domain.track import TrackSource
 from domain.playlist_item import PlaylistItem
 from domain.cloud import CloudFile, CloudAccount
@@ -35,14 +35,17 @@ class TestCloudTrackAutoNextBug:
             "queue_current_cloud_file_id": "",
             "queue_current_local_path": "",
         }.get(key, default)
+        mock_track_repo = Mock()
+        mock_track_repo.get_by_ids.return_value = []
+        mock_track_repo.get_by_cloud_file_ids.return_value = []
+        mock_track_repo.get_by_paths.return_value = []
 
         return {
-            'db_manager': Mock(),
             'config_manager': mock_config,
             'cover_service': Mock(),
             'online_download_service': Mock(),
             'event_bus': Mock(),
-            'track_repo': Mock(),
+            'track_repo': mock_track_repo,
             'favorite_repo': Mock(),
             'queue_repo': Mock(),
             'cloud_repo': Mock(),
@@ -93,7 +96,6 @@ class TestCloudTrackAutoNextBug:
         # Setup mocks
         mock_queue_repo = mock_deps['queue_repo']
         mock_cloud_repo = mock_deps['cloud_repo']
-        mock_config = mock_deps['config_manager']
         mock_track_repo = mock_deps['track_repo']
 
         # Mock track repository methods
@@ -167,8 +169,6 @@ class TestCloudTrackAutoNextBug:
         """
         # Setup mocks
         mock_cloud_repo = mock_deps['cloud_repo']
-        mock_config = mock_deps['config_manager']
-
         mock_cloud_repo.get_account_by_id.return_value = cloud_account
         mock_cloud_repo.get_file_by_file_id.return_value = cloud_files[0]
 

@@ -603,14 +603,12 @@ class OnlineDetailView(QWidget):
     def __init__(
             self,
             config_manager=None,
-            db_manager=None,
             qqmusic_service=None,
             parent=None
     ):
         super().__init__(parent)
 
         self._config = config_manager
-        self._db = db_manager
         self._service = OnlineMusicService(
             config_manager=config_manager,
             qqmusic_service=qqmusic_service
@@ -2159,12 +2157,16 @@ class OnlineDetailView(QWidget):
 
     def _add_tracks_to_favorites(self, tracks: list):
         """Add multiple tracks to favorites."""
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        favorites_service = bootstrap.favorites_service
 
         added_count = 0
         for track in tracks:
             track_id = self._add_online_track_to_library(track)
-            if track_id and self._db:
-                self._db.add_favorite(track_id=track_id)
+            if track_id:
+                favorites_service.add_favorite(track_id=track_id)
                 added_count += 1
 
         if added_count > 0:
@@ -2177,8 +2179,15 @@ class OnlineDetailView(QWidget):
 
     def _remove_track_from_favorites(self, track: OnlineTrack):
         """Remove a track from favorites."""
-        if self._db:
-            self._db.remove_favorite(cloud_file_id=track.mid)
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        library_track = bootstrap.library_service.get_track_by_cloud_file_id(track.mid)
+        if library_track:
+            bootstrap.favorites_service.remove_favorite(track_id=library_track.id)
+            return
+
+        bootstrap.favorites_service.remove_favorite(cloud_file_id=track.mid)
 
     def _add_track_to_playlist(self, track: OnlineTrack):
         """Add track to playlist."""

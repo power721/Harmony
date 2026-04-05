@@ -16,7 +16,7 @@ def test_click_outside_search_input_clears_focus(qtbot):
     theme_manager.current_theme = MagicMock(highlight="#1db954")
 
     with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
-        view = OnlineMusicView(config_manager=None, db_manager=None, qqmusic_service=None)
+        view = OnlineMusicView(config_manager=None, qqmusic_service=None)
         view._top_lists_loaded = True  # Avoid loading top list workers in this test.
         qtbot.addWidget(view)
         view.show()

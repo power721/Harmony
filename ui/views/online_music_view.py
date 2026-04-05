@@ -825,14 +825,12 @@ class OnlineMusicView(QWidget):
     def __init__(
             self,
             config_manager=None,
-            db_manager=None,
             qqmusic_service=None,
             parent=None
     ):
         super().__init__(parent)
 
         self._config = config_manager
-        self._db = db_manager
         self._qqmusic_service = qqmusic_service
 
         # Create services
@@ -949,7 +947,6 @@ class OnlineMusicView(QWidget):
         # Detail view page
         self._detail_view = OnlineDetailView(
             config_manager=self._config,
-            db_manager=self._db,
             qqmusic_service=self._qqmusic_service,
             parent=self
         )
@@ -3006,17 +3003,19 @@ class OnlineMusicView(QWidget):
             return
 
         added_count = 0
+        from app.bootstrap import Bootstrap
+
+        bootstrap = Bootstrap.instance()
+        favorites_service = bootstrap.favorites_service
 
         for track in tracks:
             track_id = self._add_online_track_to_library(track)
             if track_id:
-                # Add to favorites
-                if self._db:
-                    self._db.add_favorite(track_id=track_id)
-                    added_count += 1
-                    # Update ranking view UI if track is visible
-                    if hasattr(self, '_ranking_list_view'):
-                        self._ranking_list_view.set_track_favorite(track.mid, True)
+                favorites_service.add_favorite(track_id=track_id)
+                added_count += 1
+                # Update ranking view UI if track is visible
+                if hasattr(self, '_ranking_list_view'):
+                    self._ranking_list_view.set_track_favorite(track.mid, True)
 
         if added_count > 0:
             logger.info(f"[OnlineMusicView] Added {added_count} tracks to favorites")
@@ -3233,16 +3232,17 @@ class OnlineMusicView(QWidget):
             return
         from app.bootstrap import Bootstrap
         bootstrap = Bootstrap.instance()
+        favorites_service = bootstrap.favorites_service
 
         if is_favorite:
             track_id = self._add_online_track_to_library(track)
-            if track_id and self._db:
-                self._db.add_favorite(track_id=track_id)
+            if track_id:
+                favorites_service.add_favorite(track_id=track_id)
                 self._ranking_list_view.set_track_favorite(track.mid, True)
         else:
             library_track = bootstrap.library_service.get_track_by_cloud_file_id(track.mid)
             if library_track:
-                self._db.remove_favorite(track_id=library_track.id)
+                favorites_service.remove_favorite(track_id=library_track.id)
                 self._ranking_list_view.set_track_favorite(track.mid, False)
 
     def _on_ranking_favorites_toggle(self, tracks: list, all_favorited: bool):
