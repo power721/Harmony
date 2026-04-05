@@ -471,6 +471,24 @@ class ArtistsView(QWidget):
         EventBus.instance().tracks_added.connect(self._on_tracks_added)
         EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Best-effort signal disconnection for shutdown cleanup."""
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def closeEvent(self, event):
+        """Release event bus subscriptions and background work on close."""
+        event_bus = EventBus.instance()
+        self._disconnect_signal(event_bus.tracks_added, self._on_tracks_added)
+        self._disconnect_signal(event_bus.cover_updated, self._on_cover_updated)
+        if hasattr(self, "_search_timer"):
+            self._search_timer.stop()
+        self._stop_load_worker(wait_ms=1000, clear_ref=True)
+        super().closeEvent(event)
+
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
         from system.theme import ThemeManager
