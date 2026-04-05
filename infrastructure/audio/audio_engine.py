@@ -114,11 +114,17 @@ class PlayerEngine(QObject):
 
     def __del__(self):
         """Ensure cleanup on destruction."""
+        backend = getattr(self, "_backend", None)
+        if backend is not None:
+            try:
+                backend.cleanup()
+            except Exception as exc:
+                logger.error("Error cleaning up backend: %s", exc, exc_info=True)
+
         try:
-            self._backend.cleanup()
             self.cleanup_temp_files()
-        except Exception:
-            pass  # Ignore errors during destruction
+        except Exception as exc:
+            logger.error("Error cleaning up temp files: %s", exc, exc_info=True)
 
     def _create_backend(self, backend_type: str):
         """Create audio backend and fallback to Qt if mpv is unavailable."""
