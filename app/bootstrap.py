@@ -4,7 +4,7 @@ Bootstrap - Dependency injection container.
 
 import logging
 import threading
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from infrastructure import HttpClient
 from infrastructure.database import DatabaseManager
@@ -28,6 +28,14 @@ from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
 from system.config import ConfigManager
 from system.event_bus import EventBus
+
+if TYPE_CHECKING:
+    from services.lyrics.qqmusic_lyrics import QQMusicClient
+    from services.online import OnlineDownloadService, OnlineMusicService
+    from services.online.cache_cleaner_service import CacheCleanerService
+    from services.playback.sleep_timer_service import SleepTimerService
+    from system.mpris import MPRISController
+    from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -438,9 +446,7 @@ class Bootstrap:
                 ready = False
                 try:
                     import dbus
-                    import dbus.mainloop.glib
-                    import dbus.service
-                    from gi.repository import GLib
+                    dbus
                     ready = True
                 except ImportError:
                     pass

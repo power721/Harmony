@@ -11,6 +11,7 @@ from .track import TrackSource
 if TYPE_CHECKING:
     from domain.track import Track
     from domain.cloud import CloudFile
+    from domain.playback import PlayQueueItem
 
 
 @dataclass
