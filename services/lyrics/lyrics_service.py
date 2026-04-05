@@ -3,17 +3,16 @@ Lyrics service for fetching and parsing lyrics.
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING
-
-# Configure logging
-logger = logging.getLogger(__name__)
 from pathlib import Path
-from typing import Optional, List
+from typing import TYPE_CHECKING, List, Optional
 
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
 from .qqmusic_lyrics import download_qqmusic_lyrics
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from services.sources.base import LyricsSource

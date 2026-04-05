@@ -4,7 +4,10 @@ Quark Drive cloud storage service.
 import json
 import logging
 import re
+import time
 import traceback
+from typing import Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -13,9 +16,6 @@ from infrastructure.network import HttpClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
-import time
-from typing import Optional, Dict, List, Tuple
-from urllib.parse import parse_qs, urlparse
 
 
 class QuarkDriveService:
@@ -167,7 +167,7 @@ class QuarkDriveService:
                     ticket = data['data']['members']['service_ticket']
 
                     # Get account info with ticket
-                    info_url = f"https://pan.quark.cn/account/info"
+                    info_url = "https://pan.quark.cn/account/info"
                     info_params = {'st': ticket, 'lw': 'scan'}
                     info_response = cls._get_session().get(info_url, params=info_params, timeout=10)
 

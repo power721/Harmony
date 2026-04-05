@@ -3,6 +3,7 @@ Asynchronous lyrics loader to prevent UI blocking.
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QThread, Signal
 from shiboken6 import isValid
@@ -11,6 +12,9 @@ from .lyrics_service import LyricsService
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from services.metadata import CoverService
 
 
 class LyricsLoader(QThread):
@@ -201,7 +205,6 @@ class LyricsDownloadWorker(QThread):
                 return
 
             # Download cover image
-            from pathlib import Path
             from infrastructure.network import HttpClient
 
             cover_data = HttpClient.shared().get_content(
