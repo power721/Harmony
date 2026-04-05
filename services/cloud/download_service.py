@@ -6,8 +6,10 @@ with support for caching, progress tracking, and download cancellation.
 """
 
 import atexit
+import contextlib
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Optional, Dict, TYPE_CHECKING
 
@@ -24,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 class CloudDownloadWorker(QThread):
     """Worker thread for downloading a single cloud file."""
+
+    MAX_RETRY_ATTEMPTS = 3
+    RETRY_BASE_DELAY_SECONDS = 0.5
 
     download_progress = Signal(str, int, int)  # file_id, current_bytes, total_bytes
     download_completed = Signal(str, str)  # file_id, local_path
@@ -45,6 +50,53 @@ class CloudDownloadWorker(QThread):
     def cancel(self):
         """Cancel the download."""
         self._cancelled = True
+
+    def _sleep_before_retry(self, attempt: int) -> bool:
+        """Sleep with exponential backoff unless the worker is already cancelled."""
+        if self._cancelled or self.isInterruptionRequested():
+            return False
+
+        delay = min(self.RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)), 2.0)
+        time.sleep(delay)
+        return not (self._cancelled or self.isInterruptionRequested())
+
+    def _retry_call(self, operation, description: str, retry_on_false: bool = False):
+        """Retry transient cloud operations a small number of times."""
+        last_exception = None
+
+        for attempt in range(1, self.MAX_RETRY_ATTEMPTS + 1):
+            try:
+                result = operation()
+                if retry_on_false and not result:
+                    if attempt == self.MAX_RETRY_ATTEMPTS:
+                        return False
+                    logger.warning(
+                        "[CloudDownloadWorker] %s returned unsuccessful result (attempt %s/%s)",
+                        description,
+                        attempt,
+                        self.MAX_RETRY_ATTEMPTS,
+                    )
+                    if not self._sleep_before_retry(attempt):
+                        return False
+                    continue
+                return result
+            except Exception as exc:
+                last_exception = exc
+                if attempt == self.MAX_RETRY_ATTEMPTS:
+                    raise
+                logger.warning(
+                    "[CloudDownloadWorker] %s failed (attempt %s/%s): %s",
+                    description,
+                    attempt,
+                    self.MAX_RETRY_ATTEMPTS,
+                    exc,
+                )
+                if not self._sleep_before_retry(attempt):
+                    break
+
+        if last_exception is not None:
+            raise last_exception
+        return False
 
     def run(self):
         """Download the file."""
@@ -78,12 +130,18 @@ class CloudDownloadWorker(QThread):
 
             # Get download URL (pass file path for Baidu)
             if self._account.provider == "baidu":
-                result = service.get_download_url(
-                    self._account.access_token, file_id, self._cloud_file.metadata
+                result = self._retry_call(
+                    lambda: service.get_download_url(
+                        self._account.access_token, file_id, self._cloud_file.metadata
+                    ),
+                    "get download url",
                 )
             else:
-                result = service.get_download_url(
-                    self._account.access_token, file_id
+                result = self._retry_call(
+                    lambda: service.get_download_url(
+                        self._account.access_token, file_id
+                    ),
+                    "get download url",
                 )
 
             if isinstance(result, tuple):
@@ -120,8 +178,7 @@ class CloudDownloadWorker(QThread):
         """Download file from URL to destination."""
         from infrastructure.network import HttpClient
 
-        try:
-            # Use service's download_file method if available
+        def perform_download() -> bool:
             if hasattr(service, 'download_file'):
                 return service.download_file(url, dest_path, self._account.access_token)
 
@@ -168,8 +225,15 @@ class CloudDownloadWorker(QThread):
 
             return True
 
+        try:
+            return bool(
+                self._retry_call(perform_download, "download file", retry_on_false=True)
+            )
         except Exception as e:
             logger.error(f"[CloudDownloadWorker] Download error: {e}")
+            if Path(dest_path).exists():
+                with contextlib.suppress(OSError):
+                    Path(dest_path).unlink()
             return False
 
 
