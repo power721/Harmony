@@ -48,11 +48,9 @@ class CloudDownloadWorker(QThread):
 
     def run(self):
         """Download the file."""
-        import time
         from services.cloud.quark_service import QuarkDriveService
         from services.cloud.baidu_service import BaiduDriveService
 
-        start_time = time.time()
         file_id = self._cloud_file.file_id
 
         try:
@@ -89,9 +87,9 @@ class CloudDownloadWorker(QThread):
                 )
 
             if isinstance(result, tuple):
-                url, updated_token = result
+                url, _ = result
             else:
-                url, updated_token = result, None
+                url = result
 
             if not url:
                 self.download_error.emit(file_id, "Failed to get download URL")
@@ -110,7 +108,6 @@ class CloudDownloadWorker(QThread):
                 return
 
             if success:
-                elapsed = time.time() - start_time
                 self.download_completed.emit(file_id, str(local_path))
             else:
                 self.download_error.emit(file_id, "Download failed")

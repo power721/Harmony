@@ -97,7 +97,7 @@ class QQMusicService:
             if new_credential:
                 # Update internal credential
                 self._credential = new_credential
-                logger.info(f"Credential refreshed successfully")
+                logger.info("Credential refreshed successfully")
             return new_credential
 
         except Exception as e:

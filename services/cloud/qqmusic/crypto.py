@@ -8,10 +8,8 @@ import base64
 import zlib
 import json
 import logging
-from typing import Optional
 
 from Crypto.Cipher import DES3
-from Crypto.Util.Padding import unpad
 
 logger = logging.getLogger(__name__)
 

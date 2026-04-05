@@ -6,16 +6,13 @@ Handles direct communication with QQ Music servers.
 import json
 import logging
 import time
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Any
 
 from .crypto import generate_sign
 from .common import (
-    APIConfig, get_guid, get_search_id, parse_quality, SongFileType, normalize_quality,
-    SearchType, parse_search_type, create_qq_session
+    APIConfig, get_guid, get_search_id, parse_quality, normalize_quality,
+    parse_search_type, create_qq_session
 )
-
-if TYPE_CHECKING:
-    from system.config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
