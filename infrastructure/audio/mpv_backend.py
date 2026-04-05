@@ -173,7 +173,10 @@ class MpvAudioBackend(AudioBackend):
 
     def stop(self):
         self._explicit_stop = True
+        self._source_path = ""
+        self._media_ready = False
         self._pending_seek_ms = None
+        self._end_notified = False
         self._set_polling_enabled(False)
         self._player.command("stop")
         self._emit_state_if_changed(force=self.STATE_STOPPED)

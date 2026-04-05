@@ -253,6 +253,20 @@ def test_mpv_backend_poll_timer_only_runs_when_active_media(monkeypatch):
     assert backend._poll_timer.started is False
 
 
+def test_mpv_backend_stop_clears_source_path_for_future_restart(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+
+    backend.set_source("/tmp/demo.flac")
+    assert backend.get_source_path() == "/tmp/demo.flac"
+
+    backend.stop()
+
+    assert backend.get_source_path() == ""
+
+
 def test_mpv_seek_executes_when_timeline_ready_even_if_media_loaded_not_observed(monkeypatch):
     monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
     monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
