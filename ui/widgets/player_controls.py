@@ -203,6 +203,7 @@ class PlayerControls(QWidget):
         self._setup_ui()
         self._setup_connections()
         self._setup_sleep_timer_connections()
+        self._refresh_equalizer_availability()
 
         # Register with theme system
         from system.theme import ThemeManager
@@ -876,8 +877,40 @@ class PlayerControls(QWidget):
             volume = getattr(self, "_previous_volume", 70)
             self._volume_slider.setValue(volume)
 
+    def _backend_supports_equalizer(self) -> bool:
+        """Return whether the active backend supports EQ controls."""
+        engine = getattr(self._player, "engine", None)
+        if engine is None:
+            return False
+
+        supports_eq = getattr(engine, "supports_eq", None)
+        if callable(supports_eq):
+            return bool(supports_eq())
+
+        backend = getattr(engine, "backend", None)
+        backend_supports_eq = getattr(backend, "supports_eq", None)
+        if callable(backend_supports_eq):
+            return bool(backend_supports_eq())
+        return False
+
+    def _refresh_equalizer_availability(self):
+        """Enable EQ only when the current backend exposes support."""
+        if not hasattr(self, "_eq_btn"):
+            return
+
+        if self._backend_supports_equalizer():
+            self._eq_btn.setEnabled(True)
+            self._eq_btn.setToolTip(t("equalizer"))
+        else:
+            self._eq_btn.setEnabled(False)
+            self._eq_btn.setToolTip(t("audio_effects_not_supported"))
+
     def _show_equalizer(self):
         """Show equalizer popup dialog."""
+        if not self._backend_supports_equalizer():
+            self._refresh_equalizer_availability()
+            return
+
         if self._equalizer_dialog is None:
             self._equalizer_dialog = EqualizerDialog(
                 backend=self._player.engine.backend,
