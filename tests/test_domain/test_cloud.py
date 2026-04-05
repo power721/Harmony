@@ -2,7 +2,6 @@
 Tests for Cloud domain models.
 """
 
-import pytest
 from datetime import datetime
 from domain.cloud import CloudAccount, CloudFile
 

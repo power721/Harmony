@@ -6,10 +6,8 @@ import pytest
 import sqlite3
 import tempfile
 import os
-from pathlib import Path
 
 from repositories.album_repository import SqliteAlbumRepository
-from domain.album import Album
 
 
 @pytest.fixture

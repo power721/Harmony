@@ -5,8 +5,7 @@ Previously, a track with both has_special_version=True AND has_instrumental=True
 fell through to fallback score 50, lower than either flag alone (70 or 60).
 """
 
-import pytest
-from utils.dedup import extract_version_info, VersionInfo
+from utils.dedup import extract_version_info
 
 
 class TestBug14DedupPriorityScoring:

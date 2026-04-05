@@ -2,8 +2,7 @@
 Tests for Playlist domain model.
 """
 
-import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from domain.playlist import Playlist
 
 

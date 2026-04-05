@@ -6,7 +6,6 @@ import pytest
 import sqlite3
 import tempfile
 import os
-from datetime import datetime
 import time
 
 from repositories.history_repository import SqliteHistoryRepository

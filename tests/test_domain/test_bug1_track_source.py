@@ -5,7 +5,6 @@ Previously, from_track() hardcoded source=TrackSource.QQ for all online tracks,
 even QUARK/BAIDU tracks that hadn't been downloaded yet.
 """
 
-import pytest
 from domain.playlist_item import PlaylistItem
 from domain.track import Track, TrackSource
 

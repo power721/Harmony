@@ -9,7 +9,6 @@ import os
 
 from repositories.artist_repository import SqliteArtistRepository
 from repositories.track_repository import SqliteTrackRepository
-from domain.artist import Artist
 
 
 @pytest.fixture

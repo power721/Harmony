@@ -2,7 +2,6 @@
 Tests for intelligent track deduplication utility.
 """
 
-import pytest
 from domain import PlaylistItem
 from domain.track import TrackSource
 from utils.dedup import (
@@ -11,7 +10,6 @@ from utils.dedup import (
     deduplicate_playlist_items,
     deduplicate_playlist_items_strict,
     get_version_summary,
-    VersionInfo,
 )
 
 

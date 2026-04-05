@@ -1,7 +1,6 @@
 """
 Tests for MatchScorer utility.
 """
-import pytest
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 

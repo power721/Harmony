@@ -4,7 +4,6 @@ Tests for bug fix: Bug 9 - split("|") without limit in album/artist repositories
 Previously, album or artist names containing "|" would produce wrong results.
 """
 
-import pytest
 
 
 class TestBug9SplitWithLimit:

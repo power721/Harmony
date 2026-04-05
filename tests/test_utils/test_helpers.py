@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 from utils.helpers import (
     format_duration,
     format_time,
@@ -179,7 +178,7 @@ class TestTruncateText:
     def test_truncate_with_long_suffix(self):
         """Test when suffix is longer than max length."""
         # This edge case behavior depends on implementation
-        result = truncate_text("text", 3, "...")
+        truncate_text("text", 3, "...")
         # Implementation handles this by using text[:max-len(suffix)] + suffix
         # which might result in just the suffix
 

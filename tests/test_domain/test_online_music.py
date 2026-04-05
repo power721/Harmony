@@ -2,7 +2,6 @@
 Tests for Online Music domain models.
 """
 
-import pytest
 from domain.online_music import (
     OnlineSinger,
     AlbumInfo,

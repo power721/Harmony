@@ -2,7 +2,6 @@
 Tests for Artist domain model.
 """
 
-import pytest
 from domain.artist import Artist
 
 

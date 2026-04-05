@@ -2,7 +2,6 @@
 Tests for PlaylistItem domain model.
 """
 
-import pytest
 from domain.playlist_item import PlaylistItem
 from domain.track import Track, TrackSource
 from domain.cloud import CloudFile

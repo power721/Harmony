@@ -9,7 +9,6 @@ import os
 
 from repositories.playlist_repository import SqlitePlaylistRepository
 from domain.playlist import Playlist
-from domain.track import Track
 
 
 @pytest.fixture

@@ -6,7 +6,6 @@ import pytest
 import sqlite3
 import tempfile
 import os
-from datetime import datetime
 
 from repositories.cloud_repository import SqliteCloudRepository
 from domain.cloud import CloudAccount, CloudFile

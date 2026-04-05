@@ -6,7 +6,6 @@ import pytest
 import sqlite3
 import tempfile
 import os
-from pathlib import Path
 
 from repositories.track_repository import SqliteTrackRepository
 from domain.track import Track, TrackSource
@@ -935,7 +934,7 @@ class TestTrackRepositoryMultiArtist:
         t2 = track_repo.add(Track(
             path="/b.mp3", title="B", artist="Artist C"
         ))
-        t3 = track_repo.add(Track(path="/c.mp3", title="C"))  # No artist
+        track_repo.add(Track(path="/c.mp3", title="C"))  # No artist
 
         count = track_repo.rebuild_track_artists()
         # Only tracks with non-empty artist strings are processed

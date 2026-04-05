@@ -5,7 +5,6 @@ Previously hasattr(parent, "window()") checked for attribute named "window()" (w
 parentheses), which never exists. The correct check is hasattr(parent, "window").
 """
 
-import pytest
 
 
 class TestBug10HasattrFix:

@@ -2,7 +2,6 @@
 Tests for PlayHistory and Favorite domain models.
 """
 
-import pytest
 from datetime import datetime
 from domain.history import PlayHistory, Favorite
 

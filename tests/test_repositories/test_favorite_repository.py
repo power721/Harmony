@@ -9,7 +9,6 @@ import os
 
 from repositories.favorite_repository import SqliteFavoriteRepository
 from repositories.track_repository import SqliteTrackRepository
-from domain.track import Track
 
 
 @pytest.fixture

@@ -22,11 +22,6 @@ from utils.lrc_parser import (
     TIME_RE,
     META_RE,
     WORD_RE,
-    YRC_LINE_RE,
-    YRC_WORD_RE,
-    QRC_LINE_RE,
-    QRC_WORD_RE,
-    QRC_XML_RE,
 )
 import logging
 

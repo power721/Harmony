@@ -3,9 +3,6 @@ Tests for file_helpers utility functions.
 """
 
 import pytest
-from pathlib import Path
-import tempfile
-import os
 
 from utils.file_helpers import (
     sanitize_filename,

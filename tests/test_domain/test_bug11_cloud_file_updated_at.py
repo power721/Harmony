@@ -4,7 +4,6 @@ Tests for bug fix: Bug 11 - CloudFile.updated_at initialization.
 Previously CloudFile.__post_init__ only initialized created_at, not updated_at.
 """
 
-import pytest
 from datetime import datetime
 from domain.cloud import CloudFile
 

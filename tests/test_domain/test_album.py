@@ -2,7 +2,6 @@
 Tests for Album domain model.
 """
 
-import pytest
 from domain.album import Album
 
 

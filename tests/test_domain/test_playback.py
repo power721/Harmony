@@ -2,7 +2,6 @@
 Tests for Playback domain models.
 """
 
-import pytest
 from datetime import datetime
 from domain.playback import PlayMode, PlaybackState, PlayQueueItem
 

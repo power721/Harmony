@@ -2,7 +2,6 @@
 Tests for Track domain model.
 """
 
-import pytest
 from datetime import datetime
 from domain.track import Track, TrackId, TrackSource
 
