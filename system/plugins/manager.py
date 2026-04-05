@@ -42,7 +42,7 @@ class PluginManager:
                     continue
 
                 state = self._state_store.get(manifest.id)
-                if source == "external" and state and state.get("enabled") is False:
+                if state and state.get("enabled") is False:
                     continue
 
                 manifest, plugin = self._loader.load_plugin(plugin_root, manifest)

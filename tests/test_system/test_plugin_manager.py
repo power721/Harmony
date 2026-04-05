@@ -544,3 +544,119 @@ def test_external_plugin_failure_keeps_enabled_and_retries_after_fix(tmp_path: P
     assert [item.plugin_id for item in second_manager.registry.sidebar_entries()] == [
         "retryable"
     ]
+
+
+def test_manager_startup_survives_corrupted_state_json(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "safe"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "safe",
+                "name": "Safe Plugin",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "SafePlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class SafePlugin:\n"
+        "    plugin_id = 'safe'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='safe',\n"
+        "                entry_id='safe.sidebar',\n"
+        "                title='Safe',\n"
+        "                order=3,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{broken", encoding="utf-8")
+    store = PluginStateStore(state_path)
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+
+    state = store.get("safe")
+    assert state is not None
+    assert state["enabled"] is True
+    assert state["load_error"] is None
+    assert [item.plugin_id for item in manager.registry.sidebar_entries()] == ["safe"]
+
+
+def test_manager_skips_disabled_builtin_plugin(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "builtin-disabled"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "builtin-disabled",
+                "name": "Builtin Disabled",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "BuiltinDisabledPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class BuiltinDisabledPlugin:\n"
+        "    plugin_id = 'builtin-disabled'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='builtin-disabled',\n"
+        "                entry_id='builtin-disabled.sidebar',\n"
+        "                title='Builtin Disabled',\n"
+        "                order=4,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    store.set_enabled("builtin-disabled", False, source="builtin", version="1.0.0")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+
+    state = store.get("builtin-disabled")
+    assert state is not None
+    assert state["enabled"] is False
+    assert manager.registry.sidebar_entries() == []
