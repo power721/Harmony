@@ -402,26 +402,9 @@ class Bootstrap:
         """Get online music service."""
         if self._online_music_service is None:
             from services.online import OnlineMusicService
-            from services.cloud.qqmusic.qqmusic_service import QQMusicService
-
-            # Try to create QQMusicService if credential is available
-            qqmusic = None
-            if self.config:
-                # Use get_qqmusic_credential() to get full credential including refresh_token
-                credential = self.config.get_qqmusic_credential()
-                if credential and credential.get('musicid') and credential.get('musickey'):
-                    try:
-                        qqmusic = QQMusicService(credential)
-                        logger.info(f"QQMusicService initialized for OnlineMusicService, "
-                                    f"musicid={credential.get('musicid')}, "
-                                    f"has_refresh_key={bool(credential.get('refresh_key'))}, "
-                                    f"has_refresh_token={bool(credential.get('refresh_token'))}")
-                    except Exception as e:
-                        logger.debug(f"Failed to initialize QQMusicService: {e}")
-
             self._online_music_service = OnlineMusicService(
                 config_manager=self.config,
-                qqmusic_service=qqmusic
+                qqmusic_service=None
             )
         return self._online_music_service
 

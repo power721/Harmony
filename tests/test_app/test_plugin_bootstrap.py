@@ -68,3 +68,20 @@ def test_online_download_service_is_created_without_host_online_music_service(mo
     assert kwargs["config_manager"] is bootstrap._config
     assert kwargs["qqmusic_service"] is None
     assert kwargs["online_music_service"] is None
+
+
+def test_online_music_service_is_created_without_host_qqmusic_service(monkeypatch):
+    fake_online_service = object()
+    online_ctor = MagicMock(return_value=fake_online_service)
+
+    monkeypatch.setattr(online_module, "OnlineMusicService", online_ctor)
+
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    bootstrap._config = object()
+
+    service = bootstrap.online_music_service
+
+    assert service is fake_online_service
+    _, kwargs = online_ctor.call_args
+    assert kwargs["config_manager"] is bootstrap._config
+    assert kwargs["qqmusic_service"] is None
