@@ -29,11 +29,21 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ui.dialogs.message_dialog import MessageDialog
-from ui.widgets.recommend_card import RecommendSection
-from ui.views.online_tracks_list_view import OnlineTracksListView
-from ui.icons import IconName, get_icon
+from domain.online_music import (
+    OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
+    SearchResult, SearchType
+)
+from services.online import OnlineMusicService, OnlineDownloadService
+from system.event_bus import EventBus
+from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog
+from ui.icons import IconName, get_icon
+from ui.views.online_detail_view import OnlineDetailView
+from ui.views.online_grid_view import OnlineGridView
+from ui.views.online_tracks_list_view import OnlineTracksListView
+from ui.widgets.recommend_card import RecommendSection
+from utils import format_duration
 
 
 class CustomQCompleter(QCompleter):
@@ -75,18 +85,6 @@ class CustomQCompleter(QCompleter):
     def refresh_theme(self):
         """Refresh popup styles."""
         self._apply_theme()
-
-
-from domain.online_music import (
-    OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
-    SearchResult, SearchType
-)
-from services.online import OnlineMusicService, OnlineDownloadService
-from system.i18n import t
-from system.event_bus import EventBus
-from ui.views.online_grid_view import OnlineGridView
-from ui.views.online_detail_view import OnlineDetailView
-from utils import format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -1983,7 +1981,6 @@ class OnlineMusicView(QWidget):
 
         recommend_type = data.get('recommend_type', '')
         raw_data = data.get('raw_data')
-        card_id = data.get('id')
         full_data = data.get('full_data')  # Full song list for song-based recommendations
 
         title = data.get('title', '')

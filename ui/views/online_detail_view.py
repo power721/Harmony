@@ -1250,7 +1250,6 @@ class OnlineDetailView(QWidget):
         songs = data.get("songs", [])
         albums = data.get("albums", [])
         total = data.get("total", len(songs))
-        page = data.get("page", 1)
         page_size = data.get("page_size", 50)
 
         # Update pagination state
@@ -1516,7 +1515,6 @@ class OnlineDetailView(QWidget):
 
         songs = data.get("songs", [])
         total = data.get("total", len(songs))
-        page = data.get("page", 1)
         page_size = data.get("page_size", 50)
 
         # Update pagination state
@@ -1559,7 +1557,6 @@ class OnlineDetailView(QWidget):
 
         songs = data.get("songs", [])
         total = data.get("total", len(songs))
-        page = data.get("page", 1)
         page_size = data.get("page_size", 50)
 
         # Update pagination state
