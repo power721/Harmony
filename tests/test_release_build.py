@@ -107,3 +107,5 @@ def test_windows_workflow_exports_mpv_runtime_directory():
     assert "mpv-2.dll" in section
     assert "$env:GITHUB_PATH" in section
     assert "$env:ChocolateyInstall" in section
+    assert "-Recurse -File" in section
+    assert "$_.Name -in @(" in section

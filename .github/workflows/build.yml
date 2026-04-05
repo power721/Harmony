@@ -322,10 +322,14 @@ jobs:
           Get-Command mpv -ErrorAction Stop
           mpv --version
           $chocoRoot = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { "C:\ProgramData\chocolatey" }
-          $mpvDll = Get-ChildItem (Join-Path $chocoRoot "lib") -Recurse -Include "mpv-2.dll","libmpv-2.dll","mpv.dll" |
-            Where-Object { $_.FullName -match "mpv" } |
+          $mpvDll = Get-ChildItem (Join-Path $chocoRoot "lib") -Recurse -File |
+            Where-Object { $_.Name -in @("mpv-2.dll", "libmpv-2.dll", "mpv.dll") -and $_.FullName -match "mpv" } |
             Select-Object -First 1
           if (-not $mpvDll) {
+            Write-Host "mpv-related files under $chocoRoot\lib:" -ForegroundColor Yellow
+            Get-ChildItem (Join-Path $chocoRoot "lib") -Recurse -File |
+              Where-Object { $_.FullName -match "mpv" } |
+              Select-Object -First 50 FullName
             throw "mpv-2.dll not found after Chocolatey install"
           }
           "HARMONY_MPV_RUNTIME_DIR=$($mpvDll.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
