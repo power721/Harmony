@@ -302,6 +302,21 @@ class PlaylistView(QWidget):
         EventBus.instance().playlist_created.connect(self._on_playlist_created)
         EventBus.instance().playlist_modified.connect(self._on_playlist_modified)
 
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Best-effort signal disconnection for shutdown cleanup."""
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def closeEvent(self, event):
+        """Release event bus subscriptions that outlive the view."""
+        event_bus = EventBus.instance()
+        self._disconnect_signal(event_bus.playlist_created, self._on_playlist_created)
+        self._disconnect_signal(event_bus.playlist_modified, self._on_playlist_modified)
+        super().closeEvent(event)
+
     def _refresh_playlists(self):
         """Refresh the playlist list."""
         self._playlist_list.clear()
