@@ -2,7 +2,7 @@
 Playlist view widget for managing playlists.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -26,6 +26,11 @@ from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
 from ui.views.playlist_tracks_list_view import PlaylistTracksListView
+
+if TYPE_CHECKING:
+    from services.favorites import FavoritesService
+    from services.library import LibraryService
+    from services.playlist import PlaylistService
 
 
 class PlaylistView(QWidget):
