@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from harmony_plugin_api.lyrics import PluginLyricsResult
+from system.plugins.qqmusic_lyrics_helpers import download_qqmusic_lyrics
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
-from .qqmusic_lyrics import download_qqmusic_lyrics
 
 # Configure logging
 logger = logging.getLogger(__name__)

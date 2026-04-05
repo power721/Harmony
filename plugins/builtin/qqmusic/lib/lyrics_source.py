@@ -43,5 +43,10 @@ class QQMusicLyricsPluginSource:
         except Exception:
             return None
 
+    def get_lyrics_by_song_id(self, song_id: str) -> str | None:
+        return self.get_lyrics(
+            PluginLyricsResult(song_id=song_id, title="", artist="", source="qqmusic")
+        )
+
     def is_available(self) -> bool:
         return True
