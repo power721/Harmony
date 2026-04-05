@@ -919,6 +919,7 @@ class LibraryView(QWidget):
 
     def _on_redownload_completed(self, song_mid: str, local_path: str):
         """Handle re-download completion."""
+        del song_mid
         try:
             dm = DownloadManager.instance()
             dm.download_completed.disconnect(self._on_redownload_completed)
@@ -927,6 +928,7 @@ class LibraryView(QWidget):
             return
         if local_path:
             self._status_label.setText(t("download_complete"))
+            self._reload_current_list_view()
 
     def _on_redownload_failed(self, song_mid: str):
         """Handle re-download failure."""

@@ -226,6 +226,12 @@ class Bootstrap:
                 album_repo=self.album_repo,
                 artist_repo=self.artist_repo,
             )
+            from services.download.download_manager import DownloadManager
+            DownloadManager.instance().set_dependencies(
+                config=self.config,
+                playback_service=self._playback_service,
+                cloud_repo=self.cloud_repo,
+            )
         return self._playback_service
 
     @property
