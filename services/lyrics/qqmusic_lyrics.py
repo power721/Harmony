@@ -35,6 +35,26 @@ def refresh_shared_client() -> 'QQMusicClient':
     return _shared_client
 
 
+def _get_credential_from_config(config):
+    """Read QQ Music credential from plugin namespace, with legacy fallback."""
+    if hasattr(config, "get_plugin_setting"):
+        credential = config.get_plugin_setting("qqmusic", "credential")
+        if credential is not None:
+            return credential
+    if hasattr(config, "get_qqmusic_credential"):
+        return config.get_qqmusic_credential()
+    return None
+
+
+def _save_credential_to_config(config, credential: dict) -> None:
+    """Persist QQ Music credential into plugin namespace, with legacy fallback."""
+    if hasattr(config, "set_plugin_setting"):
+        config.set_plugin_setting("qqmusic", "credential", credential)
+        return
+    if hasattr(config, "set_qqmusic_credential"):
+        config.set_qqmusic_credential(credential)
+
+
 class QQMusicClient:
     """QQ Music API client with hybrid local/remote support."""
 
@@ -67,7 +87,7 @@ class QQMusicClient:
             from app.bootstrap import Bootstrap
 
             config = Bootstrap.instance().config
-            credential = config.get_qqmusic_credential()
+            credential = _get_credential_from_config(config)
 
             logger.debug(f"QQ Music credential check: musicid={credential.get('musicid') if credential else 'None'}, "
                         f"has_musickey={bool(credential.get('musickey')) if credential else False}, "
@@ -87,7 +107,7 @@ class QQMusicClient:
                     # Create client with callback for credential updates
                     self._local_client = QQMusicClientLocal(
                         credential,
-                        on_credential_updated=lambda c: config.set_qqmusic_credential(c)
+                        on_credential_updated=lambda c: _save_credential_to_config(config, c)
                     )
                     self._has_credentials = True
                     logger.info(f"Using local QQ Music API with credentials (musicid: {musicid})")
@@ -124,7 +144,7 @@ class QQMusicClient:
         # Use lock to prevent concurrent refresh
         with _refresh_lock:
             # Re-read credential from config to check if already refreshed by another thread
-            current_credential = config.get_qqmusic_credential()
+            current_credential = _get_credential_from_config(config)
             if current_credential:
                 # Update local client's credential
                 self._local_client.credential = current_credential
@@ -136,7 +156,7 @@ class QQMusicClient:
             try:
                 updated = self._local_client.refresh_credential()
                 if updated:
-                    config.set_qqmusic_credential(updated)
+                    _save_credential_to_config(config, updated)
                     logger.info("Credential refreshed and saved successfully")
                 else:
                     logger.warning("Credential refresh failed, will retry later")

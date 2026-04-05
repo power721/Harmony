@@ -133,56 +133,6 @@ class NetEaseLyricsSource(LyricsSource):
     def __init__(self, http_client):
         self._http_client = http_client
 
-
-class QQMusicLyricsSource(LyricsSource):
-    """QQ Music lyrics source."""
-
-    @property
-    def name(self) -> str:
-        return "QQMusic"
-
-    def search(
-        self,
-        title: str,
-        artist: str,
-        limit: int = 10
-    ) -> List[LyricsSearchResult]:
-        """Search for lyrics from QQ Music."""
-        results = []
-
-        try:
-            from services.lyrics.qqmusic_lyrics import search_from_qqmusic
-            search_results = search_from_qqmusic(title, artist, limit)
-
-            results.extend(LyricsSearchResult(
-                    id=item.get('id', ''),
-                    title=item.get('title', ''),
-                    artist=item.get('artist', ''),
-                    album=item.get('album', ''),
-                    duration=item.get('duration'),
-                    source='qqmusic',
-                    cover_url=item.get('cover_url'),
-                ) for item in search_results)
-
-        except Exception as e:
-            logger.error(f"Error searching from QQ Music: {e}")
-
-        return results
-
-    def get_lyrics(self, result: LyricsSearchResult) -> Optional[str]:
-        """Download lyrics from QQ Music by song mid."""
-        try:
-            from services.lyrics.qqmusic_lyrics import download_qqmusic_lyrics
-            return download_qqmusic_lyrics(result.id)
-        except Exception as e:
-            logger.error(f"Error downloading QQ Music lyrics: {e}")
-
-        return None
-
-    def __init__(self, http_client=None):
-        pass
-
-
 class KugouLyricsSource(LyricsSource):
     """Kugou lyrics source."""
 

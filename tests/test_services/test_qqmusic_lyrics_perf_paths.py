@@ -36,3 +36,27 @@ def test_get_client_uses_module_cache_without_bootstrap(monkeypatch):
     client = qqmusic_lyrics._get_client()
 
     assert isinstance(client, _FakeClient)
+
+
+def test_credential_helpers_prefer_plugin_settings_namespace():
+    class _Config:
+        def __init__(self):
+            self.values = {
+                ("qqmusic", "credential"): {"musicid": "1", "musickey": "secret"},
+            }
+            self.saved = []
+
+        def get_plugin_setting(self, plugin_id, key, default=None):
+            return self.values.get((plugin_id, key), default)
+
+        def set_plugin_setting(self, plugin_id, key, value):
+            self.saved.append((plugin_id, key, value))
+
+    config = _Config()
+
+    assert qqmusic_lyrics._get_credential_from_config(config)["musickey"] == "secret"
+
+    payload = {"musicid": "2", "musickey": "new"}
+    qqmusic_lyrics._save_credential_to_config(config, payload)
+
+    assert config.saved == [("qqmusic", "credential", payload)]

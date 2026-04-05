@@ -118,68 +118,6 @@ class NetEaseCoverSource(CoverSource):
         self._http_client = http_client
 
 
-class QQMusicCoverSource(CoverSource):
-    """QQ Music cover source."""
-
-    @property
-    def name(self) -> str:
-        return "QQMusic"
-
-    def search(
-        self,
-        title: str,
-        artist: str,
-        album: str = "",
-        duration: Optional[float] = None
-    ) -> List[CoverSearchResult]:
-        """Search for covers from QQ Music."""
-        results = []
-
-        try:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-            client = QQMusicClient()
-
-            # Search for songs
-            keyword = f"{artist} {title}" if artist else title
-            songs = client.search(keyword, limit=5)
-
-            for song in songs:
-                # Parse artist from singer list
-                artist_name = ""
-                if isinstance(song.get('singer'), list) and song['singer']:
-                    artist_name = song['singer'][0].get('name', '')
-
-                # Parse album from album dict
-                album_name = ""
-                album_mid = ""
-                album_data = song.get('album')
-                if isinstance(album_data, dict):
-                    album_name = album_data.get('name', '')
-                    album_mid = album_data.get('mid', '')
-
-                # Store album_mid for lazy cover fetch, don't get cover_url now
-                results.append(CoverSearchResult(
-                    title=song.get('name', ''),
-                    artist=artist_name,
-                    album=album_name,
-                    duration=song.get('interval'),  # Already in seconds
-                    source='qqmusic',
-                    id=song.get('mid', ''),
-                    cover_url=None,  # Lazy fetch on click
-                    album_mid=album_mid
-                ))
-
-        except Exception as e:
-            logger.debug(f"QQ Music cover search error: {e}")
-
-        return results
-
-    def __init__(self, http_client=None):
-        # QQ Music doesn't need http_client directly
-        pass
-
-
 class ITunesCoverSource(CoverSource):
     """iTunes Search API cover source."""
 

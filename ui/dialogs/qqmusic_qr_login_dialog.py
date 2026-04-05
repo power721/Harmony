@@ -483,7 +483,10 @@ class QQMusicQRLoginDialog(QDialog):
 
         try:
             # Save credentials (full credential dict)
-            self.config.set_qqmusic_credential(credential)
+            if hasattr(self.config, "set_plugin_setting"):
+                self.config.set_plugin_setting("qqmusic", "credential", credential)
+            else:
+                self.config.set_qqmusic_credential(credential)
 
             # Get user nickname
             try:
@@ -491,7 +494,10 @@ class QQMusicQRLoginDialog(QDialog):
                 client = QQMusicClient(credential)
                 user_info = client.verify_login()
                 if user_info.get('valid') and user_info.get('nick'):
-                    self.config.set_qqmusic_nick(user_info['nick'])
+                    if hasattr(self.config, "set_plugin_setting"):
+                        self.config.set_plugin_setting("qqmusic", "nick", user_info["nick"])
+                    else:
+                        self.config.set_qqmusic_nick(user_info['nick'])
                     logger.info(f"Got QQ Music nickname: {user_info['nick']}")
             except Exception as e:
                 logger.warning(f"Failed to get QQ Music nickname: {e}")

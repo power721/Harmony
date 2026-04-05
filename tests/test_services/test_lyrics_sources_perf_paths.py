@@ -2,7 +2,8 @@
 
 from types import SimpleNamespace
 
-from services.sources.lyrics_sources import QQMusicLyricsSource, KugouLyricsSource
+from plugins.builtin.qqmusic.lib.lyrics_source import QQMusicLyricsPluginSource
+from services.sources.lyrics_sources import KugouLyricsSource
 
 
 def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
@@ -19,12 +20,12 @@ def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
             }
         ],
     )
-    source = QQMusicLyricsSource()
+    source = QQMusicLyricsPluginSource(SimpleNamespace())
 
     results = source.search("Song 1", "Singer 1")
 
     assert len(results) == 1
-    assert results[0].id == "song-1"
+    assert results[0].song_id == "song-1"
     assert results[0].title == "Song 1"
 
 
