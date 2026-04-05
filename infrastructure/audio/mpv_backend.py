@@ -156,7 +156,8 @@ class MpvAudioBackend(AudioBackend):
         self._pending_seek_ms = None
         self._end_notified = False
         self._set_polling_enabled(False)
-        self._player.command("loadfile", self._source_path, "replace", "pause=yes")
+        self._player.pause = True
+        self._player.command("loadfile", self._source_path, "replace")
 
     def play(self):
         self._explicit_stop = False

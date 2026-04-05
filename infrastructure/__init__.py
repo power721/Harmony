@@ -2,7 +2,7 @@
 Infrastructure module - Technical implementations.
 """
 
-from .audio import AudioBackend, MpvAudioBackend, PlayerEngine
+from .audio import AudioBackend, PlayerEngine
 from .database import DatabaseManager
 from .network import HttpClient
 
@@ -21,4 +21,8 @@ def __getattr__(name: str):
         from .audio.qt_backend import QtAudioBackend
 
         return QtAudioBackend
+    if name == "MpvAudioBackend":
+        from .audio.mpv_backend import MpvAudioBackend
+
+        return MpvAudioBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

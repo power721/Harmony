@@ -4,7 +4,6 @@ Infrastructure audio module.
 
 from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 from .audio_engine import PlayerEngine
-from .mpv_backend import MpvAudioBackend
 
 __all__ = [
     "AudioBackend",
@@ -21,4 +20,8 @@ def __getattr__(name: str):
         from .qt_backend import QtAudioBackend
 
         return QtAudioBackend
+    if name == "MpvAudioBackend":
+        from .mpv_backend import MpvAudioBackend
+
+        return MpvAudioBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

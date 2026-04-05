@@ -176,6 +176,18 @@ def test_mpv_backend_basic_flow(monkeypatch):
     assert backend._player.terminated is True
 
 
+def test_mpv_backend_loads_source_without_unsupported_pause_option(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+
+    backend.set_source("/tmp/demo.flac")
+
+    assert backend._player.pause is True
+    assert backend._player._commands[0] == ("loadfile", "/tmp/demo.flac", "replace")
+
+
 def test_mpv_backend_can_disable_all_audio_effects(monkeypatch):
     monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
     monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
