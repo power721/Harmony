@@ -28,7 +28,11 @@ def audit_plugin_imports(plugin_root: Path) -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 names = [alias.name.split(".")[0] for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
+            elif isinstance(node, ast.ImportFrom):
+                if node.level and node.level > 0:
+                    continue
+                if not node.module:
+                    continue
                 names = [node.module.split(".")[0]]
             else:
                 continue

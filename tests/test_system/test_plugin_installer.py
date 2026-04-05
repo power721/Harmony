@@ -21,6 +21,23 @@ def test_import_audit_rejects_host_internal_import(tmp_path: Path):
         audit_plugin_imports(plugin_root)
 
 
+def test_import_audit_allows_plugin_relative_import_under_host_like_name(
+    tmp_path: Path,
+):
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / "services").mkdir(parents=True)
+    (plugin_root / "services" / "helper.py").write_text(
+        "value = 1\n",
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "from .services.helper import value\n",
+        encoding="utf-8",
+    )
+
+    audit_plugin_imports(plugin_root)
+
+
 def _build_plugin_zip(tmp_path: Path, zip_name: str, files: dict[str, str]) -> Path:
     zip_path = tmp_path / zip_name
     with zipfile.ZipFile(zip_path, "w") as archive:
