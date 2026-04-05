@@ -9,6 +9,7 @@ from pathlib import Path
 from harmony_plugin_api.manifest import PluginManifest
 
 from .errors import PluginInstallError
+from .loader import PluginLoader
 
 _FORBIDDEN_ROOT_IMPORTS = {
     "app",
@@ -40,6 +41,7 @@ class PluginInstaller:
     def __init__(self, external_root: Path, temp_root: Path) -> None:
         self._external_root = external_root
         self._temp_root = temp_root
+        self._loader = PluginLoader()
 
     def install_zip(self, zip_path: Path) -> Path:
         extract_root = self._temp_root / zip_path.stem
@@ -54,6 +56,14 @@ class PluginInstaller:
         manifest = PluginManifest.from_dict(
             json.loads((extract_root / "plugin.json").read_text(encoding="utf-8"))
         )
+        try:
+            self._loader.load_plugin(extract_root, manifest)
+        except Exception as exc:
+            raise PluginInstallError(
+                f"Invalid plugin package structure for '{manifest.id}': {exc}"
+            ) from exc
+
+        self._external_root.mkdir(parents=True, exist_ok=True)
         final_root = self._external_root / manifest.id
         if final_root.exists():
             shutil.rmtree(final_root)
