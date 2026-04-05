@@ -1,4 +1,5 @@
 import inspect
+import pytest
 
 import infrastructure.database.db_write_worker as dbw
 from infrastructure.database.db_write_worker import DBWriteWorker
@@ -22,5 +23,29 @@ def test_callable_accepts_conn_is_cached(monkeypatch, tmp_path):
         assert worker._callable_accepts_conn(_func_requires_conn) is True
         assert worker._callable_accepts_conn(_func_requires_conn) is True
         assert calls["count"] == 1
+    finally:
+        worker.stop()
+
+
+def test_worker_stops_after_too_many_consecutive_failures(tmp_path):
+    worker = DBWriteWorker(str(tmp_path / "failures.db"))
+    worker._max_consecutive_failures = 2
+
+    def _always_fail():
+        raise RuntimeError("boom")
+
+    try:
+        first = worker.submit(_always_fail)
+        second = worker.submit(_always_fail)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            first.result(timeout=2)
+        with pytest.raises(RuntimeError, match="boom"):
+            second.result(timeout=2)
+
+        worker._thread.join(timeout=2)
+
+        assert worker._running is False
+        assert worker._thread.is_alive() is False
     finally:
         worker.stop()

@@ -47,6 +47,8 @@ class DBWriteWorker:
         self._start_lock = threading.Lock()
         self._conn_signature_cache: dict[Callable, bool] = {}
         self._conn_signature_cache_lock = threading.Lock()
+        self._consecutive_failures = 0
+        self._max_consecutive_failures = 10
 
         self._start()
 
@@ -93,6 +95,7 @@ class DBWriteWorker:
                 try:
                     task = self._queue.get(timeout=1.0)
                 except queue.Empty:
+                    self._consecutive_failures = 0
                     continue
 
                 func, args, kwargs, future = task
@@ -106,11 +109,19 @@ class DBWriteWorker:
 
                     if future:
                         future.set_result(result)
+                    self._consecutive_failures = 0
 
                 except Exception as e:
+                    self._consecutive_failures += 1
                     logger.error(f"[DBWriteWorker] Task failed: {e}", exc_info=True)
                     if future:
                         future.set_exception(e)
+                    if self._consecutive_failures >= self._max_consecutive_failures:
+                        logger.critical(
+                            "[DBWriteWorker] Too many consecutive failures (%s), stopping worker",
+                            self._consecutive_failures,
+                        )
+                        self._running = False
 
                 finally:
                     self._queue.task_done()
