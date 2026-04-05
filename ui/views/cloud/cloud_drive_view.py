@@ -2423,11 +2423,9 @@ class CloudDriveView(QWidget):
         if local_path and Path(local_path).exists():
             # Find the file in current audio files
             file_to_play = None
-            file_index = 0
             for i, audio_file in enumerate(self._current_audio_files):
                 if audio_file.file_id == file_fid:
                     file_to_play = audio_file
-                    file_index = i
                     break
 
             if file_to_play:

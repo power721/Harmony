@@ -77,7 +77,7 @@ class TestAutoNextRealFlow:
         assert engine.current_index == 0
 
         # Verify _prevent_auto_next is False
-        assert engine._prevent_auto_next == False
+        assert not engine._prevent_auto_next
 
         # Simulate end-of-media event
         engine._on_end_of_media()

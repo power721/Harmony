@@ -559,8 +559,8 @@ class AlbumView(QWidget):
         # Find the index of the first selected track
         first_track = selected_tracks[0]
         start_index = 0
-        for i, t in enumerate(self._tracks):
-            if t.id == first_track.id:
+        for i, track in enumerate(self._tracks):
+            if track.id == first_track.id:
                 start_index = i
                 break
         # Play entire album starting from the first selected track

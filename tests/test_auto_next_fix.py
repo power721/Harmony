@@ -30,13 +30,13 @@ class TestAutoNextFix:
 
         # Verify the flag is set
         assert hasattr(playback.engine, '_prevent_auto_next')
-        assert playback.engine._prevent_auto_next == True
+        assert playback.engine._prevent_auto_next
 
         # Simulate the restoration completion (like in restore_queue_state)
         playback.engine.set_prevent_auto_next(False)
 
         # Verify the flag is reset
-        assert playback.engine._prevent_auto_next == False
+        assert not playback.engine._prevent_auto_next
 
     def test_on_end_of_media_respects_prevent_auto_next(self):
         """

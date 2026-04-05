@@ -262,7 +262,7 @@ Another line"""
         assert len(lyrics) == 0
 
 
-class TestParseCharWordLrc:
+class TestParseCharWordLrcDirect:
     """Test parsing character-word lyrics format."""
 
     def test_parse_char_word_format(self):

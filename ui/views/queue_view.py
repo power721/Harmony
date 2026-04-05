@@ -136,8 +136,8 @@ class QueueTrackModel(QAbstractListModel):
 
     def insert_tracks(self, position: int, tracks: list):
         self.beginInsertRows(QModelIndex(), position, position + len(tracks) - 1)
-        for i, t in enumerate(tracks):
-            self._tracks.insert(position + i, t)
+        for i, track in enumerate(tracks):
+            self._tracks.insert(position + i, track)
         self.endInsertRows()
 
     def remove_tracks(self, rows: list):
@@ -554,7 +554,6 @@ class QueueItemDelegate(QStyledItemDelegate):
     def _on_cover_loaded(self, track_id: str, cover_path: str, qimage):
         """Handle cover loaded from background — runs on UI thread."""
         # Reject stale results (version mismatch)
-        current_version = self._cover_versions.get(track_id, 0)
         # Walk the thread pool to check worker version — simplified: just clear pending
         self._requested_covers.discard(track_id)
 

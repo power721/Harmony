@@ -24,7 +24,7 @@ class LyricsEngine:
 
     def set_lyrics(self, lines):
         self.lines = lines
-        self.times = [l.time for l in lines]
+        self.times = [line.time for line in lines]
         self.current_index = 0
 
     def update(self, time_sec):
