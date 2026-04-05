@@ -2,15 +2,13 @@
 Library view widget for browsing the music library.
 """
 import logging
+import platform
 import shutil
+import subprocess
 from pathlib import Path
+from typing import List
 
-from services.download import DownloadManager
-from system.theme import ThemeManager
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -19,22 +17,25 @@ from PySide6.QtWidgets import (
     QLabel,
     QStackedWidget,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-from typing import List
 
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from domain.track import Track
-from services.playback import PlaybackService
 from domain.playback import PlaybackState
+from domain.track import Track
+from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
+from services.download import DownloadManager
 from services.metadata import CoverService
-from utils import format_count_message
-from system.i18n import t
+from services.playback import PlaybackService
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from system.i18n import t
+from system.theme import ThemeManager
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.views.history_list_view import HistoryListView
 from ui.views.local_tracks_list_view import LocalTracksListView
-from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
+from utils import format_count_message
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class LibraryView(QWidget):
@@ -686,7 +687,6 @@ class LibraryView(QWidget):
     def _on_tracks_organized(self, result: dict):
         """Handle file organization completion event."""
         success = result.get('success', 0)
-        failed = result.get('failed', 0)
         if success > 0:
             # Refresh the view to show updated paths
             self.refresh()
@@ -888,7 +888,6 @@ class LibraryView(QWidget):
         if not file_path.exists():
             MessageDialog.warning(self, "Error", t("file_not_found"))
             return
-        import platform, subprocess
         try:
             system = platform.system()
             if system == "Windows":
