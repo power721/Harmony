@@ -61,7 +61,7 @@ class PluginInstaller:
             json.loads((extract_root / "plugin.json").read_text(encoding="utf-8"))
         )
         try:
-            self._loader.load_plugin(extract_root, manifest)
+            self._loader.validate_plugin_structure(extract_root, manifest)
         except Exception as exc:
             raise PluginInstallError(
                 f"Invalid plugin package structure for '{manifest.id}': {exc}"

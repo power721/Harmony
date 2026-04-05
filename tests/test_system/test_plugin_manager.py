@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+import zipfile
 
+from system.plugins.installer import PluginInstaller
 from system.plugins.manager import PluginManager
 from system.plugins.state_store import PluginStateStore
 
@@ -287,3 +289,57 @@ def test_manager_continues_after_plugin_failure_and_persists_load_error(tmp_path
     assert broken_state["load_error"]
     assert healthy_state["enabled"] is True
     assert [item.plugin_id for item in manager.registry.sidebar_entries()] == ["healthy"]
+
+
+def test_constructor_failure_installs_then_records_runtime_load_error(tmp_path: Path):
+    external_root = tmp_path / "external"
+    installer = PluginInstaller(
+        external_root=external_root,
+        temp_root=tmp_path / "temp",
+    )
+    zip_path = tmp_path / "ctor_fails.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr(
+            "plugin.json",
+            json.dumps(
+                {
+                    "id": "ctor-fails",
+                    "name": "Ctor Fails",
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "CtorFailsPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+        )
+        archive.writestr(
+            "plugin_main.py",
+            "class CtorFailsPlugin:\n"
+            "    plugin_id = 'ctor-fails'\n"
+            "    def __init__(self):\n"
+            "        raise RuntimeError('ctor exploded')\n"
+            "    def register(self, context):\n"
+            "        pass\n"
+            "    def unregister(self, context):\n"
+            "        pass\n",
+        )
+
+    installed_root = installer.install_zip(zip_path)
+    assert installed_root.exists()
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=tmp_path / "builtin",
+        external_root=external_root,
+        state_store=store,
+        context_factory=_ContextFactory(),
+    )
+
+    manager.load_enabled_plugins()
+
+    state = store.get("ctor-fails")
+    assert state is not None
+    assert state["enabled"] is False
+    assert state["load_error"]

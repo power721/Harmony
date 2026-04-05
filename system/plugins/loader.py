@@ -35,7 +35,11 @@ class PluginLoader:
             json.loads((plugin_root / "plugin.json").read_text(encoding="utf-8"))
         )
 
-    def load_plugin(self, plugin_root: Path, manifest: PluginManifest | None = None):
+    def _load_entry_module(
+        self,
+        plugin_root: Path,
+        manifest: PluginManifest,
+    ):
         if manifest is None:
             manifest = self.read_manifest(plugin_root)
         module_path = plugin_root / manifest.entrypoint
@@ -60,6 +64,33 @@ class PluginLoader:
         sys.modules[module_name] = module
         try:
             spec.loader.exec_module(module)
+            return module
+        except Exception as exc:
+            raise PluginLoadError(
+                f"Failed to load plugin '{manifest.id}': {exc}"
+            ) from exc
+
+    def validate_plugin_structure(
+        self, plugin_root: Path, manifest: PluginManifest | None = None
+    ) -> PluginManifest:
+        if manifest is None:
+            manifest = self.read_manifest(plugin_root)
+        module = self._load_entry_module(plugin_root, manifest)
+        if not hasattr(module, manifest.entry_class):
+            raise PluginLoadError(
+                f"Entrypoint missing class '{manifest.entry_class}' for '{manifest.id}'"
+            )
+        return manifest
+
+    def load_plugin(self, plugin_root: Path, manifest: PluginManifest | None = None):
+        if manifest is None:
+            manifest = self.read_manifest(plugin_root)
+        module = self._load_entry_module(plugin_root, manifest)
+        if not hasattr(module, manifest.entry_class):
+            raise PluginLoadError(
+                f"Entrypoint missing class '{manifest.entry_class}' for '{manifest.id}'"
+            )
+        try:
             plugin_class = getattr(module, manifest.entry_class)
             return manifest, plugin_class()
         except Exception as exc:
