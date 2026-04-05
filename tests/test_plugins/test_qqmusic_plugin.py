@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from plugins.builtin.qqmusic.lib.qr_login import QQMusicQRLogin
 from plugins.builtin.qqmusic.plugin_main import QQMusicPlugin
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
 
@@ -53,3 +54,13 @@ def test_qqmusic_settings_tab_opens_login_dialog(monkeypatch, qtbot):
 
     dialog_ctor.assert_called_once_with(tab)
     dialog.exec.assert_called_once_with()
+
+
+def test_plugin_local_qr_login_client_builds_session():
+    client = QQMusicQRLogin()
+
+    https_adapter = client._session.get_adapter("https://u.y.qq.com/cgi-bin/musicu.fcg")
+
+    assert https_adapter._pool_connections == 20
+    assert https_adapter._pool_maxsize == 20
+    assert https_adapter._pool_block is True
