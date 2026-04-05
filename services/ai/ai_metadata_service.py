@@ -3,7 +3,7 @@ AI Metadata Service for enhancing music metadata using AI models.
 """
 import json
 import logging
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -192,7 +192,6 @@ class AIMetadataService:
         """
         title = metadata.get('title', '')
         artist = metadata.get('artist', '')
-        album = metadata.get('album', '')
 
         # Consider incomplete if title is just filename or artist is missing
         if not title:

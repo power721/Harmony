@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Callable
 
 from PySide6.QtGui import QImage, QColor
-from PySide6.QtCore import QObject, QRunnable, Signal
+from PySide6.QtCore import QRunnable, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -161,4 +161,3 @@ class CoverFetchWorker(QRunnable):
         except Exception as e:
             logger.error(f"[CoverFetchWorker] Error fetching cover or extracting color: {e}")
             self.result_signal.emit(None)
-

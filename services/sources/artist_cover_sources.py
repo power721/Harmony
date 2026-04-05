@@ -4,7 +4,6 @@ Artist cover (avatar) source implementations.
 
 import base64
 import logging
-import os
 import time
 from typing import Optional, List
 
@@ -95,7 +94,6 @@ class QQMusicArtistCoverSource(ArtistCoverSource):
 
     def _convert_cover_url(self, url: str, size: int = 500) -> str:
         """Convert to specified size."""
-        import re
         img_type, mid = self._parse_cover_url(url)
         if not img_type or not mid:
             return url

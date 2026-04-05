@@ -119,11 +119,11 @@ class CoverService:
 
         # Skip online fetching if requested (e.g., for cloud files before download completes)
         if skip_online:
-            logger.info(f"[CoverService] Skipping online fetch (skip_online=True)")
+            logger.info("[CoverService] Skipping online fetch (skip_online=True)")
             return None
 
         # Try online sources with smart matching
-        logger.info(f"[CoverService] No cover found, trying online sources")
+        logger.info("[CoverService] No cover found, trying online sources")
         return self._fetch_online_cover(search_title, search_artist, search_album, cache_key, duration)
 
     def _extract_embedded_cover(self, track_path: str) -> Optional[str]:

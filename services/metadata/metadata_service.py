@@ -469,11 +469,9 @@ class MetadataService:
         """Save metadata to MP3 file."""
         try:
             if audio.tags is None:
-                from mutagen.id3 import ID3
-
                 audio.add_tags()
 
-            from mutagen.id3 import ID3, TIT2, TPE1, TALB, TCON
+            from mutagen.id3 import TIT2, TPE1, TALB, TCON
 
             if title is not None:
                 audio.tags["TIT2"] = TIT2(encoding=3, text=title)
@@ -536,7 +534,6 @@ class MetadataService:
         """Save metadata to WAV file using ID3 tags."""
         try:
             if audio.tags is None:
-                from mutagen.id3 import ID3
                 audio.add_tags()
 
             from mutagen.id3 import TIT2, TPE1, TALB, TCON
