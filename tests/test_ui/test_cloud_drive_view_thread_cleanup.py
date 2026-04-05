@@ -6,6 +6,11 @@ from unittest.mock import MagicMock
 from ui.views.cloud.cloud_drive_view import CloudDriveView
 
 
+class _FakeSignal:
+    def __init__(self):
+        self.connect = MagicMock()
+
+
 def test_stop_current_download_thread_uses_cooperative_shutdown():
     """Stopping current download thread should avoid force terminate."""
     fake_thread = SimpleNamespace(
@@ -24,3 +29,16 @@ def test_stop_current_download_thread_uses_cooperative_shutdown():
     fake_thread.wait.assert_called_once_with(250)
     fake_thread.terminate.assert_not_called()
     assert view._current_download_thread is None
+
+
+def test_attach_download_thread_cleanup_deletes_thread_when_finished():
+    """Download threads should be scheduled for QObject cleanup after finishing."""
+    fake_thread = SimpleNamespace(
+        finished=_FakeSignal(),
+        deleteLater=MagicMock(),
+    )
+    view = SimpleNamespace()
+
+    CloudDriveView._attach_download_thread_cleanup(view, fake_thread)
+
+    fake_thread.finished.connect.assert_called_once_with(fake_thread.deleteLater)

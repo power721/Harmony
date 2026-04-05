@@ -1479,6 +1479,7 @@ class CloudDriveView(QWidget):
             )
         )
         download_thread.token_updated.connect(self._on_token_updated)
+        self._attach_download_thread_cleanup(download_thread)
         download_thread.start()
 
     def _on_file_exists(self, temp_path: str, file_index: int, audio_files: list,
@@ -1601,6 +1602,10 @@ class CloudDriveView(QWidget):
             self._cloud_account_service.update_token(self._current_account.id, updated_token)
             self._current_account.access_token = updated_token
 
+    def _attach_download_thread_cleanup(self, thread):
+        """Ensure finished download threads are released after completion."""
+        thread.finished.connect(thread.deleteLater)
+
     # === Queue Operations ===
 
     def _insert_to_queue(self, file: CloudFile):
@@ -1710,6 +1715,7 @@ class CloudDriveView(QWidget):
             lambda path: self._on_download_only_completed(path, file)
         )
         download_thread.token_updated.connect(self._on_token_updated)
+        self._attach_download_thread_cleanup(download_thread)
         download_thread.start()
 
     def _on_download_only_completed(self, local_path: str, file: CloudFile):
@@ -1843,6 +1849,7 @@ class CloudDriveView(QWidget):
             lambda path, f=file: self._on_batch_download_finished(path, f)
         )
         download_thread.token_updated.connect(self._on_token_updated)
+        self._attach_download_thread_cleanup(download_thread)
         download_thread.start()
 
     def _on_batch_download_finished(self, local_path: str, file: CloudFile):
