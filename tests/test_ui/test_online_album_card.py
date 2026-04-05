@@ -58,7 +58,7 @@ def test_online_album_card_has_theme_attributes(mock_config, qt_app):
 
 def test_online_album_card_registered_with_theme_manager(mock_config, qt_app):
     """Test that OnlineAlbumCard is registered with theme manager."""
-    ThemeManager.instance(mock_config)
+    tm = ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',
@@ -79,7 +79,7 @@ def test_online_album_card_registered_with_theme_manager(mock_config, qt_app):
 
 def test_online_album_card_theme_change(mock_config, qt_app):
     """Test that OnlineAlbumCard properly updates on theme change."""
-    ThemeManager.instance(mock_config)
+    tm = ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',
