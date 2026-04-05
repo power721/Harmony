@@ -93,15 +93,24 @@ def test_invalidate_cover_load_bumps_version_and_clears_thread():
 def test_close_event_invalidates_cover_and_cleans_lyrics():
     """Closing MiniPlayer should invalidate cover work and cleanup lyrics thread."""
     event = SimpleNamespace(accept=MagicMock())
+    calls = []
+
+    def _invalidate_cover_load():
+        calls.append("invalidate")
+
+    def _stop_lyrics_thread(*, wait_ms: int, cleanup_signals: bool):
+        assert wait_ms == 1000
+        assert cleanup_signals is True
+        calls.append("lyrics")
+
     fake = SimpleNamespace(
-        _invalidate_cover_load=MagicMock(),
-        _stop_lyrics_thread=MagicMock(),
+        _invalidate_cover_load=_invalidate_cover_load,
+        _stop_lyrics_thread=_stop_lyrics_thread,
         closed=SimpleNamespace(emit=MagicMock()),
     )
 
     MiniPlayer.closeEvent(fake, event)
 
-    fake._invalidate_cover_load.assert_called_once_with()
-    fake._stop_lyrics_thread.assert_called_once_with(wait_ms=1000, cleanup_signals=True)
+    assert calls == ["invalidate", "lyrics"]
     fake.closed.emit.assert_called_once_with()
     event.accept.assert_called_once_with()
