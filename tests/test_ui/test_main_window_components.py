@@ -53,14 +53,15 @@ class TestSidebar:
         ThemeManager.instance(mock_config)
         # Stacked widget order:
         # 0: library_view, 1: cloud_drive_view, 2: playlist_view, 3: queue_view
-        # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: online_music_view
+        # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: genres_view
         assert Sidebar.PAGE_LIBRARY == 0
         assert Sidebar.PAGE_CLOUD == 1
         assert Sidebar.PAGE_PLAYLISTS == 2
         assert Sidebar.PAGE_QUEUE == 3
         assert Sidebar.PAGE_ALBUMS == 4
         assert Sidebar.PAGE_ARTISTS == 5
-        assert Sidebar.PAGE_ONLINE == 8
+        assert Sidebar.PAGE_GENRES == 8
+        assert not hasattr(Sidebar, "PAGE_ONLINE")
         # Special pages (not in stacked widget)
         assert Sidebar.PAGE_FAVORITES == 100
         assert Sidebar.PAGE_HISTORY == 101

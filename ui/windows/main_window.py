@@ -47,7 +47,6 @@ from ui.views.cloud import CloudDriveView
 from ui.views.genre_view import GenreView
 from ui.views.genres_view import GenresView
 from ui.views.library_view import LibraryView
-from ui.views.online_music_view import OnlineMusicView
 from ui.views.playlist_view import PlaylistView
 from ui.views.queue_view import QueueView
 from ui.widgets.player_controls import PlayerControls
@@ -391,19 +390,7 @@ class MainWindow(QMainWindow):
         self._genres_view = GenresView(bootstrap.library_service, bootstrap.cover_service)
         self._genre_view = GenreView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
-        # Online music view with QQ Music service
-        from services.cloud.qqmusic.qqmusic_service import QQMusicService
-        qqmusic_credential = self._config.get("qqmusic.credential")
-        qqmusic_service = None
-        if qqmusic_credential:
-            try:
-                import json
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
-                                                                         str) else qqmusic_credential
-                qqmusic_service = QQMusicService(cred_dict)
-            except Exception:
-                pass
-        self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
+        self._online_music_view = None
 
         self._stacked_widget.addWidget(self._library_view)  # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)  # 1
@@ -413,9 +400,8 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._artists_view)  # 5
         self._stacked_widget.addWidget(self._artist_view)  # 6
         self._stacked_widget.addWidget(self._album_view)  # 7
-        self._stacked_widget.addWidget(self._online_music_view)  # 8
-        self._stacked_widget.addWidget(self._genres_view)  # 9
-        self._stacked_widget.addWidget(self._genre_view)  # 10
+        self._stacked_widget.addWidget(self._genres_view)  # 8
+        self._stacked_widget.addWidget(self._genre_view)  # 9
         self._mount_plugin_pages()
 
         self._stacked_widget.setMinimumWidth(200)
@@ -535,22 +521,11 @@ class MainWindow(QMainWindow):
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
 
-        # Online music view connections
-        self._online_music_view.play_online_track.connect(self._play_online_track)
-        self._online_music_view.insert_to_queue.connect(self._insert_online_track_to_queue)
-        self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
-        self._online_music_view.add_multiple_to_queue.connect(self._add_multiple_online_tracks_to_queue)
-        self._online_music_view.insert_multiple_to_queue.connect(self._insert_multiple_online_tracks_to_queue)
-        self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
-
         # Initialize online music handler with download service
         self._online_music_handler = OnlineMusicHandler(
             playback_service=self._playback,
             status_callback=self._show_status_message
         )
-        # Set download service from online music view
-        if hasattr(self._online_music_view, '_download_service'):
-            self._online_music_handler.set_download_service(self._online_music_view._download_service)
 
         # Albums view connections
         self._albums_view.album_clicked.connect(self._on_album_clicked)
@@ -919,7 +894,7 @@ class MainWindow(QMainWindow):
         latest = bootstrap.library_service.get_genre_by_name(current_genre.name)
         if latest:
             self._genre_view.set_genre(latest)
-        elif self._stacked_widget.currentIndex() == 10:
+        elif self._stacked_widget.currentIndex() == 9:
             self._on_back()
 
     def _on_artist_clicked(self, artist):
@@ -939,7 +914,7 @@ class MainWindow(QMainWindow):
         self._nav_stack.append(self._stacked_widget.currentIndex())
         # Show genre detail view
         self._genre_view.set_genre(genre)
-        self._stacked_widget.setCurrentIndex(10)
+        self._stacked_widget.setCurrentIndex(9)
 
         # Update nav button states - no active nav for detail views
         self._sidebar.set_current_page(-1)
@@ -1223,7 +1198,8 @@ class MainWindow(QMainWindow):
         self._album_view.refresh_ui()
         self._genres_view.refresh_ui()
         self._genre_view.refresh_ui()
-        self._online_music_view.refresh_ui()  # Refresh online music view
+        if self._online_music_view:
+            self._online_music_view.refresh_ui()
 
         # Update settings button status in sidebar
         self._sidebar.update_settings_status(self._config.get_ai_enabled())
@@ -2037,9 +2013,12 @@ class MainWindow(QMainWindow):
             elif view_type == "artists":
                 self._show_page(5)
             elif view_type == "online":
-                self._show_page(8)
+                if getattr(self, "_plugin_page_keys", None):
+                    self._show_page(next(iter(self._plugin_page_keys)))
+                else:
+                    self._show_page(0)
             elif view_type == "genres":
-                self._show_page(9)
+                self._show_page(8)
             elif view_type == "genre":
                 name = view_data.get("name")
                 if name:
@@ -2051,7 +2030,7 @@ class MainWindow(QMainWindow):
                         if genre.name == name:
                             self._nav_stack.append(self._stacked_widget.currentIndex())
                             self._genre_view.set_genre(genre)
-                            self._stacked_widget.setCurrentIndex(10)
+                            self._stacked_widget.setCurrentIndex(9)
                             self._update_nav_buttons_for_detail_view()
                             break
             elif view_type == "favorites":
