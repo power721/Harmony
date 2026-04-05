@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from .media import PluginPlaybackRequest, PluginTrack
+
+__all__ = ["PluginOnlineProvider", "PluginPlaybackRequest", "PluginTrack"]
+
 
 class PluginOnlineProvider(Protocol):
     provider_id: str

@@ -25,6 +25,13 @@ class PluginManifestError(ValueError):
     pass
 
 
+def _require_str(data: dict[str, Any], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str):
+        raise PluginManifestError(f"Manifest field '{key}' must be a string")
+    return value
+
+
 @dataclass(frozen=True)
 class PluginManifest:
     id: str
@@ -53,21 +60,36 @@ class PluginManifest:
         if missing:
             raise PluginManifestError(f"Missing manifest keys: {', '.join(missing)}")
 
-        capabilities = tuple(str(item) for item in data["capabilities"])
+        capabilities_raw = data["capabilities"]
+        if isinstance(capabilities_raw, str) or not isinstance(
+            capabilities_raw, (list, tuple)
+        ):
+            raise PluginManifestError(
+                "Manifest field 'capabilities' must be a list/tuple of strings"
+            )
+        if not all(isinstance(item, str) for item in capabilities_raw):
+            raise PluginManifestError(
+                "Manifest field 'capabilities' must be a list/tuple of strings"
+            )
+        capabilities = tuple(capabilities_raw)
         unknown = sorted(set(capabilities) - _ALLOWED_CAPABILITIES)
         if unknown:
             raise PluginManifestError(f"Unknown capabilities: {', '.join(unknown)}")
 
+        max_app_version = data.get("max_app_version")
+        if max_app_version is not None and not isinstance(max_app_version, str):
+            raise PluginManifestError(
+                "Manifest field 'max_app_version' must be a string if provided"
+            )
+
         return cls(
-            id=str(data["id"]),
-            name=str(data["name"]),
-            version=str(data["version"]),
-            api_version=str(data["api_version"]),
-            entrypoint=str(data["entrypoint"]),
-            entry_class=str(data["entry_class"]),
+            id=_require_str(data, "id"),
+            name=_require_str(data, "name"),
+            version=_require_str(data, "version"),
+            api_version=_require_str(data, "api_version"),
+            entrypoint=_require_str(data, "entrypoint"),
+            entry_class=_require_str(data, "entry_class"),
             capabilities=capabilities,
-            min_app_version=str(data["min_app_version"]),
-            max_app_version=str(data["max_app_version"])
-            if data.get("max_app_version")
-            else None,
+            min_app_version=_require_str(data, "min_app_version"),
+            max_app_version=max_app_version,
         )
