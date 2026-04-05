@@ -911,7 +911,7 @@ class PlayerEngine(QObject):
         Args:
             position_ms: Position in milliseconds
         """
-        self._backend.seek(position_ms)
+        self._backend.seek(max(0, position_ms))
 
     def position(self) -> int:  # noqa: F811
         """
