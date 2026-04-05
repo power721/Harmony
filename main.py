@@ -16,6 +16,12 @@ import sys
 import os
 import logging
 from pathlib import Path
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt, qInstallMessageHandler, QtMsgType
+from PySide6.QtGui import QFont, QIcon
+
+from app import Application
+from ui import MainWindow
 
 # Setup SSL certificates for PyInstaller bundle
 def setup_ssl_certificates():
@@ -120,13 +126,6 @@ logging.basicConfig(
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 logging.getLogger("urllib3.util.retry").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
-
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, qInstallMessageHandler, QtMsgType
-from PySide6.QtGui import QFont, QIcon
-
-from app import Application
-from ui import MainWindow
 
 
 def qt_message_handler(mode, context, message):

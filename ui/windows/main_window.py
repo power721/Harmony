@@ -9,59 +9,58 @@ Refactored to use modular components:
 """
 import logging
 from contextlib import suppress
+from typing import Optional
 
 from app import Bootstrap
 from domain.playback import PlaybackState
-from utils import format_count_message
-
-# Configure logging
-logger = logging.getLogger(__name__)
-
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QSplitter,
-    QStackedWidget,
-    QFileDialog,
-    QMenu,
-    QSystemTrayIcon,
-    QStyle,
-    QDialog,
-    QSizeGrip, QSizePolicy,
-    QApplication,
-)
-from PySide6.QtCore import Qt, Signal, QSettings, QTimer
-from typing import Optional
-
-from ui.dialogs.message_dialog import MessageDialog, Yes, No
-from ui.dialogs.welcome_dialog import WelcomeDialog
-from system.hotkeys import GlobalHotkeys, setup_media_key_handler
-from system.i18n import t, set_language
-from system.event_bus import EventBus
-from system.theme import ThemeManager
 from domain.playlist_item import PlaylistItem
 from domain.track import TrackSource
+from PySide6.QtCore import Qt, Signal, QSettings, QTimer
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QMainWindow,
+    QMenu,
+    QSizeGrip,
+    QSizePolicy,
+    QSplitter,
+    QStackedWidget,
+    QStyle,
+    QSystemTrayIcon,
+    QVBoxLayout,
+    QWidget,
+)
+from system.event_bus import EventBus
+from system.hotkeys import GlobalHotkeys, setup_media_key_handler
+from system.i18n import t, set_language
+from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.settings_dialog import GeneralSettingsDialog
+from ui.dialogs.welcome_dialog import WelcomeDialog
+from ui.views.album_view import AlbumView
+from ui.views.albums_view import AlbumsView
+from ui.views.artist_view import ArtistView
+from ui.views.artists_view import ArtistsView
+from ui.views.cloud import CloudDriveView
+from ui.views.genre_view import GenreView
+from ui.views.genres_view import GenresView
+from ui.views.library_view import LibraryView
+from ui.views.online_music_view import OnlineMusicView
+from ui.views.playlist_view import PlaylistView
+from ui.views.queue_view import QueueView
+from ui.widgets.player_controls import PlayerControls
+from ui.widgets.title_bar import TitleBar
+from utils import format_count_message
 
 # Import from specific submodules to avoid circular import
 from .mini_player import MiniPlayer
 from .now_playing_window import NowPlayingWindow
 from .components import Sidebar, LyricsPanel, LyricsController, OnlineMusicHandler, ScanDialog
-from ui.views.library_view import LibraryView
-from ui.views.playlist_view import PlaylistView
-from ui.views.queue_view import QueueView
-from ui.views.cloud import CloudDriveView
-from ui.views.albums_view import AlbumsView
-from ui.views.artists_view import ArtistsView
-from ui.views.artist_view import ArtistView
-from ui.views.album_view import AlbumView
-from ui.views.genres_view import GenresView
-from ui.views.genre_view import GenreView
-from ui.views.online_music_view import OnlineMusicView
-from ui.widgets.player_controls import PlayerControls
-from ui.widgets.title_bar import TitleBar
-from ui.dialogs.settings_dialog import GeneralSettingsDialog
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -479,7 +478,6 @@ class MainWindow(QMainWindow):
         panel = LyricsPanel()
 
         # Create lyrics controller
-        bootstrap = Bootstrap.instance()
         self._lyrics_controller = LyricsController(
             lyrics_panel=panel,
             playback_service=self._playback,
@@ -816,7 +814,7 @@ class MainWindow(QMainWindow):
     def _on_album_open_file_location(self, track):
         """Open file location for a track in album view."""
         from pathlib import Path
-        from ui.dialogs.message_dialog import MessageDialog, Yes, No
+        from ui.dialogs.message_dialog import MessageDialog
         import platform
         import subprocess
         import shutil
@@ -1485,20 +1483,12 @@ class MainWindow(QMainWindow):
         Args:
             track_item: Can be PlaylistItem or dict (for backward compatibility)
         """
-        # Convert to dict for backward compatibility
-        song_mid = None
-        is_online = False
-
         if isinstance(track_item, PlaylistItem):
             track_dict = track_item.to_dict()
             track_id = track_item.track_id
             title = track_item.title
             artist = track_item.artist
             path = track_item.local_path
-            is_cloud = track_item.is_cloud
-            needs_metadata = track_item.needs_metadata
-            song_mid = track_item.cloud_file_id
-            is_online = track_item.source == TrackSource.QQ
         elif isinstance(track_item, int):
             # Handle case where track_item is just an ID
             track_id = track_item
@@ -1506,20 +1496,12 @@ class MainWindow(QMainWindow):
             title = ""
             artist = ""
             path = ""
-            is_cloud = False
-            needs_metadata = False
         else:
             track_dict = track_item
             track_id = track_dict.get("id") if track_dict else None
             title = track_dict.get("title", "") if track_dict else ""
             artist = track_dict.get("artist", "") if track_dict else ""
             path = track_dict.get("path", "") if track_dict else ""
-            is_cloud = not track_id or track_id < 0
-            needs_metadata = track_dict.get("needs_metadata", False) if track_dict else False
-            # Check if online track from dict
-            source = track_dict.get("source_type", "") or track_dict.get("source", "")
-            is_online = source == "QQ" or source == TrackSource.QQ.value
-            song_mid = track_dict.get("cloud_file_id")
 
         # Sync selection in both library and queue views
         if track_id and track_id > 0:
