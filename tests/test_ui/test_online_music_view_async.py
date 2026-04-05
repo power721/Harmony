@@ -136,6 +136,38 @@ def test_current_hotkey_results_update_state():
     assert view._hotkeys == hotkeys
 
 
+def test_update_login_status_prefers_plugin_namespaced_nick():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._service = Mock()
+    view._service._has_qqmusic_credential.return_value = True
+    view._refresh_qqmusic_service = Mock()
+    view._config = Mock()
+    view._config.get_plugin_setting.return_value = "Plugin Nick"
+    view._login_status_label = Mock()
+    view._login_btn = Mock()
+    view._recommend_section = Mock()
+    view._load_recommendations = Mock()
+
+    OnlineMusicView._update_login_status(view)
+
+    view._config.get_plugin_setting.assert_called_once_with("qqmusic", "nick", "")
+    view._login_status_label.setText.assert_called_once()
+
+
+def test_on_login_clicked_clears_plugin_namespaced_credential():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._service = Mock()
+    view._service._has_qqmusic_credential.return_value = True
+    view._config = Mock()
+    view._update_login_status = Mock()
+
+    with patch("ui.views.online_music_view.MessageDialog.information"):
+        OnlineMusicView._on_login_clicked(view)
+
+    view._config.set_plugin_setting.assert_any_call("qqmusic", "credential", None)
+    view._config.set_plugin_setting.assert_any_call("qqmusic", "nick", "")
+
+
 class _FakeSignal:
     def __init__(self):
         self.connected = None

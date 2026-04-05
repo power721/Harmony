@@ -1399,7 +1399,12 @@ class OnlineMusicView(QWidget):
             self._refresh_qqmusic_service()
 
             # Get nickname from config
-            nick = self._config.get_qqmusic_nick() if self._config else ""
+            if self._config and hasattr(self._config, "get_plugin_setting"):
+                nick = self._config.get_plugin_setting("qqmusic", "nick", "")
+            elif self._config and hasattr(self._config, "get_qqmusic_nick"):
+                nick = self._config.get_qqmusic_nick()
+            else:
+                nick = ""
 
             if nick:
                 self._login_status_label.setText(t("qqmusic_logged_in_as").format(nick=nick))
@@ -1424,7 +1429,11 @@ class OnlineMusicView(QWidget):
         if self._service._has_qqmusic_credential():
             # Logout
             if self._config:
-                self._config.clear_qqmusic_credential()
+                if hasattr(self._config, "set_plugin_setting"):
+                    self._config.set_plugin_setting("qqmusic", "credential", None)
+                    self._config.set_plugin_setting("qqmusic", "nick", "")
+                elif hasattr(self._config, "clear_qqmusic_credential"):
+                    self._config.clear_qqmusic_credential()
             self._update_login_status()
             MessageDialog.information(self, t("logout"), t("logout_success"))
         else:
