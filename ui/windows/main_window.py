@@ -1325,7 +1325,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _format_quality_label(quality: str) -> str:
         """Return the translated label for a QQ Music quality code."""
-        from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
+        from services.online.quality import get_quality_label_key, normalize_quality
 
         normalized = normalize_quality(quality)
         label_key = get_quality_label_key(normalized)

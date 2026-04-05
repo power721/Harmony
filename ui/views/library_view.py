@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from domain.playback import PlaybackState
 from domain.track import Track
-from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
+from services.online.quality import get_quality_label_key, normalize_quality
 from services.download import DownloadManager
 from services.metadata import CoverService
 from services.playback import PlaybackService

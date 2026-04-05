@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
-from services.cloud.qqmusic.common import (
+from services.online.quality import (
     get_selectable_qualities,
     get_quality_label_key,
     normalize_quality,

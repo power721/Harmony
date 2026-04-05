@@ -8,9 +8,9 @@ import os
 from typing import Dict, Optional, Callable, Any, TYPE_CHECKING
 
 from infrastructure.network import HttpClient
-from services.cloud.qqmusic.common import parse_quality, normalize_quality
 from system.event_bus import EventBus
 from services.metadata.metadata_service import MetadataService
+from .quality import normalize_quality, parse_quality
 
 if TYPE_CHECKING:
     from system.config import ConfigManager

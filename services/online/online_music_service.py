@@ -10,8 +10,8 @@ from domain.online_music import (
     OnlineTrack, SearchResult, SearchType
 )
 from infrastructure.network import HttpClient
-from services.cloud.qqmusic.common import parse_quality
 from .adapter import OnlineMusicAdapter, ApiSource
+from .quality import parse_quality
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
