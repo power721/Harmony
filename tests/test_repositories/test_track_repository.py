@@ -338,6 +338,28 @@ class TestSqliteTrackRepository:
         results = track_repo.search("Song")
         assert len(results) >= 2
 
+    def test_search_tracks_treats_fts_operators_as_plain_text(self, track_repo, temp_db):
+        """Unsafe FTS operators in user input should not expand the result set."""
+        tracks = [
+            Track(path="/music/rock.mp3", title="Rock Song", artist="Rock Band"),
+            Track(path="/music/jazz.mp3", title="Jazz Tune", artist="Jazz Artist"),
+        ]
+        for track in tracks:
+            track_repo.add(track)
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks_fts (rowid, title, artist, album)
+            SELECT id, title, artist, album FROM tracks
+        """)
+        conn.commit()
+        conn.close()
+
+        results = track_repo.search("Song OR Jazz")
+
+        assert results == []
+
     def test_search_tracks_supports_offset_and_source_filter(self, track_repo, temp_db):
         """Search pagination should work together with SQL source filtering."""
         tracks = [

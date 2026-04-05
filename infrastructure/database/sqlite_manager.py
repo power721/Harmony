@@ -2,6 +2,7 @@
 Database manager for the music player using SQLite.
 """
 import logging
+import re
 import sqlite3
 import threading
 from concurrent.futures import Future
@@ -17,6 +18,10 @@ from infrastructure.database.db_write_worker import DBWriteWorker, get_write_wor
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+_FTS_BOOLEAN_OPERATORS = re.compile(r"\b(?:AND|OR|NOT)\b", re.IGNORECASE)
+_FTS_FIELD_SPECIFIERS = re.compile(r"\b(?:title|artist|album)\s*:", re.IGNORECASE)
+_FTS_UNSAFE_CHARACTERS = re.compile(r"[^\w\s.-]+", re.UNICODE)
 
 
 class DatabaseManager:
@@ -76,6 +81,18 @@ class DatabaseManager:
             **kwargs: Keyword arguments
         """
         self._write_worker.submit_async(func, *args, **kwargs)
+
+    @staticmethod
+    def _build_safe_fts_query(query: str) -> Optional[str]:
+        """Normalize user input into literal FTS terms and remove FTS operators."""
+        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", query)
+        cleaned = _FTS_BOOLEAN_OPERATORS.sub(" ", cleaned)
+        cleaned = cleaned.replace("*", " ")
+        cleaned = _FTS_UNSAFE_CHARACTERS.sub(" ", cleaned)
+        terms = [term for term in cleaned.split() if term]
+        if not terms:
+            return None
+        return " ".join(f'"{term}"' for term in terms)
 
     def _init_database(self):
         """Initialize database tables."""
@@ -1375,11 +1392,7 @@ class DatabaseManager:
         """
         Search tracks using FTS5 full-text search.
 
-        Supports:
-        - Word search: "beatles" matches any field containing "beatles"
-        - Prefix search: "beat*" matches "beat", "beatles", "beating"
-        - Multi-word: "beatles hey" matches tracks with both words
-        - Field-specific: "artist:beatles" searches only artist field
+        User input is normalized to literal terms before being passed to FTS.
 
         Args:
             query: Search query string
@@ -1397,12 +1410,9 @@ class DatabaseManager:
             return self._search_tracks_like(query)
 
         try:
-            # Use FTS5 for full-text search with BM25 ranking
-            # Handle special characters that might break FTS query
-            safe_query = query.replace('"', '""')
-
-            # Build FTS query - wrap in quotes for exact phrase or use as-is for multi-word
-            fts_query = f'"{safe_query}"'
+            fts_query = self._build_safe_fts_query(query)
+            if fts_query is None:
+                return []
 
             cursor.execute(
                 """
@@ -1416,21 +1426,6 @@ class DatabaseManager:
             )
 
             rows = cursor.fetchall()
-
-            if not rows:
-                # Try without quotes for multi-word search
-                fts_query = safe_query
-                cursor.execute(
-                    """
-                    SELECT t.*, bm25(tracks_fts) AS score
-                    FROM tracks t
-                             JOIN tracks_fts f ON t.id = f.rowid
-                    WHERE tracks_fts MATCH ?
-                    ORDER BY score LIMIT 100
-                    """,
-                    (fts_query,),
-                )
-                rows = cursor.fetchall()
 
             return [
                 self._row_to_track(row)

@@ -3,6 +3,7 @@ SQLite implementation of TrackRepository.
 """
 
 import logging
+import re
 import sqlite3
 from typing import Dict, List, Optional, TYPE_CHECKING
 
@@ -10,6 +11,10 @@ from domain.track import Track, TrackId, TrackSource
 from repositories.base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
+
+_FTS_BOOLEAN_OPERATORS = re.compile(r"\b(?:AND|OR|NOT)\b", re.IGNORECASE)
+_FTS_FIELD_SPECIFIERS = re.compile(r"\b(?:title|artist|album)\s*:", re.IGNORECASE)
+_FTS_UNSAFE_CHARACTERS = re.compile(r"[^\w\s.-]+", re.UNICODE)
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -22,6 +27,18 @@ class SqliteTrackRepository(BaseRepository):
 
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         super().__init__(db_path, db_manager)
+
+    @staticmethod
+    def _build_safe_fts_query(query: str) -> Optional[str]:
+        """Normalize user input into a literal-term FTS query."""
+        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", query)
+        cleaned = _FTS_BOOLEAN_OPERATORS.sub(" ", cleaned)
+        cleaned = cleaned.replace("*", " ")
+        cleaned = _FTS_UNSAFE_CHARACTERS.sub(" ", cleaned)
+        terms = [term for term in cleaned.split() if term]
+        if not terms:
+            return None
+        return " ".join(f'"{term}"' for term in terms)
 
     def get_by_id(self, track_id: TrackId) -> Optional[Track]:
         """Get a track by ID."""
@@ -161,6 +178,9 @@ class SqliteTrackRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
         source_value = self._normalize_source_value(source)
+        safe_query = self._build_safe_fts_query(query)
+        if safe_query is None:
+            return []
 
         # Try FTS5 search first
         try:
@@ -170,7 +190,7 @@ class SqliteTrackRepository(BaseRepository):
                 JOIN tracks_fts fts ON t.id = fts.rowid
                 WHERE tracks_fts MATCH ?
             """
-            params: list = [query]
+            params: list = [safe_query]
             if source_value:
                 sql += " AND t.source = ?"
                 params.append(source_value)
@@ -202,6 +222,9 @@ class SqliteTrackRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
         source_value = self._normalize_source_value(source)
+        safe_query = self._build_safe_fts_query(query)
+        if safe_query is None:
+            return 0
 
         try:
             sql = """
@@ -210,7 +233,7 @@ class SqliteTrackRepository(BaseRepository):
                 JOIN tracks_fts fts ON t.id = fts.rowid
                 WHERE tracks_fts MATCH ?
             """
-            params: list = [query]
+            params: list = [safe_query]
             if source_value:
                 sql += " AND t.source = ?"
                 params.append(source_value)
