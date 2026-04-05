@@ -284,15 +284,6 @@ class DownloadManager(QObject):
             song_mid: Song MID
             local_path: Local path of downloaded file (empty if failed)
         """
-        # Worker lifecycle is finalized in on_thread_finished callback.
-        # Only perform guarded signal disconnect here to avoid duplicate callbacks.
-        worker = self._get_worker(song_mid)
-        handlers = self._get_worker_handlers(song_mid)
-        if worker and isValid(worker) and handlers:
-            download_handler, _ = handlers
-            with suppress(RuntimeError, TypeError):
-                worker.download_finished.disconnect(download_handler)
-
         if not local_path:
             logger.error(f"[DownloadManager] Online download failed: {song_mid}")
             self.download_failed.emit(song_mid)

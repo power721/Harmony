@@ -8,7 +8,7 @@ import os
 from typing import Dict, Optional, Callable, Any, TYPE_CHECKING
 
 from infrastructure.network import HttpClient
-from services.cloud.qqmusic.common import parse_quality
+from services.cloud.qqmusic.common import parse_quality, normalize_quality
 from system.event_bus import EventBus
 from services.metadata.metadata_service import MetadataService
 
@@ -60,6 +60,7 @@ class OnlineDownloadService:
         self._online_service = online_music_service
         self._download_dir = download_dir or self._get_default_download_dir()
         self._event_bus = EventBus.instance()
+        self._last_download_qualities: Dict[str, str] = {}
 
         # Ensure download directory exists
         os.makedirs(self._download_dir, exist_ok=True)
@@ -117,6 +118,10 @@ class OnlineDownloadService:
         """
         return self._find_existing_cached_path(song_mid) is not None
 
+    def pop_last_download_quality(self, song_mid: str) -> Optional[str]:
+        """Return and clear the most recently resolved quality for a song."""
+        return self._last_download_qualities.pop(song_mid, None)
+
     def download(
         self,
         song_mid: str,
@@ -144,6 +149,7 @@ class OnlineDownloadService:
         # Check cache first (skip if force re-download)
         cached_path = self.get_cached_path(song_mid, quality)
         if not force and os.path.exists(cached_path):
+            self._last_download_qualities[song_mid] = normalize_quality(quality)
             logger.info(f"Song already cached: {cached_path}")
             return cached_path
 
@@ -213,6 +219,7 @@ class OnlineDownloadService:
             final_path = self._get_final_download_path(song_mid, cached_path, temp_path)
             os.replace(temp_path, final_path)
             self._delete_other_cached_variants(song_mid, final_path)
+            self._last_download_qualities[song_mid] = normalize_quality(actual_quality)
 
             logger.info(f"Download complete: {final_path}")
 
@@ -230,6 +237,7 @@ class OnlineDownloadService:
 
         except Exception as e:
             logger.error(f"Download failed: {e}")
+            self._last_download_qualities.pop(song_mid, None)
             # Clean up temp file
             temp_path = cached_path + ".tmp"
             if os.path.exists(temp_path):

@@ -34,6 +34,7 @@ from system.event_bus import EventBus
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.views.history_list_view import HistoryListView
 from ui.views.local_tracks_list_view import LocalTracksListView
+from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
 
 
 class LibraryView(QWidget):
@@ -699,8 +700,8 @@ class LibraryView(QWidget):
     def _on_history_track_activated(self, track: Track):
         """Handle track activation from history list view."""
         from domain import PlaylistItem
-        item = PlaylistItem(track_id=track.id)
-        self._player.engine.set_playlist([item])
+        item = PlaylistItem.from_track(track)
+        self._player.engine.load_playlist_items([item])
         self._player.engine.play()
 
     def _on_favorites_track_activated(self, track: Track):
@@ -787,9 +788,9 @@ class LibraryView(QWidget):
         if not tracks:
             return
         from domain import PlaylistItem
-        items = [PlaylistItem(track_id=track.id) for track in tracks if track.id]
+        items = [PlaylistItem.from_track(track) for track in tracks if track.id]
         if items:
-            self._player.engine.set_playlist(items)
+            self._player.engine.load_playlist_items(items)
             self._player.engine.play()
 
     def _on_history_insert_to_queue(self, tracks: list):
@@ -881,15 +882,19 @@ class LibraryView(QWidget):
     def _redownload_qq_track(self, track):
         """Re-download a QQ Music track with quality selection."""
         from ui.dialogs.redownload_dialog import RedownloadDialog
-        from services.download.download_manager import DownloadManager
         from app.bootstrap import Bootstrap
 
+        bootstrap = Bootstrap.instance()
         song_mid = track.cloud_file_id
-        quality = RedownloadDialog.show_dialog(track.title, parent=self)
+        default_quality = bootstrap.config.get_qqmusic_quality() if bootstrap and bootstrap.config else "320"
+        quality = RedownloadDialog.show_dialog(
+            track.title,
+            current_quality=default_quality,
+            parent=self,
+        )
         if quality is None:
             return
 
-        bootstrap = Bootstrap.instance()
         online_download_service = bootstrap.online_download_service
 
         # Delete cached files for all quality variants
@@ -914,12 +919,13 @@ class LibraryView(QWidget):
             song_mid, track.title, quality=quality, force=True
         )
         self._status_label.setText(
-            f"{t('downloading')}... {track.title} ({quality})"
+            f"{t('downloading')}... {track.title} ({self._format_quality_label(quality)})"
         )
 
     def _on_redownload_completed(self, song_mid: str, local_path: str):
         """Handle re-download completion."""
-        del song_mid
+        from app.bootstrap import Bootstrap
+
         try:
             dm = DownloadManager.instance()
             dm.download_completed.disconnect(self._on_redownload_completed)
@@ -927,8 +933,17 @@ class LibraryView(QWidget):
         except RuntimeError:
             return
         if local_path:
-            self._status_label.setText(t("download_complete"))
+            bootstrap = Bootstrap.instance()
+            actual_quality = None
+            if bootstrap and bootstrap.online_download_service:
+                actual_quality = bootstrap.online_download_service.pop_last_download_quality(song_mid)
             self._reload_current_list_view()
+            if actual_quality:
+                self._status_label.setText(
+                    f"{t('download_complete')} ({self._format_quality_label(actual_quality)})"
+                )
+            else:
+                self._status_label.setText(t("download_complete"))
 
     def _on_redownload_failed(self, song_mid: str):
         """Handle re-download failure."""
@@ -939,6 +954,13 @@ class LibraryView(QWidget):
         except RuntimeError:
             return
         self._status_label.setText(t("download_failed"))
+
+    @staticmethod
+    def _format_quality_label(quality: str) -> str:
+        """Return the translated label for a QQ Music quality code."""
+        normalized = normalize_quality(quality)
+        label_key = get_quality_label_key(normalized)
+        return t(label_key) if label_key else normalized
 
     def _on_history_remove_from_library(self, tracks: list):
         """Remove tracks from library."""

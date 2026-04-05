@@ -1251,13 +1251,19 @@ class MainWindow(QMainWindow):
         """Re-download a QQ Music track from playlist."""
         from ui.dialogs.redownload_dialog import RedownloadDialog
         from app.bootstrap import Bootstrap
+        from services.download.download_manager import DownloadManager
 
+        bootstrap = Bootstrap.instance()
         song_mid = track.cloud_file_id
-        quality = RedownloadDialog.show_dialog(track.title, parent=self)
+        default_quality = bootstrap.config.get_qqmusic_quality() if bootstrap and bootstrap.config else "320"
+        quality = RedownloadDialog.show_dialog(
+            track.title,
+            current_quality=default_quality,
+            parent=self,
+        )
         if quality is None:
             return
 
-        bootstrap = Bootstrap.instance()
         online_download_service = bootstrap.online_download_service
         online_download_service.delete_cached_file(song_mid)
 
@@ -1266,12 +1272,67 @@ class MainWindow(QMainWindow):
             with suppress(OSError):
                 os.remove(track.path)
 
-        online_download_service.download_track(
+        dm = DownloadManager.instance()
+        dm.download_completed.connect(self._on_playlist_redownload_completed)
+        dm.download_failed.connect(self._on_playlist_redownload_failed)
+        dm.redownload_online_track(
             song_mid=song_mid,
+            title=track.title,
             quality=quality,
-            track_id=track.id,
+            force=True,
         )
-        self._status_label.setText(t("downloading"))
+        self._status_label.setText(
+            f"{t('downloading')}... {track.title} ({self._format_quality_label(quality)})"
+        )
+
+    def _on_playlist_redownload_completed(self, song_mid: str, local_path: str):
+        """Handle playlist re-download completion."""
+        from app.bootstrap import Bootstrap
+        from services.download.download_manager import DownloadManager
+
+        try:
+            dm = DownloadManager.instance()
+            dm.download_completed.disconnect(self._on_playlist_redownload_completed)
+            dm.download_failed.disconnect(self._on_playlist_redownload_failed)
+        except RuntimeError:
+            return
+
+        if not local_path:
+            return
+
+        bootstrap = Bootstrap.instance()
+        actual_quality = None
+        if bootstrap and bootstrap.online_download_service:
+            actual_quality = bootstrap.online_download_service.pop_last_download_quality(song_mid)
+
+        if actual_quality:
+            self._status_label.setText(
+                f"{t('download_complete')} ({self._format_quality_label(actual_quality)})"
+            )
+        else:
+            self._status_label.setText(t("download_complete"))
+
+    def _on_playlist_redownload_failed(self, song_mid: str):
+        """Handle playlist re-download failure."""
+        del song_mid
+        from services.download.download_manager import DownloadManager
+
+        try:
+            dm = DownloadManager.instance()
+            dm.download_completed.disconnect(self._on_playlist_redownload_completed)
+            dm.download_failed.disconnect(self._on_playlist_redownload_failed)
+        except RuntimeError:
+            return
+        self._status_label.setText(t("download_failed"))
+
+    @staticmethod
+    def _format_quality_label(quality: str) -> str:
+        """Return the translated label for a QQ Music quality code."""
+        from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
+
+        normalized = normalize_quality(quality)
+        label_key = get_quality_label_key(normalized)
+        return t(label_key) if label_key else normalized
 
     def _play_cloud_favorite(self, cloud_file_id: str, account_id: int):
         """Play a cloud file from favorites."""

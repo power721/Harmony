@@ -80,3 +80,44 @@ class TestOnlineDownloadService:
         )
         event_bus.download_completed.emit.assert_called_once_with("song", str(tmp_path / "song.ogg"))
         mock_extract_metadata.assert_called_once_with("song", str(tmp_path / "song.ogg"))
+
+    @patch("services.online.download_service.EventBus")
+    @patch.object(OnlineDownloadService, "_extract_metadata", return_value=None)
+    @patch("services.online.download_service.HttpClient.shared")
+    def test_download_records_actual_quality_for_ui_status(
+        self, mock_http_client_shared, mock_extract_metadata, mock_event_bus, tmp_path
+    ):
+        """Successful downloads should expose the actual resolved quality for status display."""
+        event_bus = MagicMock()
+        mock_event_bus.instance.return_value = event_bus
+
+        response = MagicMock()
+        response.headers = {"content-length": "35"}
+        response.iter_content.return_value = [b"OggS" + b"\x00" * 24 + b"\x01vorbis"]
+        response.raise_for_status.return_value = None
+        response.close = MagicMock()
+
+        stream_context = MagicMock()
+        stream_context.__enter__.return_value = response
+        stream_context.__exit__.return_value = False
+
+        http_client = MagicMock()
+        http_client.stream.return_value = stream_context
+        mock_http_client_shared.return_value = http_client
+
+        online_service = MagicMock()
+        online_service.get_playback_url_info.return_value = {
+            "url": "https://example.com/audio.flac",
+            "quality": "ogg_320",
+            "extension": ".ogg",
+        }
+
+        service = OnlineDownloadService(
+            online_music_service=online_service,
+            download_dir=str(tmp_path),
+        )
+
+        service.download("song", quality="flac")
+
+        assert service.pop_last_download_quality("song") == "ogg_320"
+        assert service.pop_last_download_quality("song") is None

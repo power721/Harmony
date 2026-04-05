@@ -107,6 +107,29 @@ def test_on_online_download_finished_skips_disconnect_for_invalid_worker(monkeyp
     assert failed == ["song-mid"]
 
 
+def test_on_online_download_finished_defers_signal_disconnect_to_worker_cleanup(monkeypatch):
+    """Normal completion should let worker cleanup own signal disconnects."""
+    manager = DownloadManager()
+    worker = SimpleNamespace(
+        download_finished=SimpleNamespace(disconnect=MagicMock())
+    )
+    manager._download_workers["song-mid"] = worker
+    manager._download_handlers["song-mid"] = (manager._on_online_download_finished, lambda: None)
+    manager._playback_service = SimpleNamespace(on_online_track_downloaded=MagicMock())
+    monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
+
+    completed = []
+    manager.download_completed.connect(lambda song_mid, local_path: completed.append((song_mid, local_path)))
+
+    manager._on_online_download_finished("song-mid", "/tmp/song.ogg")
+
+    worker.download_finished.disconnect.assert_not_called()
+    manager._playback_service.on_online_track_downloaded.assert_called_once_with(
+        "song-mid", "/tmp/song.ogg"
+    )
+    assert completed == [("song-mid", "/tmp/song.ogg")]
+
+
 def test_download_manager_uses_lock_for_worker_registry():
     """Worker registry should be protected by a lock to avoid data races."""
     manager = DownloadManager()
