@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch, MagicMock
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from ui.windows.main_window import MainWindow
 from ui.windows.components.sidebar import Sidebar
 from ui.windows.components.lyrics_panel import LyricsPanel
 from ui.windows.components.online_music_handler import OnlineMusicHandler
@@ -213,6 +214,42 @@ class TestOnlineMusicHandler:
         assert selected_item.cloud_file_id == "song_mid_2"
         mock_playback.engine.shuffle_and_play.assert_called_once()
         mock_playback.engine.play_at.assert_called_once_with(0)
+
+
+class TestMainWindowPlayerProxy:
+    """Tests for the PlayerProxy exposed by MainWindow."""
+
+    def test_player_proxy_exposes_play_local_tracks(self, qapp):
+        """LibraryView batch playback should be supported through PlayerProxy."""
+        playback = Mock()
+        playback.engine = Mock()
+
+        bootstrap = Mock()
+        bootstrap.db = Mock()
+        bootstrap.config = Mock()
+        bootstrap.playback_service = playback
+        bootstrap.library_service = Mock()
+        bootstrap.favorites_service = Mock()
+        bootstrap.play_history_service = Mock()
+        bootstrap.cloud_account_service = Mock()
+        bootstrap.cloud_file_service = Mock()
+
+        theme_manager = Mock()
+        event_bus = Mock()
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), \
+                patch("ui.windows.main_window.EventBus.instance", return_value=event_bus), \
+                patch("ui.windows.main_window.ThemeManager.instance", return_value=theme_manager), \
+                patch.object(MainWindow, "_setup_ui"), \
+                patch.object(MainWindow, "_setup_connections"), \
+                patch.object(MainWindow, "_setup_system_tray"), \
+                patch.object(MainWindow, "_setup_hotkeys"), \
+                patch.object(MainWindow, "_restore_settings"):
+            window = MainWindow()
+
+        window._player.play_local_tracks([1, 2, 3], start_index=1)
+
+        playback.play_local_tracks.assert_called_once_with([1, 2, 3], start_index=1)
 
 
 class TestSidebarWithConfig:

@@ -220,6 +220,9 @@ class MainWindow(QMainWindow):
             def play_track(self, track_id):
                 return playback.play_local_track(track_id)
 
+            def play_local_tracks(self, track_ids, start_index=0):
+                return playback.play_local_tracks(track_ids, start_index=start_index)
+
             def play(self):
                 return playback.play()
 

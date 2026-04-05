@@ -699,19 +699,45 @@ class LibraryView(QWidget):
 
     def _on_history_track_activated(self, track: Track):
         """Handle track activation from history list view."""
-        from domain import PlaylistItem
-        item = PlaylistItem.from_track(track)
-        self._player.engine.load_playlist_items([item])
-        self._player.engine.play()
+        if not track or not track.id:
+            return
+
+        queue_index = self._find_queue_index(track.id)
+        if queue_index is not None:
+            self._player.engine.play_at(queue_index)
+            if hasattr(self._player, "save_queue"):
+                self._player.save_queue()
+            return
+
+        recent_tracks = self._play_history_service.get_history_tracks(limit=100)
+        self._play_track_collection(recent_tracks, track.id)
 
     def _on_favorites_track_activated(self, track: Track):
         """Play a track activated from the favorites list."""
-        self._on_all_tracks_track_activated(track)
+        if not track or not track.id:
+            return
+        favorite_tracks = self._favorites_service.get_favorites()
+        self._play_track_collection(favorite_tracks, track.id)
 
     def _on_all_tracks_track_activated(self, track: Track):
         """Play a track activated from the all-tracks virtualized list."""
         if track and track.id:
             self.track_double_clicked.emit(track.id)
+
+    def _find_queue_index(self, track_id: int):
+        """Return the first queue index for a track ID, if present."""
+        for index, item in enumerate(getattr(self._player.engine, "playlist_items", []) or []):
+            if getattr(item, "track_id", None) == track_id:
+                return index
+        return None
+
+    def _play_track_collection(self, tracks: List[Track], start_track_id: int):
+        """Load a track collection into the queue and start from the selected track."""
+        track_ids = [track.id for track in tracks if track and track.id]
+        if not track_ids or start_track_id not in track_ids:
+            return
+        start_index = track_ids.index(start_track_id)
+        self._player.play_local_tracks(track_ids, start_index=start_index)
 
     def _on_all_tracks_play_requested(self, tracks: list):
         """Play requested tracks from the all-tracks list."""
@@ -720,7 +746,10 @@ class LibraryView(QWidget):
         track_ids = [track.id for track in tracks if track.id]
         if not track_ids:
             return
-        self.track_double_clicked.emit(track_ids[0])
+        if len(track_ids) == 1:
+            self._on_favorites_track_activated(tracks[0])
+        else:
+            self.track_double_clicked.emit(track_ids[0])
 
     def _on_all_tracks_insert_to_queue(self, tracks: list):
         """Insert tracks after the current queue item."""
@@ -790,8 +819,11 @@ class LibraryView(QWidget):
         from domain import PlaylistItem
         items = [PlaylistItem.from_track(track) for track in tracks if track.id]
         if items:
-            self._player.engine.load_playlist_items(items)
-            self._player.engine.play()
+            if len(items) == 1:
+                self._on_history_track_activated(tracks[0])
+            else:
+                self._player.engine.load_playlist_items(items)
+                self._player.engine.play()
 
     def _on_history_insert_to_queue(self, tracks: list):
         """Insert tracks after current in queue."""

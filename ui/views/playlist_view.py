@@ -477,9 +477,9 @@ class PlaylistView(QWidget):
 
     def _on_ctx_play(self, tracks: list):
         from domain import PlaylistItem
-        items = [PlaylistItem(track_id=track.id) for track in tracks if track.id]
+        items = [PlaylistItem.from_track(track) for track in tracks if track.id]
         if items:
-            self._player.engine.set_playlist(items)
+            self._player.engine.load_playlist_items(items)
             self._player.engine.play()
 
     def _on_ctx_insert_to_queue(self, tracks: list):
