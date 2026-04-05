@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from .cover import PluginArtistCoverSource, PluginCoverSource
+from .lyrics import PluginLyricsSource
 from .manifest import PluginManifest
+from .online import PluginOnlineProvider
+from .registry_types import SettingsTabSpec, SidebarEntrySpec
 
 
 class PluginSettingsBridge(Protocol):
@@ -30,28 +34,34 @@ class PluginStorageBridge(Protocol):
 
 
 class PluginUiBridge(Protocol):
-    def register_sidebar_entry(self, spec: Any) -> None:
+    def register_sidebar_entry(self, spec: SidebarEntrySpec) -> None:
         ...
 
-    def register_settings_tab(self, spec: Any) -> None:
+    def register_settings_tab(self, spec: SettingsTabSpec) -> None:
+        ...
+
+
+class PluginMediaBridge(Protocol):
+    # Marker bridge for host media operations exposed to plugins.
+    def __repr__(self) -> str:
         ...
 
 
 class PluginServiceBridge(Protocol):
-    def register_lyrics_source(self, source: Any) -> None:
+    def register_lyrics_source(self, source: PluginLyricsSource) -> None:
         ...
 
-    def register_cover_source(self, source: Any) -> None:
+    def register_cover_source(self, source: PluginCoverSource) -> None:
         ...
 
-    def register_artist_cover_source(self, source: Any) -> None:
+    def register_artist_cover_source(self, source: PluginArtistCoverSource) -> None:
         ...
 
-    def register_online_music_provider(self, provider: Any) -> None:
+    def register_online_music_provider(self, provider: PluginOnlineProvider) -> None:
         ...
 
     @property
-    def media(self) -> Any:
+    def media(self) -> PluginMediaBridge:
         ...
 
 

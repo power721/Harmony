@@ -1,5 +1,6 @@
 from .context import (
     PluginContext,
+    PluginMediaBridge,
     PluginServiceBridge,
     PluginSettingsBridge,
     PluginStorageBridge,
@@ -30,6 +31,7 @@ __all__ = [
     "PluginLyricsSource",
     "PluginManifest",
     "PluginManifestError",
+    "PluginMediaBridge",
     "PluginOnlineProvider",
     "PluginPlaybackRequest",
     "PluginServiceBridge",

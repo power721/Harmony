@@ -29,6 +29,10 @@ def _require_str(data: dict[str, Any], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str):
         raise PluginManifestError(f"Manifest field '{key}' must be a string")
+    if not value.strip():
+        raise PluginManifestError(
+            f"Manifest field '{key}' must be a non-empty string"
+        )
     return value
 
 
