@@ -806,6 +806,9 @@ class PlaybackService(QObject):
         # Start playback immediately
         self._engine.load_playlist_items(items)
 
+        if items:
+            start_index = max(0, min(start_index, len(items) - 1))
+
         if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
             self._engine.shuffle_and_play(items[start_index])
             start_index = 0

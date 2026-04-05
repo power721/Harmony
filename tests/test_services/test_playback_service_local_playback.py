@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from domain.cloud import CloudFile
 from domain.playlist_item import PlaylistItem
 from domain.track import TrackSource
 from services.playback.playback_service import PlaybackService
@@ -86,3 +87,38 @@ def test_play_local_tracks_clamps_negative_start_index_to_zero(tmp_path):
     PlaybackService.play_local_tracks(service, [1, 2], start_index=-5)
 
     service._engine.play_at.assert_called_once_with(0)
+
+
+def test_play_cloud_playlist_clamps_negative_start_index_to_zero():
+    """Cloud playlist playback should not forward negative indices to the engine."""
+    cloud_files = [
+        CloudFile(file_id="cf-1", name="One.mp3"),
+        CloudFile(file_id="cf-2", name="Two.mp3"),
+    ]
+    account = SimpleNamespace(id=9, provider="quark")
+
+    service = PlaybackService.__new__(PlaybackService)
+    service._cloud_account = None
+    service._cloud_files = []
+    service._cloud_files_by_id = {}
+    service._downloaded_files = {}
+    service._track_repo = SimpleNamespace(get_by_cloud_file_ids=Mock(return_value={}))
+    service._get_cached_path = Mock(return_value="")
+    service._engine = SimpleNamespace(
+        load_playlist_items=Mock(),
+        is_shuffle_mode=Mock(return_value=False),
+        play_at=Mock(),
+        play_at_with_position=Mock(),
+    )
+    service._set_source = Mock()
+    service.save_queue = Mock()
+    service._process_metadata_async = Mock()
+    service._config = SimpleNamespace(
+        set_playback_source=Mock(),
+        set_cloud_account_id=Mock(),
+    )
+
+    PlaybackService.play_cloud_playlist(service, cloud_files, start_index=-3, account=account)
+
+    service._engine.play_at.assert_called_once_with(0)
+    service._engine.play_at_with_position.assert_not_called()
