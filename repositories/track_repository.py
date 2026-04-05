@@ -167,6 +167,30 @@ class SqliteTrackRepository(BaseRepository):
             cursor.execute("SELECT COUNT(*) FROM tracks")
         return cursor.fetchone()[0]
 
+    def get_track_position(self, track_id: TrackId, source: Optional[TrackSource | str] = None) -> Optional[int]:
+        """Get the zero-based position of a track in the default DESC id ordering."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        source_value = self._normalize_source_value(source)
+
+        exists_sql = "SELECT 1 FROM tracks WHERE id = ?"
+        exists_params: list = [track_id]
+        count_sql = "SELECT COUNT(*) FROM tracks WHERE id > ?"
+        count_params: list = [track_id]
+
+        if source_value:
+            exists_sql += " AND source = ?"
+            exists_params.append(source_value)
+            count_sql += " AND source = ?"
+            count_params.append(source_value)
+
+        cursor.execute(exists_sql, exists_params)
+        if cursor.fetchone() is None:
+            return None
+
+        cursor.execute(count_sql, count_params)
+        return cursor.fetchone()[0]
+
     def search(
             self,
             query: str,

@@ -49,6 +49,10 @@ class TrackRepository(Protocol):
         """Get a track by cloud file ID."""
         ...
 
+    def get_track_position(self, track_id: TrackId) -> Optional[int]:
+        """Get the zero-based library position for a track in default ordering."""
+        ...
+
 
 class PlaylistRepository(Protocol):
     """Abstract interface for playlist data access."""

@@ -82,6 +82,7 @@ class PlaybackService(QObject):
     _metadata_processed = Signal(str, str, int, str, str, str, float, str)  # Internal signal for metadata
     _metadata_batch_complete = Signal()  # Emitted when batch metadata processing completes
     LIBRARY_PAGE_SIZE = 1000
+    LOCAL_PLAY_CONTEXT_WINDOW = 100
 
     def __init__(
             self,
@@ -562,14 +563,19 @@ class PlaybackService(QObject):
         self._engine.clear_playlist()
         self._engine.cleanup_temp_files()
 
-        items = []
-        start_index = 0
-        for tracks in self._iter_library_track_batches():
-            batch_items = self._filter_and_convert_tracks(tracks)
-            batch_item_ids = [item.track_id for item in batch_items]
-            if track_id in batch_item_ids:
-                start_index = len(items) + batch_item_ids.index(track_id)
-            items.extend(batch_items)
+        position = self._track_repo.get_track_position(track_id)
+        if position is None:
+            tracks = [track]
+        else:
+            offset = max(0, position - self.LOCAL_PLAY_CONTEXT_WINDOW)
+            limit = (self.LOCAL_PLAY_CONTEXT_WINDOW * 2) + 1
+            tracks = self._track_repo.get_all(limit=limit, offset=offset)
+
+        items = self._filter_and_convert_tracks(tracks)
+        start_index = next(
+            (index for index, item in enumerate(items) if item.track_id == track_id),
+            0,
+        )
 
         self._engine.load_playlist_items(items)
 
