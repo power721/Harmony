@@ -566,6 +566,20 @@ class CloudTrackHandler:
         thread_ref["thread"] = thread
         thread.start()
 
+    def cleanup(self, join_timeout: float = 2.0):
+        """Wait briefly for background metadata workers and clear tracked references."""
+        with self._metadata_threads_lock:
+            threads = list(self._metadata_threads)
+
+        for thread in threads:
+            if thread.is_alive():
+                thread.join(timeout=join_timeout)
+                if thread.is_alive():
+                    logger.warning("[CloudTrackHandler] Metadata thread did not stop in time")
+
+            with self._metadata_threads_lock:
+                self._metadata_threads.discard(thread)
+
     def _save_to_library(self, file_id: str, local_path: str, source: TrackSource = None) -> str:
         """
         Save downloaded cloud track to library with metadata and cover art.

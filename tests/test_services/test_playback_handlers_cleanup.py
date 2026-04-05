@@ -71,3 +71,30 @@ def test_process_metadata_async_tracks_background_threads(monkeypatch):
     thread.target()
     fake_handler._save_to_library.assert_called_once_with("file-id", "/tmp/a.mp3", "quark")
     assert len(fake_handler._metadata_threads) == 0
+
+
+def test_cloud_handler_cleanup_joins_and_clears_metadata_threads():
+    """CloudTrackHandler cleanup should wait briefly for metadata threads and clear tracking."""
+
+    class FakeThread:
+        def __init__(self):
+            self.join_calls = []
+            self._alive = True
+
+        def is_alive(self):
+            return self._alive
+
+        def join(self, timeout=None):
+            self.join_calls.append(timeout)
+            self._alive = False
+
+    thread = FakeThread()
+    fake_handler = SimpleNamespace(
+        _metadata_threads={thread},
+        _metadata_threads_lock=threading.Lock(),
+    )
+
+    CloudTrackHandler.cleanup(fake_handler, join_timeout=1.5)
+
+    assert thread.join_calls == [1.5]
+    assert len(fake_handler._metadata_threads) == 0
