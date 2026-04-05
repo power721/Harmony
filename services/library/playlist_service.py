@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional
 
 from domain.playlist import Playlist
-from domain.track import Track, TrackId, TrackSource
+from domain.track import Track, TrackId
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
 from system.event_bus import EventBus

@@ -3,14 +3,11 @@ Favorites service - Manages favorite tracks and cloud files.
 """
 
 import logging
-from typing import List, Optional, TYPE_CHECKING
+from typing import List
 
 from domain.track import Track
 from repositories.favorite_repository import SqliteFavoriteRepository
 from system.event_bus import EventBus
-
-if TYPE_CHECKING:
-    from infrastructure.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 

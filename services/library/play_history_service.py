@@ -3,7 +3,7 @@ Play history service - Manages play history records.
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from domain.history import PlayHistory
 from domain.track import Track
