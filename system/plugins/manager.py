@@ -28,7 +28,7 @@ class PluginManager:
                 for path in self._external_root.iterdir()
                 if path.is_dir()
             )
-        return roots
+        return sorted(roots, key=lambda item: (item[0], item[1].name))
 
     def load_enabled_plugins(self) -> None:
         for source, plugin_root in self.discover_roots():
@@ -59,6 +59,7 @@ class PluginManager:
             except Exception as exc:
                 plugin_id = manifest.id if manifest is not None else plugin_root.name
                 version = manifest.version if manifest is not None else ""
+                enabled_on_error = True if state is None else bool(state.get("enabled", True))
                 if plugin is not None and context is not None:
                     try:
                         plugin.unregister(context)
@@ -68,7 +69,7 @@ class PluginManager:
                 self._loaded_plugins.pop(plugin_id, None)
                 self._state_store.set_enabled(
                     plugin_id,
-                    False,
+                    enabled_on_error,
                     source=source,
                     version=version,
                     load_error=str(exc),

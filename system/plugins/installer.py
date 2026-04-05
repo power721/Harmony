@@ -86,9 +86,31 @@ class PluginInstaller:
 
             self._external_root.mkdir(parents=True, exist_ok=True)
             final_root = self._external_root / manifest.id
-            if final_root.exists():
-                shutil.rmtree(final_root)
-            shutil.copytree(extract_root, final_root)
+            staging_root = self._external_root / f"{manifest.id}.staging"
+            backup_root = self._external_root / f"{manifest.id}.backup"
+
+            if staging_root.exists():
+                shutil.rmtree(staging_root)
+            if backup_root.exists():
+                shutil.rmtree(backup_root)
+
+            shutil.copytree(extract_root, staging_root)
+
+            had_existing = final_root.exists()
+            if had_existing:
+                final_root.replace(backup_root)
+
+            try:
+                staging_root.replace(final_root)
+            except Exception:
+                if had_existing and backup_root.exists() and not final_root.exists():
+                    backup_root.replace(final_root)
+                if staging_root.exists():
+                    shutil.rmtree(staging_root)
+                raise
+            else:
+                if backup_root.exists():
+                    shutil.rmtree(backup_root)
             return final_root
         except PluginInstallError:
             raise

@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import shutil
 import zipfile
 
 import pytest
@@ -213,3 +214,51 @@ def test_install_zip_does_not_execute_plugin_top_level_code(tmp_path: Path):
     assert not (
         tmp_path / "temp" / "no_exec_on_install" / "import_executed.txt"
     ).exists()
+
+
+def test_install_zip_replacement_is_transactional_on_copy_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    existing_root = tmp_path / "external" / "stable-plugin"
+    existing_root.mkdir(parents=True)
+    (existing_root / "version.txt").write_text("old", encoding="utf-8")
+
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "stable_plugin.zip",
+        {
+            "plugin.json": json.dumps(
+                {
+                    "id": "stable-plugin",
+                    "name": "Stable Plugin",
+                    "version": "2.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "StablePlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            "plugin_main.py": "class StablePlugin:\n    pass\n",
+            "version.txt": "new\n",
+        },
+    )
+
+    original_copytree = shutil.copytree
+
+    def _failing_copytree(src, dst, *args, **kwargs):
+        if str(dst).endswith(".staging"):
+            raise OSError("copy failed")
+        return original_copytree(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copytree", _failing_copytree)
+
+    with pytest.raises(PluginInstallError):
+        installer.install_zip(plugin_zip)
+
+    assert existing_root.exists()
+    assert (existing_root / "version.txt").read_text(encoding="utf-8") == "old"

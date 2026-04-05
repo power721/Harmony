@@ -341,7 +341,7 @@ def test_constructor_failure_installs_then_records_runtime_load_error(tmp_path: 
 
     state = store.get("ctor-fails")
     assert state is not None
-    assert state["enabled"] is False
+    assert state["enabled"] is True
     assert state["load_error"]
 
 
@@ -401,7 +401,7 @@ def test_manager_calls_unregister_when_register_raises(tmp_path: Path):
 
     state = store.get("broken-unregister")
     assert state is not None
-    assert state["enabled"] is False
+    assert state["enabled"] is True
     assert state["load_error"]
     assert flag_file.exists()
     assert manager.registry.sidebar_entries() == []
@@ -459,3 +459,88 @@ def test_manager_load_enabled_plugins_is_idempotent(tmp_path: Path):
     manager.load_enabled_plugins()
 
     assert len(manager.registry.sidebar_entries()) == 1
+
+
+def test_external_plugin_failure_keeps_enabled_and_retries_after_fix(tmp_path: Path):
+    external_root = tmp_path / "external"
+    plugin_root = external_root / "retryable"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "retryable",
+                "name": "Retryable Plugin",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "RetryablePlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "class RetryablePlugin:\n"
+        "    plugin_id = 'retryable'\n"
+        "    def __init__(self):\n"
+        "        raise RuntimeError('boom')\n"
+        "    def register(self, context):\n"
+        "        pass\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    store.set_enabled("retryable", True, source="external", version="1.0.0")
+    first_manager = PluginManager(
+        builtin_root=tmp_path / "builtin",
+        external_root=external_root,
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    first_manager._context_factory = _RegistryContextFactory(first_manager.registry)
+    first_manager.load_enabled_plugins()
+
+    failed_state = store.get("retryable")
+    assert failed_state is not None
+    assert failed_state["enabled"] is True
+    assert failed_state["load_error"]
+
+    (plugin_root / "plugin_main.py").write_text(
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class RetryablePlugin:\n"
+        "    plugin_id = 'retryable'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='retryable',\n"
+        "                entry_id='retryable.sidebar',\n"
+        "                title='Retryable',\n"
+        "                order=9,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    second_manager = PluginManager(
+        builtin_root=tmp_path / "builtin",
+        external_root=external_root,
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    second_manager._context_factory = _RegistryContextFactory(second_manager.registry)
+    second_manager.load_enabled_plugins()
+
+    recovered_state = store.get("retryable")
+    assert recovered_state is not None
+    assert recovered_state["enabled"] is True
+    assert recovered_state["load_error"] is None
+    assert [item.plugin_id for item in second_manager.registry.sidebar_entries()] == [
+        "retryable"
+    ]
