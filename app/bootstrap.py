@@ -34,7 +34,6 @@ from system.plugins.manager import PluginManager
 from system.plugins.state_store import PluginStateStore
 
 if TYPE_CHECKING:
-    from services.lyrics.qqmusic_lyrics import QQMusicClient
     from services.online import OnlineDownloadService, OnlineMusicService
     from services.online.cache_cleaner_service import CacheCleanerService
     from services.playback.sleep_timer_service import SleepTimerService
@@ -91,9 +90,6 @@ class Bootstrap:
         self._file_org_service: Optional["FileOrganizationService"] = None
         self._online_music_service: Optional["OnlineMusicService"] = None
         self._online_download_service: Optional["OnlineDownloadService"] = None
-
-        # QQ Music client
-        self._qqmusic_client: Optional["QQMusicClient"] = None
 
         # Services
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
@@ -364,30 +360,6 @@ class Bootstrap:
             self._plugin_manager.load_enabled_plugins()
             self._plugins_loaded = True
         return self._plugin_manager
-
-    # ===== QQ Music =====
-
-    @property
-    def qqmusic_client(self) -> "QQMusicClient":
-        """Get QQ Music client."""
-        if self._qqmusic_client is None:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-            self._qqmusic_client = QQMusicClient()
-        return self._qqmusic_client
-
-    def refresh_qqmusic_client(self):
-        """Refresh QQ Music client and online music services (call after login)."""
-        from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-        # Refresh lyrics client
-        self._qqmusic_client = QQMusicClient()
-
-        # Reset online music service to pick up new credentials
-        self._online_music_service = None
-        self._online_download_service = None
-
-        logger.info("QQ Music client and online music services refreshed")
-        return self._qqmusic_client
 
     def refresh_online_music_service(self) -> "OnlineMusicService":
         """Force refresh of online music service with current credentials."""

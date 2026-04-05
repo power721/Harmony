@@ -17,12 +17,22 @@ logger = logging.getLogger(__name__)
 
 # Global lock to prevent concurrent credential refresh
 _refresh_lock = threading.Lock()
+_shared_client = None
 
 
 def _get_client() -> 'QQMusicClient':
-    """Get QQMusicClient from Bootstrap."""
-    from app.bootstrap import Bootstrap
-    return Bootstrap.instance().qqmusic_client
+    """Get or create a shared QQMusicClient instance."""
+    global _shared_client
+    if _shared_client is None:
+        _shared_client = QQMusicClient()
+    return _shared_client
+
+
+def refresh_shared_client() -> 'QQMusicClient':
+    """Refresh the shared QQMusicClient instance."""
+    global _shared_client
+    _shared_client = QQMusicClient()
+    return _shared_client
 
 
 class QQMusicClient:

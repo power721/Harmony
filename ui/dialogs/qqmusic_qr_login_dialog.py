@@ -496,9 +496,9 @@ class QQMusicQRLoginDialog(QDialog):
             except Exception as e:
                 logger.warning(f"Failed to get QQ Music nickname: {e}")
 
-            # Refresh QQ Music client to use new credentials
-            from app.bootstrap import Bootstrap
-            Bootstrap.instance().refresh_qqmusic_client()
+            # Refresh shared QQ Music client to use new credentials
+            from services.lyrics.qqmusic_lyrics import refresh_shared_client
+            refresh_shared_client()
 
             MessageDialog.information(
                 self,

@@ -22,3 +22,17 @@ def test_search_artist_from_qqmusic_builds_expected_fields(monkeypatch):
             "source": "qqmusic",
         }
     ]
+
+
+def test_get_client_uses_module_cache_without_bootstrap(monkeypatch):
+    class _FakeClient:
+        def __init__(self):
+            self.created = True
+
+    monkeypatch.setattr("app.bootstrap.Bootstrap.instance", lambda: (_ for _ in ()).throw(AssertionError("bootstrap should not be used")))
+    monkeypatch.setattr(qqmusic_lyrics, "QQMusicClient", _FakeClient)
+    monkeypatch.setattr(qqmusic_lyrics, "_shared_client", None, raising=False)
+
+    client = qqmusic_lyrics._get_client()
+
+    assert isinstance(client, _FakeClient)

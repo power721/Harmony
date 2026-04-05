@@ -85,3 +85,10 @@ def test_online_music_service_is_created_without_host_qqmusic_service(monkeypatc
     _, kwargs = online_ctor.call_args
     assert kwargs["config_manager"] is bootstrap._config
     assert kwargs["qqmusic_service"] is None
+
+
+def test_bootstrap_no_longer_exposes_qqmusic_client_helpers():
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+
+    assert not hasattr(bootstrap_module.Bootstrap, "qqmusic_client")
+    assert not hasattr(bootstrap_module.Bootstrap, "refresh_qqmusic_client")
