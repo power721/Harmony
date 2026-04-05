@@ -10,10 +10,6 @@ from infrastructure.audio import audio_engine
 
 
 def test_create_backend_falls_back_to_qt_when_enabled(monkeypatch):
-    class _BrokenMpvBackend:
-        def __init__(self, parent=None):
-            raise RuntimeError("mpv unavailable")
-
     class _FakeQtBackend:
         def __init__(self, parent=None):
             self.parent = parent
@@ -21,7 +17,11 @@ def test_create_backend_falls_back_to_qt_when_enabled(monkeypatch):
     fake_qt_module = types.SimpleNamespace(QtAudioBackend=_FakeQtBackend)
 
     monkeypatch.setenv("HARMONY_ENABLE_QT_FALLBACK", "1")
-    monkeypatch.setattr(audio_engine, "MpvAudioBackend", _BrokenMpvBackend)
+    monkeypatch.setattr(
+        audio_engine.PlayerEngine,
+        "_create_mpv_backend",
+        lambda self: (_ for _ in ()).throw(RuntimeError("mpv unavailable")),
+    )
     monkeypatch.setattr(
         audio_engine.importlib,
         "import_module",
@@ -38,12 +38,12 @@ def test_create_backend_falls_back_to_qt_when_enabled(monkeypatch):
 
 
 def test_create_backend_raises_when_qt_fallback_disabled(monkeypatch):
-    class _BrokenMpvBackend:
-        def __init__(self, parent=None):
-            raise RuntimeError("mpv unavailable")
-
     monkeypatch.setenv("HARMONY_ENABLE_QT_FALLBACK", "0")
-    monkeypatch.setattr(audio_engine, "MpvAudioBackend", _BrokenMpvBackend)
+    monkeypatch.setattr(
+        audio_engine.PlayerEngine,
+        "_create_mpv_backend",
+        lambda self: (_ for _ in ()).throw(RuntimeError("mpv unavailable")),
+    )
 
     engine = audio_engine.PlayerEngine.__new__(audio_engine.PlayerEngine)
     with pytest.raises(RuntimeError, match="Qt fallback is disabled"):

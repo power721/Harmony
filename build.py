@@ -16,11 +16,9 @@ import subprocess
 import shutil
 import argparse
 import glob
+from PySide6.QtCore import QCoreApplication
 from pathlib import Path
 from datetime import datetime
-import os
-import sys
-from PySide6.QtCore import QCoreApplication
 
 # This helps the .exe find the 'plugins' folder included by PyInstaller
 if getattr(sys, 'frozen', False):
@@ -34,11 +32,57 @@ APP_NAME = "Harmony"
 APP_VERSION = os.environ.get("APP_VERSION", "1.0.0")
 AUTHOR = "Harmony Player"
 DESCRIPTION = "Modern Music Player with Spotify-like Interface"
+AUDIO_BACKEND_ALL = "all"
+AUDIO_BACKEND_QT = "qt"
+AUDIO_BACKEND_MPV = "mpv"
 
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.resolve()
 DIST_DIR = PROJECT_ROOT / "dist"
 BUILD_DIR = PROJECT_ROOT / "build"
+
+
+def normalize_audio_backend_bundle(value: str | None) -> str:
+    """Normalize the requested packaged audio backend bundle."""
+    normalized = (value or AUDIO_BACKEND_ALL).strip().lower()
+    if normalized in {AUDIO_BACKEND_ALL, AUDIO_BACKEND_QT, AUDIO_BACKEND_MPV}:
+        return normalized
+    print(f"[WARN] Unknown audio backend bundle '{value}', defaulting to '{AUDIO_BACKEND_ALL}'")
+    return AUDIO_BACKEND_ALL
+
+
+def get_qt_plugin_dirs(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list[str]:
+    """Return Qt plugin directories to bundle for the selected audio backend."""
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
+    plugin_dirs = [
+        "platforms",
+        "platforminputcontexts",
+        "imageformats",
+        "platformthemes",
+        "xcbglintegrations",
+    ]
+    if audio_backend_bundle != AUDIO_BACKEND_MPV:
+        plugin_dirs.extend(["multimedia", "audio", "mediaservice"])
+    return plugin_dirs
+
+
+def get_audio_backend_excludes(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list[str]:
+    """Return PyInstaller excludes for the selected bundled audio backend."""
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
+    if audio_backend_bundle == AUDIO_BACKEND_QT:
+        return ["mpv", "infrastructure.audio.mpv_backend"]
+    if audio_backend_bundle == AUDIO_BACKEND_MPV:
+        return ["PySide6.QtMultimedia", "infrastructure.audio.qt_backend"]
+    return []
+
+
+def create_audio_backend_bundle_file(audio_backend_bundle: str) -> Path:
+    """Create runtime metadata describing which audio backends are bundled."""
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    bundle_file = BUILD_DIR / "audio_backend.txt"
+    bundle_file.write_text(normalize_audio_backend_bundle(audio_backend_bundle), encoding="utf-8")
+    print(f"Created audio backend bundle file: {bundle_file}")
+    return bundle_file
 
 
 def get_platform_info(target_platform: str = None) -> dict:
@@ -200,7 +244,6 @@ def generate_icns(png_path: Path, output_path: Path) -> Path:
     """Generate ICNS file from PNG."""
     try:
         from PIL import Image
-        import tempfile
         import shutil
 
         print(f"Generating ICNS from {png_path}...")
@@ -325,8 +368,9 @@ def collect_ssl_certificates() -> list:
     return datas
 
 
-def collect_hidden_imports() -> list:
+def collect_hidden_imports(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
     """Collect hidden imports using PyInstaller's collect_submodules."""
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
     hiddenimports = []
 
     try:
@@ -371,14 +415,16 @@ def collect_hidden_imports() -> list:
     hiddenimports += [
         "ssl",
         "_ssl",
-        "mpv",
         "PySide6.QtCore",
         "PySide6.QtGui",
         "PySide6.QtWidgets",
-        "PySide6.QtMultimedia",
         "PySide6.QtNetwork",
         "PySide6.QtSvg",
     ]
+    if audio_backend_bundle != AUDIO_BACKEND_QT:
+        hiddenimports.append("mpv")
+    if audio_backend_bundle != AUDIO_BACKEND_MPV:
+        hiddenimports.append("PySide6.QtMultimedia")
 
     # 去重
     return list(set(hiddenimports))
@@ -472,8 +518,9 @@ def find_openssl_libs() -> list:
     return list(set(binaries))
 
 
-def find_qt_plugins() -> list:
+def find_qt_plugins(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
     """收集Qt插件目录"""
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
     binaries = []
 
     # 获取PySide6插件路径
@@ -484,16 +531,7 @@ def find_qt_plugins() -> list:
 
         # 需要打包的Qt插件目录
         # platforminputcontexts: 输入法支持 (fcitx5, ibus等)
-        plugin_dirs = [
-            "platforms",
-            "platforminputcontexts",  # 输入法插件
-            "imageformats",
-            "multimedia",
-            "audio",
-            "mediaservice",
-            "platformthemes",  # 平台主题
-            "xcbglintegrations",  # XCB OpenGL集成
-        ]
+        plugin_dirs = get_qt_plugin_dirs(audio_backend_bundle)
 
         for plugin_name in plugin_dirs:
             plugin_path = os.path.join(qt_plugins, plugin_name)
@@ -535,8 +573,13 @@ def find_ffmpeg_libs() -> list:
     return binaries
 
 
-def find_libmpv() -> list:
+def find_libmpv(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
     """查找 libmpv 共享库（python-mpv 的 ctypes 依赖）。"""
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
+    if audio_backend_bundle == AUDIO_BACKEND_QT:
+        print("[INFO] Skip libmpv collection for qt-only bundle")
+        return []
+
     binaries = []
     current_system = platform.system()
 
@@ -798,6 +841,7 @@ def build_executable(
     one_file: bool = True,
     clean: bool = True,
     debug: bool = False,
+    audio_backend_bundle: str = AUDIO_BACKEND_ALL,
 ):
     """Build the executable using PyInstaller."""
     if not check_pyinstaller():
@@ -806,10 +850,12 @@ def build_executable(
     # Get platform info
     platform_info = get_platform_info(platform_name)
     target_platform = platform_name or platform.system().lower()
+    audio_backend_bundle = normalize_audio_backend_bundle(audio_backend_bundle)
 
     print(f"\nBuilding for {platform_info['system']}...")
     print(f"Target platform: {target_platform}")
     print(f"Mode: {'Single file' if one_file else 'Directory'}")
+    print(f"Bundled audio backend: {audio_backend_bundle}")
 
     # Clean if requested
     if clean:
@@ -853,9 +899,13 @@ def build_executable(
         cmd.extend(["--add-data", f"{src}{os.pathsep}{dst}"])
         print(f"Adding data: {src} -> {dst}")
 
+    bundle_file = create_audio_backend_bundle_file(audio_backend_bundle)
+    cmd.extend(["--add-data", f"{bundle_file}{os.pathsep}bundle"])
+    print(f"Adding bundle metadata: {bundle_file} -> bundle")
+
     # Add hidden imports - 使用自动收集
     print("\nCollecting hidden imports...")
-    hidden_imports = collect_hidden_imports()
+    hidden_imports = collect_hidden_imports(audio_backend_bundle)
     print(f"Total hidden imports: {len(hidden_imports)}")
 
     # Add SSL certificates
@@ -868,9 +918,9 @@ def build_executable(
     print("\nCollecting binaries...")
     all_binaries = []
     all_binaries += find_openssl_libs()
-    all_binaries += find_qt_plugins()
+    all_binaries += find_qt_plugins(audio_backend_bundle)
     all_binaries += find_ffmpeg_libs()
-    all_binaries += find_libmpv()
+    all_binaries += find_libmpv(audio_backend_bundle)
 
     # Add GStreamer plugins (Linux only, can be disabled)
     include_gstreamer = os.environ.get("HARMONY_INCLUDE_GSTREAMER", "1") == "1"
@@ -923,6 +973,7 @@ def build_executable(
         "CoreFoundation",
         "Quartz",
     ]
+    excludes.extend(get_audio_backend_excludes(audio_backend_bundle))
 
     for exclude in excludes:
         cmd.extend(["--exclude-module", exclude])
@@ -946,7 +997,7 @@ def build_executable(
     print(f"Command: {' '.join(cmd[:10])}...")  # Print first 10 args
 
     try:
-        result = subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
+        subprocess.run(cmd, cwd=str(PROJECT_ROOT), check=True)
         print("\n[OK] Build completed successfully!")
 
         # Print output location
@@ -1197,6 +1248,11 @@ def main():
         action="store_true",
         help="Build for all platforms (requires appropriate environment)",
     )
+    parser.add_argument(
+        "--audio-backend-bundle",
+        default=os.environ.get("HARMONY_AUDIO_BACKEND_BUNDLE", AUDIO_BACKEND_ALL),
+        help="Bundle only selected audio backend: all (default), qt, or mpv",
+    )
 
     args = parser.parse_args()
 
@@ -1212,6 +1268,7 @@ def main():
                 one_file=not args.dir,
                 clean=args.no_clean is False,
                 debug=args.debug,
+                audio_backend_bundle=args.audio_backend_bundle,
             )
     else:
         # Build for single platform
@@ -1222,6 +1279,7 @@ def main():
             one_file=not args.dir,
             clean=args.no_clean is False,
             debug=args.debug,
+            audio_backend_bundle=args.audio_backend_bundle,
         )
 
         if success:

@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import importlib
+import sys
 from pathlib import Path
 from typing import Optional, List, Union
 
@@ -10,10 +11,45 @@ from PySide6.QtCore import QObject, Signal
 
 from domain import PlaylistItem
 from domain.playback import PlayMode, PlaybackState
-from .mpv_backend import MpvAudioBackend
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+_BUNDLED_AUDIO_BACKEND_ALL = "all"
+_BUNDLED_AUDIO_BACKEND_FILE = Path("bundle") / "audio_backend.txt"
+
+
+def _normalize_bundled_audio_backend_mode(mode: str | None) -> str:
+    normalized = (mode or _BUNDLED_AUDIO_BACKEND_ALL).strip().lower()
+    if normalized in {_BUNDLED_AUDIO_BACKEND_ALL, "qt", "mpv"}:
+        return normalized
+    return _BUNDLED_AUDIO_BACKEND_ALL
+
+
+def _get_bundled_audio_backend_mode() -> str:
+    override = os.environ.get("HARMONY_AUDIO_BACKEND_BUNDLE")
+    if override:
+        return _normalize_bundled_audio_backend_mode(override)
+
+    if not getattr(sys, "frozen", False):
+        return _BUNDLED_AUDIO_BACKEND_ALL
+
+    candidates: list[Path] = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / _BUNDLED_AUDIO_BACKEND_FILE)
+    candidates.append(Path(sys.executable).resolve().parent / _BUNDLED_AUDIO_BACKEND_FILE)
+
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return _normalize_bundled_audio_backend_mode(
+                    candidate.read_text(encoding="utf-8").strip()
+                )
+        except OSError:
+            logger.debug("[PlayerEngine] Failed to read bundled backend metadata: %s", candidate)
+
+    return _BUNDLED_AUDIO_BACKEND_ALL
 
 
 class PlayerEngine(QObject):
@@ -91,7 +127,7 @@ class PlayerEngine(QObject):
             return self._create_qt_backend()
         try:
             logger.info("[PlayerEngine] Using mpv audio backend")
-            return MpvAudioBackend(parent=self)
+            return self._create_mpv_backend()
         except Exception as exc:
             if not self._qt_fallback_enabled():
                 raise RuntimeError(
@@ -112,15 +148,25 @@ class PlayerEngine(QObject):
     @classmethod
     def is_backend_available(cls, backend_type: str) -> bool:
         """Whether a backend can be instantiated in the current runtime."""
+        bundled_mode = _get_bundled_audio_backend_mode()
         if backend_type == cls.BACKEND_MPV:
-            return True
+            if bundled_mode == cls.BACKEND_QT:
+                return False
+            return importlib.util.find_spec("mpv") is not None
         if backend_type == cls.BACKEND_QT:
+            if bundled_mode == cls.BACKEND_MPV:
+                return False
             try:
                 importlib.import_module("infrastructure.audio.qt_backend")
                 return True
             except Exception:
                 return False
         return False
+
+    def _create_mpv_backend(self):
+        """Import mpv backend lazily so qt-only builds can exclude python-mpv."""
+        mpv_module = importlib.import_module("infrastructure.audio.mpv_backend")
+        return mpv_module.MpvAudioBackend(parent=self)
 
     def _create_qt_backend(self):
         """Import Qt backend lazily so mpv-only builds can exclude QtMultimedia."""
@@ -861,7 +907,7 @@ class PlayerEngine(QObject):
         """
         self._backend.seek(position_ms)
 
-    def position(self) -> int:
+    def position(self) -> int:  # noqa: F811
         """
         Get current playback position.
 

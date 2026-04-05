@@ -30,7 +30,8 @@ from utils.helpers import get_cache_dir
 
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
-    from services.cloud.download_service import CloudDownloadService
+    from infrastructure.database import DatabaseManager
+    from services.metadata import CoverService
     from services.online import OnlineDownloadService
     from repositories.track_repository import SqliteTrackRepository
     from repositories.favorite_repository import SqliteFavoriteRepository
@@ -44,18 +45,27 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_audio_engine_backend(config_manager: ConfigManager = None) -> str:
-    """Resolve configured backend, falling back to mpv if Qt backend is unavailable."""
+    """Resolve configured backend, falling back to the other bundled backend if needed."""
     if config_manager and hasattr(config_manager, "get_audio_engine"):
         backend_type = config_manager.get_audio_engine()
     else:
         backend_type = PlayerEngine.BACKEND_MPV
 
-    if (
-        backend_type == PlayerEngine.BACKEND_QT
-        and not PlayerEngine.is_backend_available(PlayerEngine.BACKEND_QT)
-    ):
-        logger.warning("[PlaybackService] Qt audio backend unavailable, falling back to mpv")
-        return PlayerEngine.BACKEND_MPV
+    if PlayerEngine.is_backend_available(backend_type):
+        return backend_type
+
+    fallback_backend = (
+        PlayerEngine.BACKEND_QT
+        if backend_type == PlayerEngine.BACKEND_MPV
+        else PlayerEngine.BACKEND_MPV
+    )
+    if PlayerEngine.is_backend_available(fallback_backend):
+        logger.warning(
+            "[PlaybackService] %s audio backend unavailable, falling back to %s",
+            backend_type,
+            fallback_backend,
+        )
+        return fallback_backend
 
     return backend_type
 
@@ -1953,7 +1963,9 @@ class PlaybackService(QObject):
                 # Delete old lyrics file if metadata was wrong (will re-download with correct metadata)
                 if LyricsService.lyrics_file_exists(local_path):
                     LyricsService.delete_lyrics(local_path)
-                    logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+                    logger.info(
+                        "[PlaybackService] Deleted old lyrics file for re-download with correct metadata"
+                    )
 
             # Fetch and update cover if missing
             if not existing.cover_path and self._cover_service:
@@ -1983,7 +1995,9 @@ class PlaybackService(QObject):
                     # Delete old lyrics file if metadata was wrong
                     if LyricsService.lyrics_file_exists(local_path):
                         LyricsService.delete_lyrics(local_path)
-                        logger.info(f"[PlaybackService] Deleted old lyrics file for re-download with correct metadata")
+                        logger.info(
+                            "[PlaybackService] Deleted old lyrics file for re-download with correct metadata"
+                        )
 
             # Fetch and update cover if missing
             if not existing_by_path.cover_path and self._cover_service:
@@ -2008,7 +2022,9 @@ class PlaybackService(QObject):
             # If we now have proper artist info, old lyrics (downloaded with filename as title) should be deleted
             if artist and not is_filename_like(title):
                 LyricsService.delete_lyrics(local_path)
-                logger.info(f"[PlaybackService] Deleted old lyrics file for new track (metadata now available)")
+                logger.info(
+                    "[PlaybackService] Deleted old lyrics file for new track (metadata now available)"
+                )
 
         # Fetch cover art
         cover_path = None
@@ -2109,7 +2125,7 @@ class PlaybackService(QObject):
 
         # Use embedded cover as last resort
         if not cover_path and embedded_cover_path:
-            logger.info(f"[PlaybackService] Using embedded cover as fallback")
+            logger.info("[PlaybackService] Using embedded cover as fallback")
             cover_path = embedded_cover_path
 
         return cover_path

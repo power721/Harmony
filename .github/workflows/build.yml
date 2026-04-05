@@ -334,26 +334,18 @@ jobs:
         env:
           APP_VERSION: ${{ github.ref_name || 'nightly' }}
         run: |
+          New-Item -ItemType Directory -Force -Path "windows-artifacts" | Out-Null
           $env:PATH = "C:\Windows\System32;" + $env:PATH
-          uv run python build.py windows
-
-      - name: Create portable zip
-        env:
-          APP_VERSION: ${{ github.ref_name || 'nightly' }}
-        run: |
-          # Create portable version
-          Compress-Archive -Path "dist/Harmony.exe" -DestinationPath "dist/Harmony-${env:APP_VERSION}-windows.zip"
-
-          # Create versioned exe
-          Rename-Item -Path "dist/Harmony.exe" -NewName "Harmony-${env:APP_VERSION}-windows.exe"
+          uv run python build.py windows --audio-backend-bundle qt
+          Copy-Item -Path "dist/Harmony.exe" -Destination "windows-artifacts/Harmony-${env:APP_VERSION}-windows-QT.exe"
+          uv run python build.py windows --audio-backend-bundle mpv
+          Copy-Item -Path "dist/Harmony.exe" -Destination "windows-artifacts/Harmony-${env:APP_VERSION}-windows-MPV.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: harmony-windows
-          path: |
-            dist/Harmony-*.exe
-            dist/Harmony-*.zip
+          path: windows-artifacts/Harmony-*.exe
           retention-days: 30
 
   release:

@@ -17,3 +17,17 @@ def test_resolve_audio_engine_backend_falls_back_to_mpv_when_qt_unavailable(monk
 
     assert backend == playback_service.PlayerEngine.BACKEND_MPV
 
+
+def test_resolve_audio_engine_backend_falls_back_to_qt_when_mpv_unavailable(monkeypatch):
+    config = Mock()
+    config.get_audio_engine.return_value = "mpv"
+
+    monkeypatch.setattr(
+        playback_service.PlayerEngine,
+        "is_backend_available",
+        staticmethod(lambda backend: backend != playback_service.PlayerEngine.BACKEND_MPV),
+    )
+
+    backend = playback_service._resolve_audio_engine_backend(config)
+
+    assert backend == playback_service.PlayerEngine.BACKEND_QT

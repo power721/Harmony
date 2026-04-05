@@ -1,6 +1,7 @@
 """
 General Settings Dialog for configuring AI, AcoustID, and QQ Music.
 """
+import importlib.util
 import logging
 import os
 from typing import Optional
@@ -32,7 +33,9 @@ logger = logging.getLogger(__name__)
 
 def _get_audio_engine_options() -> list[tuple[str, str]]:
     """Return supported audio engine options for the current runtime."""
-    options = [(t("audio_engine_mpv"), PlayerEngine.BACKEND_MPV)]
+    options = []
+    if PlayerEngine.is_backend_available(PlayerEngine.BACKEND_MPV):
+        options.append((t("audio_engine_mpv"), PlayerEngine.BACKEND_MPV))
     if PlayerEngine.is_backend_available(PlayerEngine.BACKEND_QT):
         options.append((t("audio_engine_qt"), PlayerEngine.BACKEND_QT))
     return options
@@ -1158,7 +1161,8 @@ class GeneralSettingsDialog(QDialog):
 
         # Check if pyacoustid is installed
         try:
-            import acoustid
+            if importlib.util.find_spec("acoustid") is None:
+                raise ImportError
             # The API key can't be tested without an actual file,
             # but we can verify the format and that pyacoustid is installed
             MessageDialog.information(
