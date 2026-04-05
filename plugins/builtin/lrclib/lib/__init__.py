@@ -1,0 +1,1 @@
+"""LRCLIB plugin internals."""

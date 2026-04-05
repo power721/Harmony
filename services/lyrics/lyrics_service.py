@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from harmony_plugin_api.lyrics import PluginLyricsResult
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
@@ -55,21 +56,46 @@ class LyricsService:
     ENABLE_ONLINE = True  # Changed to True for better UX
 
     @classmethod
-    def _get_sources(cls) -> List["LyricsSource"]:
-        """Get lyrics sources."""
+    def _get_builtin_sources(cls) -> List["LyricsSource"]:
+        """Get built-in host lyrics sources."""
         from services.sources import (
             NetEaseLyricsSource,
             QQMusicLyricsSource,
             KugouLyricsSource,
-            LRCLIBLyricsSource,
         )
         http_client = _get_http_client()
         return [
-            LRCLIBLyricsSource(http_client),
             NetEaseLyricsSource(http_client),
             KugouLyricsSource(http_client),
             QQMusicLyricsSource(),
         ]
+
+    @classmethod
+    def _get_sources(cls) -> List["LyricsSource"]:
+        """Get host and plugin-provided lyrics sources."""
+        from app.bootstrap import Bootstrap
+
+        plugin_sources = Bootstrap.instance().plugin_manager.registry.lyrics_sources()
+        return cls._get_builtin_sources() + plugin_sources
+
+    @staticmethod
+    def _get_source_name(source) -> str:
+        return getattr(source, "name", getattr(source, "display_name", source.__class__.__name__))
+
+    @staticmethod
+    def _result_to_dict(result) -> dict:
+        return {
+            "id": getattr(result, "id", getattr(result, "song_id", "")),
+            "title": getattr(result, "title", ""),
+            "artist": getattr(result, "artist", ""),
+            "album": getattr(result, "album", ""),
+            "duration": getattr(result, "duration", None),
+            "cover_url": getattr(result, "cover_url", None),
+            "source": getattr(result, "source", ""),
+            "lyrics": getattr(result, "lyrics", None),
+            "accesskey": getattr(result, "accesskey", None),
+            "supports_yrc": getattr(result, "supports_yrc", False),
+        }
 
     @classmethod
     def _convert_to_simplified_chinese(cls, text: str) -> str:
@@ -114,7 +140,7 @@ class LyricsService:
         # Parallel search from multiple sources with progressive updates
         with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {
-                executor.submit(source.search, title, artist, limit): source.name
+                executor.submit(source.search, title, artist, limit): cls._get_source_name(source)
                 for source in sources
             }
 
@@ -123,19 +149,7 @@ class LyricsService:
                 source_name = futures[future]
                 try:
                     search_results = future.result(timeout=6)
-                    # Convert LyricsSearchResult to dict for compatibility
-                    results.extend({
-                            'id': r.id,
-                            'title': r.title,
-                            'artist': r.artist,
-                            'album': r.album,
-                            'duration': r.duration,
-                            'cover_url': r.cover_url,
-                            'source': r.source,
-                            'lyrics': r.lyrics,
-                            'accesskey': r.accesskey,
-                            'supports_yrc': r.supports_yrc,
-                        } for r in search_results)
+                    results.extend(cls._result_to_dict(r) for r in search_results)
                     logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
 
                     # Call progress callback if provided
@@ -164,21 +178,29 @@ class LyricsService:
         """
         # Find the appropriate source and download lyrics
         sources = cls._get_sources()
-        source_map = {s.name.lower(): s for s in sources}
+        source_map = {cls._get_source_name(s).lower(): s for s in sources}
 
         lyrics_source = source_map.get(source.lower())
         if not lyrics_source:
             return ""
 
-        # Create a result object for get_lyrics
-        from services.sources.base import LyricsSearchResult
-        result = LyricsSearchResult(
-            id=song_id,
-            title="",
-            artist="",
-            source=source,
-            accesskey=accesskey,
-        )
+        if hasattr(lyrics_source, "display_name"):
+            result = PluginLyricsResult(
+                song_id=song_id,
+                title="",
+                artist="",
+                source=source,
+            )
+        else:
+            from services.sources.base import LyricsSearchResult
+
+            result = LyricsSearchResult(
+                id=song_id,
+                title="",
+                artist="",
+                source=source,
+                accesskey=accesskey,
+            )
 
         lyrics = lyrics_source.get_lyrics(result)
         if lyrics:

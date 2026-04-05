@@ -18,7 +18,6 @@ from .lyrics_sources import (
     NetEaseLyricsSource,
     QQMusicLyricsSource,
     KugouLyricsSource,
-    LRCLIBLyricsSource,
 )
 from .artist_cover_sources import (
     NetEaseArtistCoverSource,
@@ -43,7 +42,6 @@ __all__ = [
     "NetEaseLyricsSource",
     "QQMusicLyricsSource",
     "KugouLyricsSource",
-    "LRCLIBLyricsSource",
     # Artist cover sources
     "NetEaseArtistCoverSource",
     "QQMusicArtistCoverSource",

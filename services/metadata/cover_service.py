@@ -43,25 +43,31 @@ class CoverService:
         self.http_client = http_client
         self._sources = sources
 
-    def _get_sources(self) -> List["CoverSource"]:
-        """Get cover sources, creating default ones if needed."""
-        if self._sources is None:
-            from services.sources import (
-                NetEaseCoverSource,
-                QQMusicCoverSource,
-                ITunesCoverSource,
-                LastFmCoverSource,
-            )
-            self._sources = [
-                NetEaseCoverSource(self.http_client),
-                QQMusicCoverSource(),
-                ITunesCoverSource(self.http_client),
-                LastFmCoverSource(self.http_client),
-            ]
-        return [s for s in self._sources if s.is_available()]
+    def _get_builtin_sources(self) -> List["CoverSource"]:
+        """Get built-in host cover sources."""
+        from services.sources import (
+            NetEaseCoverSource,
+            QQMusicCoverSource,
+            ITunesCoverSource,
+            LastFmCoverSource,
+        )
+        return [
+            NetEaseCoverSource(self.http_client),
+            QQMusicCoverSource(),
+            ITunesCoverSource(self.http_client),
+            LastFmCoverSource(self.http_client),
+        ]
 
-    def _get_artist_sources(self) -> List["ArtistCoverSource"]:
-        """Get artist cover sources."""
+    def _get_sources(self) -> List["CoverSource"]:
+        """Get cover sources, including plugin-provided sources."""
+        from app.bootstrap import Bootstrap
+
+        sources = list(self._sources) if self._sources is not None else self._get_builtin_sources()
+        sources.extend(Bootstrap.instance().plugin_manager.registry.cover_sources())
+        return [s for s in sources if getattr(s, "is_available", lambda: True)()]
+
+    def _get_builtin_artist_sources(self) -> List["ArtistCoverSource"]:
+        """Get built-in host artist cover sources."""
         from services.sources import (
             NetEaseArtistCoverSource,
             QQMusicArtistCoverSource,
@@ -72,6 +78,14 @@ class CoverService:
             QQMusicArtistCoverSource(),
             ITunesArtistCoverSource(self.http_client),
         ]
+
+    def _get_artist_sources(self) -> List["ArtistCoverSource"]:
+        """Get artist cover sources, including plugin-provided sources."""
+        from app.bootstrap import Bootstrap
+
+        sources = self._get_builtin_artist_sources()
+        sources.extend(Bootstrap.instance().plugin_manager.registry.artist_cover_sources())
+        return sources
 
     def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None,
                   skip_online: bool = False) -> Optional[str]:
