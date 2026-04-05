@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.cloud import CloudAccount, CloudFile
+from infrastructure.security import SecretStore
 from repositories.base_repository import BaseRepository
 
 if TYPE_CHECKING:
@@ -16,8 +17,14 @@ if TYPE_CHECKING:
 class SqliteCloudRepository(BaseRepository):
     """SQLite implementation of CloudRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(
+        self,
+        db_path: str = "Harmony.db",
+        db_manager: "DatabaseManager" = None,
+        secret_store: Optional[SecretStore] = None,
+    ):
         super().__init__(db_path, db_manager)
+        self._secret_store = secret_store or SecretStore.default()
 
     # ===== Cloud Account methods =====
 
@@ -75,7 +82,13 @@ class SqliteCloudRepository(BaseRepository):
                 (provider, account_name, account_email, access_token, refresh_token)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (provider, account_name, account_email, access_token, refresh_token),
+            (
+                provider,
+                account_name,
+                account_email,
+                self._encrypt_secret(access_token),
+                self._encrypt_secret(refresh_token),
+            ),
         )
 
         conn.commit()
@@ -92,7 +105,9 @@ class SqliteCloudRepository(BaseRepository):
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        """, (
                            account.provider, account.account_name, account.account_email,
-                           account.access_token, account.refresh_token, account.token_expires_at,
+                           self._encrypt_secret(account.access_token),
+                           self._encrypt_secret(account.refresh_token),
+                           account.token_expires_at,
                            account.is_active, account.last_folder_path, account.last_fid_path,
                            account.last_playing_fid, account.last_position, account.last_playing_local_path
                        ))
@@ -122,7 +137,9 @@ class SqliteCloudRepository(BaseRepository):
                        WHERE id = ?
                        """, (
                            account.provider, account.account_name, account.account_email,
-                           account.access_token, account.refresh_token, account.token_expires_at,
+                           self._encrypt_secret(account.access_token),
+                           self._encrypt_secret(account.refresh_token),
+                           account.token_expires_at,
                            account.is_active, account.last_folder_path, account.last_fid_path,
                            account.last_playing_fid, account.last_position, account.last_playing_local_path,
                            account.id
@@ -146,7 +163,11 @@ class SqliteCloudRepository(BaseRepository):
                     updated_at    = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (access_token, refresh_token, account_id),
+                (
+                    self._encrypt_secret(access_token),
+                    self._encrypt_secret(refresh_token),
+                    account_id,
+                ),
             )
         else:
             cursor.execute(
@@ -156,7 +177,7 @@ class SqliteCloudRepository(BaseRepository):
                     updated_at   = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (access_token, account_id),
+                (self._encrypt_secret(access_token), account_id),
             )
 
         conn.commit()
@@ -514,8 +535,8 @@ class SqliteCloudRepository(BaseRepository):
             provider=row["provider"],
             account_name=row["account_name"],
             account_email=row["account_email"],
-            access_token=row["access_token"],
-            refresh_token=row["refresh_token"],
+            access_token=self._decrypt_secret(row["access_token"]),
+            refresh_token=self._decrypt_secret(row["refresh_token"]),
             token_expires_at=datetime.fromisoformat(row["token_expires_at"])
             if row["token_expires_at"]
             else None,
@@ -557,3 +578,11 @@ class SqliteCloudRepository(BaseRepository):
         if row:
             return row["account_id"]
         return None
+
+    def _encrypt_secret(self, value: Optional[str]) -> str:
+        """Encrypt a persisted secret value."""
+        return self._secret_store.encrypt(value)
+
+    def _decrypt_secret(self, value: Optional[str]) -> str:
+        """Decrypt a persisted secret value, keeping plaintext rows readable."""
+        return self._secret_store.decrypt(value)
