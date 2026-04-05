@@ -573,6 +573,7 @@ class LocalTracksListView(QWidget):
         bus.favorite_changed.connect(self._on_favorite_changed)
         bus.track_changed.connect(self._on_track_changed)
         bus.playback_state_changed.connect(self._on_playback_state_changed)
+        bus.cover_updated.connect(self._on_cover_updated)
 
     def closeEvent(self, event):
         """Clean up event bus connections before closing."""
@@ -581,6 +582,7 @@ class LocalTracksListView(QWidget):
             bus.favorite_changed.disconnect(self._on_favorite_changed)
             bus.track_changed.disconnect(self._on_track_changed)
             bus.playback_state_changed.disconnect(self._on_playback_state_changed)
+            bus.cover_updated.disconnect(self._on_cover_updated)
         except RuntimeError:
             pass
         # Disconnect delegate's class-level signal to prevent leaked connections
@@ -592,7 +594,8 @@ class LocalTracksListView(QWidget):
 
     def eventFilter(self, obj, event):
         """Filter viewport events to drive cover hover popup."""
-        if obj == self._list_view.viewport():
+        list_view = getattr(self, "_list_view", None)
+        if list_view is not None and obj == list_view.viewport():
             if event.type() == event.Type.MouseMove:
                 self._handle_mouse_move(event)
             elif event.type() == event.Type.Leave:
@@ -752,6 +755,32 @@ class LocalTracksListView(QWidget):
     def _on_playback_state_changed(self, state):
         """Handle playback state change from EventBus."""
         self._model.set_playing(state == "playing")
+
+    def _on_cover_updated(self, item_id, is_cloud: bool):
+        """Invalidate stale cover cache entries and repaint affected rows."""
+        matched_rows: list[int] = []
+
+        if item_id is None:
+            matched_rows = list(range(self._model.rowCount()))
+        elif is_cloud:
+            for row in range(self._model.rowCount()):
+                track = self._model.get_track_at(row)
+                if track and track.cloud_file_id == item_id:
+                    matched_rows.append(row)
+        else:
+            row = self._model.row_for_track_id(item_id if isinstance(item_id, int) else None)
+            if row is not None:
+                matched_rows.append(row)
+
+        for row in matched_rows:
+            track = self._model.get_track_at(row)
+            if not track:
+                continue
+            cache_key = self._delegate._get_cover_cache_key(track)
+            CoverPixmapCache.remove(cache_key)
+            self._delegate._requested_covers.discard(cache_key)
+            self._delegate._failed_covers.discard(cache_key)
+            self._model.notify_cover_loaded(row)
 
     def _on_cover_ready(self, cache_key: str, cover_path: str, qimage):
         """Handle cover loaded from background worker."""

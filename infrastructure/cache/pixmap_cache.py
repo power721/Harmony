@@ -51,3 +51,8 @@ class CoverPixmapCache:
         if pixmap is None or pixmap.isNull():
             return False
         return QPixmapCache.insert(key, pixmap)
+
+    @classmethod
+    def remove(cls, key: str) -> bool:
+        """Remove a cached pixmap by key."""
+        return QPixmapCache.remove(key)

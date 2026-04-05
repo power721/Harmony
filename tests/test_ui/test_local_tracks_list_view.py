@@ -11,6 +11,7 @@ from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from domain.track import Track, TrackSource
+from infrastructure.cache.pixmap_cache import CoverPixmapCache
 from system.theme import ThemeManager
 from ui.views.history_list_view import HistoryListView
 from ui.views.local_tracks_list_view import LocalTracksListView
@@ -209,3 +210,42 @@ def test_history_list_view_cover_hover_works_with_history_delegate():
 
         assert view._hovered_row == 0
         assert view._hover_timer.isActive()
+
+
+def test_local_tracks_list_view_refreshes_cover_when_cover_updated_event_arrives():
+    """Track cover updates should invalidate the cached pixmap and repaint the affected row."""
+    app = QApplication.instance() or QApplication([])
+    theme_manager = MagicMock()
+    theme = MagicMock()
+    theme.background = "#101010"
+    theme.background_alt = "#1a1a1a"
+    theme.background_hover = "#202020"
+    theme.text = "#ffffff"
+    theme.text_secondary = "#b3b3b3"
+    theme.highlight = "#1db954"
+    theme.border = "#404040"
+    type(theme_manager).current_theme = PropertyMock(return_value=theme)
+
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        view = LocalTracksListView()
+        track = Track(
+            id=40,
+            path="/music/40.mp3",
+            title="Updated Cover",
+            artist="Artist",
+            source=TrackSource.LOCAL,
+        )
+        view.load_tracks([track], favorite_ids=set())
+
+        cache_key = view._delegate._get_cover_cache_key(track)
+        pixmap = QPixmap(16, 16)
+        pixmap.fill()
+        CoverPixmapCache.set(cache_key, pixmap)
+        view._delegate._failed_covers.add(cache_key)
+
+        with patch.object(view._model, "notify_cover_loaded") as notify_cover_loaded:
+            view._on_cover_updated(track.id, False)
+
+        assert CoverPixmapCache.get(cache_key) is None
+        assert cache_key not in view._delegate._failed_covers
+        notify_cover_loaded.assert_called_once_with(0)
