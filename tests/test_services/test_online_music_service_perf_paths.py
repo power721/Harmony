@@ -56,3 +56,18 @@ def test_get_artist_albums_ygking_filters_by_singer():
     assert result["total"] == 2
     assert len(result["albums"]) == 1
     assert result["albums"][0]["mid"] == "a1"
+
+
+def test_service_uses_plugin_settings_for_qqmusic_config():
+    config = SimpleNamespace(
+        get_plugin_setting=lambda plugin_id, key, default=None: {
+            ("qqmusic", "credential"): {"musicid": "1", "musickey": "secret"},
+            ("qqmusic", "quality"): "flac",
+        }.get((plugin_id, key), default)
+    )
+    service = OnlineMusicService(config_manager=config)
+    service._get_playback_url_remote = lambda *_args, **_kwargs: "https://example.com/song.flac"
+
+    assert service._has_qqmusic_credential() is True
+    info = service.get_playback_url_info("song-mid", quality=None)
+    assert info["quality"] == "flac"

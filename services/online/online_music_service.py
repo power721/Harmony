@@ -56,8 +56,16 @@ class OnlineMusicService:
         if not self._config:
             return False
 
-        # Use get_qqmusic_credential() method which handles both formats
-        credential = self._config.get_qqmusic_credential()
+        if hasattr(self._config, "get_plugin_setting"):
+            credential = self._config.get_plugin_setting("qqmusic", "credential")
+            if credential is not None:
+                return True
+
+        credential = (
+            self._config.get_qqmusic_credential()
+            if hasattr(self._config, "get_qqmusic_credential")
+            else None
+        )
         return credential is not None
 
     def search(
@@ -568,7 +576,12 @@ class OnlineMusicService:
         """
         # Use configured quality if not specified
         if quality is None:
-            quality = self._config.get_qqmusic_quality() if self._config else "320"
+            if self._config and hasattr(self._config, "get_plugin_setting"):
+                quality = self._config.get_plugin_setting("qqmusic", "quality", "320")
+            elif self._config and hasattr(self._config, "get_qqmusic_quality"):
+                quality = self._config.get_qqmusic_quality()
+            else:
+                quality = "320"
 
         # Prefer QQ Music local API if credential is available
         if self._has_qqmusic_credential() and self._qqmusic:
