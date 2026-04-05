@@ -620,7 +620,8 @@ class PlaybackService(QObject):
             self._engine.shuffle_and_play(items[start_index])
             self._engine.play_at(0)
         elif items:
-            self._engine.play_at(min(start_index, len(items) - 1))
+            bounded_start_index = max(0, min(start_index, len(items) - 1))
+            self._engine.play_at(bounded_start_index)
 
         self.save_queue()
         self._config.set_playback_source("local")
@@ -804,6 +805,9 @@ class PlaybackService(QObject):
 
         # Start playback immediately
         self._engine.load_playlist_items(items)
+
+        if items:
+            start_index = max(0, min(start_index, len(items) - 1))
 
         if self._engine.is_shuffle_mode() and 0 <= start_index < len(items):
             self._engine.shuffle_and_play(items[start_index])

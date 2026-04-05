@@ -1,15 +1,17 @@
 """Tests for GenresView cover loading behavior."""
 
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPoint, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu
 
 from domain.genre import Genre
 from infrastructure.cache.image_cache import ImageCache
+from system.event_bus import EventBus
 from system.theme import ThemeManager
 from system.i18n import t
 from ui.views.genres_view import GenreDelegate, GenresView
@@ -110,3 +112,32 @@ def test_genres_view_context_menu_includes_download_cover_action(
 
     assert t("download_cover_manual") in menu_texts
     assert triggered == [genre]
+
+
+class _FakeSignal:
+    def __init__(self):
+        self.connected = []
+
+    def connect(self, slot):
+        self.connected.append(slot)
+
+    def disconnect(self, slot):
+        self.connected.remove(slot)
+
+
+def test_genres_view_close_event_disconnects_event_bus(
+    qapp, mock_theme_config, monkeypatch
+):
+    ThemeManager.instance(mock_theme_config)
+
+    fake_bus = SimpleNamespace(tracks_added=_FakeSignal())
+    monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
+
+    library_service = Mock()
+    view = GenresView(library_service=library_service)
+
+    assert view._on_tracks_added in fake_bus.tracks_added.connected
+
+    view.closeEvent(QCloseEvent())
+
+    assert view._on_tracks_added not in fake_bus.tracks_added.connected

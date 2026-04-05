@@ -134,15 +134,6 @@ class DownloadManager(QObject):
             logger.error("[DownloadManager] ONLINE track missing cloud_file_id")
             return False
 
-        # Check if already downloading
-        worker = self._get_worker(song_mid)
-        if worker:
-            if isValid(worker) and worker.isRunning():
-                logger.info(f"[DownloadManager] Already downloading: {song_mid}")
-                return True
-            # Stale worker replacement path
-            self._remove_worker(song_mid, expected_worker=worker)
-
         # Get download service
         bootstrap = Bootstrap.instance()
         service = bootstrap.online_download_service
@@ -151,21 +142,14 @@ class DownloadManager(QObject):
             return False
 
         logger.info(f"[DownloadManager] Starting online download: {song_mid}")
-
-        # Create download worker
-        worker = self._OnlineDownloadWorker(service, song_mid, item.title, item)
-
-        download_handler = self._on_online_download_finished
-
-        # Clean up worker ONLY after thread has fully stopped
-        def on_thread_finished():
-            self._remove_worker(song_mid, expected_worker=worker)
-
-        worker.download_finished.connect(download_handler)
-        worker.finished.connect(on_thread_finished)
-
-        # Start download
-        self._register_worker(song_mid, worker, download_handler, on_thread_finished)
+        worker = self._create_and_register_online_worker(
+            song_mid,
+            service,
+            item.title,
+            item,
+        )
+        if worker is None:
+            return True
         worker.start()
 
         return True
@@ -192,14 +176,6 @@ class DownloadManager(QObject):
             logger.error("[DownloadManager] redownload_online_track: missing song_mid")
             return False
 
-        # Check if already downloading
-        worker = self._get_worker(song_mid)
-        if worker:
-            if isValid(worker) and worker.isRunning():
-                logger.info(f"[DownloadManager] Already downloading: {song_mid}")
-                return True
-            self._remove_worker(song_mid, expected_worker=worker)
-
         # Get download service
         bootstrap = Bootstrap.instance()
         service = bootstrap.online_download_service
@@ -218,18 +194,16 @@ class DownloadManager(QObject):
             source=TrackSource.QQ,
         )
 
-        worker = self._OnlineDownloadWorker(service, song_mid, title, item,
-                                             quality=quality, force=force)
-
-        download_handler = self._on_online_download_finished
-
-        def on_thread_finished():
-            self._remove_worker(song_mid, expected_worker=worker)
-
-        worker.download_finished.connect(download_handler)
-        worker.finished.connect(on_thread_finished)
-
-        self._register_worker(song_mid, worker, download_handler, on_thread_finished)
+        worker = self._create_and_register_online_worker(
+            song_mid,
+            service,
+            title,
+            item,
+            quality=quality,
+            force=force,
+        )
+        if worker is None:
+            return True
         worker.start()
 
         return True
@@ -371,6 +345,47 @@ class DownloadManager(QObject):
             self._download_workers[song_mid] = worker
             self._download_handlers[song_mid] = (download_handler, finished_handler)
 
+    def _create_and_register_online_worker(
+            self,
+            song_mid: str,
+            service,
+            title: str,
+            item: "PlaylistItem",
+            **worker_kwargs,
+    ) -> Optional[QThread]:
+        """Create and register an online-download worker atomically."""
+        stale_worker = None
+        stale_handlers = None
+
+        with self._download_lock:
+            existing = self._download_workers.get(song_mid)
+            if existing:
+                if isValid(existing) and existing.isRunning():
+                    logger.info(f"[DownloadManager] Already downloading: {song_mid}")
+                    return None
+                stale_worker = self._download_workers.pop(song_mid, None)
+                stale_handlers = self._download_handlers.pop(song_mid, None)
+
+            worker = self._OnlineDownloadWorker(
+                service,
+                song_mid,
+                title,
+                item,
+                **worker_kwargs,
+            )
+            download_handler = self._on_online_download_finished
+
+            def on_thread_finished():
+                self._remove_worker(song_mid, expected_worker=worker)
+
+            worker.download_finished.connect(download_handler)
+            worker.finished.connect(on_thread_finished)
+            self._download_workers[song_mid] = worker
+            self._download_handlers[song_mid] = (download_handler, on_thread_finished)
+
+        self._dispose_worker(stale_worker, stale_handlers)
+        return worker
+
     def _remove_worker(self, song_mid: str, expected_worker: Optional[QThread] = None):
         """Remove and cleanup worker under lock, optionally checking identity."""
         with self._download_lock:
@@ -382,6 +397,11 @@ class DownloadManager(QObject):
             self._download_workers.pop(song_mid, None)
             handlers = self._download_handlers.pop(song_mid, None)
 
+        self._dispose_worker(worker, handlers)
+
+    @staticmethod
+    def _dispose_worker(worker: Optional[QThread], handlers: Optional[tuple[Callable, Callable]] = None):
+        """Disconnect handlers and release a worker object when it is no longer tracked."""
         if worker and isValid(worker) and handlers:
             download_handler, finished_handler = handlers
             with suppress(RuntimeError, TypeError):

@@ -3,13 +3,16 @@ Tests for PlaylistView list-view behavior.
 """
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 import pytest
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
 from domain.playlist import Playlist
 from domain.track import Track, TrackSource
+from system.event_bus import EventBus
 from system.theme import ThemeManager
 from ui.views.playlist_view import PlaylistView
 
@@ -70,3 +73,52 @@ def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
 
     assert hasattr(view, "_tracks_list_view")
     assert view._tracks_list_view.row_count() == 2
+
+
+class _FakeSignal:
+    def __init__(self):
+        self.connected = []
+
+    def connect(self, slot):
+        self.connected.append(slot)
+
+    def disconnect(self, slot):
+        self.connected.remove(slot)
+
+
+def test_playlist_view_close_event_disconnects_event_bus(qapp, mock_theme_config, monkeypatch):
+    ThemeManager.instance(mock_theme_config)
+
+    fake_bus = SimpleNamespace(
+        favorite_changed=_FakeSignal(),
+        track_changed=_FakeSignal(),
+        playback_state_changed=_FakeSignal(),
+        cover_updated=_FakeSignal(),
+        playlist_created=_FakeSignal(),
+        playlist_modified=_FakeSignal(),
+    )
+    monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
+
+    playlist_service = MagicMock()
+    favorite_service = MagicMock()
+    library_service = MagicMock()
+    player = MagicMock()
+    player.engine = MagicMock()
+
+    playlist_service.get_all_playlists.return_value = []
+    favorite_service.get_all_favorite_track_ids.return_value = set()
+
+    view = PlaylistView(
+        playlist_service=playlist_service,
+        favorite_service=favorite_service,
+        library_service=library_service,
+        player=player,
+    )
+
+    assert view._on_playlist_created in fake_bus.playlist_created.connected
+    assert view._on_playlist_modified in fake_bus.playlist_modified.connected
+
+    view.closeEvent(QCloseEvent())
+
+    assert view._on_playlist_created not in fake_bus.playlist_created.connected
+    assert view._on_playlist_modified not in fake_bus.playlist_modified.connected

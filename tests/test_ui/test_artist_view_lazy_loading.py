@@ -1,16 +1,19 @@
 """Tests for ArtistView lazy loading behavior."""
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from domain.album import Album
 from domain.artist import Artist
 from domain.track import Track, TrackSource
+from system.event_bus import EventBus
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.views.artist_view import ArtistView
@@ -175,3 +178,38 @@ def test_artist_view_forwards_remove_and_delete_actions(qapp, mock_theme_config)
     assert len(deleted_payloads) == 1
     assert removed_payloads[0][0].id == target_track.id
     assert deleted_payloads[0][0].id == target_track.id
+
+
+class _FakeSignal:
+    def __init__(self):
+        self.connected = []
+
+    def connect(self, slot):
+        self.connected.append(slot)
+
+    def disconnect(self, slot):
+        self.connected.remove(slot)
+
+
+def test_artist_view_close_event_disconnects_event_bus(qapp, mock_theme_config, monkeypatch):
+    ThemeManager.instance(mock_theme_config)
+
+    fake_bus = SimpleNamespace(
+        favorite_changed=_FakeSignal(),
+        track_changed=_FakeSignal(),
+        playback_state_changed=_FakeSignal(),
+        cover_updated=_FakeSignal(),
+    )
+    monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
+
+    library_service = MagicMock()
+    library_service.get_artist_albums.return_value = []
+    library_service.get_artist_tracks.return_value = []
+
+    view = ArtistView(library_service=library_service)
+
+    assert view._on_cover_updated in fake_bus.cover_updated.connected
+
+    view.closeEvent(QCloseEvent())
+
+    assert view._on_cover_updated not in fake_bus.cover_updated.connected

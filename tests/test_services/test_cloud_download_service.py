@@ -3,12 +3,14 @@ Tests for CloudDownloadService cache path handling.
 """
 
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 from PySide6.QtCore import QThread
 from unittest.mock import Mock
 
-from domain.cloud import CloudFile
-from services.cloud.download_service import CloudDownloadService
+from domain.cloud import CloudAccount, CloudFile
+from services.cloud.download_service import CloudDownloadService, CloudDownloadWorker
 
 
 class _BlockingWorker(QThread):
@@ -75,3 +77,86 @@ def test_cancel_download_uses_cooperative_stop_for_unresponsive_worker():
     worker.wait.assert_called_once_with(1000)
     worker.terminate.assert_not_called()
     assert service._active_downloads == {}
+
+
+def test_cloud_download_worker_retries_transient_download_url_failure(monkeypatch, tmp_path):
+    """Transient URL lookup failures should be retried before surfacing an error."""
+    import services.cloud.download_service as cloud_download_module
+    import services.cloud.quark_service as quark_service_module
+
+    cloud_file = CloudFile(file_id="file-1", name="song.mp3", size=2)
+    account = CloudAccount(provider="quark", access_token="cookie")
+    worker = CloudDownloadWorker(cloud_file, account, str(tmp_path))
+
+    attempts = {"count": 0}
+    completed = []
+    errors = []
+    sleep_calls = []
+
+    def fake_get_download_url(access_token, file_id):
+        assert access_token == "cookie"
+        assert file_id == "file-1"
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("temporary network error")
+        return "https://example.com/song.mp3"
+
+    def fake_download_file(url, dest_path, access_token):
+        assert url == "https://example.com/song.mp3"
+        assert access_token == "cookie"
+        Path(dest_path).write_bytes(b"ok")
+        return True
+
+    monkeypatch.setattr(quark_service_module.QuarkDriveService, "get_download_url", fake_get_download_url)
+    monkeypatch.setattr(quark_service_module.QuarkDriveService, "download_file", fake_download_file)
+    monkeypatch.setattr(
+        cloud_download_module,
+        "time",
+        SimpleNamespace(sleep=lambda delay: sleep_calls.append(delay)),
+        raising=False,
+    )
+
+    worker.download_completed.connect(lambda file_id, local_path: completed.append((file_id, local_path)))
+    worker.download_error.connect(lambda file_id, message: errors.append((file_id, message)))
+
+    worker.run()
+
+    assert attempts["count"] == 2
+    assert len(sleep_calls) == 1
+    assert completed == [("file-1", str(tmp_path / "song__file-1.mp3"))]
+    assert errors == []
+
+
+def test_cloud_download_worker_retries_service_download_failures(monkeypatch, tmp_path):
+    """Service-level download failures should be retried before giving up."""
+    import services.cloud.download_service as cloud_download_module
+    cloud_file = CloudFile(file_id="file-2", name="song.mp3", size=None)
+    account = CloudAccount(provider="quark", access_token="cookie")
+    worker = CloudDownloadWorker(cloud_file, account, str(tmp_path))
+
+    attempts = {"count": 0}
+    sleep_calls = []
+
+    class _RetryingService:
+        @staticmethod
+        def download_file(url, dest_path, access_token):
+            assert url == "https://example.com/song.mp3"
+            assert access_token == "cookie"
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                return False
+            Path(dest_path).write_bytes(b"ok")
+            return True
+
+    monkeypatch.setattr(
+        cloud_download_module,
+        "time",
+        SimpleNamespace(sleep=lambda delay: sleep_calls.append(delay)),
+        raising=False,
+    )
+
+    ok = worker._download_file("https://example.com/song.mp3", str(tmp_path / "song.mp3"), _RetryingService)
+
+    assert ok is True
+    assert attempts["count"] == 2
+    assert len(sleep_calls) == 1

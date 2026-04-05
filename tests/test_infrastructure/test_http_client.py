@@ -46,6 +46,32 @@ class TestHttpClient:
         assert response.status_code == 200
 
     @patch('infrastructure.network.http_client.requests.Session')
+    def test_get_request_enables_ssl_verification_by_default(self, mock_session_class):
+        """HTTPS requests should explicitly verify TLS certificates by default."""
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        client = HttpClient()
+        client.get("https://example.com")
+
+        assert mock_session.get.call_args[1]["verify"] is True
+
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_get_request_allows_explicit_ssl_verification_override(self, mock_session_class):
+        """Callers must still be able to opt out explicitly when required."""
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        client = HttpClient()
+        client.get("https://example.com", verify=False)
+
+        assert mock_session.get.call_args[1]["verify"] is False
+
+    @patch('infrastructure.network.http_client.requests.Session')
     def test_post_request_json(self, mock_session_class):
         """Test POST request with JSON."""
         mock_session = MagicMock()
@@ -250,6 +276,7 @@ class TestStream:
             headers=None,
             timeout=30,
             stream=True,
+            verify=True,
         )
         mock_response.raise_for_status.assert_called_once()
         mock_response.close.assert_called_once()

@@ -19,6 +19,9 @@ class _FakeBackend:
         self.play_calls = 0
         self._source_path = ""
 
+    def cleanup(self):
+        return None
+
     def set_source(self, path: str):
         self.set_source_calls.append(path)
         self._source_path = path
@@ -135,3 +138,12 @@ def test_play_after_download_reloads_when_current_index_already_advanced():
 
         assert engine._backend.set_source_calls == [next_path]
         assert engine._pending_play is True
+
+
+def test_seek_clamps_negative_position_to_zero():
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._backend = _FakeBackend()
+
+    PlayerEngine.seek(engine, -250)
+
+    assert engine._backend.seek_calls == [0]

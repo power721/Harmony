@@ -1,6 +1,8 @@
 """DownloadManager cleanup behavior tests."""
 
 import inspect
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -36,6 +38,7 @@ class _FakeWorker:
 
     def start(self):
         self.started = True
+        self._running = True
 
     def deleteLater(self):
         self.deleted = True
@@ -199,3 +202,44 @@ def test_download_cloud_track_uses_cloud_repository_dependency(monkeypatch):
     assert manager._download_cloud_track(item) is True
     fake_service.set_download_dir.assert_called_once_with("/tmp/downloads")
     fake_service.download_file.assert_called_once_with(cloud_file, cloud_account)
+
+
+def test_redownload_online_track_registers_worker_atomically(monkeypatch):
+    """Concurrent requests for the same song should only create one worker."""
+    manager = DownloadManager()
+    monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
+    monkeypatch.setattr(
+        bootstrap_module.Bootstrap,
+        "instance",
+        classmethod(lambda cls: SimpleNamespace(online_download_service=object())),
+    )
+
+    created_count = 0
+    created_lock = threading.Lock()
+
+    class _RacingWorker(_FakeWorker):
+        def __init__(self, *_args, **_kwargs):
+            nonlocal created_count
+            super().__init__()
+            with created_lock:
+                created_count += 1
+                current_count = created_count
+            if current_count == 1:
+                time.sleep(0.05)
+
+    monkeypatch.setattr(DownloadManager, "_OnlineDownloadWorker", _RacingWorker)
+
+    results = []
+
+    def start_download():
+        results.append(manager.redownload_online_track("song-mid", "Song A"))
+
+    first = threading.Thread(target=start_download)
+    second = threading.Thread(target=start_download)
+    first.start()
+    second.start()
+    first.join()
+    second.join()
+
+    assert results == [True, True]
+    assert created_count == 1

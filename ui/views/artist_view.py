@@ -133,6 +133,19 @@ class ArtistView(QWidget):
         """Connect signals."""
         EventBus.instance().cover_updated.connect(self._on_cover_updated)
 
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Best-effort signal disconnection for shutdown cleanup."""
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def closeEvent(self, event):
+        """Release event bus subscriptions that outlive the view."""
+        self._disconnect_signal(EventBus.instance().cover_updated, self._on_cover_updated)
+        super().closeEvent(event)
+
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
         from system.theme import ThemeManager

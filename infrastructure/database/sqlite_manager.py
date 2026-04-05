@@ -1,6 +1,7 @@
 """
 Database manager for the music player using SQLite.
 """
+import atexit
 import logging
 import re
 import sqlite3
@@ -35,6 +36,7 @@ class DatabaseManager:
         self.db_path = db_path
         self.local = threading.local()
         self._write_worker = get_write_worker(db_path)
+        atexit.register(self.close)
         self._init_database()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -1954,10 +1956,22 @@ class DatabaseManager:
         ]
 
     def close(self):
-        """Close database connection."""
-        if hasattr(self.local, "conn"):
-            self.local.conn.close()
-            delattr(self.local, "conn")
+        """Close database connections and stop the write worker."""
+        conn = getattr(self.local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error as exc:
+                logger.warning("[Database] Error closing thread-local connection: %s", exc)
+            finally:
+                if hasattr(self.local, "conn"):
+                    delattr(self.local, "conn")
+
+        if self._write_worker is not None:
+            try:
+                self._write_worker.stop()
+            except Exception as exc:
+                logger.warning("[Database] Error stopping write worker: %s", exc)
 
     # Cloud account operations
 

@@ -273,6 +273,32 @@ class LibraryView(QWidget):
         event_bus.tracks_organized.connect(self._on_tracks_organized)
         event_bus.favorite_changed.connect(self._on_favorite_changed)
 
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Best-effort signal disconnection for shutdown cleanup."""
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def closeEvent(self, event):
+        """Release external signal connections that outlive the view."""
+        engine = getattr(getattr(self, "_player", None), "engine", None)
+        if engine is not None:
+            self._disconnect_signal(engine.current_track_changed, self._on_current_track_changed)
+            self._disconnect_signal(engine.current_track_pending, self._on_current_track_changed)
+            self._disconnect_signal(engine.state_changed, self._on_player_state_changed)
+
+        event_bus = EventBus.instance()
+        self._disconnect_signal(event_bus.tracks_organized, self._on_tracks_organized)
+        self._disconnect_signal(event_bus.favorite_changed, self._on_favorite_changed)
+
+        search_timer = getattr(self, "_search_timer", None)
+        if search_timer is not None:
+            search_timer.stop()
+
+        super().closeEvent(event)
+
     def refresh_theme(self):
         """Apply themed styles from ThemeManager."""
         from system.theme import ThemeManager

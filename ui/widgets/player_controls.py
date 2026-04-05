@@ -629,6 +629,14 @@ class PlayerControls(QWidget):
         except (TypeError, RuntimeError):
             pass
 
+    def closeEvent(self, event):
+        """Ensure long-lived signal connections are released on close."""
+        position_timer = getattr(self, "_position_timer", None)
+        if position_timer is not None:
+            position_timer.stop()
+        self.cleanup()
+        super().closeEvent(event)
+
     def _setup_sleep_timer_connections(self):
         """Setup sleep timer signal connections."""
         from app.bootstrap import Bootstrap

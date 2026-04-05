@@ -153,6 +153,8 @@ class _FakeWorker:
         self.started = False
         self.top_list_loaded = _FakeSignal()
         self.top_songs_loaded = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.delete_later_called = False
 
     def isRunning(self):
         return self._running
@@ -171,6 +173,9 @@ class _FakeWorker:
     def start(self):
         self.started = True
         self._running = True
+
+    def deleteLater(self):
+        self.delete_later_called = True
 
 
 def test_load_top_lists_stops_existing_worker_cooperatively():
@@ -247,3 +252,31 @@ def test_build_tracks_payload_keeps_order_and_metadata():
     assert [item[0] for item in payload] == ["m1", "m2"]
     assert payload[0][1]["title"] == "Song 1"
     assert payload[1][1]["title"] == "Song 2"
+
+
+def test_attach_download_worker_cleanup_clears_single_worker_reference():
+    """Single download worker references should be released after finish."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    worker = _FakeWorker(running=False)
+    view._download_worker = worker
+
+    OnlineMusicView._attach_download_worker_cleanup(view, worker, single_attr="_download_worker")
+
+    worker.finished.connected()
+
+    assert view._download_worker is None
+    assert worker.delete_later_called is True
+
+
+def test_attach_download_worker_cleanup_removes_batch_worker_reference():
+    """Batch download worker references should be removed after finish."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    worker = _FakeWorker(running=False)
+    view._download_workers = [worker]
+
+    OnlineMusicView._attach_download_worker_cleanup(view, worker, list_attr="_download_workers")
+
+    worker.finished.connected()
+
+    assert view._download_workers == []
+    assert worker.delete_later_called is True

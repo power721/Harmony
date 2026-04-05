@@ -4,14 +4,17 @@ Tests for LibraryView list-only behavior.
 
 import os
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 import pytest
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
 from domain.history import PlayHistory
 from domain.playlist_item import PlaylistItem
 from domain.track import Track, TrackSource
+from system.event_bus import EventBus
 from system.theme import ThemeManager
 from ui.views.library_view import LibraryView
 
@@ -180,3 +183,74 @@ def test_history_double_click_loads_recent_history_when_track_not_in_queue(
     history_service.get_history_tracks.assert_called_once_with(limit=100)
     view._player.play_local_tracks.assert_called_once_with([11, 22, 33], start_index=2)
     view._player.engine.play_at.assert_not_called()
+
+
+class _FakeSignal:
+    def __init__(self):
+        self.connected = []
+
+    def connect(self, slot):
+        self.connected.append(slot)
+
+    def disconnect(self, slot):
+        self.connected.remove(slot)
+
+
+def test_library_view_close_event_disconnects_external_signals(
+    qapp, mock_theme_config, sample_tracks, monkeypatch
+):
+    ThemeManager.instance(mock_theme_config)
+
+    fake_bus = SimpleNamespace(
+        favorite_changed=_FakeSignal(),
+        tracks_organized=_FakeSignal(),
+        track_changed=_FakeSignal(),
+        playback_state_changed=_FakeSignal(),
+        cover_updated=_FakeSignal(),
+    )
+    monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
+
+    library_service = MagicMock()
+    library_service.get_track_count.return_value = len(sample_tracks)
+    library_service.get_all_tracks.return_value = sample_tracks
+    library_service.search_tracks.return_value = sample_tracks
+    library_service.get_search_track_count.return_value = len(sample_tracks)
+    library_service.get_tracks_by_ids.return_value = sample_tracks
+
+    favorites_service = MagicMock()
+    favorites_service.get_all_favorite_track_ids.return_value = set()
+    favorites_service.get_favorites.return_value = []
+
+    history_service = MagicMock()
+    history_service.get_history.return_value = []
+
+    engine = SimpleNamespace(
+        current_track_changed=_FakeSignal(),
+        current_track_pending=_FakeSignal(),
+        state_changed=_FakeSignal(),
+        state=None,
+        playlist_items=[],
+    )
+    player = SimpleNamespace(engine=engine)
+
+    view = LibraryView(
+        library_service,
+        favorites_service,
+        history_service,
+        player,
+        config_manager=MagicMock(),
+    )
+
+    assert view._on_current_track_changed in engine.current_track_changed.connected
+    assert view._on_current_track_changed in engine.current_track_pending.connected
+    assert view._on_player_state_changed in engine.state_changed.connected
+    assert view._on_tracks_organized in fake_bus.tracks_organized.connected
+    assert view._on_favorite_changed in fake_bus.favorite_changed.connected
+
+    view.closeEvent(QCloseEvent())
+
+    assert view._on_current_track_changed not in engine.current_track_changed.connected
+    assert view._on_current_track_changed not in engine.current_track_pending.connected
+    assert view._on_player_state_changed not in engine.state_changed.connected
+    assert view._on_tracks_organized not in fake_bus.tracks_organized.connected
+    assert view._on_favorite_changed not in fake_bus.favorite_changed.connected

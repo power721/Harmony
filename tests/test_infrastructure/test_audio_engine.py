@@ -2,6 +2,7 @@
 Tests for PlayerEngine queue update edge cases.
 """
 
+import logging
 import tempfile
 import threading
 from pathlib import Path
@@ -117,3 +118,22 @@ def test_play_at_emits_pending_signal_for_online_track_needing_download():
     assert engine.current_track_changed.calls == []
     assert len(engine.track_needs_download.calls) == 1
     assert engine.track_needs_download.calls[0].cloud_file_id == "song_mid_456"
+
+
+def test_del_logs_backend_cleanup_failure_and_still_cleans_temp_files(caplog):
+    """Destructor should continue temp cleanup even if backend cleanup fails."""
+
+    class _FailingBackend:
+        def cleanup(self):
+            raise RuntimeError("backend cleanup failed")
+
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._backend = _FailingBackend()
+    temp_cleanup_calls = []
+    engine.cleanup_temp_files = lambda: temp_cleanup_calls.append("cleaned")
+
+    with caplog.at_level(logging.ERROR, logger="infrastructure.audio.audio_engine"):
+        PlayerEngine.__del__(engine)
+
+    assert temp_cleanup_calls == ["cleaned"]
+    assert "Error cleaning up backend" in caplog.text

@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import os
 
+from infrastructure.security.secret_store import SecretStore
 from repositories.cloud_repository import SqliteCloudRepository
 from domain.cloud import CloudAccount, CloudFile
 
@@ -342,6 +343,94 @@ class TestCloudAccountFilterAndCreate:
         )
         account = cloud_repo.get_account_by_id(account_id)
         assert account.refresh_token == ""
+
+    def test_create_account_encrypts_tokens_at_rest(self, temp_db, tmp_path):
+        """Account tokens should be encrypted in the database but returned decrypted."""
+        repo = SqliteCloudRepository(
+            temp_db,
+            secret_store=SecretStore(tmp_path / "secret.key"),
+        )
+
+        account_id = repo.create_account(
+            provider="quark",
+            account_name="Encrypted Account",
+            account_email="enc@example.com",
+            access_token="plain_access",
+            refresh_token="plain_refresh",
+        )
+
+        account = repo.get_account_by_id(account_id)
+        assert account.access_token == "plain_access"
+        assert account.refresh_token == "plain_refresh"
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token, refresh_token FROM cloud_accounts WHERE id = ?",
+            (account_id,),
+        )
+        raw_access_token, raw_refresh_token = cursor.fetchone()
+        conn.close()
+
+        assert raw_access_token != "plain_access"
+        assert raw_refresh_token != "plain_refresh"
+
+    def test_update_account_token_encrypts_new_values_at_rest(self, temp_db, sample_account, tmp_path):
+        """Updating tokens should rewrite the stored values in encrypted form."""
+        repo = SqliteCloudRepository(
+            temp_db,
+            secret_store=SecretStore(tmp_path / "secret.key"),
+        )
+        account_id = repo.add_account(sample_account)
+
+        result = repo.update_account_token(
+            account_id,
+            access_token="updated_access",
+            refresh_token="updated_refresh",
+        )
+
+        assert result is True
+        account = repo.get_account_by_id(account_id)
+        assert account.access_token == "updated_access"
+        assert account.refresh_token == "updated_refresh"
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token, refresh_token FROM cloud_accounts WHERE id = ?",
+            (account_id,),
+        )
+        raw_access_token, raw_refresh_token = cursor.fetchone()
+        conn.close()
+
+        assert raw_access_token != "updated_access"
+        assert raw_refresh_token != "updated_refresh"
+
+    def test_get_account_by_id_keeps_legacy_plaintext_tokens_compatible(self, temp_db, tmp_path):
+        """Existing plaintext rows should remain readable during migration."""
+        repo = SqliteCloudRepository(
+            temp_db,
+            secret_store=SecretStore(tmp_path / "secret.key"),
+        )
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO cloud_accounts (
+                provider, account_name, account_email, access_token, refresh_token
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            ("quark", "Legacy Account", "legacy@example.com", "legacy_access", "legacy_refresh"),
+        )
+        account_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        account = repo.get_account_by_id(account_id)
+
+        assert account.access_token == "legacy_access"
+        assert account.refresh_token == "legacy_refresh"
 
     def test_update_account_token(self, cloud_repo, sample_account):
         """Test updating account tokens (both access and refresh)."""

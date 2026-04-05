@@ -9,6 +9,8 @@ import logging
 import threading
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from infrastructure.security import SecretStore
+
 if TYPE_CHECKING:
     from repositories.settings_repository import SqliteSettingsRepository
 
@@ -98,7 +100,11 @@ class ConfigManager:
     Settings are stored in the 'settings' table in the SQLite database.
     """
 
-    def __init__(self, settings_repo: "SqliteSettingsRepository"):
+    def __init__(
+        self,
+        settings_repo: "SqliteSettingsRepository",
+        secret_store: Optional[SecretStore] = None,
+    ):
         """
         Initialize config manager.
 
@@ -106,6 +112,7 @@ class ConfigManager:
             settings_repo: SettingsRepository instance for settings operations
         """
         self._settings_repo = settings_repo
+        self._secret_store = secret_store or SecretStore.default()
         self._cache: Dict[str, Any] = {}
         self._cache_lock = threading.RLock()
 
@@ -138,6 +145,15 @@ class ConfigManager:
         with self._cache_lock:
             self._settings_repo.set(key, value)
             self._cache[key] = value
+
+    def _get_secret(self, key: str, default: str = "") -> str:
+        """Get a sensitive setting and transparently decrypt it."""
+        return self._secret_store.decrypt(self.get(key, default))
+
+    def _set_secret(self, key: str, value: str):
+        """Encrypt a sensitive setting before persisting it."""
+        encrypted_value = self._secret_store.encrypt(value)
+        self.set(key, encrypted_value)
 
     def set_many(self, values: Dict[str, Any]):
         """
@@ -623,7 +639,7 @@ class ConfigManager:
         Returns:
             API key string
         """
-        return self.get(SettingKey.AI_API_KEY, "")
+        return self._get_secret(SettingKey.AI_API_KEY, "")
 
     def set_ai_api_key(self, api_key: str):
         """
@@ -632,7 +648,7 @@ class ConfigManager:
         Args:
             api_key: API key string
         """
-        self.set(SettingKey.AI_API_KEY, api_key)
+        self._set_secret(SettingKey.AI_API_KEY, api_key)
 
     def get_ai_model(self) -> str:
         """
@@ -679,7 +695,7 @@ class ConfigManager:
         Returns:
             AcoustID API key string
         """
-        return self.get(SettingKey.ACOUSTID_API_KEY, "")
+        return self._get_secret(SettingKey.ACOUSTID_API_KEY, "")
 
     def set_acoustid_api_key(self, api_key: str):
         """
@@ -688,7 +704,7 @@ class ConfigManager:
         Args:
             api_key: AcoustID API key string
         """
-        self.set(SettingKey.ACOUSTID_API_KEY, api_key)
+        self._set_secret(SettingKey.ACOUSTID_API_KEY, api_key)
 
     # ===== QQ Music settings =====
 
@@ -702,6 +718,7 @@ class ConfigManager:
         # Try to get full credential JSON first
         credential_data = self.get(SettingKey.QQMUSIC_CREDENTIAL)
         if credential_data:
+            credential_data = self._secret_store.decrypt(credential_data)
             # Handle both dict (already parsed) and string (JSON)
             if isinstance(credential_data, dict):
                 cred = credential_data
@@ -718,7 +735,7 @@ class ConfigManager:
 
         # Fallback to individual fields
         musicid = self.get(SettingKey.QQMUSIC_MUSICID)
-        musickey = self.get(SettingKey.QQMUSIC_MUSICKEY)
+        musickey = self._secret_store.decrypt(self.get(SettingKey.QQMUSIC_MUSICKEY))
         login_type = self.get(SettingKey.QQMUSIC_LOGIN_TYPE, 2)
 
         if musicid and musickey:
@@ -745,12 +762,15 @@ class ConfigManager:
 
         # Save individual fields for backward compatibility
         self.set(SettingKey.QQMUSIC_MUSICID, str(musicid) if musicid else '')
-        self.set(SettingKey.QQMUSIC_MUSICKEY, musickey)
+        self._set_secret(SettingKey.QQMUSIC_MUSICKEY, musickey)
         self.set(SettingKey.QQMUSIC_LOGIN_TYPE, login_type)
 
         # Save full credential JSON
         try:
-            self.set(SettingKey.QQMUSIC_CREDENTIAL, json.dumps(credential, ensure_ascii=False))
+            self._set_secret(
+                SettingKey.QQMUSIC_CREDENTIAL,
+                json.dumps(credential, ensure_ascii=False),
+            )
         except (TypeError, ValueError) as e:
             import logging
             logging.getLogger(__name__).warning(f"Failed to save QQ Music credential: {e}")
