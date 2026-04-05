@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QLabel
+from harmony_plugin_api.media import PluginTrack
+
+from .client import QQMusicPluginClient
+from .root_view import QQMusicRootView
 
 
 class QQMusicOnlineProvider:
@@ -9,9 +12,18 @@ class QQMusicOnlineProvider:
 
     def __init__(self, context):
         self._context = context
+        self._client = QQMusicPluginClient(context)
 
     def create_page(self, context, parent=None):
-        return QLabel("QQ Music", parent)
+        return QQMusicRootView(context, self, parent)
+
+    def get_demo_track(self) -> PluginTrack:
+        return PluginTrack(
+            track_id="demo-mid",
+            title="Demo Song",
+            artist="Demo Artist",
+            album="Demo Album",
+        )
 
     def get_playback_url_info(self, track_id: str, quality: str):
-        return None
+        return {"url": "https://example.com/demo.mp3", "quality": quality, "extension": ".mp3"}

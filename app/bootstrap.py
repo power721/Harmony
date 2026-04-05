@@ -100,6 +100,7 @@ class Bootstrap:
         self._sleep_timer_service: Optional["SleepTimerService"] = None
         self._mpris_controller: Optional["MPRISController"] = None
         self._plugin_manager: Optional[PluginManager] = None
+        self._plugins_loaded = False
 
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
@@ -359,6 +360,9 @@ class Bootstrap:
                     storage_root=Path("data/plugins/storage"),
                 ),
             )
+        if not self._plugins_loaded:
+            self._plugin_manager.load_enabled_plugins()
+            self._plugins_loaded = True
         return self._plugin_manager
 
     # ===== QQ Music =====
@@ -429,7 +433,7 @@ class Bootstrap:
             self._online_download_service = OnlineDownloadService(
                 config_manager=self.config,
                 qqmusic_service=None,
-                online_music_service=self.online_music_service
+                online_music_service=None
             )
         return self._online_download_service
 
