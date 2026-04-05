@@ -943,7 +943,11 @@ class LibraryView(QWidget):
 
         bootstrap = Bootstrap.instance()
         song_mid = track.cloud_file_id
-        default_quality = bootstrap.config.get_qqmusic_quality() if bootstrap and bootstrap.config else "320"
+        default_quality = (
+            bootstrap.config.get_plugin_setting("qqmusic", "quality", "320")
+            if bootstrap and bootstrap.config
+            else "320"
+        )
         quality = RedownloadDialog.show_dialog(
             track.title,
             current_quality=default_quality,

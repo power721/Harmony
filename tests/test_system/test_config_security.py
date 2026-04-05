@@ -74,3 +74,13 @@ def test_qqmusic_credential_keeps_legacy_plaintext_compatible(tmp_path):
 
     assert credential["musicid"] == "legacy-id"
     assert credential["musickey"] == "legacy-key"
+
+
+def test_plugin_settings_are_namespaced(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    config.set_plugin_setting("qqmusic", "quality", "flac")
+
+    assert repo.values["plugins.qqmusic.quality"] == "flac"
+    assert config.get_plugin_setting("qqmusic", "quality") == "flac"

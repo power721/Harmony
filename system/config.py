@@ -409,6 +409,14 @@ class ConfigManager:
         """
         self.set(SettingKey.ONLINE_MUSIC_DOWNLOAD_DIR, dir_path)
 
+    def get_plugin_setting(self, plugin_id: str, key: str, default: Any = None) -> Any:
+        """Get a plugin-scoped setting value."""
+        return self.get(f"plugins.{plugin_id}.{key}", default)
+
+    def set_plugin_setting(self, plugin_id: str, key: str, value: Any):
+        """Set a plugin-scoped setting value."""
+        self.set(f"plugins.{plugin_id}.{key}", value)
+
     # ===== UI settings =====
 
     def get_language(self) -> str:
