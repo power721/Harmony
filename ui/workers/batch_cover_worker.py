@@ -75,7 +75,7 @@ class BatchArtistCoverWorker(QThread):
 
         # QQ Music: cover_url may be empty, construct from singer_mid
         if not cover_url and source == 'qqmusic' and singer_mid:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
+            from system.plugins.qqmusic_cover_helpers import get_qqmusic_artist_cover_url
             cover_url = get_qqmusic_artist_cover_url(singer_mid, size=500)
 
         if not cover_url:

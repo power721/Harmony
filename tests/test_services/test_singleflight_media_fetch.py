@@ -70,7 +70,7 @@ def test_get_online_cover_deduplicates_concurrent_requests():
             )
         )
 
-    with patch("services.lyrics.qqmusic_lyrics.get_qqmusic_cover_url", return_value="https://example.com/cover.jpg"), \
+    with patch("system.plugins.qqmusic_cover_helpers.get_qqmusic_cover_url", return_value="https://example.com/cover.jpg"), \
             patch.object(service, "_get_cached_cover", return_value=None), \
             patch.object(service, "_save_cover_to_cache", return_value="/tmp/cover.jpg"):
         threads = [threading.Thread(target=worker) for _ in range(2)]

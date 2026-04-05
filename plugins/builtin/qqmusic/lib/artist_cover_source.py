@@ -8,6 +8,7 @@ from .api import QQMusicPluginAPI
 
 
 class QQMusicArtistCoverPluginSource:
+    source = "qqmusic"
     source_id = "qqmusic-artist-cover"
     display_name = "QQMusic Artist"
     name = "QQMusic"
@@ -50,3 +51,6 @@ class QQMusicArtistCoverPluginSource:
 
     def is_available(self) -> bool:
         return True
+
+    def get_artist_cover_url(self, singer_mid: str, size: int = 500):
+        return self._api.get_artist_cover_url(singer_mid, size=size)

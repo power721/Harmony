@@ -67,7 +67,7 @@ class GenreSearchStrategy(CoverSearchStrategy):
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:
         # Reuse generic QQ lazy fetch path from existing behavior by importing helper here.
         from infrastructure.network import HttpClient
-        from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+        from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
 
         album_mid = result.get("album_mid")
         song_mid = result.get("id")

@@ -124,7 +124,7 @@ class QQMusicCoverFetchThread(BaseWorkerThread):
 
     def run(self):
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+            from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
             from infrastructure.network import HttpClient
 
             if self._is_cancelled():
@@ -173,7 +173,7 @@ class QQMusicArtistCoverFetchThread(BaseWorkerThread):
 
     def run(self):
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
+            from system.plugins.qqmusic_cover_helpers import get_qqmusic_artist_cover_url
             from infrastructure.network import HttpClient
 
             if self._is_cancelled():

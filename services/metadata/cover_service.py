@@ -290,7 +290,7 @@ class CoverService:
 
     def _fetch_online_cover_by_mid(self, song_mid: str, album_mid: str | None) -> Optional[str]:
         """Fetch QQ Music cover bytes by song/album mid and cache the result."""
-        from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+        from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
 
         cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
         if not cover_url:

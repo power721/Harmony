@@ -6,6 +6,7 @@ from .api import QQMusicPluginAPI
 
 
 class QQMusicCoverPluginSource:
+    source = "qqmusic"
     source_id = "qqmusic-cover"
     display_name = "QQMusic"
     name = "QQMusic"
@@ -57,3 +58,11 @@ class QQMusicCoverPluginSource:
 
     def is_available(self) -> bool:
         return True
+
+    def get_cover_url(
+        self,
+        mid: str = None,
+        album_mid: str = None,
+        size: int = 500,
+    ):
+        return self._api.get_cover_url(mid=mid, album_mid=album_mid, size=size)

@@ -5,8 +5,8 @@ import logging
 from typing import List, Optional
 
 from infrastructure.network import HttpClient
-from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
 from services.metadata import CoverService
+from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
 from ui.strategies.cover_search_strategy import CoverSearchStrategy
 
 logger = logging.getLogger(__name__)

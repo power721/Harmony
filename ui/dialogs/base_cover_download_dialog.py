@@ -70,7 +70,7 @@ class QQMusicCoverFetchThread(QThread):
     def run(self):
         """Fetch QQ Music cover URL and download."""
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+            from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
             from infrastructure.network import HttpClient
 
             logger.info(f"QQMusicCoverFetchThread: album_mid={self.album_mid}, song_mid={self.song_mid}")
@@ -128,7 +128,7 @@ class QQMusicArtistCoverFetchThread(QThread):
     def run(self):
         """Fetch QQ Music artist cover URL and download."""
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
+            from system.plugins.qqmusic_cover_helpers import get_qqmusic_artist_cover_url
             from infrastructure.network import HttpClient
 
             logger.info(f"QQMusicArtistCoverFetchThread: singer_mid={self.singer_mid}")
