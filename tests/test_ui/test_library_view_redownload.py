@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from domain.history import PlayHistory
 from domain.track import Track, TrackSource
-from services.cloud.qqmusic.common import get_quality_label_key
+from services.online.quality import get_quality_label_key
 from system.i18n import t
 from ui.views.library_view import LibraryView
 

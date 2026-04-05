@@ -1,7 +1,7 @@
 from services.cloud.qqmusic.client import QQMusicClient
 from services.cloud.qqmusic.qr_login import QQMusicQRLogin
-from services.cloud.qqmusic.common import (
-    APIConfig,
+from services.online.quality import (
+    QUALITY_FALLBACK,
     parse_quality,
     get_selectable_qualities,
     get_quality_label_key,
@@ -35,11 +35,11 @@ def test_parse_quality_supports_chinese_quality_names():
 
 
 def test_quality_fallback_contains_extended_quality_levels():
-    assert "ogg_640" in APIConfig.QUALITY_FALLBACK
-    assert "aac_320" in APIConfig.QUALITY_FALLBACK
-    assert "aac_24" in APIConfig.QUALITY_FALLBACK
-    assert "hires" in APIConfig.QUALITY_FALLBACK
-    assert "dolby" in APIConfig.QUALITY_FALLBACK
+    assert "ogg_640" in QUALITY_FALLBACK
+    assert "aac_320" in QUALITY_FALLBACK
+    assert "aac_24" in QUALITY_FALLBACK
+    assert "hires" in QUALITY_FALLBACK
+    assert "dolby" in QUALITY_FALLBACK
 
 
 def test_get_song_url_accepts_chinese_quality_name():
