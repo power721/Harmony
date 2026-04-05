@@ -42,14 +42,14 @@ def test_credential_helpers_prefer_plugin_settings_namespace():
     class _Config:
         def __init__(self):
             self.values = {
-                ("qqmusic", "credential"): {"musicid": "1", "musickey": "secret"},
+                ("qqmusic", "credential"): '{"musicid":"1","musickey":"secret"}',
             }
             self.saved = []
 
-        def get_plugin_setting(self, plugin_id, key, default=None):
+        def get_plugin_secret(self, plugin_id, key, default=""):
             return self.values.get((plugin_id, key), default)
 
-        def set_plugin_setting(self, plugin_id, key, value):
+        def set_plugin_secret(self, plugin_id, key, value):
             self.saved.append((plugin_id, key, value))
 
     config = _Config()
@@ -59,4 +59,4 @@ def test_credential_helpers_prefer_plugin_settings_namespace():
     payload = {"musicid": "2", "musickey": "new"}
     qqmusic_lyrics._save_credential_to_config(config, payload)
 
-    assert config.saved == [("qqmusic", "credential", payload)]
+    assert config.saved == [("qqmusic", "credential", '{"musicid": "2", "musickey": "new"}')]

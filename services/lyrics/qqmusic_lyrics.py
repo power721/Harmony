@@ -36,7 +36,7 @@ def refresh_shared_client() -> 'QQMusicClient':
 
 
 def _get_credential_from_config(config):
-    """Read QQ Music credential from plugin namespace, with legacy fallback."""
+    """Read QQ Music credential from plugin namespace."""
     if hasattr(config, "get_plugin_secret"):
         raw = config.get_plugin_secret("qqmusic", "credential", "")
         if raw:
@@ -44,17 +44,11 @@ def _get_credential_from_config(config):
                 return raw if isinstance(raw, dict) else __import__("json").loads(raw)
             except Exception:
                 return None
-    if hasattr(config, "get_plugin_setting"):
-        credential = config.get_plugin_setting("qqmusic", "credential")
-        if credential is not None:
-            return credential
-    if hasattr(config, "get_qqmusic_credential"):
-        return config.get_qqmusic_credential()
     return None
 
 
 def _save_credential_to_config(config, credential: dict) -> None:
-    """Persist QQ Music credential into plugin namespace, with legacy fallback."""
+    """Persist QQ Music credential into plugin namespace."""
     if hasattr(config, "set_plugin_secret"):
         config.set_plugin_secret(
             "qqmusic",
@@ -62,11 +56,6 @@ def _save_credential_to_config(config, credential: dict) -> None:
             __import__("json").dumps(credential, ensure_ascii=False),
         )
         return
-    if hasattr(config, "set_plugin_setting"):
-        config.set_plugin_setting("qqmusic", "credential", credential)
-        return
-    if hasattr(config, "set_qqmusic_credential"):
-        config.set_qqmusic_credential(credential)
 
 
 class QQMusicClient:

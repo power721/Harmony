@@ -42,40 +42,6 @@ def test_acoustid_api_key_is_encrypted_at_rest(tmp_path):
     assert config.get_acoustid_api_key() == "acoustid-secret"
 
 
-def test_qqmusic_credential_is_encrypted_at_rest(tmp_path):
-    """QQ Music secrets should be encrypted when persisted."""
-    repo = _FakeSettingsRepository()
-    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
-    credential = {
-        "musicid": "12345",
-        "musickey": "qq-secret",
-        "refresh_token": "refresh-secret",
-        "login_type": 2,
-    }
-
-    config.set_qqmusic_credential(credential)
-
-    assert repo.values[SettingKey.QQMUSIC_CREDENTIAL] != credential
-    assert repo.values[SettingKey.QQMUSIC_MUSICKEY] != "qq-secret"
-    assert config.get_qqmusic_credential()["musickey"] == "qq-secret"
-    assert config.get_qqmusic_credential()["refresh_token"] == "refresh-secret"
-
-
-def test_qqmusic_credential_keeps_legacy_plaintext_compatible(tmp_path):
-    """Legacy plaintext settings should still be readable during migration."""
-    repo = _FakeSettingsRepository()
-    repo.values[SettingKey.QQMUSIC_MUSICID] = "legacy-id"
-    repo.values[SettingKey.QQMUSIC_MUSICKEY] = "legacy-key"
-    repo.values[SettingKey.QQMUSIC_LOGIN_TYPE] = 2
-
-    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
-
-    credential = config.get_qqmusic_credential()
-
-    assert credential["musicid"] == "legacy-id"
-    assert credential["musickey"] == "legacy-key"
-
-
 def test_plugin_settings_are_namespaced(tmp_path):
     repo = _FakeSettingsRepository()
     config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
@@ -94,3 +60,16 @@ def test_plugin_secret_is_encrypted_at_rest(tmp_path):
 
     assert repo.values["plugins.qqmusic.credential"] != '{"musicid":"1","musickey":"secret"}'
     assert config.get_plugin_secret("qqmusic", "credential") == '{"musicid":"1","musickey":"secret"}'
+
+
+def test_config_manager_no_longer_exposes_qqmusic_specific_helpers(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    assert not hasattr(config, "get_qqmusic_credential")
+    assert not hasattr(config, "set_qqmusic_credential")
+    assert not hasattr(config, "clear_qqmusic_credential")
+    assert not hasattr(config, "get_qqmusic_nick")
+    assert not hasattr(config, "set_qqmusic_nick")
+    assert not hasattr(config, "get_qqmusic_quality")
+    assert not hasattr(config, "set_qqmusic_quality")

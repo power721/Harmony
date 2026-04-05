@@ -1406,8 +1406,6 @@ class OnlineMusicView(QWidget):
             # Get nickname from config
             if self._config and hasattr(self._config, "get_plugin_setting"):
                 nick = self._config.get_plugin_setting("qqmusic", "nick", "")
-            elif self._config and hasattr(self._config, "get_qqmusic_nick"):
-                nick = self._config.get_qqmusic_nick()
             else:
                 nick = ""
 
@@ -1437,8 +1435,6 @@ class OnlineMusicView(QWidget):
                 if hasattr(self._config, "set_plugin_setting"):
                     self._config.set_plugin_setting("qqmusic", "credential", None)
                     self._config.set_plugin_setting("qqmusic", "nick", "")
-                elif hasattr(self._config, "clear_qqmusic_credential"):
-                    self._config.clear_qqmusic_credential()
             self._update_login_status()
             MessageDialog.information(self, t("logout"), t("logout_success"))
         else:

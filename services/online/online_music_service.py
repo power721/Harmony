@@ -56,16 +56,11 @@ class OnlineMusicService:
         if not self._config:
             return False
 
-        if hasattr(self._config, "get_plugin_setting"):
+        credential = None
+        if hasattr(self._config, "get_plugin_secret"):
+            credential = self._config.get_plugin_secret("qqmusic", "credential", "")
+        elif hasattr(self._config, "get_plugin_setting"):
             credential = self._config.get_plugin_setting("qqmusic", "credential")
-            if credential is not None:
-                return True
-
-        credential = (
-            self._config.get_qqmusic_credential()
-            if hasattr(self._config, "get_qqmusic_credential")
-            else None
-        )
         return credential is not None
 
     def search(
@@ -578,8 +573,6 @@ class OnlineMusicService:
         if quality is None:
             if self._config and hasattr(self._config, "get_plugin_setting"):
                 quality = self._config.get_plugin_setting("qqmusic", "quality", "320")
-            elif self._config and hasattr(self._config, "get_qqmusic_quality"):
-                quality = self._config.get_qqmusic_quality()
             else:
                 quality = "320"
 
