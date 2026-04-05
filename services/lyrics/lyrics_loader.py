@@ -5,6 +5,7 @@ Asynchronous lyrics loader to prevent UI blocking.
 import logging
 
 from PySide6.QtCore import QThread, Signal
+from shiboken6 import isValid
 
 from .lyrics_service import LyricsService
 
@@ -55,8 +56,11 @@ class LyricsLoader(QThread):
         import time
         start_time = time.time()
 
+        def can_emit() -> bool:
+            return isValid(self) and not self.isInterruptionRequested()
+
         # Check for interruption before starting
-        if self.isInterruptionRequested():
+        if not can_emit():
             logger.debug("[LyricsLoader] Interruption requested, aborting")
             return
 
@@ -84,7 +88,7 @@ class LyricsLoader(QThread):
                 lyrics = LyricsService.get_lyrics(self._path, self._title, self._artist)
 
             # Check for interruption before emitting
-            if self.isInterruptionRequested():
+            if not can_emit():
                 logger.debug("[LyricsLoader] Interruption requested, not emitting result")
                 return
 
@@ -96,7 +100,7 @@ class LyricsLoader(QThread):
         except Exception as e:
             elapsed = time.time() - start_time
             logger.error(f"[LyricsLoader] Error loading lyrics: {e}")
-            if not self.isInterruptionRequested():
+            if can_emit():
                 self.error_occurred.emit(str(e))
 
 
