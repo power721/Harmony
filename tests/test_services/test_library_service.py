@@ -633,7 +633,19 @@ class TestLibraryService:
     def test_refresh_albums_artists_without_immediate_uses_debounce(
         self, library_service, mock_album_repo, mock_artist_repo
     ):
-        """Default refresh should debounce via timer instead of refreshing repos directly."""
+        """Default refresh should debounce via timer and keep a single public entry point."""
+        class_source = inspect.getsource(LibraryService)
+        class_ast = ast.parse(class_source)
+        class_def = next(
+            node for node in class_ast.body
+            if isinstance(node, ast.ClassDef) and node.name == "LibraryService"
+        )
+        method_count = sum(
+            1 for node in class_def.body
+            if isinstance(node, ast.FunctionDef) and node.name == "refresh_albums_artists"
+        )
+        assert method_count == 1
+
         with patch.object(library_service._refresh_timer, "start") as mock_start:
             library_service.refresh_albums_artists()
 
