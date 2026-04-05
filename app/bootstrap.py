@@ -4,6 +4,7 @@ Bootstrap - Dependency injection container.
 
 import logging
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from infrastructure import HttpClient
@@ -28,6 +29,9 @@ from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from system.plugins.host_services import BootstrapPluginContextFactory
+from system.plugins.manager import PluginManager
+from system.plugins.state_store import PluginStateStore
 
 if TYPE_CHECKING:
     from services.lyrics.qqmusic_lyrics import QQMusicClient
@@ -95,6 +99,7 @@ class Bootstrap:
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
         self._sleep_timer_service: Optional["SleepTimerService"] = None
         self._mpris_controller: Optional["MPRISController"] = None
+        self._plugin_manager: Optional[PluginManager] = None
 
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
@@ -340,6 +345,21 @@ class Bootstrap:
                 queue_repo=self.queue_repo,
             )
         return self._file_org_service
+
+    @property
+    def plugin_manager(self) -> PluginManager:
+        """Get plugin manager."""
+        if self._plugin_manager is None:
+            self._plugin_manager = PluginManager(
+                builtin_root=Path("plugins/builtin"),
+                external_root=Path("data/plugins/external"),
+                state_store=PluginStateStore(Path("data/plugins/state.json")),
+                context_factory=BootstrapPluginContextFactory(
+                    self,
+                    storage_root=Path("data/plugins/storage"),
+                ),
+            )
+        return self._plugin_manager
 
     # ===== QQ Music =====
 

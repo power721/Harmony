@@ -100,7 +100,7 @@ class OnlineDownloadService:
             return existing_path
 
         if quality is None:
-            quality = self._config.get_qqmusic_quality() if self._config else "320"
+            quality = "320"
         ext = self._get_extension_for_quality(quality)
         filename = f"{song_mid}{ext}"
         return os.path.join(self._download_dir, filename)
@@ -144,7 +144,7 @@ class OnlineDownloadService:
         """
         # Use configured quality if not specified
         if quality is None:
-            quality = self._config.get_qqmusic_quality() if self._config else "320"
+            quality = "320"
 
         # Check cache first (skip if force re-download)
         cached_path = self.get_cached_path(song_mid, quality)
