@@ -537,7 +537,7 @@ class BaiduDriveService:
             if data.get('errno') == 0:
                 return data.get('result', {}).get('bdstoken')
             return None
-        except:
+        except Exception:
             return None
 
     @classmethod
