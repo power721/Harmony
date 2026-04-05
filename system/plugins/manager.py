@@ -32,10 +32,15 @@ class PluginManager:
 
     def load_enabled_plugins(self) -> None:
         for source, plugin_root in self.discover_roots():
-            manifest, plugin = self._loader.load_plugin(plugin_root)
-            state = self._state_store.get(manifest.id)
-            if source == "external" and state and state.get("enabled") is False:
-                continue
+            if source == "external":
+                manifest = self._loader.read_manifest(plugin_root)
+                state = self._state_store.get(manifest.id)
+                if state and state.get("enabled") is False:
+                    continue
+                manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
+            else:
+                manifest, plugin = self._loader.load_plugin(plugin_root)
+                state = self._state_store.get(manifest.id)
 
             context = self._context_factory.build(manifest)
             plugin.register(context)

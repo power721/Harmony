@@ -10,10 +10,14 @@ from .errors import PluginLoadError
 
 
 class PluginLoader:
-    def load_plugin(self, plugin_root: Path):
-        manifest = PluginManifest.from_dict(
+    def read_manifest(self, plugin_root: Path) -> PluginManifest:
+        return PluginManifest.from_dict(
             json.loads((plugin_root / "plugin.json").read_text(encoding="utf-8"))
         )
+
+    def load_plugin(self, plugin_root: Path, manifest: PluginManifest | None = None):
+        if manifest is None:
+            manifest = self.read_manifest(plugin_root)
         module_path = plugin_root / manifest.entrypoint
         spec = importlib.util.spec_from_file_location(
             f"plugin_{manifest.id}", module_path
