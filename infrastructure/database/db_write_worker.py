@@ -11,7 +11,7 @@ import queue
 import sqlite3
 import threading
 from concurrent.futures import Future
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 

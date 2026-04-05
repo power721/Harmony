@@ -7,14 +7,12 @@ import sqlite3
 import threading
 from concurrent.futures import Future
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from domain.cloud import CloudAccount, CloudFile
-from domain.history import PlayHistory
-from domain.playback import PlayQueueItem
 from domain.playlist import Playlist
 from domain.track import Track, TrackSource
-from infrastructure.database.db_write_worker import DBWriteWorker, get_write_worker
+from infrastructure.database.db_write_worker import get_write_worker
 
 # Configure logging
 logger = logging.getLogger(__name__)

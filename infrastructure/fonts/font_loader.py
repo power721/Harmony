@@ -1,6 +1,5 @@
 """Font loader for bundled fonts."""
 
-import os
 import logging
 from pathlib import Path
 from typing import List

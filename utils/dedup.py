@@ -13,7 +13,7 @@ The algorithm keeps the original version (highest priority).
 import re
 import os
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from dataclasses import dataclass
 
 from domain import PlaylistItem
