@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from harmony_plugin_api.cover import PluginCoverResult
 
+from .api import QQMusicPluginAPI
+
 
 class QQMusicCoverPluginSource:
     source_id = "qqmusic-cover"
@@ -10,6 +12,7 @@ class QQMusicCoverPluginSource:
 
     def __init__(self, context):
         self._context = context
+        self._api = QQMusicPluginAPI(context)
 
     def search(
         self,
@@ -19,16 +22,15 @@ class QQMusicCoverPluginSource:
         duration: float | None = None,
     ) -> list[PluginCoverResult]:
         try:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-            client = QQMusicClient()
             keyword = f"{artist} {title}" if artist else title
-            songs = client.search(keyword, limit=5)
+            songs = self._api.search(keyword, limit=5)
             results = []
             for song in songs:
                 artist_name = ""
                 if isinstance(song.get("singer"), list) and song["singer"]:
                     artist_name = song["singer"][0].get("name", "")
+                elif isinstance(song.get("singer"), str):
+                    artist_name = song.get("singer", "")
 
                 album_name = ""
                 album_mid = ""

@@ -12,3 +12,7 @@ def test_plugin_import_audit_allows_sdk_only_imports(tmp_path: Path):
     )
 
     audit_plugin_imports(plugin_root)
+
+
+def test_builtin_qqmusic_plugin_passes_import_audit():
+    audit_plugin_imports(Path("plugins/builtin/qqmusic"))

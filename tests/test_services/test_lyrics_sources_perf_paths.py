@@ -2,23 +2,30 @@
 
 from types import SimpleNamespace
 
+from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI
 from plugins.builtin.qqmusic.lib.lyrics_source import QQMusicLyricsPluginSource
 from services.sources.lyrics_sources import KugouLyricsSource
 
 
 def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
     monkeypatch.setattr(
-        "services.lyrics.qqmusic_lyrics.search_from_qqmusic",
+        QQMusicPluginAPI,
+        "search",
         lambda *_args, **_kwargs: [
             {
-                "id": "song-1",
+                "mid": "song-1",
                 "title": "Song 1",
-                "artist": "Singer 1",
+                "singer": "Singer 1",
                 "album": "Album 1",
-                "duration": 180,
-                "cover_url": "cover-1",
+                "interval": 180,
+                "album_mid": "album-1",
             }
         ],
+    )
+    monkeypatch.setattr(
+        QQMusicPluginAPI,
+        "get_cover_url",
+        lambda *_args, **_kwargs: "cover-1",
     )
     source = QQMusicLyricsPluginSource(SimpleNamespace())
 
