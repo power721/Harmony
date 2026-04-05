@@ -660,3 +660,98 @@ def test_manager_skips_disabled_builtin_plugin(tmp_path: Path):
     assert state is not None
     assert state["enabled"] is False
     assert manager.registry.sidebar_entries() == []
+
+
+def test_manager_ignores_external_installer_scratch_directories(tmp_path: Path):
+    external_root = tmp_path / "external"
+    scratch_staging = external_root / "demo.staging"
+    scratch_backup = external_root / "demo.backup"
+    real_plugin = external_root / "real-plugin"
+    scratch_staging.mkdir(parents=True)
+    scratch_backup.mkdir(parents=True)
+    real_plugin.mkdir(parents=True)
+
+    for scratch_dir in (scratch_staging, scratch_backup):
+        (scratch_dir / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "id": scratch_dir.name,
+                    "name": scratch_dir.name,
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "ScratchPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (scratch_dir / "plugin_main.py").write_text(
+            "raise RuntimeError('scratch directory should be ignored')\n"
+            "class ScratchPlugin:\n"
+            "    plugin_id = 'scratch'\n"
+            "    def register(self, context):\n"
+            "        pass\n"
+            "    def unregister(self, context):\n"
+            "        pass\n",
+            encoding="utf-8",
+        )
+
+    (real_plugin / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "real-plugin",
+                "name": "Real Plugin",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "RealPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (real_plugin / "plugin_main.py").write_text(
+        "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+        "class RealPlugin:\n"
+        "    plugin_id = 'real-plugin'\n"
+        "    def register(self, context):\n"
+        "        context.ui.register_sidebar_entry(\n"
+        "            SidebarEntrySpec(\n"
+        "                plugin_id='real-plugin',\n"
+        "                entry_id='real-plugin.sidebar',\n"
+        "                title='Real Plugin',\n"
+        "                order=6,\n"
+        "                icon_name=None,\n"
+        "                page_factory=lambda _context, _parent: object(),\n"
+        "            )\n"
+        "        )\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=tmp_path / "builtin",
+        external_root=external_root,
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    discovered = manager.discover_roots()
+    assert ("external", real_plugin) in discovered
+    assert ("external", scratch_staging) not in discovered
+    assert ("external", scratch_backup) not in discovered
+
+    manager.load_enabled_plugins()
+
+    state = store.get("real-plugin")
+    assert state is not None
+    assert state["enabled"] is True
+    assert [item.plugin_id for item in manager.registry.sidebar_entries()] == [
+        "real-plugin"
+    ]

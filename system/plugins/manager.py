@@ -27,6 +27,8 @@ class PluginManager:
                 ("external", path)
                 for path in self._external_root.iterdir()
                 if path.is_dir()
+                and not path.name.endswith(".staging")
+                and not path.name.endswith(".backup")
             )
         return sorted(roots, key=lambda item: (item[0], item[1].name))
 
