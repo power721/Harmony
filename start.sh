@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "[INFO] Starting player..."
+echo "[$(date -Iseconds)][INFO] Starting player..."
 
 # =========================
 # 🔍 检测 DBus 是否可用
@@ -22,7 +22,7 @@ setup_system_dbus() {
 
     if [[ -S "$bus_path" ]]; then
         export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path"
-        echo "[INFO] Using system DBus: $DBUS_SESSION_BUS_ADDRESS"
+        echo "[$(date -Iseconds)][INFO] Using system DBus: $DBUS_SESSION_BUS_ADDRESS"
         return 0
     fi
 
@@ -34,14 +34,14 @@ setup_system_dbus() {
 # =========================
 setup_dbus_launch() {
     if command -v dbus-launch >/dev/null 2>&1; then
-        echo "[INFO] Starting DBus via dbus-launch..."
+        echo "[$(date -Iseconds)][INFO] Starting DBus via dbus-launch..."
 
         eval "$(dbus-launch --sh-syntax)"
 
         export DBUS_SESSION_BUS_ADDRESS
         export DBUS_SESSION_BUS_PID
 
-        echo "[INFO] DBus launched: $DBUS_SESSION_BUS_ADDRESS"
+        echo "[$(date -Iseconds)][INFO] DBus launched: $DBUS_SESSION_BUS_ADDRESS"
         return 0
     fi
 
@@ -53,7 +53,7 @@ setup_dbus_launch() {
 # =========================
 init_dbus() {
     if check_dbus; then
-        echo "[INFO] DBus already available"
+        echo "[$(date -Iseconds)][INFO] DBus already available"
         return
     fi
 
@@ -65,14 +65,14 @@ init_dbus() {
         return
     fi
 
-    echo "[WARN] No DBus available → MPRIS disabled"
+    echo "[$(date -Iseconds)][WARN] No DBus available → MPRIS disabled"
 }
 
 # =========================
 # 🎯 启动程序
 # =========================
 run_app() {
-    echo "[INFO] Launching app..."
+    echo "[$(date -Iseconds)][INFO] Launching app..."
 
     # 👉 关键：确保 uv 继承环境变量
     exec env DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
