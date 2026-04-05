@@ -32,3 +32,24 @@ def test_qqmusic_settings_tab_reads_and_saves_quality(qtbot):
     tab._save()
 
     settings.set.assert_called_once_with("quality", tab._quality_combo.currentData())
+
+
+def test_qqmusic_settings_tab_opens_login_dialog(monkeypatch, qtbot):
+    settings = Mock()
+    settings.get.return_value = "320"
+    context = Mock(settings=settings)
+
+    dialog = Mock()
+    dialog_ctor = Mock(return_value=dialog)
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.settings_tab.QQMusicLoginDialog",
+        dialog_ctor,
+    )
+
+    tab = QQMusicSettingsTab(context)
+    qtbot.addWidget(tab)
+
+    tab._open_login_dialog()
+
+    dialog_ctor.assert_called_once_with(tab)
+    dialog.exec.assert_called_once_with()

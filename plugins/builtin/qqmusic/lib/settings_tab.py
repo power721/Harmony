@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from .login_dialog import QQMusicLoginDialog
+
 
 class QQMusicSettingsTab(QWidget):
     def __init__(self, context, parent=None):
@@ -19,9 +21,17 @@ class QQMusicSettingsTab(QWidget):
                 break
         layout.addWidget(self._quality_combo)
 
+        login_btn = QPushButton("Login", self)
+        login_btn.clicked.connect(self._open_login_dialog)
+        layout.addWidget(login_btn)
+
         save_btn = QPushButton("Save", self)
         save_btn.clicked.connect(self._save)
         layout.addWidget(save_btn)
 
     def _save(self):
         self._context.settings.set("quality", self._quality_combo.currentData())
+
+    def _open_login_dialog(self):
+        dialog = QQMusicLoginDialog(self)
+        dialog.exec()
