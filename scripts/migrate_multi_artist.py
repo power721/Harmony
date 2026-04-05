@@ -154,7 +154,7 @@ def migrate():
     cursor.execute("SELECT COUNT(*) FROM track_artists")
     junction_count = cursor.fetchone()[0]
 
-    print(f"\nMigration complete!")
+    print("\nMigration complete!")
     print(f"  Artists: {artist_count}")
     print(f"  Junction records: {junction_count}")
 

@@ -336,8 +336,6 @@ class OrganizeFilesDialog(QDialog):
 
         # Update table
         for row, preview in enumerate(self.previews):
-            track = preview['track']
-
             # Update new path
             new_path_item = self.preview_table.item(row, 2)
             if new_path_item:

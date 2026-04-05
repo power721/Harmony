@@ -318,8 +318,7 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Info label at top
         info_label = QLabel(info_text)
-        theme = ThemeManager.instance().current_theme
-        info_label.setStyleSheet(f"font-size: 16px; padding: 10px;")
+        info_label.setStyleSheet("font-size: 16px; padding: 10px;")
         layout.addWidget(info_label)
 
         # Main content area with splitter

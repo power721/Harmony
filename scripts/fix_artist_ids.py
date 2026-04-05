@@ -107,7 +107,7 @@ def fix_artist_ids():
     cursor.execute("SELECT COUNT(*) FROM artists")
     artist_count = cursor.fetchone()[0]
 
-    print(f"\n✓ Fix complete!")
+    print("\n✓ Fix complete!")
     print(f"  Artists: {artist_count}")
     print(f"  track_artists entries: {ta_count}")
 

@@ -8,7 +8,7 @@ Real-time theme switching via widget registration and refresh mechanism.
 
 import logging
 import threading
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict
 from weakref import WeakSet

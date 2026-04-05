@@ -3,7 +3,6 @@ Cloud file download thread for background downloading.
 """
 
 import logging
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -68,8 +67,6 @@ class CloudFileDownloadThread(QThread):
 
     def run(self):
         """Download file in background thread."""
-        start_time = time.time()
-
         # First check if file exists at database path (may have been moved by file organization)
         if self._db_local_path:
             db_path = Path(self._db_local_path)
@@ -120,7 +117,7 @@ class CloudFileDownloadThread(QThread):
                     return
                 else:
                     # File size mismatch, need to re-download
-                    logger.debug(f"[CloudFileDownloadThread] File size mismatch, re-downloading")
+                    logger.debug("[CloudFileDownloadThread] File size mismatch, re-downloading")
             else:
                 # No size info available, use existing file
                 self.file_exists.emit(str(local_file_path))
@@ -161,7 +158,6 @@ class CloudFileDownloadThread(QThread):
                         local_file_path.unlink()
 
             # Download to persistent location
-            download_start = time.time()
             service = BaiduDriveService if self._provider == "baidu" else QuarkDriveService
             success = service.download_file(
                 url, str(local_file_path), self._access_token
@@ -199,5 +195,5 @@ class CloudFileDownloadThread(QThread):
                 logger.error("[CloudFileDownloadThread] Download failed")
                 self.finished.emit("")
         else:
-            logger.error(f"[CloudFileDownloadThread] Failed to get download URL")
+            logger.error("[CloudFileDownloadThread] Failed to get download URL")
             self.finished.emit("")

@@ -186,10 +186,9 @@ class BaseRenameDialog(QDialog):
     def _add_warning_label(self, layout: QVBoxLayout) -> QLabel:
         """Add warning label to layout."""
         self._warning_label = QLabel()
-        theme = ThemeManager.instance().current_theme
         self._warning_label.setStyleSheet(
-            f"color: #f59e0b; font-size: 13px; padding: 10px; "
-            f"background-color: #2a2a1a; border-radius: 4px;"
+            "color: #f59e0b; font-size: 13px; padding: 10px; "
+            "background-color: #2a2a1a; border-radius: 4px;"
         )
         self._warning_label.setWordWrap(True)
         self._warning_label.setVisible(False)
@@ -367,11 +366,10 @@ class BaseRenameDialog(QDialog):
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
         # Update inline styles that use theme colors
-        theme = ThemeManager.instance().current_theme
         if self._warning_label:
             self._warning_label.setStyleSheet(
-                f"color: #f59e0b; font-size: 13px; padding: 10px; "
-                f"background-color: #2a2a1a; border-radius: 4px;"
+                "color: #f59e0b; font-size: 13px; padding: 10px; "
+                "background-color: #2a2a1a; border-radius: 4px;"
             )
 
     def resizeEvent(self, event):

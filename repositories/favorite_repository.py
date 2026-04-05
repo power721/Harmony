@@ -2,7 +2,7 @@
 SQLite implementation of FavoriteRepository.
 """
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 from domain.track import Track, TrackId
 from repositories.base_repository import BaseRepository

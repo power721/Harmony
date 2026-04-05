@@ -2,7 +2,7 @@
 SQLite implementation of SettingsRepository.
 """
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from repositories.base_repository import BaseRepository
 from system.setting_value_codec import decode_setting_value, encode_setting_value

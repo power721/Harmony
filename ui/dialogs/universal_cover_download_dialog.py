@@ -351,9 +351,6 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
     def _build_details_text(self, item) -> str:
         """Build details text for item."""
-        # Get display text from strategy
-        display_text = self._strategy.get_display_text(item)
-
         # Get additional info
         info = self._strategy.get_search_info(item)
 

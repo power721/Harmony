@@ -1012,7 +1012,7 @@ class PlayerControls(QWidget):
                 should_reload = True
 
         if should_reload:
-            logger.info(f"[PlayerControls] Cover updated for current track, reloading")
+            logger.info("[PlayerControls] Cover updated for current track, reloading")
             # For local tracks, reload from database to get updated cover_path
             if not is_cloud and hasattr(self._player, 'db'):
                 try:
@@ -1425,13 +1425,8 @@ class PlayerControls(QWidget):
 
     def _update_position_display(self):
         """Update position display continuously."""
-        if self._player.engine.state == PlaybackState.PLAYING and not self._is_seeking:
-            position_ms = (
-                self._player.engine.position()
-                if hasattr(self._player.engine, "position")
-                else 0
-            )
-            # Update handled by _on_position_changed signal
+        # Position updates are handled by _on_position_changed.
+        return
 
 
 class ClickableSlider(QSlider):
