@@ -7,8 +7,7 @@ import logging
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 
 from domain.online_music import (
-    OnlineTrack, OnlineArtist, OnlineAlbum, OnlinePlaylist,
-    SearchResult, SearchType
+    OnlineTrack, SearchResult, SearchType
 )
 from infrastructure.network import HttpClient
 from services.cloud.qqmusic.common import parse_quality
@@ -295,7 +294,7 @@ class OnlineMusicService:
             result = self._qqmusic.get_singer_info_with_follow_status(singer_mid, page=page, page_size=page_size)
             if result:
                 return result
-            logger.debug(f"QQ Music returned no artist detail, falling back to YGKing")
+            logger.debug("QQ Music returned no artist detail, falling back to YGKing")
 
         # Use YGKing API
         return self._get_artist_detail_ygking(singer_mid, page, page_size)
@@ -424,7 +423,7 @@ class OnlineMusicService:
             result = self._qqmusic.get_album_info_with_fav_status(album_mid, page=page, page_size=page_size)
             if result:
                 return result
-            logger.debug(f"QQ Music returned no album detail, falling back to YGKing")
+            logger.debug("QQ Music returned no album detail, falling back to YGKing")
 
         # Use YGKing API
         return self._get_album_detail_ygking(album_mid, page, page_size)
@@ -518,7 +517,7 @@ class OnlineMusicService:
             result = self._qqmusic.get_playlist_info_with_fav_status(playlist_id, page=page, page_size=page_size)
             if result:
                 return result
-            logger.debug(f"QQ Music returned no playlist detail, falling back to YGKing")
+            logger.debug("QQ Music returned no playlist detail, falling back to YGKing")
 
         # Use YGKing API
         return self._get_playlist_detail_ygking(playlist_id, page, page_size)

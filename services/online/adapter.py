@@ -197,7 +197,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_artists(items: List[Dict]) -> List[OnlineArtist]:
         """Parse artists from YGKing API format."""
-        import re
         artists = []
         for item in items:
             # Strip HTML tags from name
@@ -218,7 +217,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_albums(items: List[Dict]) -> List[OnlineAlbum]:
         """Parse albums from YGKing API format."""
-        import re
         albums = []
         for item in items:
             # Extract singer info from singer_list
@@ -256,7 +254,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_playlists(items: List[Dict]) -> List[OnlinePlaylist]:
         """Parse playlists from YGKing API format."""
-        import re
         playlists = []
         for item in items:
             # Strip HTML tags from title
@@ -279,7 +276,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_top_songs(items: List[Dict]) -> List[OnlineTrack]:
         """Parse top list songs from YGKing API format."""
-        import re
         tracks = []
         for item in items:
             # YGKing top songs format: singerName, albumMid, songId
@@ -400,7 +396,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_qqmusic_tracks(items: List[Dict]) -> List[OnlineTrack]:
         """Parse tracks from QQ Music API format."""
-        import re
         tracks = []
         for item in items:
             # Parse singers - can be dict, list, or string
@@ -489,7 +484,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_qqmusic_albums(items: List[Dict]) -> List[OnlineAlbum]:
         """Parse albums from QQ Music API format."""
-        import re
         albums = []
         for item in items:
             # Extract singer info from singer_list
@@ -522,7 +516,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_qqmusic_playlists(items: List[Dict]) -> List[OnlinePlaylist]:
         """Parse playlists from QQ Music API format."""
-        import re
         playlists = []
         for item in items:
             # Clean HTML tags from title
@@ -601,7 +594,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_album_song(item: Dict) -> Dict:
         """Parse a single song from album song list."""
-        import re
         song = item.get('songInfo', item)
 
         # Strip HTML tags from name
@@ -830,8 +822,6 @@ class OnlineMusicAdapter:
         Returns:
             Normalized playlist detail dictionary
         """
-        import re
-
         if data.get("code") != 0:
             return None
 
@@ -909,8 +899,6 @@ class OnlineMusicAdapter:
     @staticmethod
     def _parse_ygking_detail_song(item: Dict) -> Dict:
         """Parse a single song from YGKing detail API response."""
-        import re
-
         # Parse singers - strip HTML tags from names
         singers = []
         for s in (item.get("singer") or []):

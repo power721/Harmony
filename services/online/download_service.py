@@ -317,7 +317,7 @@ class OnlineDownloadService:
 
         # Fallback to direct API call
         try:
-            url = f"https://api.ygking.top/api/song/detail"
+            url = "https://api.ygking.top/api/song/detail"
             params = {"mid": song_mid}
 
             response = HttpClient.shared().get(url, params=params, timeout=10)
