@@ -2868,6 +2868,10 @@ class OnlineMusicView(QWidget):
             self._download_service, track.mid, track.title
         )
         self._download_worker.download_finished.connect(self._on_download_finished)
+        self._attach_download_worker_cleanup(
+            self._download_worker,
+            single_attr="_download_worker",
+        )
         self._download_worker.start()
 
     def _on_download_finished(self, song_mid: str, local_path: str):
@@ -2904,6 +2908,20 @@ class OnlineMusicView(QWidget):
             self._download_worker.cancel()
         if hasattr(self, '_download_progress') and self._download_progress:
             self._download_progress.close()
+
+    def _attach_download_worker_cleanup(self, worker, *, list_attr: str = None, single_attr: str = None):
+        """Release finished download workers and schedule QObject cleanup."""
+
+        def on_thread_finished():
+            if list_attr:
+                workers = getattr(self, list_attr, None)
+                if workers is not None and worker in workers:
+                    workers.remove(worker)
+            if single_attr and getattr(self, single_attr, None) is worker:
+                setattr(self, single_attr, None)
+            worker.deleteLater()
+
+        worker.finished.connect(on_thread_finished)
 
     def _show_track_context_menu(self, pos):
         """Show context menu for track."""
@@ -2981,6 +2999,7 @@ class OnlineMusicView(QWidget):
         """Start downloading a track."""
         worker = DownloadWorker(self._download_service, track.mid, track.title)
         worker.download_finished.connect(self._on_batch_download_finished)
+        self._attach_download_worker_cleanup(worker, list_attr="_download_workers")
         worker.start()
         # Keep reference to prevent garbage collection
         if not hasattr(self, '_download_workers'):
