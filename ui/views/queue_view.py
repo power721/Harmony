@@ -387,10 +387,6 @@ class QueueItemDelegate(QStyledItemDelegate):
             bg.setAlpha(220)
             painter.fillRect(rect, bg)
 
-        # Hand cursor on hover
-        if is_hovered and not is_selected:
-            self.parent().setCursor(Qt.CursorShape.PointingHandCursor) if self.parent() else None
-
         # Separator line
         if not is_selected:
             painter.setPen(QColor(theme.background_hover))
