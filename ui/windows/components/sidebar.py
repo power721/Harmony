@@ -193,6 +193,22 @@ class Sidebar(QWidget):
         settings_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "settingsBtn")
         self._settings_btn.setStyleSheet(settings_style)
 
+    def add_plugin_entry(
+        self,
+        page_index: int,
+        title: str,
+        icon_name: str | None = None,
+    ) -> None:
+        """Add a plugin-provided navigation button before the footer actions."""
+        resolved_icon = getattr(IconName, icon_name, IconName.GLOBE) if icon_name else IconName.GLOBE
+        btn = IconButton(resolved_icon, title, size=18)
+        btn.setCheckable(True)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
+        insert_index = max(self.layout().count() - 4, 0)
+        self.layout().insertWidget(insert_index, btn)
+        self._nav_buttons.append((page_index, btn))
+
     def _on_nav_clicked(self, page_index: int):
         """Handle navigation button click."""
         # Uncheck other buttons

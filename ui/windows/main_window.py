@@ -416,6 +416,7 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._online_music_view)  # 8
         self._stacked_widget.addWidget(self._genres_view)  # 9
         self._stacked_widget.addWidget(self._genre_view)  # 10
+        self._mount_plugin_pages()
 
         self._stacked_widget.setMinimumWidth(200)
         self._splitter.addWidget(self._stacked_widget)
@@ -462,6 +463,21 @@ class MainWindow(QMainWindow):
         sidebar.add_music_requested.connect(self._add_music)
 
         return sidebar
+
+    def _mount_plugin_pages(self) -> None:
+        """Mount plugin-provided pages into the stacked widget and sidebar."""
+        self._plugin_page_keys = {}
+        bootstrap = Bootstrap.instance()
+        for spec in bootstrap.plugin_manager.registry.sidebar_entries():
+            page_index = self._stacked_widget.count()
+            widget = spec.page_factory(bootstrap.plugin_manager, self)
+            self._stacked_widget.addWidget(widget)
+            self._sidebar.add_plugin_entry(
+                page_index=page_index,
+                title=spec.title,
+                icon_name=spec.icon_name,
+            )
+            self._plugin_page_keys[page_index] = spec.plugin_id
 
     def _on_sidebar_page_requested(self, page_index: int):
         """Handle sidebar page request."""
