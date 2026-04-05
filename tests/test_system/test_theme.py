@@ -1,7 +1,6 @@
 """Tests for the theme system."""
 import pytest
-from unittest.mock import MagicMock, patch, call
-from dataclasses import asdict
+from unittest.mock import MagicMock, patch
 
 from system.theme import Theme, ThemeManager, PRESET_THEMES
 

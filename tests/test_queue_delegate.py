@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from unittest.mock import patch, MagicMock
-from PySide6.QtCore import Qt, QSize, QRect
+from unittest.mock import patch
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPainter, QPixmap, QColor
 

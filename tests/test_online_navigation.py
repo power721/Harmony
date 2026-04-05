@@ -3,8 +3,6 @@ Test navigation stack for online music views.
 Tests that back navigation properly returns to playlist/album lists.
 """
 
-import pytest
-from unittest.mock import Mock
 
 
 def test_navigation_stack_logic():

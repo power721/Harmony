@@ -3,8 +3,7 @@ Tests for cloud view components.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel

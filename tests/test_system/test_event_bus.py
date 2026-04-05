@@ -3,7 +3,7 @@ Tests for EventBus system component.
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from PySide6.QtCore import QObject
 
 

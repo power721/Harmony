@@ -2,9 +2,8 @@
 Tests for UniversalCoverDownloadDialog with strategies.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from PySide6.QtWidgets import QApplication, QDialog
-from PySide6.QtCore import Qt
+from unittest.mock import Mock, patch
+from PySide6.QtWidgets import QApplication
 
 from ui.controllers.cover_controller import CoverController
 from ui.dialogs import UniversalCoverDownloadDialog

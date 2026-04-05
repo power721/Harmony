@@ -8,7 +8,6 @@ from services.cloud.qqmusic.common import get_quality_label_key
 from system.i18n import t
 from ui.views.library_view import LibraryView
 
-from tests.test_ui.test_library_view import qapp, mock_theme_config, reset_theme_singleton
 
 
 def test_redownload_qq_track_uses_configured_quality_as_dialog_default(

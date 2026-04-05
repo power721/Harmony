@@ -1,10 +1,10 @@
 """Tests for SleepTimerService."""
 
 import warnings
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Signal
 
 from services.playback.sleep_timer_service import SleepTimerService, SleepTimerConfig
 
@@ -533,6 +533,5 @@ class TestSleepTimerService:
         sleep_timer_service._execute_action()
 
         # Volume should be restored before stopping
-        set_volume_calls = [call for call in mock_playback_service.set_volume.call_args_list]
         # Last set_volume call should restore original volume
         assert mock_playback_service.set_volume.call_args_list[-1][0][0] == 80

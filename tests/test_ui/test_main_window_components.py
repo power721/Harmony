@@ -3,9 +3,8 @@ Tests for MainWindow components.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from ui.windows.main_window import MainWindow

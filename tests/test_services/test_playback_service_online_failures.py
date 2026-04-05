@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 from domain.playlist_item import PlaylistItem

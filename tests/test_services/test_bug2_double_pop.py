@@ -4,7 +4,6 @@ Tests for bug fix: Bug 2 - Credential.from_cookies_dict double-pop of musicid.
 Previously, str_musicid always got empty string because musicid was already popped.
 """
 
-import pytest
 from services.cloud.qqmusic.qr_login import Credential
 
 

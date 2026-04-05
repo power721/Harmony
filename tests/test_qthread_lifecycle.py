@@ -3,9 +3,8 @@ Test for QThread lifecycle management in download workers.
 
 This test reproduces the crash: "QThread: Destroyed while thread is still running"
 """
-import pytest
 import time
-from PySide6.QtCore import QThread, Signal, QEventLoop
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QApplication
 
 

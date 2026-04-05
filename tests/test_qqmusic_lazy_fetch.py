@@ -2,7 +2,7 @@
 Test QQ Music cover lazy fetch functionality.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication
 
 from ui.strategies.track_search_strategy import TrackSearchStrategy

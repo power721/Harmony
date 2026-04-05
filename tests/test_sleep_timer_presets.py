@@ -7,17 +7,13 @@ import os
 # Add the project root to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
-from PySide6.QtCore import QTimer
-from app.bootstrap import Bootstrap
-from services.playback.sleep_timer_service import SleepTimerConfig
+from PySide6.QtWidgets import QApplication
 
 
 def test_preset_conversion():
     """Test that 60 minutes is properly converted to 1 hour."""
-    app = QApplication.instance() or QApplication(sys.argv)
+    QApplication.instance() or QApplication(sys.argv)
 
-    from ui.dialogs.sleep_timer_dialog import SleepTimerDialog
     from PySide6.QtWidgets import QSpinBox
 
     # Create a mock dialog to test the conversion

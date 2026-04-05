@@ -4,8 +4,7 @@ Test to verify QThread lifecycle fix.
 import sys
 import time
 from pathlib import Path
-from PySide6.QtWidgets import QApplication, QMainWindow
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QApplication
 from unittest.mock import Mock
 
 # Add parent directory to path
@@ -87,7 +86,7 @@ def test_lyrics_loader_interruption():
     """Test that LyricsLoader respects interruption requests."""
     from services.lyrics.lyrics_loader import LyricsLoader
 
-    app = QApplication.instance() or QApplication(sys.argv)
+    QApplication.instance() or QApplication(sys.argv)
 
     # Create a loader with a fake path (will take time to fail)
     loader = LyricsLoader("/fake/path.mp3", "Test", "Artist")

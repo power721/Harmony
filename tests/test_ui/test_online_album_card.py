@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock
 from PySide6.QtWidgets import QApplication
 
-from system.theme import ThemeManager, Theme
+from system.theme import ThemeManager
 from ui.views.online_detail_view import OnlineAlbumCard
 
 
@@ -37,7 +37,7 @@ def qt_app():
 
 def test_online_album_card_has_theme_attributes(mock_config, qt_app):
     """Test that OnlineAlbumCard has required theme attributes."""
-    tm = ThemeManager.instance(mock_config)
+    ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',
@@ -58,7 +58,7 @@ def test_online_album_card_has_theme_attributes(mock_config, qt_app):
 
 def test_online_album_card_registered_with_theme_manager(mock_config, qt_app):
     """Test that OnlineAlbumCard is registered with theme manager."""
-    tm = ThemeManager.instance(mock_config)
+    ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',
@@ -79,7 +79,7 @@ def test_online_album_card_registered_with_theme_manager(mock_config, qt_app):
 
 def test_online_album_card_theme_change(mock_config, qt_app):
     """Test that OnlineAlbumCard properly updates on theme change."""
-    tm = ThemeManager.instance(mock_config)
+    ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',
@@ -102,7 +102,7 @@ def test_online_album_card_theme_change(mock_config, qt_app):
 
 def test_online_album_card_hover_styles(mock_config, qt_app):
     """Test that OnlineAlbumCard has proper hover styles."""
-    tm = ThemeManager.instance(mock_config)
+    ThemeManager.instance(mock_config)
 
     test_data = {
         'mid': 'test123',

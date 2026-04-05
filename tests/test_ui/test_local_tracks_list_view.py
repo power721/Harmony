@@ -19,7 +19,7 @@ from ui.views.local_tracks_list_view import LocalTracksListView
 
 def test_local_tracks_list_view_supports_append_and_track_selection():
     """Paged loading helpers should preserve row lookup and selection by track ID."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"
@@ -55,7 +55,7 @@ def test_local_tracks_list_view_supports_append_and_track_selection():
 
 def test_local_tracks_cover_hover_starts_timer_on_cover_area():
     """Hovering the cover area should start the delayed popup timer."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"
@@ -95,7 +95,7 @@ def test_local_tracks_cover_hover_starts_timer_on_cover_area():
 
 def test_local_tracks_cover_hover_skips_popup_for_default_cover():
     """Default placeholder cover should not open the large hover popup."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"
@@ -126,7 +126,7 @@ def test_local_tracks_cover_hover_skips_popup_for_default_cover():
 
 def test_local_tracks_list_view_uses_theme_background_for_empty_state():
     """An empty track list should inherit the main theme background."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"
@@ -149,7 +149,7 @@ def test_local_tracks_list_view_uses_theme_background_for_empty_state():
 
 def test_local_tracks_list_view_falls_back_when_theme_manager_is_uninitialized():
     """View construction and delegate paint should not require ThemeManager singleton."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     ThemeManager._instance = None
 
     view = LocalTracksListView()
@@ -174,7 +174,7 @@ def test_local_tracks_list_view_falls_back_when_theme_manager_is_uninitialized()
 
 def test_history_list_view_cover_hover_works_with_history_delegate():
     """HistoryListView should support cover hover even without delegate-specific helper."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"
@@ -214,7 +214,7 @@ def test_history_list_view_cover_hover_works_with_history_delegate():
 
 def test_local_tracks_list_view_refreshes_cover_when_cover_updated_event_arrives():
     """Track cover updates should invalidate the cached pixmap and repaint the affected row."""
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     theme_manager = MagicMock()
     theme = MagicMock()
     theme.background = "#101010"

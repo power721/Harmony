@@ -5,11 +5,7 @@ This test verifies that the _prevent_auto_next flag is properly reset
 after queue restoration, ensuring that automatic next track playback works.
 """
 
-import pytest
-from unittest.mock import Mock, patch
-from domain.playback import PlayMode, PlaybackState
-from domain.track import Track, TrackSource
-from pathlib import Path
+from domain.track import TrackSource
 
 
 class TestAutoNextFix:
@@ -24,7 +20,6 @@ class TestAutoNextFix:
         but never reset.
         """
         from app import Bootstrap
-        from services.playback.playback_service import PlaybackService
 
         # Create a minimal playback service for testing
         bootstrap = Bootstrap.instance()
@@ -54,7 +49,7 @@ class TestAutoNextFix:
         from infrastructure.audio.audio_engine import PlayerEngine
         from domain.playlist_item import PlaylistItem
 
-        bootstrap = Bootstrap.instance()
+        Bootstrap.instance()
         engine = PlayerEngine(backend_type="mpv")
 
         # Load a simple playlist

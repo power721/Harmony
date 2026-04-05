@@ -6,7 +6,6 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 
 # Create temporary audio files for testing
 @pytest.fixture
@@ -44,7 +43,7 @@ class TestAutoNextRealFlow:
         4. Verify track 1 starts playing
         """
         from app import Bootstrap
-        from domain.track import Track, TrackSource
+        from domain.track import Track
         from domain.playlist_item import PlaylistItem
 
         bootstrap = Bootstrap.instance()
@@ -62,7 +61,7 @@ class TestAutoNextRealFlow:
                 album="Test Album",
                 duration=180.0,
             )
-            track_id = track_repo.add(track)
+            track_repo.add(track)
             tracks.append(track)
 
         # Create playlist items
@@ -110,7 +109,7 @@ class TestAutoNextRealFlow:
                 album="Test",
                 duration=180.0,
             )
-            track_id = track_repo.add(track)
+            track_repo.add(track)
             tracks.append(track)
 
         # Load playlist

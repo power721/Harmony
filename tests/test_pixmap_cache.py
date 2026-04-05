@@ -31,7 +31,7 @@ def test_get_cache_miss():
     with patch('infrastructure.cache.pixmap_cache.QPixmapCache.setCacheLimit'):
         CoverPixmapCache.initialize()
 
-    with patch('infrastructure.cache.pixmap_cache.QPixmap') as qpixmap_cls:
+    with patch('infrastructure.cache.pixmap_cache.QPixmap'):
         with patch('PySide6.QtGui.QPixmapCache.find', return_value=False):
             result = CoverPixmapCache.get("test_key")
             assert result is None
@@ -79,4 +79,3 @@ def test_cache_key_from_none_path():
     assert len(k1) == 32  # MD5 hex
     # Both None and empty string should produce the same key
     assert k1 == k2
-

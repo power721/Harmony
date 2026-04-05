@@ -2,7 +2,6 @@
 Tests for HttpClient infrastructure component.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from infrastructure.network.http_client import HttpClient

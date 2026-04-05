@@ -2,9 +2,7 @@
 Tests for MetadataService.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 from services.metadata.metadata_service import MetadataService
 from mutagen.flac import FLACNoHeaderError
 from mutagen.mp3 import HeaderNotFoundError
@@ -307,7 +305,6 @@ class TestMetadataService:
         """Test _save_mp3_metadata creates tags when audio.tags is None."""
         mock_audio = MagicMock()
         mock_audio.tags = None
-        new_tags = {}
         mock_audio.add_tags.return_value = None
 
         MetadataService._save_mp3_metadata(mock_audio, "Title", "Artist", "Album")

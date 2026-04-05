@@ -6,7 +6,6 @@ inconsistent with the signed path which used compact formatting.
 """
 
 import json
-import pytest
 
 
 class TestBug15JSONSerialization:

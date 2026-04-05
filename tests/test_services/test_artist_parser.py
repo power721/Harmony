@@ -1,6 +1,5 @@
 """Tests for artist_parser module."""
 
-import pytest
 from services.metadata.artist_parser import (
     split_artists,
     normalize_artist_name,

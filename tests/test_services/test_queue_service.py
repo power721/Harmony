@@ -2,7 +2,6 @@
 Tests for queue service edge cases and regressions.
 """
 
-import threading
 
 from domain.playback import PlayMode, PlaybackState
 from domain.playlist_item import PlaylistItem

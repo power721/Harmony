@@ -18,7 +18,6 @@ class TestBug18MiniLyricsLastLine:
 
     def _make_update_position(self):
         """Build a standalone update_position using the same logic."""
-        from utils.dedup import extract_version_info
 
         # We test the logic directly since mini_lyrics_widget needs Qt
         def update_position(lines, t):
