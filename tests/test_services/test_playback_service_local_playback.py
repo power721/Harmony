@@ -52,3 +52,37 @@ def test_play_local_track_uses_bounded_context_instead_of_full_library(tmp_path)
     service._iter_library_track_batches.assert_not_called()
     service._engine.load_playlist_items.assert_called_once_with([item])
     service._engine.play_at.assert_called_once_with(0)
+
+
+def test_play_local_tracks_clamps_negative_start_index_to_zero(tmp_path):
+    """Batch local playback should never forward a negative start index to the engine."""
+    first_path = tmp_path / "one.mp3"
+    second_path = tmp_path / "two.mp3"
+    first_path.write_text("one")
+    second_path.write_text("two")
+
+    tracks = [
+        SimpleNamespace(id=1, path=str(first_path), source=TrackSource.LOCAL),
+        SimpleNamespace(id=2, path=str(second_path), source=TrackSource.LOCAL),
+    ]
+    items = [
+        PlaylistItem(source=TrackSource.LOCAL, track_id=1, local_path=str(first_path), title="One"),
+        PlaylistItem(source=TrackSource.LOCAL, track_id=2, local_path=str(second_path), title="Two"),
+    ]
+
+    service = PlaybackService.__new__(PlaybackService)
+    service._track_repo = SimpleNamespace(get_by_ids=Mock(return_value=tracks))
+    service._filter_and_convert_tracks = Mock(return_value=items)
+    service._engine = SimpleNamespace(
+        clear_playlist=Mock(),
+        load_playlist_items=Mock(),
+        is_shuffle_mode=Mock(return_value=False),
+        play_at=Mock(),
+    )
+    service._set_source = Mock()
+    service.save_queue = Mock()
+    service._config = SimpleNamespace(set_playback_source=Mock())
+
+    PlaybackService.play_local_tracks(service, [1, 2], start_index=-5)
+
+    service._engine.play_at.assert_called_once_with(0)
