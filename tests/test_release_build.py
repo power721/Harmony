@@ -69,6 +69,28 @@ def test_find_libmpv_on_windows_resolves_chocolatey_layout(tmp_path, monkeypatch
     assert build.find_libmpv(build.AUDIO_BACKEND_MPV) == [(str(mpv_dll), ".")]
 
 
+def test_find_libmpv_on_windows_resolves_chocolatey_package_variant(tmp_path, monkeypatch):
+    """Windows MPV bundles should tolerate Chocolatey package names like mpvio.install."""
+    choco_root = tmp_path / "ProgramData" / "chocolatey"
+    shim_dir = choco_root / "bin"
+    package_dir = choco_root / "lib" / "mpvio.install" / "tools"
+    shim_dir.mkdir(parents=True)
+    package_dir.mkdir(parents=True)
+
+    (shim_dir / "mpv.exe").write_text("", encoding="utf-8")
+    mpv_dll = package_dir / "mpv-2.dll"
+    mpv_dll.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(build.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(build, "PROJECT_ROOT", tmp_path / "repo")
+    monkeypatch.setattr(build, "sys", types.SimpleNamespace(executable=str(tmp_path / "Python" / "python.exe")))
+    monkeypatch.setattr(build.shutil, "which", lambda name: str(shim_dir / "mpv.exe") if name == "mpv" else None)
+    monkeypatch.setenv("PATH", str(shim_dir))
+    monkeypatch.setenv("ChocolateyInstall", str(choco_root))
+
+    assert build.find_libmpv(build.AUDIO_BACKEND_MPV) == [(str(mpv_dll), ".")]
+
+
 def test_windows_workflow_exports_mpv_runtime_directory():
     """Windows CI should export the directory containing mpv-2.dll before invoking build.py."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -84,3 +106,4 @@ def test_windows_workflow_exports_mpv_runtime_directory():
     section = build_windows_section.group("section")
     assert "mpv-2.dll" in section
     assert "$env:GITHUB_PATH" in section
+    assert "$env:ChocolateyInstall" in section

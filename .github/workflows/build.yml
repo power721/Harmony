@@ -176,14 +176,6 @@ jobs:
           chmod +x release.sh
           ./release.sh
 
-      - name: Create portable tarball
-        run: |
-          VERSION=${{ github.ref_name || 'nightly' }}
-          cd dist
-          mkdir -p Harmony-portable
-          cp -r Harmony/* Harmony-portable/
-          tar -czvf Harmony-$VERSION-linux-portable.tar.gz Harmony-portable
-
       - name: Analyze bundle size
         run: |
           echo "==> Bundle size overview"
@@ -329,7 +321,10 @@ jobs:
           $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
           Get-Command mpv -ErrorAction Stop
           mpv --version
-          $mpvDll = Get-ChildItem "C:\ProgramData\chocolatey\lib\mpv" -Recurse -Filter "mpv-2.dll" | Select-Object -First 1
+          $chocoRoot = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { "C:\ProgramData\chocolatey" }
+          $mpvDll = Get-ChildItem (Join-Path $chocoRoot "lib") -Recurse -Include "mpv-2.dll","libmpv-2.dll","mpv.dll" |
+            Where-Object { $_.FullName -match "mpv" } |
+            Select-Object -First 1
           if (-not $mpvDll) {
             throw "mpv-2.dll not found after Chocolatey install"
           }

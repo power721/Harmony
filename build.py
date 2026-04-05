@@ -618,6 +618,7 @@ def find_libmpv(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
     elif current_system == "Windows":
         search_dirs = [os.path.dirname(sys.executable), str(PROJECT_ROOT)]
         search_dirs.extend(os.environ.get("PATH", "").split(os.pathsep))
+        dll_names = ["mpv-2.dll", "libmpv-2.dll", "mpv.dll"]
 
         runtime_dir = os.environ.get("HARMONY_MPV_RUNTIME_DIR")
         if runtime_dir:
@@ -641,8 +642,16 @@ def find_libmpv(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> list:
                 os.path.join(chocolatey_root, "lib", "mpv", "tools"),
                 os.path.join(chocolatey_root, "lib", "mpv", "tools", "mpv"),
             ])
+            choco_lib_root = Path(chocolatey_root) / "lib"
+            if choco_lib_root.exists():
+                for dll_name in dll_names:
+                    matches = sorted(choco_lib_root.glob(f"*mpv*/**/{dll_name}"))
+                    if matches:
+                        dll_path = str(matches[0])
+                        binaries.append((dll_path, "."))
+                        print(f"[INFO] Found libmpv: {dll_path}")
+                        return binaries
 
-        dll_names = ["mpv-2.dll", "libmpv-2.dll", "mpv.dll"]
         seen_dirs = set()
 
         for search_dir in search_dirs:
