@@ -16,6 +16,8 @@ from shiboken6 import isValid
 
 from domain import PlaylistItem
 from domain.track import Track, TrackSource
+from services.cloud.download_service import CloudDownloadService
+from system.event_bus import EventBus
 
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
@@ -481,14 +483,14 @@ class CloudTrackHandler:
 
     def download_track(self, item: PlaylistItem):
         """Download a cloud track."""
-        from services.cloud.download_service import CloudDownloadService
-
         if not self._cloud_account:
             if item.cloud_account_id:
                 self._cloud_account = self._cloud_repo.get_account_by_id(item.cloud_account_id)
                 if not self._cloud_account:
+                    self._emit_download_error(item.cloud_file_id, "No cloud account configured")
                     return
             else:
+                self._emit_download_error(item.cloud_file_id, "No cloud account configured")
                 return
 
         service = CloudDownloadService.instance()
@@ -500,11 +502,18 @@ class CloudTrackHandler:
         if not cloud_file:
             cloud_file = self._cloud_repo.get_file_by_file_id(item.cloud_file_id)
             if not cloud_file:
-                logger.error(f"[CloudTrackHandler] CloudFile not found: {item.cloud_file_id}")
+                error_message = f"CloudFile not found: {item.cloud_file_id}"
+                logger.error(f"[CloudTrackHandler] {error_message}")
+                self._emit_download_error(item.cloud_file_id, error_message)
                 return
 
         if cloud_file:
             service.download_file(cloud_file, self._cloud_account)
+
+    @staticmethod
+    def _emit_download_error(cloud_file_id: str, error_message: str):
+        """Emit cloud download errors through the shared EventBus."""
+        EventBus.instance().download_error.emit(cloud_file_id, error_message)
 
     def preload_track(self, item: PlaylistItem):
         """Preload a cloud track."""
