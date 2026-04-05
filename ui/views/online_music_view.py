@@ -3244,6 +3244,9 @@ class OnlineMusicView(QWidget):
             if library_track:
                 favorites_service.remove_favorite(track_id=library_track.id)
                 self._ranking_list_view.set_track_favorite(track.mid, False)
+            else:
+                favorites_service.remove_favorite(cloud_file_id=track.mid)
+                self._ranking_list_view.set_track_favorite(track.mid, False)
 
     def _on_ranking_favorites_toggle(self, tracks: list, all_favorited: bool):
         """Handle favorite toggle from ranking list view context menu."""

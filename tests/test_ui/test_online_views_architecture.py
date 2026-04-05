@@ -54,6 +54,23 @@ def test_online_music_view_remove_favorite_uses_favorites_service():
     bootstrap.favorites_service.remove_favorite.assert_called_once_with(track_id=321)
 
 
+def test_online_music_view_remove_favorite_falls_back_to_cloud_file_id():
+    """OnlineMusicView should remove by cloud_file_id when no library track exists."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._ranking_list_view = SimpleNamespace(set_track_favorite=Mock())
+    track = SimpleNamespace(mid="m-fallback")
+    bootstrap = SimpleNamespace(
+        favorites_service=SimpleNamespace(remove_favorite=Mock()),
+        library_service=SimpleNamespace(get_track_by_cloud_file_id=Mock(return_value=None)),
+    )
+
+    with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
+        OnlineMusicView._on_ranking_favorite_toggled(view, track, False)
+
+    bootstrap.favorites_service.remove_favorite.assert_called_once_with(cloud_file_id="m-fallback")
+    view._ranking_list_view.set_track_favorite.assert_called_once_with("m-fallback", False)
+
+
 def test_online_detail_view_favorites_flow_uses_favorites_service():
     """OnlineDetailView add/remove favorites should go through FavoritesService."""
     view = OnlineDetailView.__new__(OnlineDetailView)
