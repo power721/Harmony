@@ -101,3 +101,46 @@ def test_settings_dialog_omits_qqmusic_tab_without_plugin(monkeypatch, qtbot):
     tab_labels = [tab_widget.tabText(index) for index in range(tab_widget.count())]
     assert "QQ音乐" not in tab_labels
     assert "QQ Music" not in tab_labels
+
+
+def test_settings_dialog_with_real_builtins_includes_plugin_tabs(monkeypatch, qtbot):
+    from app.bootstrap import Bootstrap
+
+    Bootstrap._instance = None
+    config = Mock()
+    config.get.return_value = "dark"
+    config.get_ai_enabled.return_value = False
+    config.get_ai_base_url.return_value = ""
+    config.get_ai_api_key.return_value = ""
+    config.get_ai_model.return_value = ""
+    config.get_acoustid_enabled.return_value = False
+    config.get_acoustid_api_key.return_value = ""
+    config.get_online_music_download_dir.return_value = "data/online_cache"
+    config.get_cache_cleanup_strategy.return_value = "manual"
+    config.get_cache_cleanup_auto_enabled.return_value = False
+    config.get_cache_cleanup_time_days.return_value = 30
+    config.get_cache_cleanup_size_mb.return_value = 1000
+    config.get_cache_cleanup_count.return_value = 100
+    config.get_cache_cleanup_interval_hours.return_value = 1
+    config.get_audio_engine.return_value = "mpv"
+    config.get_plugin_setting.side_effect = lambda plugin_id, key, default=None: default
+    config.get_plugin_secret.side_effect = lambda plugin_id, key, default="": default
+
+    bootstrap = Bootstrap(":memory:")
+    bootstrap._config = config
+    bootstrap._event_bus = Mock()
+    bootstrap._http_client = Mock()
+    bootstrap._playback_service = Mock()
+    bootstrap._library_service = Mock()
+    bootstrap._online_download_service = Mock()
+
+    monkeypatch.setattr("ui.dialogs.settings_dialog.Bootstrap.instance", lambda: bootstrap)
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+
+    dialog = GeneralSettingsDialog(config)
+    qtbot.addWidget(dialog)
+    tab_widget = dialog.findChild(QTabWidget)
+
+    tab_labels = [tab_widget.tabText(index) for index in range(tab_widget.count())]
+    assert "QQ 音乐" in tab_labels

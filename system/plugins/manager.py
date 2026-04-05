@@ -24,16 +24,21 @@ class PluginManager:
         self._loaded_plugins: dict[str, tuple[object, object, object]] = {}
 
     def discover_roots(self) -> list[tuple[str, Path]]:
+        def _is_plugin_root(path: Path) -> bool:
+            return path.is_dir() and (path / "plugin.json").exists()
+
         roots = []
         if self._builtin_root.exists():
             roots.extend(
-                ("builtin", path) for path in self._builtin_root.iterdir() if path.is_dir()
+                ("builtin", path)
+                for path in self._builtin_root.iterdir()
+                if _is_plugin_root(path)
             )
         if self._external_root.exists():
             roots.extend(
                 ("external", path)
                 for path in self._external_root.iterdir()
-                if path.is_dir()
+                if _is_plugin_root(path)
                 and not path.name.endswith(".staging")
                 and not path.name.endswith(".backup")
             )

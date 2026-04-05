@@ -826,3 +826,38 @@ def test_manager_loads_real_builtin_plugins_from_repository(tmp_path: Path):
     loaded_ids = set(manager._loaded_plugins)
     assert "lrclib" in loaded_ids
     assert "qqmusic" in loaded_ids
+
+
+def test_discover_roots_ignores_non_plugin_directories(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    builtin_root.mkdir()
+    (builtin_root / "__pycache__").mkdir()
+    real_plugin = builtin_root / "real"
+    real_plugin.mkdir()
+    (real_plugin / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "real",
+                "name": "Real",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "RealPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=PluginStateStore(tmp_path / "state.json"),
+        context_factory=_ContextFactory(),
+    )
+
+    discovered = manager.discover_roots()
+
+    assert ("builtin", real_plugin) in discovered
+    assert all(path.name != "__pycache__" for _source, path in discovered)
