@@ -197,7 +197,7 @@ def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
             self.credential = credential
 
     monkeypatch.setattr("ui.views.online_music_view.QQMusicService", _FakeQQMusicService, raising=False)
-    monkeypatch.setattr("services.cloud.qqmusic.qqmusic_service.QQMusicService", _FakeQQMusicService)
+    monkeypatch.setattr("plugins.builtin.qqmusic.lib.legacy.qqmusic_service.QQMusicService", _FakeQQMusicService)
 
     OnlineMusicView._refresh_qqmusic_service(view)
 

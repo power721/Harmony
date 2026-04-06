@@ -313,7 +313,7 @@ class QQMusicService:
         Returns:
             Album information dictionary or None
         """
-        from services.online.adapter import OnlineMusicAdapter
+        from . import adapter as legacy_adapter
 
         try:
             # Get album basic info
@@ -328,7 +328,7 @@ class QQMusicService:
             songs_result = self.client.get_album_songs(album_mid, begin=begin, num=page_size)
 
             # Use adapter to parse
-            result = OnlineMusicAdapter.parse_album_detail(basic_result, songs_result)
+            result = legacy_adapter.parse_album_detail(basic_result, songs_result)
 
             if not result:
                 return None
@@ -357,7 +357,7 @@ class QQMusicService:
         Returns:
             Album information dictionary with fav_status field, or None
         """
-        from services.online.adapter import OnlineMusicAdapter
+        from . import adapter as legacy_adapter
 
         try:
             uin = str(self.credential.get("musicid", "")) if self.credential else ""
@@ -415,7 +415,7 @@ class QQMusicService:
             # Combine results - extract data from nested structure
             req_1_data = req_1.get('data', req_1)
             req_2_data = req_2.get('data', req_2)
-            result = OnlineMusicAdapter.parse_album_detail(req_1_data, req_2_data)
+            result = legacy_adapter.parse_album_detail(req_1_data, req_2_data)
             if not result:
                 logger.warning("Failed to parse album detail from batch request")
                 return None

@@ -1369,7 +1369,7 @@ class OnlineMusicView(QWidget):
     def _refresh_qqmusic_service(self):
         """Refresh QQ Music service with current credentials."""
         import json
-        from services.cloud.qqmusic.qqmusic_service import QQMusicService
+        from plugins.builtin.qqmusic.lib.legacy.qqmusic_service import QQMusicService
 
         if self._config and hasattr(self._config, "get_plugin_secret"):
             qqmusic_credential = self._config.get_plugin_secret("qqmusic", "credential", "")

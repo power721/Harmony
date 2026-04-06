@@ -14,7 +14,7 @@ from .quality import normalize_quality, parse_quality
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
-    from services.cloud.qqmusic.qqmusic_service import QQMusicService
+    from plugins.builtin.qqmusic.lib.legacy.qqmusic_service import QQMusicService
 
 logger = logging.getLogger(__name__)
 

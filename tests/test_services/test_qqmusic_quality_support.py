@@ -1,5 +1,5 @@
-from services.cloud.qqmusic.client import QQMusicClient
-from services.cloud.qqmusic.qr_login import QQMusicQRLogin
+from plugins.builtin.qqmusic.lib.legacy.client import QQMusicClient
+from plugins.builtin.qqmusic.lib.qr_login import QQMusicQRLogin
 from services.online.quality import (
     QUALITY_FALLBACK,
     parse_quality,

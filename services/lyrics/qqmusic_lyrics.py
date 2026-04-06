@@ -86,7 +86,9 @@ class QQMusicClient:
         """Initialize local client with credentials."""
         # Try to initialize local client with credentials
         try:
-            from services.cloud.qqmusic.client import QQMusicClient as QQMusicClientLocal
+            from plugins.builtin.qqmusic.lib.legacy.client import (
+                QQMusicClient as QQMusicClientLocal,
+            )
             from app.bootstrap import Bootstrap
 
             config = Bootstrap.instance().config
