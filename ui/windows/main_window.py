@@ -393,16 +393,13 @@ class MainWindow(QMainWindow):
 
         # Online music view with QQ Music service
         from services.cloud.qqmusic.qqmusic_service import QQMusicService
-        qqmusic_credential = self._config.get("qqmusic.credential")
+        qqmusic_credential = self._config.get_qqmusic_credential()
         qqmusic_service = None
         if qqmusic_credential:
             try:
-                import json
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
-                                                                         str) else qqmusic_credential
-                qqmusic_service = QQMusicService(cred_dict)
-            except Exception:
-                pass
+                qqmusic_service = QQMusicService(qqmusic_credential)
+            except Exception as e:
+                logger.error(f"QQMusicService init error: {e}")
         self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
 
         self._stacked_widget.addWidget(self._library_view)  # 0

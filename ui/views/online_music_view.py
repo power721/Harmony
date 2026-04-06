@@ -1371,12 +1371,10 @@ class OnlineMusicView(QWidget):
         import json
         from services.cloud.qqmusic.qqmusic_service import QQMusicService
 
-        qqmusic_credential = self._config.get("qqmusic.credential") if self._config else None
+        qqmusic_credential = self._config.get_qqmusic_credential() if self._config else None
         if qqmusic_credential:
             try:
-                cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
-                                                                         str) else qqmusic_credential
-                self._qqmusic_service = QQMusicService(cred_dict)
+                self._qqmusic_service = QQMusicService(qqmusic_credential)
                 # Update service reference
                 self._service._qqmusic = self._qqmusic_service
                 # Update download service reference too
@@ -1385,8 +1383,8 @@ class OnlineMusicView(QWidget):
                 if hasattr(self, '_detail_view') and self._detail_view:
                     self._detail_view._service._qqmusic = self._qqmusic_service
                     self._detail_view._download_service._qqmusic = self._qqmusic_service
-                logger.info(f"QQ Music service refreshed, musicid={cred_dict.get('musicid')}, "
-                            f"has_refresh_key={bool(cred_dict.get('refresh_key'))}")
+                logger.info(f"QQ Music service refreshed, musicid={qqmusic_credential.get('musicid')}, "
+                            f"has_refresh_key={bool(qqmusic_credential.get('refresh_key'))}")
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
 

@@ -116,7 +116,6 @@ class HttpClient:
         """Make an HTTP request using the configured shared session."""
         method = method.upper()
         request_timeout = timeout or self.timeout
-        request_kwargs.setdefault("verify", True)
         if method == "GET":
             return self._session.get(
                 url,
