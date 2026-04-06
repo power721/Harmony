@@ -17,6 +17,9 @@ class QQMusicOnlineProvider:
     def create_page(self, context, parent=None):
         return QQMusicRootView(context, self, parent)
 
+    def search_tracks(self, keyword: str) -> list[dict]:
+        return self._client.search(keyword, limit=20)
+
     def get_demo_track(self) -> PluginTrack:
         return PluginTrack(
             track_id="demo-mid",

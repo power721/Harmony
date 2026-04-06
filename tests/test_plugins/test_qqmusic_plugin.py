@@ -1,6 +1,9 @@
 from unittest.mock import Mock
 
+from PySide6.QtWidgets import QListWidget
+
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
+from plugins.builtin.qqmusic.lib.root_view import QQMusicRootView
 from plugins.builtin.qqmusic.lib.qr_login import QQMusicQRLogin
 from plugins.builtin.qqmusic.plugin_main import QQMusicPlugin
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
@@ -89,3 +92,26 @@ def test_qqmusic_settings_tab_clears_plugin_credentials(qtbot):
 
     settings.set.assert_any_call("credential", None)
     settings.set.assert_any_call("nick", "")
+
+
+def test_root_view_search_populates_results(qtbot, monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "nick": "Tester",
+        "quality": "320",
+    }.get(key, default)
+    context = Mock(settings=settings)
+    provider = Mock()
+    provider.search_tracks.return_value = [
+        {"mid": "song-1", "title": "Song 1", "artist": "Singer 1"}
+    ]
+
+    view = QQMusicRootView(context, provider)
+    qtbot.addWidget(view)
+
+    view._search_input.setText("Song 1")
+    view._run_search()
+
+    assert view._results_list.count() == 1
+    assert "Song 1" in view._results_list.item(0).text()
+    provider.search_tracks.assert_called_once_with("Song 1")
