@@ -14,7 +14,7 @@ def test_import_audit_rejects_host_internal_import(tmp_path: Path):
     plugin_root = tmp_path / "plugin"
     plugin_root.mkdir()
     (plugin_root / "plugin_main.py").write_text(
-        "from services.lyrics.qqmusic_lyrics import QQMusicClient\n",
+        "from services.library.library_service import LibraryService\n",
         encoding="utf-8",
     )
 
