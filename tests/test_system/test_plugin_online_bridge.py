@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from harmony_plugin_api.media import PluginPlaybackRequest
 from harmony_plugin_api.registry_types import SettingsTabSpec, SidebarEntrySpec
 from system.plugins.host_services import (
+    BootstrapPluginContextFactory,
     PluginServiceBridgeImpl,
     PluginSettingsBridgeImpl,
     PluginStorageBridgeImpl,
@@ -23,6 +24,55 @@ def test_plugin_settings_bridge_namespaces_keys():
 
     bridge.set("quality", "320")
     config.set.assert_called_once_with("plugins.qqmusic.quality", "320")
+
+
+def test_plugin_settings_bridge_uses_secret_store_for_credentials():
+    config = Mock()
+    config.get_plugin_secret.return_value = '{"musicid":"1"}'
+    bridge = PluginSettingsBridgeImpl("qqmusic", config)
+
+    assert bridge.get("credential") == {"musicid": "1"}
+    config.get_plugin_secret.assert_called_once_with("qqmusic", "credential", None)
+
+    bridge.set("credential", {"musicid": "2"})
+    config.set_plugin_secret.assert_called_once_with("qqmusic", "credential", '{"musicid": "2"}')
+
+
+def test_plugin_settings_bridge_namespaces_language_key():
+    config = Mock()
+    config.get.return_value = "zh"
+    bridge = PluginSettingsBridgeImpl("qqmusic", config)
+
+    assert bridge.get("language") == "zh"
+    config.get.assert_called_once_with("plugins.qqmusic.language", None)
+
+    bridge.set("language", "en")
+    config.set.assert_called_once_with("plugins.qqmusic.language", "en")
+
+
+def test_bootstrap_plugin_context_factory_uses_existing_manager_without_reentry(tmp_path: Path):
+    registry = PluginRegistry()
+
+    class _Bootstrap:
+        def __init__(self):
+            self._plugin_manager = Mock(registry=registry)
+            self.online_download_service = Mock()
+            self.playback_service = Mock()
+            self.library_service = Mock()
+            self.http_client = Mock()
+            self.event_bus = Mock()
+            self.config = Mock()
+
+        @property
+        def plugin_manager(self):
+            raise AssertionError("plugin_manager property should not be re-entered")
+
+    manifest = Mock(id="qqmusic")
+    factory = BootstrapPluginContextFactory(_Bootstrap(), tmp_path)
+
+    context = factory.build(manifest)
+
+    assert context.plugin_id == "qqmusic"
 
 
 def test_plugin_storage_bridge_creates_private_directories(tmp_path: Path):
@@ -86,6 +136,7 @@ def test_plugin_service_bridge_registers_sources_and_exposes_media():
 def test_media_bridge_passes_explicit_quality_to_download_service():
     download_service = Mock()
     playback_service = Mock()
+    playback_service.engine = Mock()
     library_service = Mock()
     bridge = PluginMediaBridge(download_service, playback_service, library_service)
     request = PluginPlaybackRequest(
@@ -120,3 +171,62 @@ def test_media_bridge_passes_explicit_quality_to_download_service():
         180.0,
         "https://example.com/cover.jpg",
     )
+
+
+def test_media_bridge_can_play_online_track():
+    download_service = Mock()
+    download_service.is_cached.return_value = False
+    playback_service = Mock()
+    playback_service.engine = Mock()
+    library_service = Mock()
+    library_service.add_online_track.return_value = 42
+    bridge = PluginMediaBridge(download_service, playback_service, library_service)
+    request = PluginPlaybackRequest(
+        provider_id="qqmusic",
+        track_id="mid-1",
+        title="Song 1",
+        quality="flac",
+        metadata={
+            "title": "Song 1",
+            "artist": "Singer 1",
+            "album": "Album 1",
+            "duration": 180.0,
+            "cover_url": "https://example.com/cover.jpg",
+        },
+    )
+
+    bridge.play_online_track(request)
+
+    playback_service.engine.load_playlist_items.assert_called_once()
+    playback_service.engine.play.assert_called_once_with()
+    playback_service.save_queue.assert_called_once_with()
+
+
+def test_media_bridge_can_add_and_insert_online_track_to_queue():
+    download_service = Mock()
+    download_service.is_cached.return_value = False
+    playback_service = Mock()
+    playback_service.engine = Mock()
+    playback_service.engine.current_index = 3
+    library_service = Mock()
+    library_service.add_online_track.return_value = 42
+    bridge = PluginMediaBridge(download_service, playback_service, library_service)
+    request = PluginPlaybackRequest(
+        provider_id="qqmusic",
+        track_id="mid-1",
+        title="Song 1",
+        quality="320",
+        metadata={
+            "title": "Song 1",
+            "artist": "Singer 1",
+            "album": "Album 1",
+            "duration": 180.0,
+        },
+    )
+
+    bridge.add_online_track_to_queue(request)
+    bridge.insert_online_track_to_queue(request)
+
+    assert playback_service.engine.add_track.call_count == 1
+    playback_service.engine.insert_track.assert_called_once()
+    assert playback_service._schedule_save_queue.call_count == 2

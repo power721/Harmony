@@ -5,10 +5,11 @@ Sidebar navigation widget for MainWindow.
 from typing import List, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 
 from system.i18n import t, get_language
-from ui.icons import IconName, IconButton
+from ui.icons import IconName, IconButton, PathIconButton
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
@@ -184,6 +185,8 @@ class Sidebar(QWidget):
         nav_style = tm.get_qss(self._NAV_STYLE)
         for _, btn in self._nav_buttons:
             btn.setStyleSheet(nav_style)
+            if hasattr(btn, 'refresh_theme'):
+                btn.refresh_theme()
 
         language_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "languageBtn")
         self._language_btn.setStyleSheet(language_style)
@@ -196,13 +199,23 @@ class Sidebar(QWidget):
         page_index: int,
         title: str,
         icon_name: str | None = None,
+        icon_path: str | None = None,
+        title_provider=None,
     ) -> None:
         """Add a plugin-provided navigation button before the footer actions."""
-        resolved_icon = getattr(IconName, icon_name, IconName.GLOBE) if icon_name else IconName.GLOBE
-        btn = IconButton(resolved_icon, title, size=18)
+        from system.theme import ThemeManager
+
+        if icon_path:
+            btn = PathIconButton(icon_path, title, size=18)
+        else:
+            resolved_icon = getattr(IconName, icon_name, IconName.GLOBE) if icon_name else IconName.GLOBE
+            btn = IconButton(resolved_icon, title, size=18)
         btn.setCheckable(True)
         btn.setCursor(Qt.PointingHandCursor)
+        btn.setProperty("plugin_title_provider", title_provider)
+        btn.setProperty("plugin_icon_path", icon_path)
         btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
+        btn.setStyleSheet(ThemeManager.instance().get_qss(self._NAV_STYLE))
         insert_index = max(self.layout().count() - 4, 0)
         self.layout().insertWidget(insert_index, btn)
         self._nav_buttons.append((page_index, btn))
@@ -259,6 +272,10 @@ class Sidebar(QWidget):
         for i, (idx, btn) in enumerate(self._nav_buttons):
             if i < len(nav_texts):
                 btn.setText(nav_texts[i])
+            else:
+                title_provider = btn.property("plugin_title_provider")
+                if callable(title_provider):
+                    btn.setText(title_provider())
 
         self._add_music_btn.setText(t("add_music"))
         self.update_language_button()

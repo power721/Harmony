@@ -1116,10 +1116,13 @@ class QQMusicService:
                 album_info = song.get('album') or {}
                 if isinstance(album_info, str):
                     album_name = album_info
+                    album_mid = ''
                 elif isinstance(album_info, dict):
                     album_name = album_info.get('name', '')
+                    album_mid = album_info.get('mid', '')
                 else:
                     album_name = song.get('albumName', '') or song.get('albumname', '')
+                    album_mid = song.get('albumMid', '') or song.get('albummid', '')
 
                 # Handle duration - interval is in seconds
                 duration = song.get('interval') or song.get('duration') or 0
@@ -1129,6 +1132,7 @@ class QQMusicService:
                     'title': song.get('songname', '') or song.get('title', '') or song.get('name', ''),
                     'singer': singer_name,
                     'album': album_name,
+                    'album_mid': album_mid,
                     'duration': duration,
                 }
                 tracks.append(track)

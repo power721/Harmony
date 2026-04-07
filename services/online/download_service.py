@@ -5,7 +5,7 @@ Downloads online music to local cache for playback.
 
 import logging
 import os
-from typing import Dict, Optional, Callable, Any, TYPE_CHECKING
+from typing import Dict, Optional, Callable, Any, TYPE_CHECKING, Protocol
 
 from infrastructure.network import HttpClient
 from system.event_bus import EventBus
@@ -14,7 +14,13 @@ from .quality import normalize_quality, parse_quality
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
-    from plugins.builtin.qqmusic.lib.legacy.qqmusic_service import QQMusicService
+
+
+class PlaybackUrlProvider(Protocol):
+    credential: Any
+
+    def get_playback_url_info(self, song_mid: str, quality: str = "flac") -> Optional[Dict[str, Any]]:
+        ...
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +48,7 @@ class OnlineDownloadService:
     def __init__(
         self,
         config_manager: Optional["ConfigManager"] = None,
-        qqmusic_service: Optional["QQMusicService"] = None,
+        credential_provider: Optional["PlaybackUrlProvider"] = None,
         online_music_service=None,
         download_dir: Optional[str] = None
     ):
@@ -51,12 +57,12 @@ class OnlineDownloadService:
 
         Args:
             config_manager: ConfigManager instance
-            qqmusic_service: QQMusicService instance
+            credential_provider: Optional credential-backed playback provider
             online_music_service: OnlineMusicService instance (preferred)
             download_dir: Download directory path
         """
         self._config = config_manager
-        self._qqmusic = qqmusic_service
+        self._provider = credential_provider
         self._online_service = online_music_service
         self._download_dir = download_dir or self._get_default_download_dir()
         self._event_bus = EventBus.instance()
@@ -171,11 +177,11 @@ class OnlineDownloadService:
             else:
                 url = self._online_service.get_playback_url(song_mid, quality)
 
-        elif self._qqmusic:
+        elif self._provider:
             # Fallback to QQ Music direct API
             quality_fallback = ["320", "128", "flac"]
             for q in quality_fallback:
-                playback_info = self._qqmusic.get_playback_url_info(song_mid, q)
+                playback_info = self._provider.get_playback_url_info(song_mid, q)
                 if playback_info:
                     url = playback_info.get("url")
                     actual_quality = playback_info.get("quality") or q

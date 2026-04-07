@@ -23,33 +23,33 @@ class OnlineMusicService:
     """
     Service for online music search and browsing.
 
-    Uses api.ygking.top by default, falls back to QQ Music local API
-    if credential is available.
+    Uses api.ygking.top by default, and can optionally defer to a
+    credential-backed provider when one is supplied by the runtime.
     """
 
     # API endpoints
     YGKING_BASE_URL = "https://api.ygking.top"
 
     def __init__(self, config_manager: Optional["ConfigManager"] = None,
-                 qqmusic_service=None):
+                 credential_provider=None):
         """
         Initialize online music service.
 
         Args:
-            config_manager: ConfigManager for QQ Music credential
-            qqmusic_service: Optional QQMusicService instance
+            config_manager: ConfigManager for plugin-scoped credentials
+            credential_provider: Optional credential-backed provider instance
         """
         self._config = config_manager
-        self._qqmusic = qqmusic_service
+        self._provider = credential_provider
         self._http_client = HttpClient.shared(default_headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json',
         })
 
     def _has_qqmusic_credential(self) -> bool:
-        """Check if QQ Music credential is available."""
-        # Check if qqmusic_service has credential
-        if self._qqmusic and self._qqmusic.credential:
+        """Check if plugin-scoped credential is available."""
+        # Check if provider has credential
+        if self._provider and self._provider.credential:
             return True
 
         # Check config if available
@@ -83,7 +83,7 @@ class OnlineMusicService:
             SearchResult object
         """
         # Prefer QQ Music local API if credential is available
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             return self._search_qqmusic(keyword, search_type, page, page_size)
 
         # Use YGKing API
@@ -137,7 +137,7 @@ class OnlineMusicService:
     ) -> SearchResult:
         """Search using QQ Music local API."""
         try:
-            result = self._qqmusic.client.search(
+            result = self._provider.client.search(
                 keyword,
                 search_type=search_type,
                 page_num=page,
@@ -165,7 +165,7 @@ class OnlineMusicService:
             List of top lists with id and name
         """
         # Prefer QQ Music local API if credential is available
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             return self._get_top_lists_qqmusic()
 
         return self._get_top_lists_ygking()
@@ -173,7 +173,7 @@ class OnlineMusicService:
     def _get_top_lists_qqmusic(self) -> List[Dict[str, Any]]:
         """Get top lists using QQ Music local API."""
         try:
-            result = self._qqmusic.get_top_lists()
+            result = self._provider.get_top_lists()
             if result:
                 logger.debug(f"Got {len(result)} top lists from QQ Music local API")
                 return result
@@ -232,7 +232,7 @@ class OnlineMusicService:
             List of OnlineTrack objects
         """
         # Prefer QQ Music local API (GetDetail works without login)
-        if self._qqmusic:
+        if self._provider:
             return self._get_top_list_songs_qqmusic(top_id, num)
 
         return self._get_top_list_songs_ygking(top_id, num)
@@ -240,7 +240,7 @@ class OnlineMusicService:
     def _get_top_list_songs_qqmusic(self, top_id: int, num: int) -> List[OnlineTrack]:
         """Get top list songs using QQ Music local API."""
         try:
-            songs = self._qqmusic.get_top_list_songs(top_id, num)
+            songs = self._provider.get_top_list_songs(top_id, num)
             if songs:
                 logger.debug(f"Got {len(songs)} songs from QQ Music local API for top_id={top_id}")
                 return OnlineMusicAdapter._parse_qqmusic_tracks(songs)
@@ -292,9 +292,9 @@ class OnlineMusicService:
             Artist detail dict or None
         """
         # Prefer QQ Music API for detail
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             # Use batch request to get both detail and follow status
-            result = self._qqmusic.get_singer_info_with_follow_status(singer_mid, page=page, page_size=page_size)
+            result = self._provider.get_singer_info_with_follow_status(singer_mid, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug("QQ Music returned no artist detail, falling back to YGKing")
@@ -359,8 +359,8 @@ class OnlineMusicService:
         """
         logger.debug(f"get_artist_albums: singer_mid={singer_mid}, number={number}, begin={begin}")
         # Prefer QQ Music API if credential is available
-        if self._has_qqmusic_credential() and self._qqmusic:
-            result = self._qqmusic.get_singer_albums(singer_mid, number=number, begin=begin)
+        if self._has_qqmusic_credential() and self._provider:
+            result = self._provider.get_singer_albums(singer_mid, number=number, begin=begin)
             if result and result.get('albums'):
                 logger.debug(f"get_artist_albums: QQ Music returned {len(result['albums'])} albums, total={result.get('total', 0)}")
                 return result
@@ -421,9 +421,9 @@ class OnlineMusicService:
             Album detail dict or None
         """
         # Prefer QQ Music API for detail
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             # Use batch request to get both detail and fav status
-            result = self._qqmusic.get_album_info_with_fav_status(album_mid, page=page, page_size=page_size)
+            result = self._provider.get_album_info_with_fav_status(album_mid, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug("QQ Music returned no album detail, falling back to YGKing")
@@ -516,8 +516,8 @@ class OnlineMusicService:
         # Prefer QQ Music API for detail
         # Use batch API for all pages since QQ Music max return is 30 songs
         # First page includes fav status query, subsequent pages don't need it
-        if self._has_qqmusic_credential() and self._qqmusic:
-            result = self._qqmusic.get_playlist_info_with_fav_status(playlist_id, page=page, page_size=page_size)
+        if self._has_qqmusic_credential() and self._provider:
+            result = self._provider.get_playlist_info_with_fav_status(playlist_id, page=page, page_size=page_size)
             if result:
                 return result
             logger.debug("QQ Music returned no playlist detail, falling back to YGKing")
@@ -577,13 +577,13 @@ class OnlineMusicService:
                 quality = "320"
 
         # Prefer QQ Music local API if credential is available
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             # Try different qualities in order
             quality_fallback = ["320", "128", "flac"]
             start_index = quality_fallback.index(quality) if quality in quality_fallback else 0
 
             for q in quality_fallback[start_index:]:
-                info = self._qqmusic.get_playback_url_info(song_mid, q)
+                info = self._provider.get_playback_url_info(song_mid, q)
                 if info:
                     return info
 
@@ -635,8 +635,8 @@ class OnlineMusicService:
         Returns:
             Dict with lyric, qrc, trans keys
         """
-        if self._has_qqmusic_credential() and self._qqmusic:
-            return self._qqmusic.get_lyrics(song_mid)
+        if self._has_qqmusic_credential() and self._provider:
+            return self._provider.get_lyrics(song_mid)
 
         return {"lyric": None, "qrc": None, "trans": None}
 
@@ -651,7 +651,7 @@ class OnlineMusicService:
             Dict with song details or None
         """
         # Prefer QQ Music local API if credential is available
-        if self._has_qqmusic_credential() and self._qqmusic:
+        if self._has_qqmusic_credential() and self._provider:
             return self._get_song_detail_qqmusic(song_mid)
 
         # Use YGKing remote API
@@ -660,7 +660,7 @@ class OnlineMusicService:
     def _get_song_detail_qqmusic(self, song_mid: str) -> Optional[Dict[str, Any]]:
         """Get song detail using QQ Music local API."""
         try:
-            result = self._qqmusic.client.get_song_detail(song_mid)
+            result = self._provider.client.get_song_detail(song_mid)
             track_info = result.get("track_info", {})
             if track_info:
                 return {
@@ -679,50 +679,50 @@ class OnlineMusicService:
 
     def follow_singer(self, singer_mid: str) -> bool:
         """Follow a singer."""
-        if self._qqmusic:
-            return self._qqmusic.follow_singer(singer_mid)
+        if self._provider:
+            return self._provider.follow_singer(singer_mid)
         return False
 
     def unfollow_singer(self, singer_mid: str) -> bool:
         """Unfollow a singer."""
-        if self._qqmusic:
-            return self._qqmusic.unfollow_singer(singer_mid)
+        if self._provider:
+            return self._provider.unfollow_singer(singer_mid)
         return False
 
     def fav_song(self, song_id: int) -> bool:
         """Add a song to favorites."""
-        if self._qqmusic:
-            return self._qqmusic.fav_song(song_id)
+        if self._provider:
+            return self._provider.fav_song(song_id)
         return False
 
     def unfav_song(self, song_id: int) -> bool:
         """Remove a song from favorites."""
-        if self._qqmusic:
-            return self._qqmusic.unfav_song(song_id)
+        if self._provider:
+            return self._provider.unfav_song(song_id)
         return False
 
     def fav_album(self, album_mid: str) -> bool:
         """Favorite an album."""
-        if self._qqmusic:
-            return self._qqmusic.fav_album(album_mid)
+        if self._provider:
+            return self._provider.fav_album(album_mid)
         return False
 
     def unfav_album(self, album_mid: str) -> bool:
         """Unfavorite an album."""
-        if self._qqmusic:
-            return self._qqmusic.unfav_album(album_mid)
+        if self._provider:
+            return self._provider.unfav_album(album_mid)
         return False
 
     def fav_playlist(self, playlist_id) -> bool:
         """Favorite a playlist."""
-        if self._qqmusic:
-            return self._qqmusic.fav_playlist(playlist_id)
+        if self._provider:
+            return self._provider.fav_playlist(playlist_id)
         return False
 
     def unfav_playlist(self, playlist_id) -> bool:
         """Unfavorite a playlist."""
-        if self._qqmusic:
-            return self._qqmusic.unfav_playlist(playlist_id)
+        if self._provider:
+            return self._provider.unfav_playlist(playlist_id)
         return False
 
     def _get_song_detail_ygking(self, song_mid: str) -> Optional[Dict[str, Any]]:

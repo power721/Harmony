@@ -3,7 +3,7 @@ Recommendation card widgets for QQ Music recommendations.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Callable, Dict, Any, Optional, List
 
 from PySide6.QtCore import Qt, Signal, QThread, QRect
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
@@ -86,12 +86,14 @@ class RecommendCard(QWidget):
     def __init__(self, data: Dict[str, Any], parent=None):
         super().__init__(parent)
         self._data = data
+        self._is_placeholder = bool(data.get("_placeholder"))
         self._is_hovering = False
         self._cover_loader: Optional[CoverLoader] = None
 
         self._setup_ui()
         self._set_default_cover()
-        self._load_cover()
+        if not self._is_placeholder:
+            self._load_cover()
 
         # Register with theme manager
         from system.theme import ThemeManager
@@ -102,7 +104,7 @@ class RecommendCard(QWidget):
         from system.theme import ThemeManager
 
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.ArrowCursor if self._is_placeholder else Qt.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -139,14 +141,7 @@ class RecommendCard(QWidget):
         title = self._data.get('title', '') or self._data.get('name', '')
         self._name_label = QLabel(title)
         self._name_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
-            QLabel {
-                color: %text%;
-                font-size: 12px;
-                font-weight: bold;
-                background: transparent;
-            }
-        """))
+        self._name_label.setStyleSheet(self._name_label_style())
         self._name_label.setWordWrap(True)
         self._name_label.setMaximumHeight(32)
 
@@ -173,18 +168,22 @@ class RecommendCard(QWidget):
 
     def _set_default_cover(self):
         """Set default cover when no cover is available."""
+        from system.theme import ThemeManager
+
+        theme = ThemeManager.instance().current_theme
         pixmap = QPixmap(self.COVER_SIZE, self.COVER_SIZE)
-        pixmap.fill(QColor("#3d3d3d"))
+        pixmap.fill(QColor(theme.background_hover))
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QColor("#666666"))
+        painter.setPen(QColor(theme.text_secondary))
         font = QFont()
         font.setPixelSize(36)
         painter.setFont(font)
         painter.drawText(
             QRect(0, 0, self.COVER_SIZE, self.COVER_SIZE),
-            Qt.AlignCenter, "\u266B"
+            Qt.AlignCenter,
+            "…" if self._is_placeholder else "\u266B"
         )
         painter.end()
 
@@ -192,21 +191,46 @@ class RecommendCard(QWidget):
 
     def enterEvent(self, event):
         """Handle mouse enter for hover effect."""
+        if self._is_placeholder:
+            return
         self._is_hovering = True
         self._cover_container.setStyleSheet(self._style_hover)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave for hover effect."""
+        if self._is_placeholder:
+            return
         self._is_hovering = False
         self._cover_container.setStyleSheet(self._style_normal)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         """Handle mouse click."""
-        if event.button() == Qt.LeftButton:
+        if not self._is_placeholder and event.button() == Qt.LeftButton:
             self.clicked.emit(self._data)
         super().mousePressEvent(event)
+
+    def _name_label_style(self) -> str:
+        from system.theme import ThemeManager
+
+        if self._is_placeholder:
+            return ThemeManager.instance().get_qss("""
+                QLabel {
+                    color: %text_secondary%;
+                    font-size: 12px;
+                    font-weight: bold;
+                    background: transparent;
+                }
+            """)
+        return ThemeManager.instance().get_qss("""
+            QLabel {
+                color: %text%;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """)
 
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
@@ -226,14 +250,9 @@ class RecommendCard(QWidget):
             self._cover_container.setStyleSheet(self._style_normal)
 
         # Update text labels
-        self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""
-            QLabel {
-                color: %text%;
-                font-size: 12px;
-                font-weight: bold;
-                background: transparent;
-            }
-        """))
+        self._name_label.setStyleSheet(self._name_label_style())
+        if self._is_placeholder:
+            self._set_default_cover()
 
 
 class RecommendSection(QWidget):
@@ -284,10 +303,11 @@ class RecommendSection(QWidget):
         }
     """
 
-    def __init__(self, title: str = None, parent=None):
+    def __init__(self, title: str = None, parent=None, translator: Callable[[str, Optional[str]], str] = t):
         super().__init__(parent)
         self._cards: List[RecommendCard] = []
         self._custom_title = title
+        self._translate = translator
         self._setup_ui()
 
         # Register with theme manager
@@ -306,7 +326,7 @@ class RecommendSection(QWidget):
         self.setStyleSheet("background-color: transparent;")
 
         # Title
-        self._title_label = QLabel(self._custom_title if self._custom_title else t("recommendations"))
+        self._title_label = QLabel(self._custom_title if self._custom_title else self._translate("recommendations"))
         self._title_label.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         layout.addWidget(self._title_label)
 
@@ -354,12 +374,28 @@ class RecommendSection(QWidget):
 
         return widget
 
-    def show_loading(self):
-        """Show loading indicator."""
-        self._loading.show()
-        # Clear existing cards
+    def show_loading(self, count: int = 5):
+        """Show placeholder cards while data is loading."""
+        self._loading.hide()
         self._clear_cards()
-        # Show section while loading
+
+        placeholder_title = self._translate("loading", "Loading...")
+        placeholders = [
+            {
+                "_placeholder": True,
+                "id": f"placeholder-{index}",
+                "title": placeholder_title,
+            }
+            for index in range(max(count, 1))
+        ]
+        for rec in placeholders:
+            card = RecommendCard(rec)
+            self._cards.append(card)
+            self._cards_layout.addWidget(card)
+
+        total_width = len(self._cards) * (RecommendCard.CARD_WIDTH + 16) - 16
+        self._cards_container.setFixedWidth(max(total_width, self.width()))
+        self._cards_container.adjustSize()
         self.show()
 
     def hide_loading(self):
@@ -409,7 +445,7 @@ class RecommendSection(QWidget):
             if self._custom_title:
                 self._title_label.setText(self._custom_title)
             else:
-                self._title_label.setText(t("recommendations"))
+                self._title_label.setText(self._translate("recommendations"))
 
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""

@@ -12,6 +12,8 @@ class SidebarEntrySpec:
     order: int
     icon_name: str | None
     page_factory: Callable[[Any, Any], Any]
+    icon_path: str | None = None
+    title_provider: Callable[[], str] | None = None
 
 
 @dataclass(frozen=True)
@@ -21,3 +23,4 @@ class SettingsTabSpec:
     title: str
     order: int
     widget_factory: Callable[[Any, Any], Any]
+    title_provider: Callable[[], str] | None = None

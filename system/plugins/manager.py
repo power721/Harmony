@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -7,6 +9,8 @@ from infrastructure import HttpClient
 from .installer import PluginInstaller
 from .loader import PluginLoader
 from .registry import PluginRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class PluginManager:
@@ -45,24 +49,41 @@ class PluginManager:
         return sorted(roots, key=lambda item: (item[0], item[1].name))
 
     def load_enabled_plugins(self) -> None:
-        for source, plugin_root in self.discover_roots():
+        roots = self.discover_roots()
+        logger.info("[PluginManager] Discovered %s plugin roots", len(roots))
+        for source, plugin_root in roots:
             manifest = None
             state = None
             plugin = None
             context = None
+            started_at = time.perf_counter()
             try:
                 manifest = self._loader.read_manifest(plugin_root)
                 if manifest.id in self._loaded_plugins:
+                    logger.debug("[PluginManager] Skip already loaded plugin %s", manifest.id)
                     continue
 
                 state = self._state_store.get(manifest.id)
                 if state and state.get("enabled") is False:
+                    logger.info("[PluginManager] Skip disabled plugin %s", manifest.id)
                     continue
 
+                logger.info(
+                    "[PluginManager] Loading plugin %s from %s (%s)",
+                    manifest.id,
+                    plugin_root,
+                    source,
+                )
                 manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
                 context = self._context_factory.build(manifest)
                 plugin.register(context)
                 self._loaded_plugins[manifest.id] = (manifest, plugin, context)
+                duration_ms = (time.perf_counter() - started_at) * 1000
+                logger.info(
+                    "[PluginManager] Loaded plugin %s in %.1fms",
+                    manifest.id,
+                    duration_ms,
+                )
                 self._state_store.set_enabled(
                     manifest.id,
                     True if state is None else bool(state.get("enabled", True)),
@@ -79,6 +100,11 @@ class PluginManager:
                         plugin.unregister(context)
                     except Exception:
                         pass
+                logger.exception(
+                    "[PluginManager] Failed to load plugin %s from %s",
+                    plugin_id,
+                    plugin_root,
+                )
                 self.registry.unregister_plugin(plugin_id)
                 self._loaded_plugins.pop(plugin_id, None)
                 self._state_store.set_enabled(
@@ -105,6 +131,22 @@ class PluginManager:
                 }
             )
         return plugins
+
+    def set_plugin_enabled(self, plugin_id: str, enabled: bool) -> None:
+        for source, plugin_root in self.discover_roots():
+            manifest = self._loader.read_manifest(plugin_root)
+            if manifest.id != plugin_id:
+                continue
+            existing = self._state_store.get(plugin_id) or {}
+            self._state_store.set_enabled(
+                plugin_id,
+                enabled,
+                source=existing.get("source", source),
+                version=existing.get("version", manifest.version),
+                load_error=existing.get("load_error"),
+            )
+            return
+        raise KeyError(f"Unknown plugin: {plugin_id}")
 
     def install_zip(self, zip_path: str | Path) -> Path:
         return self._installer.install_zip(Path(zip_path))

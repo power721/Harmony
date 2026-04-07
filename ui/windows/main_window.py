@@ -8,6 +8,7 @@ Refactored to use modular components:
 - ScanDialog: Music folder scanning
 """
 import logging
+import time
 from contextlib import suppress
 from typing import Optional
 
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMenu,
     QSizeGrip,
@@ -390,8 +392,6 @@ class MainWindow(QMainWindow):
         self._genres_view = GenresView(bootstrap.library_service, bootstrap.cover_service)
         self._genre_view = GenreView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
-        self._online_music_view = None
-
         self._stacked_widget.addWidget(self._library_view)  # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)  # 1
         self._stacked_widget.addWidget(self._playlist_view)  # 2
@@ -453,17 +453,117 @@ class MainWindow(QMainWindow):
     def _mount_plugin_pages(self) -> None:
         """Mount plugin-provided pages into the stacked widget and sidebar."""
         self._plugin_page_keys = {}
+        self._plugin_pages = {}
+        self._plugin_page_specs = {}
+        self._plugin_page_loading = set()
+        self._plugin_prewarm_scheduled = False
+        self._plugin_prewarm_timer = None
         bootstrap = Bootstrap.instance()
         for spec in bootstrap.plugin_manager.registry.sidebar_entries():
             page_index = self._stacked_widget.count()
-            widget = spec.page_factory(bootstrap.plugin_manager, self)
-            self._stacked_widget.addWidget(widget)
+            host = QWidget(self)
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(0, 0, 0, 0)
+            loading_label = QLabel(t("loading", "Loading..."), host)
+            loading_label.setAlignment(Qt.AlignCenter)
+            host_layout.addWidget(loading_label)
+            self._stacked_widget.addWidget(host)
             self._sidebar.add_plugin_entry(
                 page_index=page_index,
-                title=spec.title,
+                title=spec.title_provider() if callable(getattr(spec, "title_provider", None)) else spec.title,
                 icon_name=spec.icon_name,
+                icon_path=getattr(spec, "icon_path", None),
+                title_provider=getattr(spec, "title_provider", None),
             )
             self._plugin_page_keys[page_index] = spec.plugin_id
+            self._plugin_page_specs[page_index] = spec
+            logger.info(
+                "[PluginUI] Mounted placeholder for plugin page %s at index %s",
+                spec.plugin_id,
+                page_index,
+            )
+        self._prewarm_plugin_page()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._schedule_plugin_page_prewarm()
+
+    def _schedule_plugin_page_prewarm(self) -> None:
+        if getattr(self, "_plugin_prewarm_scheduled", False):
+            return
+        if not getattr(self, "_plugin_page_specs", None):
+            return
+        self._plugin_prewarm_scheduled = True
+        if self._plugin_prewarm_timer is None:
+            self._plugin_prewarm_timer = QTimer(self)
+            self._plugin_prewarm_timer.setSingleShot(True)
+            self._plugin_prewarm_timer.timeout.connect(self._prewarm_plugin_page)
+        self._plugin_prewarm_timer.start(0)
+
+    def _prewarm_plugin_page(self) -> None:
+        for index in sorted(self._plugin_page_specs):
+            if index not in self._plugin_pages:
+                logger.info("[PluginUI] Prewarming plugin page at index %s", index)
+                self._ensure_plugin_page_loaded(index)
+                break
+
+    def _ensure_plugin_page_loaded(self, index: int) -> None:
+        spec = getattr(self, "_plugin_page_specs", {}).get(index)
+        if spec is None or index in self._plugin_pages:
+            return
+        if index in self._plugin_page_loading:
+            return
+
+        self._plugin_page_loading.add(index)
+        started_at = time.perf_counter()
+        try:
+            bootstrap = Bootstrap.instance()
+            logger.info(
+                "[PluginUI] Materializing plugin page %s at index %s",
+                spec.plugin_id,
+                index,
+            )
+            host = self._stacked_widget.widget(index)
+            widget = spec.page_factory(bootstrap.plugin_manager, host)
+            layout = host.layout() if isinstance(host, QWidget) else None
+            if layout is not None:
+                while layout.count():
+                    item = layout.takeAt(0)
+                    child = item.widget()
+                    if child is not None:
+                        child.deleteLater()
+                layout.addWidget(widget)
+            self._connect_plugin_page_signals(widget)
+            self._plugin_pages[index] = widget
+            logger.info(
+                "[PluginUI] Plugin page %s ready at index %s in %.1fms",
+                spec.plugin_id,
+                index,
+                (time.perf_counter() - started_at) * 1000,
+            )
+        except Exception:
+            logger.exception(
+                "[PluginUI] Failed to materialize plugin page %s at index %s",
+                getattr(spec, "plugin_id", "<unknown>"),
+                index,
+            )
+        finally:
+            self._plugin_page_loading.discard(index)
+
+    def _connect_plugin_page_signals(self, widget: QWidget) -> None:
+        signal_map = (
+            ("play_online_track", self._play_online_track),
+            ("add_to_queue", self._add_online_track_to_queue),
+            ("insert_to_queue", self._insert_online_track_to_queue),
+            ("add_multiple_to_queue", self._add_multiple_online_tracks_to_queue),
+            ("insert_multiple_to_queue", self._insert_multiple_online_tracks_to_queue),
+            ("play_online_tracks", self._play_online_tracks),
+        )
+        for signal_name, handler in signal_map:
+            signal = getattr(widget, signal_name, None)
+            if signal is None or not hasattr(signal, "connect"):
+                continue
+            signal.connect(handler)
 
     def _on_sidebar_page_requested(self, page_index: int):
         """Handle sidebar page request."""
@@ -648,6 +748,7 @@ class MainWindow(QMainWindow):
 
         # Switch view
         self._stacked_widget.setCurrentIndex(index)
+        self._ensure_plugin_page_loaded(index)
 
         # Auto-select first playlist when showing playlists
         if index == 2:  # Playlists is now at index 2
@@ -1166,6 +1267,8 @@ class MainWindow(QMainWindow):
         # Save language preference
         self._config.set_language(new_lang)
 
+        EventBus.instance().language_changed.emit(new_lang)
+
         # Update language button in sidebar
         self._sidebar.update_language_button()
 
@@ -1198,8 +1301,18 @@ class MainWindow(QMainWindow):
         self._album_view.refresh_ui()
         self._genres_view.refresh_ui()
         self._genre_view.refresh_ui()
-        if self._online_music_view:
-            self._online_music_view.refresh_ui()
+        for widget in getattr(self, "_plugin_pages", {}).values():
+            refresh_ui = getattr(widget, "refresh_ui", None)
+            if callable(refresh_ui):
+                refresh_ui()
+        for page_index, spec in getattr(self, "_plugin_page_specs", {}).items():
+            title_provider = getattr(spec, "title_provider", None)
+            if not callable(title_provider):
+                continue
+            for idx, btn in getattr(self._sidebar, "_nav_buttons", []):
+                if idx == page_index:
+                    btn.setText(title_provider())
+                    break
 
         # Update settings button status in sidebar
         self._sidebar.update_settings_status(self._config.get_ai_enabled())

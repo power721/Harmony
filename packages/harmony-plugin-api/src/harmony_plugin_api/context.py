@@ -33,6 +33,34 @@ class PluginStorageBridge(Protocol):
         ...
 
 
+class PluginThemeBridge(Protocol):
+    def register_widget(self, widget) -> None:
+        ...
+
+    def get_qss(self, template: str) -> str:
+        ...
+
+    def current_theme(self):
+        ...
+
+
+class PluginDialogBridge(Protocol):
+    def information(self, parent, title: str, message: str):
+        ...
+
+    def warning(self, parent, title: str, message: str):
+        ...
+
+    def question(self, parent, title: str, message: str, buttons, default_button):
+        ...
+
+    def critical(self, parent, title: str, message: str):
+        ...
+
+    def setup_title_bar(self, dialog, container_layout, title: str, **kwargs):
+        ...
+
+
 class PluginUiBridge(Protocol):
     def register_sidebar_entry(self, spec: SidebarEntrySpec) -> None:
         ...
@@ -40,10 +68,29 @@ class PluginUiBridge(Protocol):
     def register_settings_tab(self, spec: SettingsTabSpec) -> None:
         ...
 
+    @property
+    def theme(self) -> PluginThemeBridge:
+        ...
+
+    @property
+    def dialogs(self) -> PluginDialogBridge:
+        ...
+
 
 class PluginMediaBridge(Protocol):
-    # Marker bridge for host media operations exposed to plugins.
-    def __repr__(self) -> str:
+    def cache_remote_track(self, request: Any, progress_callback=None, force: bool = False):
+        ...
+
+    def add_online_track(self, request: Any):
+        ...
+
+    def play_online_track(self, request: Any) -> int | None:
+        ...
+
+    def add_online_track_to_queue(self, request: Any) -> int | None:
+        ...
+
+    def insert_online_track_to_queue(self, request: Any) -> int | None:
         ...
 
 
@@ -72,6 +119,7 @@ class PluginContext:
     logger: Any
     http: Any
     events: Any
+    language: str
     storage: PluginStorageBridge
     settings: PluginSettingsBridge
     ui: PluginUiBridge

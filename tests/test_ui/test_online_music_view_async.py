@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 from domain.online_music import OnlineTrack, SearchResult, SearchType
+from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
 from ui.views.online_music_view import OnlineMusicView
 import ui.views.online_music_view as online_music_view
 
@@ -169,18 +170,27 @@ def test_on_login_clicked_clears_plugin_namespaced_credential():
 
 
 def test_show_login_dialog_uses_plugin_local_dialog(monkeypatch):
+    class _Signal:
+        def __init__(self):
+            self.connected = None
+
+        def connect(self, callback):
+            self.connected = callback
+
     view = OnlineMusicView.__new__(OnlineMusicView)
     view._on_credentials_obtained = Mock()
     dialog = Mock()
+    dialog.credentials_obtained = _Signal()
     dialog_ctor = Mock(return_value=dialog)
     monkeypatch.setattr(
-        "plugins.builtin.qqmusic.lib.login_dialog.QQMusicLoginDialog",
+        "plugins.builtin.qqmusic.lib.online_music_view.create_qqmusic_login_dialog",
         dialog_ctor,
     )
 
     OnlineMusicView._show_login_dialog(view)
 
-    dialog_ctor.assert_called_once_with(view)
+    dialog_ctor.assert_called_once_with(None, view)
+    assert dialog.credentials_obtained.connected == view._on_credentials_obtained
     dialog.exec.assert_called_once_with()
 
 
@@ -196,13 +206,64 @@ def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
         def __init__(self, credential):
             self.credential = credential
 
-    monkeypatch.setattr("ui.views.online_music_view.QQMusicService", _FakeQQMusicService, raising=False)
-    monkeypatch.setattr("plugins.builtin.qqmusic.lib.legacy.qqmusic_service.QQMusicService", _FakeQQMusicService)
+    monkeypatch.setattr(
+        "system.plugins.qqmusic_runtime_helpers.create_qqmusic_service",
+        lambda credential: _FakeQQMusicService(credential),
+    )
 
     OnlineMusicView._refresh_qqmusic_service(view)
 
     view._config.get_plugin_secret.assert_called_once_with("qqmusic", "credential", "")
     assert view._qqmusic_service.credential["musicid"] == "1"
+
+
+def test_online_music_view_syncs_plugin_language_from_context_events(qtbot):
+    plugin_i18n.set_language("en")
+    theme_manager = Mock()
+    theme = Mock()
+    theme.background = "#101010"
+    theme.background_alt = "#1a1a1a"
+    theme.background_hover = "#202020"
+    theme.text = "#ffffff"
+    theme.text_secondary = "#b3b3b3"
+    theme.highlight = "#1db954"
+    theme.highlight_hover = "#1ed760"
+    theme.border = "#404040"
+    theme_manager.current_theme = theme
+    theme_manager.get_qss.side_effect = lambda qss: qss
+    theme_manager.register_widget = Mock()
+    config = Mock()
+    config.get_plugin_secret.return_value = ""
+    config.get.side_effect = lambda key, default=None: {
+        "view/ranking_view_mode": "table",
+    }.get(key, default)
+    config.get_search_history.return_value = []
+    config.get_online_music_download_dir.return_value = "data/online_cache"
+
+    class _Signal:
+        def __init__(self):
+            self._callbacks = []
+
+        def connect(self, cb):
+            self._callbacks.append(cb)
+
+        def emit(self, value):
+            for cb in list(self._callbacks):
+                cb(value)
+
+    events = Mock()
+    events.language_changed = _Signal()
+    context = Mock(language="zh", events=events)
+
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        view = OnlineMusicView(config_manager=config, qqmusic_service=None, plugin_context=context)
+        qtbot.addWidget(view)
+
+        assert plugin_i18n.get_language() == "zh"
+
+        events.language_changed.emit("en")
+
+        assert plugin_i18n.get_language() == "en"
 
 
 class _FakeSignal:
@@ -267,6 +328,58 @@ def test_load_top_lists_stops_existing_worker_cooperatively():
     assert view._top_list_worker is new_worker
     assert new_worker.top_list_loaded.connected == view._on_top_lists_loaded
     assert new_worker.started is True
+
+
+def test_show_login_dialog_passes_plugin_context_and_refresh_callback(monkeypatch):
+    class _Signal:
+        def __init__(self):
+            self.connected = None
+
+        def connect(self, callback):
+            self.connected = callback
+
+    dialog = Mock()
+    dialog.credentials_obtained = _Signal()
+    create_dialog = Mock(return_value=dialog)
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_qqmusic_login_dialog",
+        create_dialog,
+    )
+
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._plugin_context = "plugin-context"
+    view._on_credentials_obtained = Mock()
+
+    OnlineMusicView._show_login_dialog(view)
+
+    create_dialog.assert_called_once()
+    args, kwargs = create_dialog.call_args
+    assert args[0] == "plugin-context"
+    assert args[1] is view
+    assert kwargs == {}
+    assert dialog.credentials_obtained.connected == view._on_credentials_obtained
+    dialog.exec.assert_called_once_with()
+
+
+def test_on_credentials_obtained_fetches_missing_nick_from_service():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._plugin_context = Mock()
+    view._config = Mock()
+    view._config.get_plugin_setting.return_value = ""
+    view._refresh_qqmusic_service = Mock()
+    view._update_login_status = Mock()
+    view._load_favorites = Mock()
+    view._service = Mock()
+    view._service.client.verify_login.return_value = {"valid": True, "nick": "Tester", "uin": 1}
+    view._fav_loaded = True
+
+    OnlineMusicView._on_credentials_obtained(view, {"musicid": "1", "musickey": "secret"})
+
+    view._config.set_plugin_setting.assert_any_call("qqmusic", "nick", "Tester")
+    assert view._fav_loaded is False
+    view._refresh_qqmusic_service.assert_called_once_with()
+    view._update_login_status.assert_called_once_with()
+    view._load_favorites.assert_called_once_with()
 
 
 def test_build_track_metadata_uses_unified_fields():

@@ -134,6 +134,56 @@ def test_manager_skips_import_for_disabled_external_plugin(tmp_path: Path):
     assert state["enabled"] is False
 
 
+def test_manager_can_toggle_plugin_enabled_state_without_loading(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "qqmusic"
+    plugin_root.mkdir(parents=True)
+
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "QQMusicPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "class QQMusicPlugin:\n"
+        "    plugin_id = 'qqmusic'\n"
+        "    def register(self, context):\n"
+        "        pass\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_ContextFactory(),
+    )
+
+    manager.set_plugin_enabled("qqmusic", False)
+    disabled_state = store.get("qqmusic")
+    manager.set_plugin_enabled("qqmusic", True)
+    enabled_state = store.get("qqmusic")
+
+    assert disabled_state is not None
+    assert disabled_state["enabled"] is False
+    assert enabled_state is not None
+    assert enabled_state["enabled"] is True
+    assert enabled_state["version"] == "1.0.0"
+
+
 def test_manager_loads_plugin_with_relative_import(tmp_path: Path):
     builtin_root = tmp_path / "builtin"
     plugin_root = builtin_root / "relative"

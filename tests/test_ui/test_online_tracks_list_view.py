@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from domain.online_music import OnlineTrack
+import ui.views.online_tracks_list_view as online_tracks_list_view
 from ui.views.online_tracks_list_view import OnlineTracksListView
 
 
@@ -89,3 +90,25 @@ def test_online_tracks_handle_mouse_leave_is_idempotent_when_idle():
         view._cover_popup.schedule_hide.assert_not_called()
         view.close()
         app.processEvents()
+
+
+def test_online_tracks_cover_resolution_uses_existing_cover_service_only(monkeypatch):
+    """Background cover workers must not bootstrap host services from scratch."""
+
+    class _BootstrapStub:
+        def __init__(self):
+            self._cover_service = None
+            self.cover_service_accessed = False
+
+        @property
+        def cover_service(self):
+            self.cover_service_accessed = True
+            raise RuntimeError("cover_service should not be initialized in worker")
+
+    bootstrap = _BootstrapStub()
+    monkeypatch.setattr("app.bootstrap.Bootstrap.instance", lambda: bootstrap)
+
+    track = OnlineTrack(mid="mid-1", title="Song", duration=180)
+
+    assert online_tracks_list_view._resolve_online_cover_path(track) is None
+    assert bootstrap.cover_service_accessed is False

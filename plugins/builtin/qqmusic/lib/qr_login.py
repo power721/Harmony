@@ -135,3 +135,275 @@ class QQMusicQRLogin:
                 "Referer": "https://y.qq.com/",
             }
         )
+
+    def get_qrcode(self, login_type: QRLoginType = QRLoginType.QQ) -> Optional[QR]:
+        if login_type == QRLoginType.WX:
+            return self._get_wx_qr()
+        return self._get_qq_qr()
+
+    def _get_qq_qr(self) -> Optional[QR]:
+        try:
+            response = self._session.get(
+                self.QQ_QR_URL,
+                params={
+                    "appid": "716027609",
+                    "e": "2",
+                    "l": "M",
+                    "s": "3",
+                    "d": "72",
+                    "v": "4",
+                    "t": str(random.random()),
+                    "daid": "383",
+                    "pt_3rd_aid": "100497308",
+                },
+                headers={"Referer": "https://xui.ptlogin2.qq.com/"},
+                timeout=10,
+            )
+            qrsig = response.cookies.get("qrsig")
+            if not qrsig:
+                return None
+            return QR(response.content, QRLoginType.QQ, qrsig)
+        except Exception:
+            return None
+
+    def _get_wx_qr(self) -> Optional[QR]:
+        try:
+            response = self._session.get(
+                self.WX_QR_URL,
+                params={
+                    "appid": "wx48db31d50e334801",
+                    "redirect_uri": "https://y.qq.com/portal/wx_redirect.html?login_type=2&surl=https://y.qq.com/",
+                    "response_type": "code",
+                    "scope": "snsapi_login",
+                    "state": "STATE",
+                    "href": "https://y.qq.com/mediastyle/music_v17/src/css/popup_wechat.css#wechat_redirect",
+                },
+                timeout=10,
+            )
+            match = re.findall(r"uuid=(.+?)\"", response.text)
+            if not match:
+                return None
+            uuid = match[0]
+            qr_response = self._session.get(
+                self.WX_QR_IMAGE_URL.format(uuid=uuid),
+                headers={"Referer": "https://open.weixin.qq.com/connect/qrconnect"},
+                timeout=10,
+            )
+            return QR(qr_response.content, QRLoginType.WX, uuid)
+        except Exception:
+            return None
+
+    def check_qrcode(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Optional[Credential]]:
+        if qrcode.qr_type == QRLoginType.WX:
+            return self._check_wx_qr(qrcode)
+        return self._check_qq_qr(qrcode)
+
+    def _check_qq_qr(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Optional[Credential]]:
+        qrsig = qrcode.identifier
+        try:
+            response = self._session.get(
+                self.QQ_CHECK_URL,
+                params={
+                    "u1": "https://graph.qq.com/oauth2.0/login_jump",
+                    "ptqrtoken": hash33(qrsig),
+                    "ptredirect": "0",
+                    "h": "1",
+                    "t": "1",
+                    "g": "1",
+                    "from_ui": "1",
+                    "ptlang": "2052",
+                    "action": f"0-0-{time.time() * 1000}",
+                    "js_ver": "20102616",
+                    "js_type": "1",
+                    "pt_uistyle": "40",
+                    "aid": "716027609",
+                    "daid": "383",
+                    "pt_3rd_aid": "100497308",
+                    "has_onekey": "1",
+                },
+                headers={
+                    "Referer": "https://xui.ptlogin2.qq.com/",
+                    "Cookie": f"qrsig={qrsig}",
+                },
+                timeout=10,
+            )
+        except requests.RequestException:
+            return QRCodeLoginEvents.SCAN, None
+
+        match = re.search(r"ptuiCB\((.*?)\)", response.text)
+        if not match:
+            return QRCodeLoginEvents.OTHER, None
+
+        data = [p.strip("'") for p in match.group(1).split(",")]
+        if not data:
+            return QRCodeLoginEvents.OTHER, None
+        code_str = data[0]
+        if not code_str.isdigit():
+            return QRCodeLoginEvents.OTHER, None
+        event = QRCodeLoginEvents.get_by_value(int(code_str))
+        if event == QRCodeLoginEvents.DONE:
+            try:
+                sigx = re.findall(r"&ptsigx=(.+?)&s_url", data[2])[0]
+                uin = re.findall(r"&uin=(.+?)&service", data[2])[0]
+                credential = self._authorize_qq_qr(uin, sigx)
+                return event, credential
+            except Exception:
+                return QRCodeLoginEvents.OTHER, None
+        return event, None
+
+    def _check_wx_qr(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Optional[Credential]]:
+        uuid = qrcode.identifier
+        try:
+            response = self._session.get(
+                self.WX_CHECK_URL,
+                params={"uuid": uuid, "_": str(int(time.time()) * 1000)},
+                headers={"Referer": "https://open.weixin.qq.com/"},
+                timeout=10,
+            )
+        except requests.Timeout:
+            return QRCodeLoginEvents.SCAN, None
+        except requests.RequestException:
+            return QRCodeLoginEvents.SCAN, None
+
+        match = re.search(r"window\.wx_errcode=(\d+);window\.wx_code='([^']*)'", response.text)
+        if not match:
+            return QRCodeLoginEvents.OTHER, None
+        wx_errcode = match.group(1)
+        if not wx_errcode.isdigit():
+            return QRCodeLoginEvents.OTHER, None
+        event = QRCodeLoginEvents.get_by_value(int(wx_errcode))
+        if event == QRCodeLoginEvents.DONE:
+            wx_code = match.group(2)
+            if not wx_code:
+                return QRCodeLoginEvents.OTHER, None
+            try:
+                credential = self._authorize_wx_qr(wx_code)
+                return event, credential
+            except Exception:
+                return QRCodeLoginEvents.OTHER, None
+        return event, None
+
+    def _authorize_qq_qr(self, uin: str, sigx: str) -> Credential:
+        response = self._session.get(
+            self.QQ_AUTHORIZE_URL,
+            params={
+                "uin": uin,
+                "pttype": "1",
+                "service": "ptqrlogin",
+                "nodirect": "0",
+                "ptsigx": sigx,
+                "s_url": "https://graph.qq.com/oauth2.0/login_jump",
+                "ptlang": "2052",
+                "ptredirect": "100",
+                "aid": "716027609",
+                "daid": "383",
+                "j_later": "0",
+                "low_login_hour": "0",
+                "regmaster": "0",
+                "pt_login_type": "3",
+                "pt_aid": "0",
+                "pt_aaid": "16",
+                "pt_light": "0",
+                "pt_3rd_aid": "100497308",
+            },
+            headers={"Referer": "https://xui.ptlogin2.qq.com/"},
+            allow_redirects=True,
+            timeout=10,
+        )
+        p_skey = self._session.cookies.get("p_skey") or response.cookies.get("p_skey")
+        if not p_skey and hasattr(response, "history"):
+            for hist_response in response.history:
+                if "p_skey" in hist_response.cookies:
+                    p_skey = hist_response.cookies.get("p_skey")
+                    break
+                set_cookie = hist_response.headers.get("Set-Cookie", "")
+                if "p_skey=" in set_cookie:
+                    match = re.search(r"p_skey=([^;]+)", set_cookie)
+                    if match:
+                        p_skey = match.group(1)
+                        break
+        if not p_skey:
+            raise ValueError("Failed to get p_skey")
+        response = self._session.post(
+            self.QQ_OAUTH_URL,
+            data={
+                "response_type": "code",
+                "client_id": "100497308",
+                "redirect_uri": "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/",
+                "scope": "get_user_info,get_app_friends",
+                "state": "state",
+                "switch": "",
+                "from_ptlogin": "1",
+                "src": "1",
+                "update_auth": "1",
+                "openapi": "1010_1030",
+                "g_tk": hash33(p_skey, 5381),
+                "auth_time": str(int(time.time()) * 1000),
+                "ui": str(random.randint(100000, 999999)),
+            },
+            allow_redirects=False,
+            timeout=10,
+        )
+        location = response.headers.get("Location", "")
+        try:
+            code = re.findall(r"(?<=code=)(.+?)(?=&)", location)[0]
+        except IndexError as exc:
+            raise ValueError("Failed to get code from OAuth redirect") from exc
+        return self._qq_connect_login(code)
+
+    def _qq_connect_login(self, code: str) -> Credential:
+        request_data = {
+            "comm": {
+                "ct": "11",
+                "cv": "13020508",
+                "v": "13020508",
+                "tmeAppID": "qqmusic",
+                "format": "json",
+                "inCharset": "utf-8",
+                "outCharset": "utf-8",
+                "uid": "3931641530",
+                "tmeLoginType": "2",
+            },
+            "QQConnectLogin.LoginServer.QQLogin": {
+                "module": "QQConnectLogin.LoginServer",
+                "method": "QQLogin",
+                "param": {"code": code},
+            },
+        }
+        response = self._session.post(self.MUSIC_API_URL, json=request_data, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        result = data.get("QQConnectLogin.LoginServer.QQLogin", {})
+        if result.get("code") != 0:
+            raise ValueError(f"QQ Login failed with code: {result.get('code')}")
+        return Credential.from_cookies_dict(result.get("data", {}))
+
+    def _authorize_wx_qr(self, code: str) -> Credential:
+        request_data = {
+            "comm": {
+                "ct": "11",
+                "cv": "13020508",
+                "v": "13020508",
+                "tmeAppID": "qqmusic",
+                "format": "json",
+                "inCharset": "utf-8",
+                "outCharset": "utf-8",
+                "uid": "3931641530",
+                "tmeLoginType": "1",
+            },
+            "music.login.LoginServer.Login": {
+                "module": "music.login.LoginServer",
+                "method": "Login",
+                "param": {
+                    "code": code,
+                    "strAppid": "wx48db31d50e334801",
+                },
+            },
+        }
+        response = self._session.post(self.MUSIC_API_URL, json=request_data, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        result = data.get("music.login.LoginServer.Login", {})
+        if result.get("code") != 0:
+            raise ValueError(f"WeChat Login failed with code: {result.get('code')}")
+        return Credential.from_cookies_dict(result.get("data", {}))

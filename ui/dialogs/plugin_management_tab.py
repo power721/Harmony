@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,23 +18,24 @@ class PluginManagementTab(QWidget):
     def __init__(self, plugin_manager, parent=None):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
-        self._table = QTableWidget(0, 5, self)
+        self._list = QListWidget(self)
         self._url_input = QLineEdit(self)
+        self._enable_btn = QPushButton(t("plugins_enabled"), self)
+        self._disable_btn = QPushButton(t("plugins_disabled"), self)
         self._setup_ui()
         self.refresh()
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        self._table.setHorizontalHeaderLabels(
-            [
-                t("name"),
-                t("version"),
-                t("source"),
-                t("status"),
-                t("plugins_load_error"),
-            ]
-        )
-        layout.addWidget(self._table)
+        layout.addWidget(self._list)
+        self._list.currentItemChanged.connect(lambda *_args: self._sync_action_buttons())
+
+        state_controls = QHBoxLayout()
+        self._enable_btn.clicked.connect(lambda: self._set_selected_plugin_enabled(True))
+        self._disable_btn.clicked.connect(lambda: self._set_selected_plugin_enabled(False))
+        state_controls.addWidget(self._enable_btn)
+        state_controls.addWidget(self._disable_btn)
+        layout.addLayout(state_controls)
 
         controls = QHBoxLayout()
         self._url_input.setPlaceholderText("https://example.com/plugin.zip")
@@ -49,14 +50,52 @@ class PluginManagementTab(QWidget):
 
     def refresh(self) -> None:
         rows = self._plugin_manager.list_plugins()
-        self._table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
-            self._table.setItem(row_index, 0, QTableWidgetItem(row["name"]))
-            self._table.setItem(row_index, 1, QTableWidgetItem(row["version"]))
-            self._table.setItem(row_index, 2, QTableWidgetItem(row["source"]))
+        self._list.clear()
+        for row in rows:
             status = t("plugins_enabled") if row["enabled"] else t("plugins_disabled")
-            self._table.setItem(row_index, 3, QTableWidgetItem(status))
-            self._table.setItem(row_index, 4, QTableWidgetItem(row["load_error"] or ""))
+            parts = [
+                row["name"],
+                row["version"],
+                row["source"],
+                status,
+            ]
+            if row["load_error"]:
+                parts.append(row["load_error"])
+            item = QListWidgetItem(" · ".join(parts))
+            item.setData(0x0100, row)
+            self._list.addItem(item)
+        self._sync_action_buttons()
+
+    def _set_selected_plugin_enabled(self, enabled: bool) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            return
+        row = item.data(0x0100) or {}
+        plugin_id = row.get("id")
+        if not plugin_id:
+            return
+        self._plugin_manager.set_plugin_enabled(plugin_id, enabled)
+        self.refresh()
+        self._restore_selection(plugin_id)
+
+    def _restore_selection(self, plugin_id: str) -> None:
+        for index in range(self._list.count()):
+            item = self._list.item(index)
+            row = item.data(0x0100) or {}
+            if row.get("id") == plugin_id:
+                self._list.setCurrentRow(index)
+                break
+
+    def _sync_action_buttons(self) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            self._enable_btn.setEnabled(False)
+            self._disable_btn.setEnabled(False)
+            return
+        row = item.data(0x0100) or {}
+        enabled = bool(row.get("enabled", True))
+        self._enable_btn.setEnabled(not enabled)
+        self._disable_btn.setEnabled(enabled)
 
     def _install_zip(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

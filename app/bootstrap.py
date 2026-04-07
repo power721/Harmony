@@ -347,6 +347,7 @@ class Bootstrap:
     def plugin_manager(self) -> PluginManager:
         """Get plugin manager."""
         if self._plugin_manager is None:
+            logger.info("[Bootstrap] Initializing plugin manager")
             self._plugin_manager = PluginManager(
                 builtin_root=Path("plugins/builtin"),
                 external_root=Path("data/plugins/external"),
@@ -357,8 +358,10 @@ class Bootstrap:
                 ),
             )
         if not self._plugins_loaded:
+            logger.info("[Bootstrap] Loading enabled plugins")
             self._plugin_manager.load_enabled_plugins()
             self._plugins_loaded = True
+            logger.info("[Bootstrap] Plugin loading finished")
         return self._plugin_manager
 
     def refresh_online_music_service(self) -> "OnlineMusicService":
@@ -376,7 +379,7 @@ class Bootstrap:
             from services.online import OnlineMusicService
             self._online_music_service = OnlineMusicService(
                 config_manager=self.config,
-                qqmusic_service=None
+                credential_provider=None
             )
         return self._online_music_service
 
@@ -387,8 +390,8 @@ class Bootstrap:
             from services.online import OnlineDownloadService
             self._online_download_service = OnlineDownloadService(
                 config_manager=self.config,
-                qqmusic_service=None,
-                online_music_service=None
+                credential_provider=None,
+                online_music_service=self.online_music_service
             )
         return self._online_download_service
 

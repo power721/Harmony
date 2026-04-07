@@ -178,7 +178,6 @@ build_app() {
       --additional-hooks-dir=hooks
       --collect-all certifi
       --hidden-import mpv
-      --collect-all qqmusic_api
       --add-data "ui:ui"
       --add-data "translations:translations"
       --add-data "fonts:fonts"

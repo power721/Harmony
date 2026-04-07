@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: harmony-plugin-api
+Version: 0.1.0
+Summary: Pure plugin SDK for Harmony plugins
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+
+# harmony-plugin-api
+
+Pure plugin SDK for Harmony plugins.
+
+This package only contains stable plugin-facing protocols, models, manifest parsing,
+and registry spec types. It does not include Harmony host runtime implementations.
+
+Host-specific theme, dialog, runtime, and bootstrap integrations must be provided by
+the Harmony application and injected through `PluginContext`.

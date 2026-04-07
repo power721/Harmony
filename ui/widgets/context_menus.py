@@ -7,6 +7,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
 from domain.track import TrackSource
+from plugins.builtin.qqmusic.lib.context_menus import OnlineTrackContextMenu
 from system.i18n import t
 
 
@@ -113,67 +114,6 @@ class LocalTrackContextMenu(QObject):
         menu = self.build_menu(tracks, favorite_ids, parent_widget)
         if menu:
             menu.exec_(QCursor.pos())
-
-
-class OnlineTrackContextMenu(QObject):
-    """Context menu for online tracks. Emits signals for each action."""
-
-    play = Signal(list)
-    insert_to_queue = Signal(list)
-    add_to_queue = Signal(list)
-    add_to_playlist = Signal(list)
-    favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
-    qq_fav_toggled = Signal(list, bool)  # (tracks, all_favorited) - QQ Music remote favorite
-    download = Signal(list)
-
-    def show_menu(self, tracks: list, favorite_mids: set = None, parent_widget=None):
-        from system.theme import ThemeManager
-
-        if not tracks:
-            return
-
-        menu = QMenu(parent_widget)
-        menu.setStyleSheet(ThemeManager.instance().get_qss(_CONTEXT_MENU_STYLE))
-
-        a = menu.addAction(t("play"))
-        a.triggered.connect(lambda: self.play.emit(tracks))
-
-        a = menu.addAction(t("insert_to_queue"))
-        a.triggered.connect(lambda: self.insert_to_queue.emit(tracks))
-
-        a = menu.addAction(t("add_to_queue"))
-        a.triggered.connect(lambda: self.add_to_queue.emit(tracks))
-
-        menu.addSeparator()
-
-        all_favorited = False
-        if favorite_mids:
-            all_favorited = all(
-                getattr(track, 'mid', None) and track.mid in favorite_mids
-                for track in tracks
-            )
-
-        if all_favorited:
-            a = menu.addAction(t("remove_from_favorites"))
-        else:
-            a = menu.addAction(t("add_to_favorites"))
-        a.triggered.connect(lambda: self.favorite_toggled.emit(tracks, all_favorited))
-
-        if all_favorited:
-            a = menu.addAction(t("remove_from_qq_favorites"))
-        else:
-            a = menu.addAction(t("add_to_qq_favorites"))
-        a.triggered.connect(lambda: self.qq_fav_toggled.emit(tracks, all_favorited))
-
-        a = menu.addAction(t("add_to_playlist"))
-        a.triggered.connect(lambda: self.add_to_playlist.emit(tracks))
-
-        menu.addSeparator()
-
-        a = menu.addAction(t("download"))
-        a.triggered.connect(lambda: self.download.emit(tracks))
-
-        menu.exec_(QCursor.pos())
 
 
 class PlaylistTrackContextMenu(LocalTrackContextMenu):

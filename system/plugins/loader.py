@@ -1,19 +1,56 @@
 from __future__ import annotations
 
+import builtins
 import hashlib
 import importlib.util
 import json
+import logging
 import re
 import sys
 import types
+from contextlib import contextmanager
 from pathlib import Path
 
 from harmony_plugin_api.manifest import PluginManifest
 
 from .errors import PluginLoadError
 
+logger = logging.getLogger(__name__)
+_FORBIDDEN_IMPORT_ROOTS = {
+    "app",
+    "domain",
+    "services",
+    "repositories",
+    "infrastructure",
+    "system",
+    "ui",
+}
+
 
 class PluginLoader:
+    @contextmanager
+    def _guard_imports(self, package_name: str):
+        original_import = builtins.__import__
+
+        def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and name:
+                caller_name = ""
+                if isinstance(globals, dict):
+                    caller_name = str(globals.get("__name__", "") or "")
+                root = name.split(".")[0]
+                if (
+                    caller_name.startswith(package_name)
+                    and root in _FORBIDDEN_IMPORT_ROOTS
+                ):
+                    raise ImportError(f"Forbidden host import: {name}")
+            return original_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = _guarded_import
+        try:
+            yield
+        finally:
+            builtins.__import__ = original_import
+
     def _package_name(self, manifest_id: str, plugin_root: Path) -> str:
         safe_id = re.sub(r"[^0-9a-zA-Z_]", "_", manifest_id)
         root_hash = hashlib.sha1(
@@ -63,7 +100,13 @@ class PluginLoader:
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         try:
-            spec.loader.exec_module(module)
+            logger.debug(
+                "[PluginLoader] Executing entry module %s for plugin %s",
+                module_name,
+                manifest.id,
+            )
+            with self._guard_imports(package_name):
+                spec.loader.exec_module(module)
             return module
         except Exception as exc:
             raise PluginLoadError(
@@ -92,6 +135,11 @@ class PluginLoader:
             )
         try:
             plugin_class = getattr(module, manifest.entry_class)
+            logger.debug(
+                "[PluginLoader] Instantiating plugin class %s for %s",
+                manifest.entry_class,
+                manifest.id,
+            )
             return manifest, plugin_class()
         except Exception as exc:
             raise PluginLoadError(

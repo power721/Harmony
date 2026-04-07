@@ -758,7 +758,7 @@ class GeneralSettingsDialog(QDialog):
         for spec in bootstrap.plugin_manager.registry.settings_tabs():
             tab_widget.addTab(
                 spec.widget_factory(bootstrap.plugin_manager, self),
-                spec.title,
+                spec.title_provider() if callable(getattr(spec, "title_provider", None)) else spec.title,
             )
 
         layout.addWidget(tab_widget)

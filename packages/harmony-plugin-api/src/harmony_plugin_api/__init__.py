@@ -1,9 +1,11 @@
 from .context import (
     PluginContext,
+    PluginDialogBridge,
     PluginMediaBridge,
     PluginServiceBridge,
     PluginSettingsBridge,
     PluginStorageBridge,
+    PluginThemeBridge,
     PluginUiBridge,
 )
 from .cover import (
@@ -27,6 +29,7 @@ __all__ = [
     "PluginContext",
     "PluginCoverResult",
     "PluginCoverSource",
+    "PluginDialogBridge",
     "PluginLyricsResult",
     "PluginLyricsSource",
     "PluginManifest",
@@ -37,6 +40,7 @@ __all__ = [
     "PluginServiceBridge",
     "PluginSettingsBridge",
     "PluginStorageBridge",
+    "PluginThemeBridge",
     "PluginTrack",
     "PluginUiBridge",
     "SettingsTabSpec",

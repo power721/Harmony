@@ -370,17 +370,28 @@ class OnlineMusicAdapter:
         # Get total count
         result.total = raw_data.get("meta", {}).get("sum", 0)
 
-        # Type keys for different search types
+        body = raw_data.get("body", {})
         type_keys = {
-            SearchType.SONG: "item_song",
-            SearchType.SINGER: "singer",
-            SearchType.ALBUM: "item_album",
-            SearchType.PLAYLIST: "item_songlist",
+            SearchType.SONG: ("item_song", "song"),
+            SearchType.SINGER: ("item_singer", "singer"),
+            SearchType.ALBUM: ("item_album", "album"),
+            SearchType.PLAYLIST: ("item_songlist", "songlist", "playlist"),
         }
 
-        result_key = type_keys.get(search_type, "item_song")
-        body = raw_data.get("body", {})
-        items = body.get(result_key, [])
+        items: list[dict] = []
+        for key in type_keys.get(search_type, ("item_song", "song")):
+            payload = body.get(key, [])
+            if isinstance(payload, list) and payload:
+                items = payload
+                break
+            if isinstance(payload, dict):
+                for nested_key in ("list", "itemlist", "items", "data"):
+                    nested_payload = payload.get(nested_key, [])
+                    if isinstance(nested_payload, list) and nested_payload:
+                        items = nested_payload
+                        break
+                if items:
+                    break
 
         if search_type == SearchType.SONG:
             result.tracks = OnlineMusicAdapter._parse_qqmusic_tracks(items)
@@ -431,7 +442,8 @@ class OnlineMusicAdapter:
             album_data = item.get("album")
             if isinstance(album_data, str):
                 album_name = _RE_HTML_TAG.sub('', album_data) if album_data else ""
-                album = AlbumInfo(mid="", name=album_name)
+                album_mid = item.get("album_mid", item.get("albummid", ""))
+                album = AlbumInfo(mid=album_mid, name=album_name)
             elif isinstance(album_data, dict):
                 album_name = album_data.get("name", "")
                 if album_name:
@@ -471,12 +483,24 @@ class OnlineMusicAdapter:
         """Parse artists from QQ Music API format."""
         artists = []
         for item in items:
+            mid = item.get("singerMID", item.get("mid", ""))
+            avatar_url = (
+                item.get("singerPic")
+                or item.get("avatar")
+                or item.get("cover")
+                or item.get("cover_url")
+                or item.get("pic")
+                or ""
+            )
+            if not avatar_url and mid:
+                avatar_url = f"https://y.gtimg.cn/music/photo_new/T001R300x300M000{mid}.jpg"
             artist = OnlineArtist(
-                mid=item.get("singerMID", item.get("mid", "")),
-                name=item.get("singerName", ""),
-                avatar_url=item.get("singerPic", ""),
-                song_count=item.get("songNum", 0),
-                album_count=item.get("albumNum", 0)
+                mid=mid,
+                name=item.get("singerName", item.get("name", "")),
+                avatar_url=avatar_url,
+                song_count=item.get("songNum", item.get("song_count", item.get("songnum", 0))),
+                album_count=item.get("albumNum", item.get("album_count", item.get("albumnum", 0))),
+                fan_count=item.get("fan_count", item.get("FanNum", 0)),
             )
             artists.append(artist)
         return artists
