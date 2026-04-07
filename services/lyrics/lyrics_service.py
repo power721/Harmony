@@ -58,13 +58,7 @@ class LyricsService:
     @classmethod
     def _get_builtin_sources(cls) -> List["LyricsSource"]:
         """Get built-in host lyrics sources."""
-        from services.sources import (
-            NetEaseLyricsSource,
-        )
-        http_client = _get_http_client()
-        return [
-            NetEaseLyricsSource(http_client),
-        ]
+        return []
 
     @classmethod
     def _get_sources(cls) -> List["LyricsSource"]:

@@ -1,0 +1,10 @@
+{
+  "id": "netease_lyrics",
+  "name": "NetEase Lyrics",
+  "version": "1.0.0",
+  "api_version": "1",
+  "entrypoint": "plugin_main.py",
+  "entry_class": "NetEaseLyricsPlugin",
+  "capabilities": ["lyrics_source"],
+  "min_app_version": "0.1.0"
+}

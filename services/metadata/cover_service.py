@@ -45,12 +45,7 @@ class CoverService:
 
     def _get_builtin_sources(self) -> List["CoverSource"]:
         """Get built-in host cover sources."""
-        from services.sources import (
-            NetEaseCoverSource,
-        )
-        return [
-            NetEaseCoverSource(self.http_client),
-        ]
+        return []
 
     def _get_sources(self) -> List["CoverSource"]:
         """Get cover sources, including plugin-provided sources."""
@@ -62,12 +57,7 @@ class CoverService:
 
     def _get_builtin_artist_sources(self) -> List["ArtistCoverSource"]:
         """Get built-in host artist cover sources."""
-        from services.sources import (
-            NetEaseArtistCoverSource,
-        )
-        return [
-            NetEaseArtistCoverSource(self.http_client),
-        ]
+        return []
 
     def _get_artist_sources(self) -> List["ArtistCoverSource"]:
         """Get artist cover sources, including plugin-provided sources."""
