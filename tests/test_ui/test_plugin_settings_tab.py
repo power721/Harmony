@@ -1,13 +1,16 @@
 from unittest.mock import Mock
 
-from PySide6.QtWidgets import QTabWidget, QWidget
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import QLabel, QTabWidget, QTableWidget, QWidget
 
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
+from system.i18n import set_language
 from system.plugins.host_services import PluginSettingsBridgeImpl
 from system.theme import ThemeManager
 from ui.dialogs.plugin_management_tab import PluginManagementTab
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
+from ui.widgets.toggle_switch import ToggleSwitch
 from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
 
 
@@ -71,6 +74,37 @@ def _build_dialog_config(store: dict) -> Mock:
     return config
 
 
+def _plugin_table(widget: PluginManagementTab) -> QTableWidget:
+    table = widget.findChild(QTableWidget)
+    assert table is not None
+    return table
+
+
+def _plugin_toggle(widget: PluginManagementTab, plugin_id: str) -> ToggleSwitch:
+    toggle = widget.findChild(ToggleSwitch, f"pluginToggle:{plugin_id}")
+    assert toggle is not None
+    return toggle
+
+
+def _plugin_row_widget(widget: PluginManagementTab, index: int) -> QWidget:
+    table = _plugin_table(widget)
+    row_widget = table.cellWidget(index, 0)
+    assert row_widget is not None
+    return row_widget
+
+
+def _plugin_row_text(widget: PluginManagementTab, index: int) -> str:
+    row_widget = _plugin_row_widget(widget, index)
+    labels = row_widget.findChildren(QLabel)
+    cells = []
+    table = _plugin_table(widget)
+    for column in (1, 2, 3):
+        item = table.item(index, column)
+        if item is not None:
+            cells.append(item.text())
+    return " ".join(label.text() for label in labels) + " " + " ".join(cells)
+
+
 def test_plugin_management_tab_shows_plugin_rows(qtbot):
     manager = Mock()
     manager.list_plugins.return_value = [
@@ -95,12 +129,68 @@ def test_plugin_management_tab_shows_plugin_rows(qtbot):
     widget = PluginManagementTab(manager)
     qtbot.addWidget(widget)
 
-    assert widget._list.count() == 2
-    assert "qqmusic" not in widget._list.item(1).text().lower()
-    assert "QQ Music" in widget._list.item(1).text()
+    table = _plugin_table(widget)
+    assert table.rowCount() == 2
+    assert table.columnCount() == 5
+    assert table.verticalHeader().defaultSectionSize() >= 48
+    row_text = _plugin_row_text(widget, 1)
+    assert "qqmusic" not in row_text.lower()
+    assert "QQ Music" in row_text
 
 
-def test_plugin_management_tab_can_toggle_selected_plugin_enabled_state(qtbot):
+def test_plugin_management_tab_shows_load_errors_in_custom_rows(qtbot):
+    manager = Mock()
+    manager.list_plugins.return_value = [
+        {
+            "id": "qqmusic",
+            "name": "QQ Music",
+            "version": "1.0.0",
+            "source": "builtin",
+            "enabled": False,
+            "load_error": "load failed",
+        }
+    ]
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    row_text = _plugin_row_text(widget, 0)
+    assert "load failed" in row_text
+
+
+def test_plugin_management_tab_grows_row_height_for_wrapped_text(qtbot):
+    manager = Mock()
+    manager.list_plugins.return_value = [
+        {
+            "id": "qqmusic",
+            "name": "QQ Music Plugin With A Very Long Display Name That Needs Wrapping",
+            "version": "2026.04.07-build-with-extra-long-metadata",
+            "source": "builtin",
+            "enabled": False,
+            "load_error": "This load error is intentionally long so the plugin row must wrap across multiple lines when the settings panel is narrow.",
+        }
+    ]
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+    widget.resize(220, 240)
+    widget.show()
+    qtbot.waitExposed(widget)
+
+    row_widget = _plugin_row_widget(widget, 0)
+    table = _plugin_table(widget)
+    labels = row_widget.findChildren(QLabel)
+    name_label = labels[0]
+
+    assert name_label.wordWrap()
+    assert name_label.height() > name_label.fontMetrics().height()
+    assert table.rowHeight(0) >= 56
+    assert table.columnWidth(4) >= 46
+    assert row_widget.width() <= table.viewport().width()
+
+
+def test_plugin_management_tab_localizes_plugin_sources(qtbot):
+    set_language("zh")
     manager = Mock()
     manager.list_plugins.return_value = [
         {
@@ -115,7 +205,7 @@ def test_plugin_management_tab_can_toggle_selected_plugin_enabled_state(qtbot):
             "id": "lrclib",
             "name": "LRCLIB",
             "version": "1.0.0",
-            "source": "builtin",
+            "source": "external",
             "enabled": False,
             "load_error": None,
         },
@@ -124,14 +214,117 @@ def test_plugin_management_tab_can_toggle_selected_plugin_enabled_state(qtbot):
     widget = PluginManagementTab(manager)
     qtbot.addWidget(widget)
 
-    widget._list.setCurrentRow(0)
-    widget._disable_btn.click()
-    widget._list.setCurrentRow(1)
-    widget._enable_btn.click()
+    table = _plugin_table(widget)
+    first_row = _plugin_row_text(widget, 0)
+    second_row = _plugin_row_text(widget, 1)
+
+    assert "内置" in first_row
+    assert "builtin" not in first_row.lower()
+    assert "外部" in second_row
+    assert "external" not in second_row.lower()
+    assert table.item(0, 2).text() == "内置"
+    assert table.item(1, 2).text() == "外部"
+
+
+def test_plugin_management_tab_localizes_version_header(qtbot):
+    set_language("zh")
+    manager = Mock()
+    manager.list_plugins.return_value = []
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    table = _plugin_table(widget)
+    assert table.horizontalHeaderItem(1).text() == "版本"
+
+
+def test_plugin_management_tab_applies_themed_header_stylesheet(qtbot):
+    config = Mock()
+    config.get.return_value = "dark"
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+
+    manager = Mock()
+    manager.list_plugins.return_value = []
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    table = _plugin_table(widget)
+    stylesheet = table.styleSheet()
+    assert "QHeaderView::section" in stylesheet
+    assert "%background%" not in stylesheet
+    assert "%text%" not in stylesheet
+
+
+def test_plugin_management_tab_uses_row_level_toggles(qtbot):
+    manager = Mock()
+    manager.list_plugins.side_effect = [
+        [
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "source": "builtin",
+                "enabled": True,
+                "load_error": None,
+            },
+            {
+                "id": "lrclib",
+                "name": "LRCLIB",
+                "version": "1.0.0",
+                "source": "external",
+                "enabled": False,
+                "load_error": None,
+            },
+        ],
+        [
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "source": "builtin",
+                "enabled": False,
+                "load_error": None,
+            },
+            {
+                "id": "lrclib",
+                "name": "LRCLIB",
+                "version": "1.0.0",
+                "source": "external",
+                "enabled": False,
+                "load_error": None,
+            },
+        ],
+        [
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "source": "builtin",
+                "enabled": False,
+                "load_error": None,
+            },
+            {
+                "id": "lrclib",
+                "name": "LRCLIB",
+                "version": "1.0.0",
+                "source": "external",
+                "enabled": True,
+                "load_error": None,
+            },
+        ],
+    ]
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    qtbot.mouseClick(_plugin_toggle(widget, "qqmusic"), Qt.LeftButton)
+    qtbot.mouseClick(_plugin_toggle(widget, "lrclib"), Qt.LeftButton)
 
     manager.set_plugin_enabled.assert_any_call("qqmusic", False)
     manager.set_plugin_enabled.assert_any_call("lrclib", True)
-    assert manager.list_plugins.call_count >= 3
+    assert manager.list_plugins.call_count == 3
 
 
 def test_settings_dialog_includes_plugins_tab(monkeypatch, qtbot):
@@ -236,6 +429,15 @@ def test_settings_dialog_with_real_builtins_includes_plugin_tabs(monkeypatch, qt
     bootstrap._online_download_service = Mock()
 
     plugin_i18n.set_language("zh")
+    manager = bootstrap.plugin_manager
+    original_get = manager._state_store.get
+    monkeypatch.setattr(
+        manager._state_store,
+        "get",
+        lambda plugin_id: None if plugin_id == "qqmusic" else original_get(plugin_id),
+    )
+    monkeypatch.setattr(manager._state_store, "set_enabled", lambda *args, **kwargs: None)
+    manager.load_enabled_plugins()
 
     monkeypatch.setattr("ui.dialogs.settings_dialog.Bootstrap.instance", lambda: bootstrap)
     ThemeManager._instance = None
@@ -246,7 +448,7 @@ def test_settings_dialog_with_real_builtins_includes_plugin_tabs(monkeypatch, qt
     tab_widget = dialog.findChild(QTabWidget)
 
     tab_labels = [tab_widget.tabText(index) for index in range(tab_widget.count())]
-    assert "QQ 音乐" in tab_labels
+    assert "QQ音乐" in tab_labels
 
 
 def test_settings_dialog_save_persists_qqmusic_download_dir(monkeypatch, qtbot):
