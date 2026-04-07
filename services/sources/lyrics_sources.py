@@ -2,9 +2,7 @@
 Lyrics source implementations.
 """
 
-import base64
 import logging
-import zlib
 from typing import Optional, List
 
 from .base import LyricsSource, LyricsSearchResult
@@ -127,90 +125,6 @@ class NetEaseLyricsSource(LyricsSource):
 
         except Exception as e:
             logger.error(f"Error downloading NetEase lyrics: {e}")
-
-        return None
-
-    def __init__(self, http_client):
-        self._http_client = http_client
-
-class KugouLyricsSource(LyricsSource):
-    """Kugou lyrics source."""
-
-    @property
-    def name(self) -> str:
-        return "Kugou"
-
-    def search(
-        self,
-        title: str,
-        artist: str,
-        limit: int = 10
-    ) -> List[LyricsSearchResult]:
-        """Search for lyrics from Kugou."""
-        results = []
-
-        keyword = f"{title} {artist}"
-        search_url = "https://lyrics.kugou.com/search"
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        params = {
-            "keyword": keyword,
-            "page": 1,
-            "pagesize": limit
-        }
-
-        try:
-            r = self._http_client.get(search_url, params=params, headers=headers, timeout=3)
-            data = r.json()
-
-            candidates = data.get("candidates", [])
-            results.extend(LyricsSearchResult(
-                    id=str(item['id']),
-                    title=item.get('name', item.get('song', '')),
-                    artist=item.get('singer', ''),
-                    album='',
-                    source='kugou',
-                    accesskey=item.get('accesskey', '')
-                ) for item in candidates)
-
-        except Exception as e:
-            logger.debug(f"Kugou search error: {e}")
-
-        return results
-
-    def get_lyrics(self, result: LyricsSearchResult) -> Optional[str]:
-        """Download lyrics from Kugou by song ID."""
-        try:
-            download_url = "https://lyrics.kugou.com/download"
-            headers = {"User-Agent": "Mozilla/5.0"}
-
-            params = {
-                "id": result.id,
-                "accesskey": result.accesskey,
-                "fmt": "krc",
-                "charset": "utf8"
-            }
-
-            r = self._http_client.get(download_url, params=params, headers=headers, timeout=5)
-            data = r.json()
-
-            content = data.get("content")
-            if not content:
-                return None
-
-            # base64 decode
-            krc = base64.b64decode(content)
-
-            # Remove KRC header
-            if krc[:4] == b'krc1':
-                krc = krc[4:]
-
-            # zlib decompress
-            lyric = zlib.decompress(krc)
-            return lyric.decode("utf-8", errors="ignore")
-
-        except Exception as e:
-            logger.error(f"Error downloading Kugou lyrics: {e}")
 
         return None
 
