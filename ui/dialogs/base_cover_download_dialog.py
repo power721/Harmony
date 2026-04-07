@@ -341,40 +341,7 @@ class BaseCoverDownloadDialog(QDialog):
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText(t("search"))
         self._search_input.setClearButtonEnabled(True)
-        theme = ThemeManager.instance().current_theme
-        self._search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 2px solid {theme.border};
-                border-radius: 20px;
-                padding: 10px 15px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {theme.highlight};
-                background-color: {theme.background_hover};
-            }}
-            QLineEdit::placeholder {{
-                color: {theme.text_secondary};
-            }}
-            QLineEdit::clear-button {{
-                subcontrol-origin: padding;
-                subcontrol-position: right;
-                width: 18px;
-                height: 18px;
-                margin-right: 8px;
-                border-radius: 9px;
-                background-color: {theme.border};
-            }}
-            QLineEdit::clear-button:hover {{
-                background-color: {theme.background_hover};
-                border: 1px solid {theme.border};
-            }}
-            QLineEdit::clear-button:pressed {{
-                background-color: {theme.background_alt};
-            }}
-        """)
+        self._search_input.setProperty("variant", "search")
         self._search_input.returnPressed.connect(self._search_covers)
         query_layout.addWidget(self._search_input)
         left_layout.addLayout(query_layout)
