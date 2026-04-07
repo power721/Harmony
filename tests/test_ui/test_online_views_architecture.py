@@ -4,8 +4,8 @@ import inspect
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from ui.views.online_detail_view import OnlineDetailView
-from ui.views.online_music_view import OnlineMusicView
+from plugins.builtin.qqmusic.lib.online_detail_view import OnlineDetailView
+from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
 from services.playback.playback_service import PlaybackService
 
 
@@ -28,9 +28,9 @@ def test_online_music_view_add_to_favorites_uses_favorites_service():
         library_service=SimpleNamespace(),
     )
 
-    with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
-        with patch("ui.views.online_music_view.MessageDialog.information"):
-            with patch("ui.views.online_music_view.t", return_value="{count}"):
+    with patch("plugins.builtin.qqmusic.lib.online_music_view.bootstrap", return_value=bootstrap):
+        with patch("plugins.builtin.qqmusic.lib.online_music_view.MessageDialog.information"):
+            with patch("plugins.builtin.qqmusic.lib.online_music_view.t", return_value="{count}"):
                 OnlineMusicView._add_selected_to_favorites(view, [track])
 
     bootstrap.favorites_service.add_favorite.assert_called_once_with(track_id=123)
@@ -48,7 +48,7 @@ def test_online_music_view_remove_favorite_uses_favorites_service():
         library_service=SimpleNamespace(get_track_by_cloud_file_id=Mock(return_value=library_track)),
     )
 
-    with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
+    with patch("plugins.builtin.qqmusic.lib.online_music_view.bootstrap", return_value=bootstrap):
         OnlineMusicView._on_ranking_favorite_toggled(view, track, False)
 
     bootstrap.favorites_service.remove_favorite.assert_called_once_with(track_id=321)
@@ -64,7 +64,7 @@ def test_online_music_view_remove_favorite_falls_back_to_cloud_file_id():
         library_service=SimpleNamespace(get_track_by_cloud_file_id=Mock(return_value=None)),
     )
 
-    with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
+    with patch("plugins.builtin.qqmusic.lib.online_music_view.bootstrap", return_value=bootstrap):
         OnlineMusicView._on_ranking_favorite_toggled(view, track, False)
 
     bootstrap.favorites_service.remove_favorite.assert_called_once_with(cloud_file_id="m-fallback")
@@ -83,9 +83,9 @@ def test_online_detail_view_favorites_flow_uses_favorites_service():
         library_service=SimpleNamespace(get_track_by_cloud_file_id=Mock(return_value=library_track)),
     )
 
-    with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap):
-        with patch("ui.views.online_detail_view.MessageDialog.information"):
-            with patch("ui.views.online_detail_view.t", return_value="{count}"):
+    with patch("plugins.builtin.qqmusic.lib.online_detail_view.bootstrap", return_value=bootstrap):
+        with patch("plugins.builtin.qqmusic.lib.online_detail_view.show_information"):
+            with patch("plugins.builtin.qqmusic.lib.online_detail_view.t", return_value="{count}"):
                 OnlineDetailView._add_tracks_to_favorites(view, [track])
         OnlineDetailView._remove_track_from_favorites(view, track)
 

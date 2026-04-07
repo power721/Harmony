@@ -161,14 +161,15 @@ Dependencies are managed by `pyproject.toml` and installed using uv:
 4. Browse cloud folders and click music files to start playback
 5. Music will automatically download to the local cache directory
 
-### QQ Music Login
+### QQ Music Plugin
 
-1. Go to Settings -> QQ Music Configuration
-2. Click the "Scan to Login" button
-3. Select login method: QQ or WeChat
-4. Scan the QR code with mobile QQ or WeChat
-5. Confirm login on your phone
-6. Credentials will be automatically saved after successful login
+1. Open `Settings -> Plugins`
+2. Install the QQ Music plugin zip or enable the external QQ Music plugin if it is already installed
+3. Open the plugin's own settings tab and click the login button
+4. Select login method: QQ or WeChat
+5. Scan the QR code with mobile QQ or WeChat
+6. Confirm login on your phone
+7. Credentials will be saved in the plugin's own settings
 
 ### Playback Control
 

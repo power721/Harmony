@@ -3,6 +3,9 @@ from pathlib import Path
 from types import SimpleNamespace
 import zipfile
 
+from PySide6.QtGui import QIcon
+
+from scripts.build_plugin_zip import build_plugin_zip
 from system.plugins.installer import PluginInstaller
 from system.plugins.manager import PluginManager
 from system.plugins.state_store import PluginStateStore
@@ -941,6 +944,263 @@ def test_manager_loads_real_builtin_plugins_from_repository(tmp_path: Path):
     loaded_ids = set(manager._loaded_plugins)
     assert "lrclib" in loaded_ids
     assert "qqmusic" in loaded_ids
+
+
+def test_external_plugin_overrides_builtin_with_same_id(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    external_root = tmp_path / "external"
+    builtin_plugin = builtin_root / "qqmusic"
+    external_plugin = external_root / "qqmusic"
+    builtin_plugin.mkdir(parents=True)
+    external_plugin.mkdir(parents=True)
+
+    for plugin_root, version, title in (
+        (builtin_plugin, "1.0.0", "Builtin QQ Music"),
+        (external_plugin, "1.1.0", "External QQ Music"),
+    ):
+        (plugin_root / "plugin.json").write_text(
+            json.dumps(
+                {
+                    "id": "qqmusic",
+                    "name": "QQ Music",
+                    "version": version,
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "QQMusicPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (plugin_root / "plugin_main.py").write_text(
+            "from harmony_plugin_api.registry_types import SidebarEntrySpec\n\n"
+            "class QQMusicPlugin:\n"
+            "    plugin_id = 'qqmusic'\n"
+            "    def register(self, context):\n"
+            "        context.ui.register_sidebar_entry(\n"
+            "            SidebarEntrySpec(\n"
+            f"                plugin_id='qqmusic', entry_id='qqmusic.sidebar', title='{title}', order=1, icon_name=None, page_factory=lambda _context, _parent: object(),\n"
+            "            )\n"
+            "        )\n"
+            "    def unregister(self, context):\n"
+            "        pass\n",
+            encoding="utf-8",
+        )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=external_root,
+        state_store=store,
+        context_factory=_RegistryContextFactory(None),
+    )
+    manager._context_factory = _RegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+
+    listed = manager.list_plugins()
+    assert [item["id"] for item in listed] == ["qqmusic"]
+    assert listed[0]["source"] == "external"
+    assert listed[0]["version"] == "1.1.0"
+    assert [item.title for item in manager.registry.sidebar_entries()] == ["External QQ Music"]
+
+
+def test_external_only_qqmusic_plugin_loads_without_builtin_root(tmp_path: Path, qtbot):
+    class _Signal:
+        def connect(self, _callback):
+            return None
+
+        def disconnect(self, _callback):
+            return None
+
+    class _ThemeBridge:
+        def register_widget(self, _widget):
+            return None
+
+        def get_qss(self, template: str) -> str:
+            return template
+
+        def current_theme(self):
+            return SimpleNamespace(
+                background="#101010",
+                background_alt="#1a1a1a",
+                background_hover="#202020",
+                text="#ffffff",
+                text_secondary="#b3b3b3",
+                highlight="#1db954",
+                highlight_hover="#1ed760",
+                border="#404040",
+                selection="#333333",
+            )
+
+        def get_popup_surface_style(self) -> str:
+            return ""
+
+        def get_completer_popup_style(self) -> str:
+            return ""
+
+    class _DialogBridge:
+        def information(self, *_args, **_kwargs):
+            return None
+
+        def warning(self, *_args, **_kwargs):
+            return None
+
+        def question(self, *_args, **_kwargs):
+            return None
+
+        def critical(self, *_args, **_kwargs):
+            return None
+
+        def setup_title_bar(self, *_args, **_kwargs):
+            return None
+
+    class _UiBridge:
+        def __init__(self):
+            self._sidebar_entries = []
+            self._settings_tabs = []
+            self.theme = _ThemeBridge()
+            self.dialogs = _DialogBridge()
+
+        def register_sidebar_entry(self, spec):
+            self._sidebar_entries.append(spec)
+
+        def register_settings_tab(self, spec):
+            self._settings_tabs.append(spec)
+
+    class _RuntimeBridge:
+        def create_online_music_service(self, **_kwargs):
+            return SimpleNamespace(_has_qqmusic_credential=lambda: False)
+
+        def create_online_download_service(self, **_kwargs):
+            return SimpleNamespace()
+
+        def get_icon(self, *_args, **_kwargs):
+            return QIcon()
+
+        def image_cache_get(self, _url: str):
+            return None
+
+        def image_cache_set(self, _url: str, _image_data: bytes):
+            return None
+
+        def image_cache_path(self, _url: str):
+            return None
+
+        def http_get_content(self, _url: str, **_kwargs):
+            return None
+
+        def cover_pixmap_cache_initialize(self):
+            return None
+
+        def cover_pixmap_cache_get(self, _cache_key: str):
+            return None
+
+        def cover_pixmap_cache_set(self, _cache_key: str, _pixmap):
+            return None
+
+        def bootstrap(self):
+            return None
+
+        def library_service(self):
+            return None
+
+        def favorites_service(self):
+            return None
+
+        def favorite_mids_from_library(self) -> set[str]:
+            return set()
+
+        def remove_library_favorite_by_mid(self, _mid: str) -> bool:
+            return False
+
+        def add_requests_to_favorites(self, _requests):
+            return []
+
+        def add_requests_to_playlist(self, _parent, _requests, _log_prefix: str):
+            return []
+
+        def add_track_ids_to_playlist(self, _parent, _track_ids, _log_prefix: str):
+            return None
+
+        def event_bus(self):
+            return SimpleNamespace(
+                language_changed=_Signal(),
+                favorite_changed=_Signal(),
+            )
+
+    class _ServiceBridge:
+        def __init__(self):
+            self.media = SimpleNamespace()
+            self.lyrics_sources = []
+            self.cover_sources = []
+            self.artist_cover_sources = []
+            self.online_providers = []
+
+        def register_lyrics_source(self, source):
+            self.lyrics_sources.append(source)
+
+        def register_cover_source(self, source):
+            self.cover_sources.append(source)
+
+        def register_artist_cover_source(self, source):
+            self.artist_cover_sources.append(source)
+
+        def register_online_music_provider(self, provider):
+            self.online_providers.append(provider)
+
+    class _ExternalOnlyContextFactory:
+        def __init__(self):
+            self.ui = _UiBridge()
+            self.services = _ServiceBridge()
+            self.runtime = _RuntimeBridge()
+
+        def build(self, manifest):
+            return SimpleNamespace(
+                plugin_id=manifest.id,
+                manifest=manifest,
+                logger=SimpleNamespace(info=lambda *_args, **_kwargs: None),
+                http=SimpleNamespace(get=lambda *_args, **_kwargs: None),
+                events=SimpleNamespace(language_changed=_Signal()),
+                language="zh",
+                settings=SimpleNamespace(
+                    get=lambda *_args, **_kwargs: None,
+                    set=lambda *_args, **_kwargs: None,
+                ),
+                storage=SimpleNamespace(),
+                ui=self.ui,
+                runtime=self.runtime,
+                services=self.services,
+            )
+
+    plugin_root = Path("plugins/builtin/qqmusic")
+    output_zip = tmp_path / "qqmusic.zip"
+    build_plugin_zip(plugin_root, output_zip)
+
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    installer.install_zip(output_zip)
+
+    context_factory = _ExternalOnlyContextFactory()
+    manager = PluginManager(
+        builtin_root=tmp_path / "builtin-empty",
+        external_root=tmp_path / "external",
+        state_store=PluginStateStore(tmp_path / "state.json"),
+        context_factory=context_factory,
+    )
+
+    manager.load_enabled_plugins()
+
+    assert "qqmusic" in manager._loaded_plugins
+    assert len(context_factory.ui._sidebar_entries) == 1
+    assert len(context_factory.ui._settings_tabs) == 1
+    page = context_factory.ui._sidebar_entries[0].page_factory(None, None)
+    qtbot.addWidget(page)
+    assert page is not None
+    assert len(context_factory.services.online_providers) == 1
 
 
 def test_discover_roots_ignores_non_plugin_directories(tmp_path: Path):

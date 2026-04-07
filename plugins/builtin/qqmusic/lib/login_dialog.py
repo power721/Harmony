@@ -21,6 +21,7 @@ from .dialog_title_bar import setup_dialog_title_layout
 from .i18n import get_language, set_language, t
 from .qr_login import QQMusicQRLogin, QRLoginType, QRCodeLoginEvents
 from .runtime_bridge import (
+    bind_context,
     current_theme,
     get_qss,
     show_information,
@@ -264,6 +265,7 @@ class QQMusicLoginDialog(QDialog):
     def __init__(self, context=None, parent=None):
         super().__init__(parent)
         self._context = context
+        bind_context(context)
         self._drag_pos = None
 
         self.setWindowTitle(t("qqmusic_login_title"))

@@ -8,7 +8,7 @@ from harmony_plugin_api.media import PluginTrack
 from .client import QQMusicPluginClient
 from .legacy_config_adapter import QQMusicLegacyConfigAdapter
 from .online_music_view import OnlineMusicView
-from .runtime_bridge import create_qqmusic_service
+from .runtime_bridge import bind_context, create_qqmusic_service
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +19,12 @@ class QQMusicOnlineProvider:
 
     def __init__(self, context):
         self._context = context
+        bind_context(context)
         self._client = QQMusicPluginClient(context)
         self._logger = getattr(context, "logger", logger)
 
     def create_page(self, context, parent=None):
+        bind_context(context)
         self._logger.info("[QQMusic] Creating legacy online music view")
         config = self._create_legacy_config_adapter(context)
         credential = config.get_plugin_secret("qqmusic", "credential", "")

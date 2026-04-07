@@ -8,7 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from system.theme import ThemeManager
-from ui.views.online_detail_view import OnlineDetailView
+from plugins.builtin.qqmusic.lib.online_detail_view import OnlineDetailView
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def _app():
@@ -29,6 +30,7 @@ def test_all_actions_hidden_when_only_one_page():
     """All-pages action buttons should be hidden when there is only one page."""
     _app()
     _init_theme_manager()
+    bind_test_context()
     view = OnlineDetailView()
 
     view._total_pages = 1
@@ -43,6 +45,7 @@ def test_all_actions_visible_when_multiple_pages():
     """All-pages action buttons should be visible when there are multiple pages."""
     _app()
     _init_theme_manager()
+    bind_test_context()
     view = OnlineDetailView()
 
     view._total_pages = 1

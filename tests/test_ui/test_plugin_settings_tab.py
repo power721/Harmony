@@ -74,6 +74,13 @@ def _build_dialog_config(store: dict) -> Mock:
     return config
 
 
+def _init_theme_manager():
+    config = Mock()
+    config.get.return_value = "dark"
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+
+
 def _plugin_table(widget: PluginManagementTab) -> QTableWidget:
     table = widget.findChild(QTableWidget)
     assert table is not None
@@ -106,6 +113,7 @@ def _plugin_row_text(widget: PluginManagementTab, index: int) -> str:
 
 
 def test_plugin_management_tab_shows_plugin_rows(qtbot):
+    _init_theme_manager()
     manager = Mock()
     manager.list_plugins.return_value = [
         {
@@ -139,6 +147,7 @@ def test_plugin_management_tab_shows_plugin_rows(qtbot):
 
 
 def test_plugin_management_tab_shows_load_errors_in_custom_rows(qtbot):
+    _init_theme_manager()
     manager = Mock()
     manager.list_plugins.return_value = [
         {
@@ -159,6 +168,7 @@ def test_plugin_management_tab_shows_load_errors_in_custom_rows(qtbot):
 
 
 def test_plugin_management_tab_grows_row_height_for_wrapped_text(qtbot):
+    _init_theme_manager()
     manager = Mock()
     manager.list_plugins.return_value = [
         {
@@ -191,6 +201,7 @@ def test_plugin_management_tab_grows_row_height_for_wrapped_text(qtbot):
 
 def test_plugin_management_tab_localizes_plugin_sources(qtbot):
     set_language("zh")
+    _init_theme_manager()
     manager = Mock()
     manager.list_plugins.return_value = [
         {
@@ -228,6 +239,7 @@ def test_plugin_management_tab_localizes_plugin_sources(qtbot):
 
 def test_plugin_management_tab_localizes_version_header(qtbot):
     set_language("zh")
+    _init_theme_manager()
     manager = Mock()
     manager.list_plugins.return_value = []
 
@@ -253,6 +265,22 @@ def test_plugin_management_tab_uses_global_panel_table_variant(qtbot):
     table = _plugin_table(widget)
     assert table.property("variant") == "panel"
     assert table.styleSheet() == ""
+
+
+def test_plugin_management_tab_shows_install_safety_warning(qtbot):
+    manager = Mock()
+    manager.list_plugins.return_value = []
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    warning_labels = [
+        label.text()
+        for label in widget.findChildren(QLabel)
+        if "trusted" in label.text().lower() or "受信任" in label.text()
+    ]
+
+    assert warning_labels
 
 
 def test_settings_dialog_footer_cancel_button_uses_foundation_cancel_role(monkeypatch, qtbot):

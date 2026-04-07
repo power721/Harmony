@@ -22,37 +22,26 @@ def test_online_download_service_no_longer_imports_plugin_qqmusic_impl():
     assert "plugins.builtin.qqmusic" not in source
 
 
-def test_online_music_view_is_legacy_compat_shim():
-    source = Path("ui/views/online_music_view.py").read_text(encoding="utf-8")
-
-    assert "legacy_online_music_view" in source
-    assert "Compatibility shim" in source
-
-
-def test_legacy_online_music_view_is_now_a_plugin_compat_shim():
-    source = Path("ui/views/legacy_online_music_view.py").read_text(encoding="utf-8")
-
-    assert "plugins.builtin.qqmusic.lib.online_music_view" in source
-    assert "Compatibility shim" in source
-
-
-def test_host_online_views_are_plugin_compat_shims():
+def test_host_qqmusic_compatibility_view_modules_are_removed():
     for relative_path in (
+        "ui/views/online_music_view.py",
+        "ui/views/legacy_online_music_view.py",
         "ui/views/online_detail_view.py",
         "ui/views/online_grid_view.py",
         "ui/views/online_tracks_list_view.py",
     ):
-        source = Path(relative_path).read_text(encoding="utf-8")
+        assert not Path(relative_path).exists(), relative_path
 
-        assert "plugins.builtin.qqmusic.lib" in source
-        assert "Compatibility shim" in source
+
+def test_host_qqmusic_runtime_helpers_are_removed():
+    assert not Path("system/plugins/qqmusic_runtime_helpers.py").exists()
 
 
 def test_plugin_root_view_module_has_been_removed():
     assert not Path("plugins/builtin/qqmusic/lib/root_view.py").exists()
 
 
-def test_plugin_provider_now_uses_legacy_online_music_view_entry():
+def test_plugin_provider_now_uses_plugin_online_music_view_entry():
     source = Path("plugins/builtin/qqmusic/lib/provider.py").read_text(encoding="utf-8")
 
     assert "from .online_music_view import OnlineMusicView" in source
@@ -63,8 +52,7 @@ def test_plugin_provider_now_uses_legacy_online_music_view_entry():
 def test_online_track_context_menu_lives_in_plugin_module():
     source = Path("ui/widgets/context_menus.py").read_text(encoding="utf-8")
 
-    assert "plugins.builtin.qqmusic.lib.context_menus" in source
-    assert "class OnlineTrackContextMenu" not in source
+    assert "plugins.builtin.qqmusic.lib.context_menus" not in source
 
 
 def test_qqmusic_plugin_has_private_translation_files():

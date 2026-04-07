@@ -14,6 +14,7 @@ from pathlib import Path
 from harmony_plugin_api.manifest import PluginManifest
 
 from .errors import PluginLoadError
+from .installer import audit_plugin_imports
 
 logger = logging.getLogger(__name__)
 _FORBIDDEN_IMPORT_ROOTS = {
@@ -79,6 +80,12 @@ class PluginLoader:
     ):
         if manifest is None:
             manifest = self.read_manifest(plugin_root)
+        try:
+            audit_plugin_imports(plugin_root)
+        except Exception as exc:
+            raise PluginLoadError(
+                f"Failed to load plugin '{manifest.id}': {exc}"
+            ) from exc
         module_path = plugin_root / manifest.entrypoint
         if not module_path.exists():
             raise PluginLoadError(f"Entrypoint file does not exist: {module_path}")

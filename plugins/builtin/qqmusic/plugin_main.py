@@ -10,6 +10,7 @@ from .lib.cover_source import QQMusicCoverPluginSource
 from .lib.i18n import get_language, set_language, t
 from .lib.lyrics_source import QQMusicLyricsPluginSource
 from .lib.provider import QQMusicOnlineProvider
+from .lib.runtime_bridge import bind_context, clear_context
 from .lib.settings_tab import QQMusicSettingsTab
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class QQMusicPlugin:
     plugin_id = "qqmusic"
 
     def register(self, context) -> None:
+        bind_context(context)
         plugin_logger = getattr(context, "logger", None)
         if plugin_logger is None or not hasattr(plugin_logger, "info"):
             plugin_logger = logger
@@ -75,5 +77,6 @@ class QQMusicPlugin:
             set_language(language)
 
     def unregister(self, context) -> None:
+        clear_context(context)
         getattr(context, "logger", logger).info("[QQMusic] Plugin unregistered")
         return None

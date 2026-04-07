@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from .common import get_quality_label_key, get_selectable_qualities
 from .i18n import get_language, set_language, t
 from .login_dialog import QQMusicLoginDialog
-from .runtime_bridge import current_theme as sdk_current_theme, register_themed_widget
+from .runtime_bridge import bind_context, current_theme as sdk_current_theme, register_themed_widget
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ class QQMusicSettingsTab(QWidget):
     def __init__(self, context, parent=None):
         super().__init__(parent)
         self._context = context
+        bind_context(context)
         self._language_connected = False
         self._verify_thread: Optional[VerifyLoginThread] = None
         self._loading_settings = False

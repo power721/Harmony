@@ -318,6 +318,7 @@
     "plugins_tab": "插件",
     "plugins_install_zip": "安装 Zip",
     "plugins_install_url": "在线安装",
+    "plugins_install_warning": "只安装来自受信任来源的插件。插件会在应用内执行受信任的 Python 代码。",
     "plugins_load_error": "加载错误",
     "plugins_enabled": "已启用",
     "plugins_disabled": "已禁用",

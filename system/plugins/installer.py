@@ -21,19 +21,47 @@ _FORBIDDEN_ROOT_IMPORTS = {
 }
 
 
+def _import_roots_from_node(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Import):
+        return [alias.name.split(".")[0] for alias in node.names]
+    if isinstance(node, ast.ImportFrom):
+        if node.level and node.level > 0:
+            return []
+        if not node.module:
+            return []
+        return [node.module.split(".")[0]]
+    if not isinstance(node, ast.Call):
+        return []
+
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "importlib"
+        and node.func.attr == "import_module"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ):
+        return [node.args[0].value.split(".")[0]]
+
+    if (
+        isinstance(node.func, ast.Name)
+        and node.func.id == "__import__"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ):
+        return [node.args[0].value.split(".")[0]]
+
+    return []
+
+
 def audit_plugin_imports(plugin_root: Path) -> None:
     for py_file in plugin_root.rglob("*.py"):
         tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names = [alias.name.split(".")[0] for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                if node.level and node.level > 0:
-                    continue
-                if not node.module:
-                    continue
-                names = [node.module.split(".")[0]]
-            else:
+            names = _import_roots_from_node(node)
+            if not names:
                 continue
 
             if any(name in _FORBIDDEN_ROOT_IMPORTS for name in names):

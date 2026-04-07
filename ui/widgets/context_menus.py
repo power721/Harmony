@@ -6,8 +6,6 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
-from domain.track import TrackSource
-from plugins.builtin.qqmusic.lib.context_menus import OnlineTrackContextMenu
 from system.i18n import t
 
 

@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 
+from . import plugin_sdk_runtime
 from .plugin_sdk_ui import PluginDialogBridgeImpl, PluginThemeBridgeImpl
 
 class PluginSettingsBridgeImpl:
@@ -70,6 +71,90 @@ class PluginUiBridgeImpl:
     @property
     def dialogs(self):
         return self._dialogs
+
+
+class PluginRuntimeBridgeImpl:
+    def create_online_music_service(self, *, config_manager=None, credential_provider=None):
+        return plugin_sdk_runtime.create_online_music_service(
+            config_manager=config_manager,
+            credential_provider=credential_provider,
+        )
+
+    def create_online_download_service(
+        self,
+        *,
+        config_manager=None,
+        credential_provider=None,
+        online_music_service=None,
+    ):
+        return plugin_sdk_runtime.create_online_download_service(
+            config_manager=config_manager,
+            credential_provider=credential_provider,
+            online_music_service=online_music_service,
+        )
+
+    def get_icon(self, name, color, size: int = 16):
+        return plugin_sdk_runtime.get_icon(name, color, size)
+
+    def image_cache_get(self, url: str):
+        return plugin_sdk_runtime.image_cache_get(url)
+
+    def image_cache_set(self, url: str, image_data: bytes):
+        return plugin_sdk_runtime.image_cache_set(url, image_data)
+
+    def image_cache_path(self, url: str):
+        return plugin_sdk_runtime.image_cache_path(url)
+
+    def http_get_content(
+        self,
+        url: str,
+        *,
+        timeout: int,
+        headers: dict[str, str] | None = None,
+    ):
+        return plugin_sdk_runtime.http_get_content(
+            url,
+            timeout=timeout,
+            headers=headers,
+        )
+
+    def cover_pixmap_cache_initialize(self) -> None:
+        plugin_sdk_runtime.cover_pixmap_cache_initialize()
+
+    def cover_pixmap_cache_get(self, cache_key: str):
+        return plugin_sdk_runtime.cover_pixmap_cache_get(cache_key)
+
+    def cover_pixmap_cache_set(self, cache_key: str, pixmap) -> None:
+        plugin_sdk_runtime.cover_pixmap_cache_set(cache_key, pixmap)
+
+    def bootstrap(self):
+        return plugin_sdk_runtime.bootstrap()
+
+    def library_service(self):
+        return plugin_sdk_runtime.library_service()
+
+    def favorites_service(self):
+        return plugin_sdk_runtime.favorites_service()
+
+    def favorite_mids_from_library(self) -> set[str]:
+        return plugin_sdk_runtime.favorite_mids_from_library()
+
+    def remove_library_favorite_by_mid(self, mid: str) -> bool:
+        return plugin_sdk_runtime.remove_library_favorite_by_mid(mid)
+
+    def add_requests_to_favorites(self, requests):
+        return plugin_sdk_runtime.add_requests_to_favorites(requests)
+
+    def add_requests_to_playlist(self, parent, requests, log_prefix: str):
+        return plugin_sdk_runtime.add_requests_to_playlist(parent, requests, log_prefix)
+
+    def add_track_ids_to_playlist(self, parent, track_ids, log_prefix: str) -> None:
+        plugin_sdk_runtime.add_track_ids_to_playlist(parent, track_ids, log_prefix)
+
+    def event_bus(self):
+        return plugin_sdk_runtime.event_bus()
+
+
 class PluginServiceBridgeImpl:
     def __init__(self, plugin_id: str, registry, media_bridge) -> None:
         self._plugin_id = plugin_id
@@ -115,7 +200,7 @@ class BootstrapPluginContextFactory:
             self._bootstrap.playback_service,
             self._bootstrap.library_service,
         )
-        return PluginContext(
+        context = PluginContext(
             plugin_id=plugin_id,
             manifest=manifest,
             logger=logging.getLogger(f"plugin.{plugin_id}"),
@@ -127,6 +212,8 @@ class BootstrapPluginContextFactory:
             ui=PluginUiBridgeImpl(plugin_id, registry),
             services=PluginServiceBridgeImpl(plugin_id, registry, media_bridge),
         )
+        object.__setattr__(context, "runtime", PluginRuntimeBridgeImpl())
+        return context
 
 
 from .media_bridge import PluginMediaBridge
@@ -134,6 +221,7 @@ from .media_bridge import PluginMediaBridge
 __all__ = [
     "BootstrapPluginContextFactory",
     "PluginMediaBridge",
+    "PluginRuntimeBridgeImpl",
     "PluginServiceBridgeImpl",
     "PluginSettingsBridgeImpl",
     "PluginStorageBridgeImpl",

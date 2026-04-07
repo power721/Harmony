@@ -4,8 +4,9 @@ from unittest.mock import Mock, patch
 
 from domain.online_music import OnlineTrack, SearchResult, SearchType
 from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
-from ui.views.online_music_view import OnlineMusicView
-import ui.views.online_music_view as online_music_view
+from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
+import plugins.builtin.qqmusic.lib.online_music_view as online_music_view
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def _make_view_for_search_callbacks():
@@ -162,7 +163,7 @@ def test_on_login_clicked_clears_plugin_namespaced_credential():
     view._config = Mock()
     view._update_login_status = Mock()
 
-    with patch("ui.views.online_music_view.MessageDialog.information"):
+    with patch("plugins.builtin.qqmusic.lib.online_music_view.MessageDialog.information"):
         OnlineMusicView._on_login_clicked(view)
 
     view._config.set_plugin_setting.assert_any_call("qqmusic", "credential", None)
@@ -207,7 +208,7 @@ def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
             self.credential = credential
 
     monkeypatch.setattr(
-        "system.plugins.qqmusic_runtime_helpers.create_qqmusic_service",
+        "plugins.builtin.qqmusic.lib.online_music_view.create_qqmusic_service",
         lambda credential: _FakeQQMusicService(credential),
     )
 
@@ -251,17 +252,15 @@ def test_online_music_view_syncs_plugin_language_from_context_events(qtbot):
             for cb in list(self._callbacks):
                 cb(value)
 
-    events = Mock()
-    events.language_changed = _Signal()
-    context = Mock(language="zh", events=events)
-
     with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        context = bind_test_context(theme_manager=theme_manager, language="zh")
+        context.events.language_changed = _Signal()
         view = OnlineMusicView(config_manager=config, qqmusic_service=None, plugin_context=context)
         qtbot.addWidget(view)
 
         assert plugin_i18n.get_language() == "zh"
 
-        events.language_changed.emit("en")
+        context.events.language_changed.emit("en")
 
         assert plugin_i18n.get_language() == "en"
 
