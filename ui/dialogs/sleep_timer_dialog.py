@@ -291,7 +291,6 @@ QSpinBox {
 QSpinBox::up-button, QSpinBox::down-button {
     width: 20px;
 }
-""" + ThemeManager.get_combobox_style() + """
 QPushButton#presetBtn { background-color: %background%; color: %text%; border: 1px solid %border%; padding: 6px 12px; font-size: 12px; min-width: 60px; }
 QPushButton#presetBtn:hover { background-color: %background_hover%; border-color: %highlight%; }
 #statusLabel { color: %highlight%; font-size: 14px; font-weight: bold; padding: 8px; background-color: %background_hover%; border-radius: 6px; }

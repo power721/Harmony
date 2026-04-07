@@ -27,7 +27,6 @@ class RedownloadDialog(QDialog):
             color: %text_secondary%;
             font-size: 12px;
         }
-    """ + ThemeManager.get_combobox_style() + """
     """
     _POPUP_STYLE_TEMPLATE = """
         QListView {
