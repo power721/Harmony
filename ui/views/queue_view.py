@@ -961,6 +961,7 @@ class QueueView(QWidget):
         self._list_view = QListView(list_container)
         self._list_view.setObjectName("queueList")
         self._list_view.setMouseTracking(True)
+        self._list_view.viewport().setCursor(Qt.PointingHandCursor)
         self._list_view.viewport().installEventFilter(self)
         self._model = QueueTrackModel(self)
         self._delegate = QueueItemDelegate(self)

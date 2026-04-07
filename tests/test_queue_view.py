@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from unittest.mock import patch, MagicMock
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 app = QApplication.instance() or QApplication(sys.argv)
@@ -116,6 +117,16 @@ def test_queue_view_signals():
         # These signals should exist
         assert hasattr(view, 'play_track')
         assert hasattr(view, 'queue_reordered')
+
+
+def test_queue_view_items_use_pointing_hand_cursor():
+    """Queue list items should show a pointing hand cursor on hover."""
+    with patch('system.theme.ThemeManager', MockThemeManager):
+        from ui.views.queue_view import QueueView
+
+        view = QueueView(make_mock_player(), MagicMock(), MagicMock(), MagicMock())
+
+        assert view._list_view.viewport().cursor().shape() == Qt.PointingHandCursor
 
 
 def test_get_tracks_by_ids_uses_batch_api_when_available():
