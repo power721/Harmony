@@ -29,6 +29,8 @@ from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 logger = logging.getLogger(__name__)
 
+_ACTIVE_LYRICS_SEARCH_THREADS: set[QThread] = set()
+
 
 class LyricsSearchThread(QThread):
     """Thread for searching lyrics with progressive updates."""
@@ -237,20 +239,84 @@ class LyricsDownloadDialog(QDialog):
 
     def _on_cancel_clicked(self):
         """Handle cancel button click."""
-        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.cancel()
-            # Give the thread a moment to clean up
-            self._search_thread.wait(100)  # Wait up to 100ms
         self.reject()
 
     def _start_search(self):
         """Start the search thread with progressive updates."""
-        self._search_thread = LyricsSearchThread(self._track_title, self._track_artist)
-        self._search_thread.search_completed.connect(self._on_search_completed)
-        self._search_thread.search_failed.connect(self._on_search_failed)
-        self._search_thread.search_progress.connect(self._on_search_progress)
-        self._search_thread.finished.connect(self._search_thread.deleteLater)
-        self._search_thread.start()
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
+
+        thread = LyricsSearchThread(self._track_title, self._track_artist)
+        self._search_thread = thread
+        _ACTIVE_LYRICS_SEARCH_THREADS.add(thread)
+
+        thread.search_completed.connect(self._on_search_completed)
+        thread.search_failed.connect(self._on_search_failed)
+        thread.search_progress.connect(self._on_search_progress)
+        thread.finished.connect(self._on_search_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda thread=thread: _ACTIVE_LYRICS_SEARCH_THREADS.discard(thread))
+        thread.start()
+
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Disconnect a specific slot, ignoring already-disconnected signals."""
+        if signal is None or slot is None:
+            return
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def _disconnect_search_thread_signals(self, thread: LyricsSearchThread):
+        """Disconnect dialog-owned slots from a search thread."""
+        on_search_completed = getattr(self, "_on_search_completed", None)
+        on_search_failed = getattr(self, "_on_search_failed", None)
+        on_search_progress = getattr(self, "_on_search_progress", None)
+        on_search_thread_finished = getattr(self, "_on_search_thread_finished", None)
+
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_completed", None),
+            on_search_completed,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_failed", None),
+            on_search_failed,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_progress", None),
+            on_search_progress,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "finished", None),
+            on_search_thread_finished,
+        )
+
+    def _stop_search_thread(self, wait_ms: int = 1000, cleanup_signals: bool = False):
+        """Stop the search thread and detach it from the dialog if needed."""
+        thread = getattr(self, "_search_thread", None)
+        if not thread or not isValid(thread):
+            self._search_thread = None
+            return
+
+        if cleanup_signals:
+            LyricsDownloadDialog._disconnect_search_thread_signals(self, thread)
+
+        if thread.isRunning():
+            thread.cancel()
+            thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning(
+                    "[LyricsDownloadDialog] Search thread still running after close request; "
+                    "detaching cleanup from dialog lifecycle"
+                )
+                _ACTIVE_LYRICS_SEARCH_THREADS.add(thread)
+                self._search_thread = None
+                return
+
+        _ACTIVE_LYRICS_SEARCH_THREADS.discard(thread)
+        thread.deleteLater()
+        self._search_thread = None
 
     def _on_search_progress(self, new_results: list, source_name: str):
         """Handle progressive search updates from each source."""
@@ -349,6 +415,12 @@ class LyricsDownloadDialog(QDialog):
         self._progress_bar.setVisible(False)
         self._status_label.setText(error_message)
 
+    def _on_search_thread_finished(self):
+        """Clear the dialog reference once the current search thread fully stops."""
+        sender = self.sender()
+        if sender and sender == self._search_thread:
+            self._search_thread = None
+
     def _format_result_text(self, result: dict) -> str:
         """Format a search result for display in the list.
 
@@ -411,19 +483,17 @@ class LyricsDownloadDialog(QDialog):
         if current_item:
             self._selected_song = current_item.data(Qt.UserRole)
             self._download_cover = self._download_cover_checkbox.isChecked()
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
         super().accept()
+
+    def reject(self):
+        """Handle dialog rejection."""
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
+        super().reject()
 
     def closeEvent(self, event):
         """Clean up on close."""
-        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.cancel()
-            self._search_thread.wait(500)  # Wait up to 500ms for clean shutdown
-            # Force terminate if still running (shouldn't happen normally)
-            if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-                self._search_thread.requestInterruption()
-                self._search_thread.wait(3000)  # Wait up to 3 seconds
-                if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-                    logger.warning("[LyricsDownloadDialog] Thread did not stop gracefully")
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
         super().closeEvent(event)
 
     @staticmethod
