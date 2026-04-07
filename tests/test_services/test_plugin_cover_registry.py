@@ -43,3 +43,4 @@ def test_builtin_cover_sources_exclude_plugin_owned_sources():
     assert "QQMusic" not in artist_names
     assert "iTunes" not in names
     assert "iTunes" not in artist_names
+    assert "Last.fm" not in names

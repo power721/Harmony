@@ -47,11 +47,9 @@ class CoverService:
         """Get built-in host cover sources."""
         from services.sources import (
             NetEaseCoverSource,
-            LastFmCoverSource,
         )
         return [
             NetEaseCoverSource(self.http_client),
-            LastFmCoverSource(self.http_client),
         ]
 
     def _get_sources(self) -> List["CoverSource"]:

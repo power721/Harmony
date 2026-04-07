@@ -1,0 +1,10 @@
+{
+  "id": "last_fm_cover",
+  "name": "Last.fm Cover",
+  "version": "1.0.0",
+  "api_version": "1",
+  "entrypoint": "plugin_main.py",
+  "entry_class": "LastFmCoverPlugin",
+  "capabilities": ["cover"],
+  "min_app_version": "0.1.0"
+}
