@@ -39,6 +39,8 @@ def test_builtin_cover_sources_exclude_plugin_owned_sources():
     names = {source.name for source in service._get_builtin_sources()}
     artist_names = {source.name for source in service._get_builtin_artist_sources()}
 
+    assert "NetEase" not in names
+    assert "NetEase" not in artist_names
     assert "QQMusic" not in names
     assert "QQMusic" not in artist_names
     assert "iTunes" not in names

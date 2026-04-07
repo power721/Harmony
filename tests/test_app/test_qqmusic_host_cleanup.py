@@ -48,13 +48,8 @@ def test_host_online_views_are_plugin_compat_shims():
         assert "Compatibility shim" in source
 
 
-def test_plugin_root_view_uses_plugin_local_online_views():
-    source = Path("plugins/builtin/qqmusic/lib/root_view.py").read_text(encoding="utf-8")
-
-    assert "from .online_grid_view import OnlineGridView" in source
-    assert "from .online_tracks_list_view import OnlineTracksListView" in source
-    assert "from ui.views.online_grid_view import OnlineGridView" not in source
-    assert "from ui.views.online_tracks_list_view import OnlineTracksListView" not in source
+def test_plugin_root_view_module_has_been_removed():
+    assert not Path("plugins/builtin/qqmusic/lib/root_view.py").exists()
 
 
 def test_plugin_provider_now_uses_legacy_online_music_view_entry():
@@ -85,7 +80,6 @@ def test_qqmusic_plugin_modules_use_plugin_local_i18n():
         "plugins/builtin/qqmusic/lib/online_grid_view.py",
         "plugins/builtin/qqmusic/lib/online_music_view.py",
         "plugins/builtin/qqmusic/lib/online_tracks_list_view.py",
-        "plugins/builtin/qqmusic/lib/root_view.py",
         "plugins/builtin/qqmusic/lib/settings_tab.py",
     ):
         source = Path(relative_path).read_text(encoding="utf-8")
@@ -95,7 +89,6 @@ def test_qqmusic_plugin_modules_use_plugin_local_i18n():
 
 def test_qqmusic_plugin_no_longer_imports_host_online_models_or_widgets():
     for relative_path in (
-        "plugins/builtin/qqmusic/lib/root_view.py",
         "plugins/builtin/qqmusic/lib/online_music_view.py",
         "plugins/builtin/qqmusic/lib/online_detail_view.py",
         "plugins/builtin/qqmusic/lib/online_grid_view.py",
@@ -147,7 +140,6 @@ def test_plugin_page_modules_do_not_directly_import_host_layers():
         "plugins/builtin/qqmusic/lib/context_menus.py",
         "plugins/builtin/qqmusic/lib/cover_hover_popup.py",
         "plugins/builtin/qqmusic/lib/recommend_card.py",
-        "plugins/builtin/qqmusic/lib/root_view.py",
         "plugins/builtin/qqmusic/lib/online_detail_view.py",
         "plugins/builtin/qqmusic/lib/online_grid_view.py",
         "plugins/builtin/qqmusic/lib/online_music_view.py",

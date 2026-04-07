@@ -44,4 +44,5 @@ def test_builtin_lyrics_sources_exclude_plugin_owned_sources():
     assert "LRCLIB" not in names
     assert "QQMusic" not in names
     assert "Kugou" not in names
-    assert names == {"NetEase"}
+    assert "NetEase" not in names
+    assert names == set()
