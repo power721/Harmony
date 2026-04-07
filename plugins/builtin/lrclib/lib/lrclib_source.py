@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from harmony_plugin_api.lyrics import PluginLyricsResult
+
+logger = logging.getLogger(__name__)
 
 
 class LRCLIBPluginSource:
@@ -16,6 +20,7 @@ class LRCLIBPluginSource:
         artist: str,
         limit: int = 10,
     ) -> list[PluginLyricsResult]:
+        logger.debug(f"LRCLIB lyrics search: {title} by {artist}")
         response = self._http_client.get(
             "https://lrclib.net/api/search",
             params={"track_name": title, "artist_name": artist},

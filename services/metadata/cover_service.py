@@ -225,6 +225,19 @@ class CoverService:
                 return cover_path
         return None
 
+    def _to_search_result(self, result) -> SearchResult:
+        """Normalize host and plugin cover results to SearchResult."""
+        return SearchResult(
+            title=result.title,
+            artist=result.artist,
+            album=result.album,
+            duration=result.duration,
+            source=result.source,
+            id=getattr(result, "id", None) or getattr(result, "item_id", ""),
+            cover_url=result.cover_url,
+            album_mid=getattr(result, "album_mid", None) or getattr(result, "extra_id", None),
+        )
+
     def fetch_online_cover(self, title: str, artist: str, album: str = "", duration: float = None) -> Optional[str]:
         """
         Fetch cover art from online sources (public method).
@@ -334,16 +347,10 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    all_results.extend(SearchResult(
-                            title=r.title,
-                            artist=r.artist,
-                            album=r.album,
-                            duration=r.duration,
-                            source=r.source,
-                            id=r.id,
-                            cover_url=r.cover_url,
-                            album_mid=getattr(r, 'album_mid', None),
-                        ) for r in search_results)
+                    all_results.extend(
+                        self._to_search_result(result)
+                        for result in search_results
+                    )
                     logger.debug(f"{source_name} found {len(search_results)} results")
                 except Exception as e:
                     logger.warning(f"Error searching cover from {source_name}: {e}")
@@ -400,16 +407,10 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    all_search_results.extend(SearchResult(
-                            title=r.title,
-                            artist=r.artist,
-                            album=r.album,
-                            duration=r.duration,
-                            source=r.source,
-                            id=r.id,
-                            cover_url=r.cover_url,
-                            album_mid=getattr(r, 'album_mid', None),
-                        ) for r in search_results)
+                    all_search_results.extend(
+                        self._to_search_result(result)
+                        for result in search_results
+                    )
                 except Exception as e:
                     logger.error(f"Error searching {source_name} covers: {e}", exc_info=True)
 

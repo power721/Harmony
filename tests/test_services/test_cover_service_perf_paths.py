@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import services.metadata.cover_service as cover_service_module
+from harmony_plugin_api.cover import PluginCoverResult
 from harmony_plugin_api.cover import PluginArtistCoverResult
 from services.metadata.cover_service import CoverService
 from services.sources.base import CoverSearchResult
@@ -44,6 +45,48 @@ def test_fetch_online_cover_uses_best_match_and_cache(monkeypatch):
     assert cover_path == "/tmp/cover.jpg"
 
 
+def test_fetch_online_cover_supports_plugin_cover_result_shape(monkeypatch):
+    source = SimpleNamespace(
+        name="QQMusic",
+        search=lambda *_args, **_kwargs: [
+            PluginCoverResult(
+                item_id="song-1",
+                title="Song 1",
+                artist="Singer 1",
+                album="Album 1",
+                source="qqmusic",
+                cover_url="https://example.com/cover.jpg",
+                extra_id="album-1",
+            )
+        ],
+        is_available=lambda: True,
+    )
+    service = CoverService(
+        http_client=SimpleNamespace(get_content=lambda *_args, **_kwargs: b"img"),
+        sources=[source],
+    )
+    monkeypatch.setattr(
+        cover_service_module.MatchScorer,
+        "find_best_match",
+        staticmethod(
+            lambda *_args, **_kwargs: (
+                SimpleNamespace(
+                    title="Song 1",
+                    artist="Singer 1",
+                    source="qqmusic",
+                    cover_url="https://example.com/cover.jpg",
+                ),
+                80.0,
+            )
+        ),
+    )
+    monkeypatch.setattr(service, "_save_cover_to_cache", lambda *_args, **_kwargs: "/tmp/cover.jpg")
+
+    cover_path = service._fetch_online_cover("Song 1", "Singer 1", "Album 1", "cache-key")
+
+    assert cover_path == "/tmp/cover.jpg"
+
+
 def test_search_covers_converts_and_scores_results(monkeypatch):
     source = SimpleNamespace(
         name="FakeCoverSource",
@@ -59,7 +102,8 @@ def test_search_covers_converts_and_scores_results(monkeypatch):
         ],
         is_available=lambda: True,
     )
-    service = CoverService(http_client=SimpleNamespace(), sources=[source])
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_sources", lambda: [source])
     monkeypatch.setattr(
         cover_service_module.MatchScorer,
         "calculate_score",
@@ -70,6 +114,38 @@ def test_search_covers_converts_and_scores_results(monkeypatch):
 
     assert len(results) == 1
     assert results[0]["id"] == "song-1"
+    assert results[0]["score"] == 88.0
+
+
+def test_search_covers_supports_plugin_cover_result_shape(monkeypatch):
+    source = SimpleNamespace(
+        name="QQMusic",
+        search=lambda *_args, **_kwargs: [
+            PluginCoverResult(
+                item_id="song-1",
+                title="Song 1",
+                artist="Singer 1",
+                album="Album 1",
+                source="qqmusic",
+                cover_url="https://example.com/cover.jpg",
+                extra_id="album-1",
+            )
+        ],
+        is_available=lambda: True,
+    )
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_sources", lambda: [source])
+    monkeypatch.setattr(
+        cover_service_module.MatchScorer,
+        "calculate_score",
+        staticmethod(lambda *_args, **_kwargs: 88.0),
+    )
+
+    results = service.search_covers("Song 1", "Singer 1", "Album 1")
+
+    assert len(results) == 1
+    assert results[0]["id"] == "song-1"
+    assert results[0]["album_mid"] == "album-1"
     assert results[0]["score"] == 88.0
 
 

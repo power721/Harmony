@@ -35,6 +35,7 @@ class LastFmCoverPluginSource:
         duration: float | None = None,
     ) -> list[PluginCoverResult]:
         results: list[PluginCoverResult] = []
+        logger.debug(f"Last.fm cover search: {title} {artist} {album} {duration}")
 
         try:
             response = self._http_client.get(

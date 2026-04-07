@@ -19,6 +19,7 @@ class KugouLyricsPluginSource:
 
     def search(self, title: str, artist: str, limit: int = 10) -> list[PluginLyricsResult]:
         keyword = f"{title} {artist}".strip()
+        logger.debug(f"Kugou lyrics search: {keyword}")
         response = self._http_client.get(
             "https://lyrics.kugou.com/search",
             params={"keyword": keyword, "page": 1, "pagesize": limit},

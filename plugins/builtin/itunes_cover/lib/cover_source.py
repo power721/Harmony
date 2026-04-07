@@ -34,6 +34,7 @@ class ITunesCoverPluginSource:
                 "entity": "album",
                 "limit": 5,
             }
+            logger.debug(f"ITunes cover search: {artist} {album or title}")
             response = self._http_client.get(search_url, params=params, timeout=3)
 
             if response.status_code == 200:
