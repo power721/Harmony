@@ -66,6 +66,34 @@ class RedownloadDialog(QDialog):
         }
     """ + ThemeManager.get_combobox_style() + """
     """
+    _POPUP_STYLE_TEMPLATE = """
+        QListView {
+            background-color: %background_alt%;
+            border: 1px solid %border%;
+            color: %text%;
+            selection-background-color: %highlight%;
+            selection-color: %background%;
+            outline: none;
+        }
+        QListView::item {
+            padding: 6px 10px;
+            min-height: 20px;
+        }
+        QListView::item:hover {
+            background-color: %highlight%;
+            color: %background%;
+        }
+        QListView::item:selected {
+            background-color: %highlight%;
+            color: %background%;
+        }
+    """
+    _POPUP_CONTAINER_STYLE_TEMPLATE = """
+        QFrame {
+            background-color: %background_alt%;
+            border: 1px solid %border%;
+        }
+    """
 
     def __init__(self, track_title: str, current_quality: str = None, parent=None):
         super().__init__(parent)
@@ -77,7 +105,7 @@ class RedownloadDialog(QDialog):
 
         self._setup_shadow()
         self._setup_ui(track_title, current_quality)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._apply_theme()
         ThemeManager.instance().register_widget(self)
 
     def _setup_shadow(self):
@@ -162,8 +190,17 @@ class RedownloadDialog(QDialog):
             return dialog.get_quality()
         return None
 
+    def _apply_theme(self):
+        theme_manager = ThemeManager.instance()
+        self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))
+        popup_view = self._quality_combo.view()
+        popup_view.setStyleSheet(theme_manager.get_qss(self._POPUP_STYLE_TEMPLATE))
+        popup_view.window().setStyleSheet(
+            theme_manager.get_qss(self._POPUP_CONTAINER_STYLE_TEMPLATE)
+        )
+
     def refresh_theme(self):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        self._apply_theme()
         self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):

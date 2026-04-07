@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QTabWidget, QWidget
 
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
+from system.plugins.host_services import PluginSettingsBridgeImpl
 from system.theme import ThemeManager
 from ui.dialogs.plugin_management_tab import PluginManagementTab
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
@@ -38,6 +39,36 @@ def _build_plugin_context(settings: Mock) -> Mock:
     ui.dialogs = Mock()
     events = Mock(language_changed=_Signal())
     return Mock(settings=settings, ui=ui, events=events, language="zh")
+
+
+def _build_dialog_config(store: dict) -> Mock:
+    config = Mock()
+    config.get.side_effect = lambda key, default=None: store.get(key, default)
+    config.set.side_effect = lambda key, value: store.__setitem__(key, value)
+    config.get_ai_enabled.return_value = False
+    config.get_ai_base_url.return_value = ""
+    config.get_ai_api_key.return_value = ""
+    config.get_ai_model.return_value = ""
+    config.get_acoustid_enabled.return_value = False
+    config.get_acoustid_api_key.return_value = ""
+    config.get_cache_cleanup_strategy.return_value = "manual"
+    config.get_cache_cleanup_auto_enabled.return_value = False
+    config.get_cache_cleanup_time_days.return_value = 30
+    config.get_cache_cleanup_size_mb.return_value = 1000
+    config.get_cache_cleanup_count.return_value = 100
+    config.get_cache_cleanup_interval_hours.return_value = 1
+    config.get_audio_engine.return_value = "mpv"
+    config.get_language.return_value = "zh"
+    config.get_plugin_setting.side_effect = (
+        lambda plugin_id, key, default=None: store.get(f"plugins.{plugin_id}.{key}", default)
+    )
+    config.get_plugin_secret.side_effect = (
+        lambda plugin_id, key, default="": store.get(f"plugins.{plugin_id}.{key}", default)
+    )
+    config.set_plugin_secret.side_effect = (
+        lambda plugin_id, key, value: store.__setitem__(f"plugins.{plugin_id}.{key}", value)
+    )
+    return config
 
 
 def test_plugin_management_tab_shows_plugin_rows(qtbot):
@@ -218,6 +249,54 @@ def test_settings_dialog_with_real_builtins_includes_plugin_tabs(monkeypatch, qt
     assert "QQ 音乐" in tab_labels
 
 
+def test_settings_dialog_save_persists_qqmusic_download_dir(monkeypatch, qtbot):
+    store = {}
+    config = _build_dialog_config(store)
+    settings_spec = type(
+        "Spec",
+        (),
+        {
+            "plugin_id": "qqmusic",
+            "tab_id": "qqmusic.settings",
+            "title": "QQ Music",
+            "order": 80,
+            "title_provider": staticmethod(lambda: "QQ 音乐"),
+            "widget_factory": staticmethod(
+                lambda _context, parent: QQMusicSettingsTab(
+                    _build_plugin_context(PluginSettingsBridgeImpl("qqmusic", config)),
+                    parent,
+                )
+            ),
+        },
+    )()
+    fake_manager = Mock()
+    fake_manager.list_plugins.return_value = []
+    fake_manager.registry.settings_tabs.return_value = [settings_spec]
+    bootstrap = Mock(plugin_manager=fake_manager)
+
+    plugin_i18n.set_language("zh")
+
+    monkeypatch.setattr("ui.dialogs.settings_dialog.Bootstrap.instance", lambda: bootstrap)
+    monkeypatch.setattr("ui.dialogs.settings_dialog.MessageDialog.information", lambda *args, **kwargs: None)
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+
+    dialog = GeneralSettingsDialog(config)
+    qtbot.addWidget(dialog)
+
+    tab = next(widget for widget in dialog.findChildren(QQMusicSettingsTab))
+    tab._download_dir_input.setText("/tmp/music")
+
+    dialog._save_settings()
+
+    reopened = GeneralSettingsDialog(config)
+    qtbot.addWidget(reopened)
+    reopened_tab = next(widget for widget in reopened.findChildren(QQMusicSettingsTab))
+
+    assert store["plugins.qqmusic.download_dir"] == "/tmp/music"
+    assert reopened_tab._download_dir_input.text() == "/tmp/music"
+
+
 def test_settings_dialog_uses_plugin_title_provider(monkeypatch, qtbot):
     config = Mock()
     config.get.return_value = "dark"
@@ -323,6 +402,27 @@ def test_qqmusic_settings_tab_translates_quality_labels(qtbot):
     assert widget._quality_group.title() != "qqmusic_quality"
     assert widget._quality_label.text() != "qqmusic_quality"
     assert widget._quality_combo.itemText(0) != "qqmusic_quality_master"
+
+
+def test_qqmusic_settings_tab_applies_popup_stylesheet_directly(qtbot):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "download_dir": "data/online_cache",
+        "credential": None,
+        "nick": "",
+    }.get(key, default)
+    context = _build_plugin_context(settings)
+
+    widget = QQMusicSettingsTab(context)
+    qtbot.addWidget(widget)
+
+    stylesheet = widget._quality_combo.view().styleSheet()
+    popup_stylesheet = widget._quality_combo.view().window().styleSheet()
+    assert "background-color" in stylesheet
+    assert "selection-background-color" in stylesheet
+    assert "QListView::item" in stylesheet
+    assert "background-color" in popup_stylesheet
 
 
 def test_qqmusic_settings_tab_keeps_content_padding(qtbot):

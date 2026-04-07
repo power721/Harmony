@@ -1040,7 +1040,7 @@ class OnlineMusicView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Title
-        self._online_music_title = QLabel(t("source_qq"))
+        self._online_music_title = QLabel(t("qqmusic_page_title"))
         layout.addWidget(self._online_music_title)
 
         layout.addStretch()
@@ -3327,7 +3327,7 @@ class OnlineMusicView(QWidget):
         """Refresh UI texts after language change."""
         # Update titles
         if hasattr(self, '_online_music_title'):
-            self._online_music_title.setText(t("source_qq"))
+            self._online_music_title.setText(t("qqmusic_page_title"))
         if hasattr(self, '_rankings_title'):
             self._rankings_title.setText(t("rankings"))
 

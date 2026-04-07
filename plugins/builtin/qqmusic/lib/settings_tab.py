@@ -97,12 +97,41 @@ class QQMusicSettingsTab(QWidget):
             border-color: %highlight%;
         }
     """
+    _STYLE_POPUP = """
+        QListView {
+            background-color: %background_alt%;
+            border: 1px solid %border%;
+            color: %text%;
+            selection-background-color: %highlight%;
+            selection-color: %background%;
+            outline: none;
+        }
+        QListView::item {
+            padding: 6px 10px;
+            min-height: 20px;
+        }
+        QListView::item:hover {
+            background-color: %highlight%;
+            color: %background%;
+        }
+        QListView::item:selected {
+            background-color: %highlight%;
+            color: %background%;
+        }
+    """
+    _STYLE_POPUP_CONTAINER = """
+        QFrame {
+            background-color: %background_alt%;
+            border: 1px solid %border%;
+        }
+    """
 
     def __init__(self, context, parent=None):
         super().__init__(parent)
         self._context = context
         self._language_connected = False
         self._verify_thread: Optional[VerifyLoginThread] = None
+        self._loading_settings = False
 
         self._outer_layout = QVBoxLayout(self)
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -139,7 +168,7 @@ class QQMusicSettingsTab(QWidget):
             label = t(label_key, quality)
             self._quality_combo.addItem(label)
             self._quality_combo.setItemData(self._quality_combo.count() - 1, quality, Qt.UserRole)
-        self._quality_combo.currentIndexChanged.connect(lambda *_args: self._save_settings())
+        self._quality_combo.currentIndexChanged.connect(self._on_quality_changed)
         quality_layout.addWidget(self._quality_label)
         quality_layout.addWidget(self._quality_combo)
         quality_layout.addStretch()
@@ -238,19 +267,28 @@ class QQMusicSettingsTab(QWidget):
         self.refresh_ui()
 
     def _load_settings(self) -> None:
-        quality = str(self._context.settings.get("quality", "320"))
-        for i in range(self._quality_combo.count()):
-            if self._quality_combo.itemData(i, Qt.UserRole) == quality:
-                self._quality_combo.setCurrentIndex(i)
-                break
+        self._loading_settings = True
+        try:
+            quality = str(self._context.settings.get("quality", "320"))
+            for i in range(self._quality_combo.count()):
+                if self._quality_combo.itemData(i, Qt.UserRole) == quality:
+                    self._quality_combo.setCurrentIndex(i)
+                    break
 
-        download_dir = str(
-            self._context.settings.get("download_dir", "data/online_cache")
-            or "data/online_cache"
-        )
-        self._download_dir_input.setText(download_dir)
+            download_dir = str(
+                self._context.settings.get("download_dir", "data/online_cache")
+                or "data/online_cache"
+            )
+            self._download_dir_input.setText(download_dir)
+        finally:
+            self._loading_settings = False
 
     def _save(self):
+        self._save_settings()
+
+    def _on_quality_changed(self, *_args) -> None:
+        if self._loading_settings:
+            return
         self._save_settings()
 
     def _save_settings(self) -> None:
@@ -373,6 +411,8 @@ class QQMusicSettingsTab(QWidget):
         self._download_dir_label.setStyleSheet(qss(self._STYLE_STATUS))
         self._qqmusic_status_label.setStyleSheet(qss(self._STYLE_STATUS))
         self._quality_combo.setStyleSheet(qss(self._STYLE_INPUT))
+        self._quality_combo.view().setStyleSheet(qss(self._STYLE_POPUP))
+        self._quality_combo.view().window().setStyleSheet(qss(self._STYLE_POPUP_CONTAINER))
         self._download_dir_input.setStyleSheet(qss(self._STYLE_INPUT))
         for button in (self._browse_btn, self._qqmusic_qr_btn, self._qqmusic_logout_btn):
             button.setStyleSheet(qss(self._STYLE_BUTTON))

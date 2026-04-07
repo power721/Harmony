@@ -6,6 +6,7 @@ from domain.history import PlayHistory
 from domain.track import Track, TrackSource
 from services.online.quality import get_quality_label_key
 from system.i18n import t
+from ui.dialogs.redownload_dialog import RedownloadDialog
 from ui.views.library_view import LibraryView
 
 
@@ -68,6 +69,27 @@ def test_redownload_qq_track_uses_configured_quality_as_dialog_default(
     view._redownload_qq_track(track)
 
     show_dialog.assert_called_once_with(track.title, current_quality="flac", parent=view)
+
+
+def test_redownload_dialog_applies_popup_stylesheet_directly(
+    qapp,
+):
+    from system.theme import ThemeManager
+
+    ThemeManager._instance = None
+    config = MagicMock()
+    config.get.return_value = "dark"
+    ThemeManager.instance(config)
+
+    dialog = RedownloadDialog("Two", current_quality="flac")
+    qapp.processEvents()
+
+    stylesheet = dialog._quality_combo.view().styleSheet()
+    popup_stylesheet = dialog._quality_combo.view().window().styleSheet()
+    assert "background-color" in stylesheet
+    assert "selection-background-color" in stylesheet
+    assert "QListView::item" in stylesheet
+    assert "background-color" in popup_stylesheet
 
 
 def test_history_redownload_completion_refreshes_updated_track_path(

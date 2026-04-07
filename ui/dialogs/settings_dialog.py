@@ -139,6 +139,7 @@ class GeneralSettingsDialog(QDialog):
         self._config = config_manager
         self._batch_worker = None
         self._drag_pos = None
+        self._plugin_settings_tabs = []
 
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
@@ -756,8 +757,10 @@ class GeneralSettingsDialog(QDialog):
             t("plugins_tab"),
         )
         for spec in bootstrap.plugin_manager.registry.settings_tabs():
+            plugin_tab = spec.widget_factory(bootstrap.plugin_manager, self)
+            self._plugin_settings_tabs.append(plugin_tab)
             tab_widget.addTab(
-                spec.widget_factory(bootstrap.plugin_manager, self),
+                plugin_tab,
                 spec.title_provider() if callable(getattr(spec, "title_provider", None)) else spec.title,
             )
 
@@ -922,6 +925,9 @@ class GeneralSettingsDialog(QDialog):
             MessageDialog.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
+        if not self._save_plugin_settings_tabs():
+            return
+
         # Save AI settings
         self._config.set_ai_enabled(enabled)
         self._config.set_ai_base_url(base_url)
@@ -984,6 +990,22 @@ class GeneralSettingsDialog(QDialog):
 
         MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
+
+    def _save_plugin_settings_tabs(self) -> bool:
+        """Persist mounted plugin settings tabs before closing the dialog."""
+        for plugin_tab in self._plugin_settings_tabs:
+            save_hook = getattr(plugin_tab, "_save", None)
+            if not callable(save_hook):
+                save_hook = getattr(plugin_tab, "_save_settings", None)
+            if not callable(save_hook):
+                continue
+            try:
+                save_hook()
+            except Exception as exc:
+                logger.warning("Failed to save plugin settings tab %r: %s", plugin_tab, exc, exc_info=True)
+                MessageDialog.warning(self, t("warning"), f"Failed to save plugin settings: {exc}")
+                return False
+        return True
 
     def _get_runtime_audio_engine(self) -> str:
         """Get currently running engine name from parent window playback service."""
