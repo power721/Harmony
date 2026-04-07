@@ -20,7 +20,8 @@ The goal is to stop defining base styles for these shared building blocks inside
 ## Non-Goals
 
 - No attempt to centralize highly bespoke business widgets whose visuals are their primary value.
-- No visual redesign of unrelated custom widgets such as cards, tables, sliders, or artwork containers.
+- No visual redesign of bespoke business presentation such as album cards, artwork containers, or data-specific content rendering inside complex views.
+- Shared baseline chrome for common controls such as list, table, and slider widgets is in scope, but business-specific presentation layered on top of them is not.
 - No plugin-specific theme fork.
 - No generic "component style registry" abstraction beyond what is needed to make popups and global QSS work reliably.
 
@@ -36,7 +37,7 @@ These are the shared Qt building blocks that appear broadly across host UI and p
 - text and display primitives: `QLabel`, `QProgressBar`
 - command controls: `QPushButton`, `QDialogButtonBox`
 - text input controls: `QLineEdit`, `QTextEdit`
-- selection controls: `QCheckBox`, `QRadioButton`, `QComboBox`, `QSpinBox`
+- selection controls: `QCheckBox`, `QRadioButton`, `QComboBox`, `QSpinBox`, `QSlider`
 - grouping and layout framing: `QGroupBox`
 - item and data views with shared baseline chrome: `QListWidget`, `QListView`, `QTableWidget`, headers, and common `QAbstractItemView` popup surfaces
 - menu and popup surfaces: `QMenu`, completer popups, custom hover popups, and frameless `Qt.Popup` dialogs
