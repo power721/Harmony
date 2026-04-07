@@ -87,21 +87,6 @@ class LyricsDownloadDialog(QDialog):
     download_requested = Signal(dict, bool)  # Emits (song_info, download_cover)
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
         QListWidget {
             background-color: %background%;
             color: %text%;

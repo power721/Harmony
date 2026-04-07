@@ -21,6 +21,7 @@ class LocalTrackContextMenu(QObject):
     favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
     edit_info = Signal(object)
     download_cover = Signal(object)
+    organize_files = Signal(list)
     open_file_location = Signal(object)
     remove_from_library = Signal(list)
     delete_file = Signal(list)
@@ -68,9 +69,12 @@ class LocalTrackContextMenu(QObject):
             a.triggered.connect(lambda: self.download_cover.emit(tracks[0]))
 
             # Re-download for QQ Music
-            if tracks[0].source == TrackSource.QQ:
-                a = menu.addAction(t("redownload"))
-                a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
+            # if tracks[0].source == TrackSource.QQ:
+            #     a = menu.addAction(t("redownload"))
+            #     a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
+
+        a = menu.addAction(t("organize_files"))
+        a.triggered.connect(lambda: self.organize_files.emit(tracks))
 
         if len(tracks) == 1 and tracks[0].path:
             a = menu.addAction(t("open_file_location"))

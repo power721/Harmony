@@ -10,6 +10,7 @@ from typing import List
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
+    QDialog,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -193,6 +194,7 @@ class LibraryView(QWidget):
         self._all_tracks_list_view.favorites_toggle_requested.connect(self._on_all_tracks_favorites_toggle)
         self._all_tracks_list_view.edit_info_requested.connect(self._on_all_tracks_edit_info)
         self._all_tracks_list_view.download_cover_requested.connect(self._on_all_tracks_download_cover)
+        self._all_tracks_list_view.organize_files_requested.connect(self._on_all_tracks_organize_files)
         self._all_tracks_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
         self._all_tracks_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
         self._all_tracks_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
@@ -210,6 +212,7 @@ class LibraryView(QWidget):
         self._favorites_list_view.favorites_toggle_requested.connect(self._on_favorites_favorites_toggle)
         self._favorites_list_view.edit_info_requested.connect(self._on_all_tracks_edit_info)
         self._favorites_list_view.download_cover_requested.connect(self._on_all_tracks_download_cover)
+        self._favorites_list_view.organize_files_requested.connect(self._on_all_tracks_organize_files)
         self._favorites_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
         self._favorites_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
         self._favorites_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
@@ -224,6 +227,7 @@ class LibraryView(QWidget):
         self._history_list_view.favorites_toggle_requested.connect(self._on_history_favorites_toggle)
         self._history_list_view.edit_info_requested.connect(self._on_history_edit_info)
         self._history_list_view.download_cover_requested.connect(self._on_history_download_cover)
+        self._history_list_view.organize_files_requested.connect(self._on_history_organize_files)
         self._history_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
         self._history_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
         self._history_list_view.delete_file_requested.connect(self._on_history_delete_file)
@@ -800,6 +804,10 @@ class LibraryView(QWidget):
         """Open file location for a track from the all-tracks list."""
         self._on_history_open_file_location(track)
 
+    def _on_all_tracks_organize_files(self, tracks: list):
+        """Open the organize-files dialog from the all-tracks list."""
+        self._open_organize_files_dialog(tracks)
+
     def _on_all_tracks_remove_from_library(self, tracks: list):
         """Remove tracks from the library from the all-tracks list."""
         self._on_history_remove_from_library(tracks)
@@ -905,6 +913,37 @@ class LibraryView(QWidget):
         except Exception as e:
             logger.error(f"Failed to open file location: {e}", exc_info=True)
             MessageDialog.warning(self, "Error", f"{t('open_file_location_failed')}: {e}")
+
+    def _on_history_organize_files(self, tracks: list):
+        """Open the organize-files dialog from the history list."""
+        self._open_organize_files_dialog(tracks)
+
+    def _open_organize_files_dialog(self, tracks: list):
+        """Open the organize-files dialog for the selected tracks."""
+        if not tracks:
+            return
+
+        from app.application import Application
+
+        app = Application.instance()
+        if not app or not app.bootstrap or not hasattr(app.bootstrap, 'file_org_service'):
+            MessageDialog.warning(
+                self,
+                t("error"),
+                t("file_org_service_not_available")
+            )
+            return
+
+        from ui.dialogs.organize_files_dialog import OrganizeFilesDialog
+
+        dialog = OrganizeFilesDialog(
+            tracks,
+            app.bootstrap.file_org_service,
+            self._config,
+            self,
+        )
+        if dialog.exec() == QDialog.Accepted:
+            self.refresh()
 
     def _redownload_qq_track(self, track):
         """Re-download a QQ Music track with quality selection."""

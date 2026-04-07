@@ -3,6 +3,7 @@ from unittest.mock import Mock
 from PySide6.QtWidgets import QDialog, QMainWindow, QVBoxLayout
 
 from domain.track import TrackSource
+from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.widgets.context_menus import LocalTrackContextMenu
@@ -58,3 +59,25 @@ def test_local_track_context_menu_uses_global_qmenu_styling(qtbot):
 
     assert menu is not None
     assert menu.styleSheet() == ""
+
+
+def test_local_track_context_menu_exposes_organize_files_action(qtbot):
+    _init_theme()
+    menu_builder = LocalTrackContextMenu()
+    track = Mock()
+    track.id = 1
+    track.path = "/tmp/song.mp3"
+    track.source = TrackSource.LOCAL
+    emitted = []
+
+    menu_builder.organize_files.connect(lambda tracks: emitted.append(tracks))
+
+    menu = menu_builder.build_menu([track], set(), None)
+    qtbot.addWidget(menu)
+
+    organize_action = next(
+        action for action in menu.actions() if action.text() == t("organize_files")
+    )
+    organize_action.trigger()
+
+    assert emitted == [[track]]

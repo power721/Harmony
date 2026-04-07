@@ -36,24 +36,6 @@ class EditMediaInfoDialog(QDialog):
 
     tracks_updated = Signal(list)  # Emitted when tracks are updated with list of track IDs
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-    """
-
     _PROGRESS_STYLE_TEMPLATE = """
         QProgressBar {
             border: 2px solid %border%;
@@ -132,7 +114,6 @@ class EditMediaInfoDialog(QDialog):
             title_text = t("edit_media_info_title")
         self.setWindowTitle(title_text)
         self.setMinimumWidth(450)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -519,7 +500,6 @@ class EditMediaInfoDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
         if self._progress_bar:
             self._progress_bar.setStyleSheet(ThemeManager.instance().get_qss(self._PROGRESS_STYLE_TEMPLATE))

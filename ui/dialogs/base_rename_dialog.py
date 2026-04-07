@@ -40,20 +40,6 @@ class BaseRenameWorker(QThread):
 class BaseRenameDialog(QDialog):
     """Base class for rename dialogs."""
 
-    # Common stylesheet template for all rename dialogs
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker = None
@@ -89,7 +75,6 @@ class BaseRenameDialog(QDialog):
         """
         self.setWindowTitle(title)
         self.setMinimumWidth(min_width)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -316,7 +301,6 @@ class BaseRenameDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
         # Update inline styles that use theme colors
         if self._warning_label:

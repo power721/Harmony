@@ -29,6 +29,11 @@ QWidget#settingsContainer {
     border-radius: 12px;
 }
 
+QWidget#dialogContainer QLabel {
+    color: %text%;
+    font-size: 13px;
+}
+
 /* Scrollbar */
 QScrollBar:vertical {
     background: transparent;
@@ -105,35 +110,59 @@ QPushButton:checked {
 /* Primary Button */
 QPushButton[primary="true"] {
     background-color: %highlight%;
-    color: %text%;
+    color: %background%;
+    border: 1px solid %highlight%;
+    border-radius: 6px;
+    padding: 8px 20px;
+    min-width: 80px;
+    font-size: 13px;
     font-weight: bold;
-    padding: 12px 24px;
-    border-radius: 25px;
 }
 
 QPushButton[primary="true"]:hover {
     background-color: %highlight_hover%;
 }
 
+QPushButton[primary="true"]:pressed {
+    background-color: %highlight_hover%;
+}
+
 QPushButton[role="primary"] {
     background-color: %highlight%;
-    color: %text%;
+    color: %background%;
+    border: 1px solid %highlight%;
+    border-radius: 6px;
+    padding: 8px 20px;
+    min-width: 80px;
+    font-size: 13px;
     font-weight: bold;
-    padding: 12px 24px;
-    border-radius: 25px;
 }
 
 QPushButton[role="primary"]:hover {
     background-color: %highlight_hover%;
 }
 
+QPushButton[role="primary"]:pressed {
+    background-color: %highlight_hover%;
+}
+
 QPushButton[role="cancel"] {
-    background-color: %border%;
+    background-color: %background_hover%;
     color: %text%;
+    border: 1px solid %border%;
+    border-radius: 6px;
+    padding: 8px 20px;
+    min-width: 80px;
+    font-size: 13px;
+    font-weight: bold;
 }
 
 QPushButton[role="cancel"]:hover {
-    background-color: %background_hover%;
+    background-color: %border%;
+}
+
+QPushButton[role="cancel"]:pressed {
+    background-color: %border%;
 }
 
 QWidget#titleBar,
@@ -241,7 +270,7 @@ QLabel[secondary="true"] {
 QLabel#titleLabel,
 QLabel#dialogTitle {
     color: %text%;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: bold;
 }
 
@@ -412,6 +441,40 @@ QTableWidget QHeaderView::section {
     border: none;
     border-bottom: 1px solid %background_alt%;
     font-weight: bold;
+}
+
+QTableWidget[variant="panel"] {
+    background-color: %background%;
+    border: 1px solid %border%;
+    border-radius: 8px;
+    gridline-color: %background_hover%;
+}
+
+QTableWidget[variant="panel"]::item {
+    padding: 8px 10px;
+    color: %text%;
+    border: none;
+    border-bottom: 1px solid %background_hover%;
+}
+
+QTableWidget[variant="panel"]::item:selected {
+    background-color: %selection%;
+    color: %text%;
+}
+
+QTableWidget[variant="panel"] QHeaderView::section {
+    background-color: %background_alt%;
+    color: %text%;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 1px solid %border%;
+    font-weight: bold;
+}
+
+QTableWidget[variant="panel"] QTableCornerButton::section {
+    background-color: %background_alt%;
+    border: none;
+    border-bottom: 1px solid %border%;
 }
 
 /* Sliders */

@@ -48,3 +48,16 @@ def test_theme_manager_global_stylesheet_includes_wrapper_variants(qapp):
     assert "QWidget#titleBar" in stylesheet
     assert "QPushButton#winBtn" in stylesheet
     assert "QPushButton#dialogCloseBtn" in stylesheet
+
+
+def test_theme_manager_global_stylesheet_uses_playlist_dialog_action_button_foundation(qapp):
+    tm = _build_theme_manager()
+
+    tm.apply_global_stylesheet()
+    stylesheet = qapp.styleSheet()
+
+    assert "QPushButton[role=\"primary\"]" in stylesheet
+    assert "QPushButton[role=\"cancel\"]" in stylesheet
+    assert "min-width: 80px;" in stylesheet
+    assert "padding: 8px 20px;" in stylesheet
+    assert "border-radius: 6px;" in stylesheet

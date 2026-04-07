@@ -50,26 +50,6 @@ class HelpDialog(QDialog):
             left: 12px;
             padding: 0 8px;
         }
-        QPushButton {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-size: 13px;
-        }
-        QPushButton:hover {
-            background-color: %border%;
-            border: 1px solid %highlight%;
-        }
-        QPushButton#rebuildBtn {
-            background-color: %highlight%;
-            color: %background%;
-            font-weight: bold;
-        }
-        QPushButton#rebuildBtn:hover {
-            background-color: %highlight_hover%;
-        }
         QScrollArea {
             border: none;
             background-color: transparent;
@@ -88,7 +68,7 @@ class HelpDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.setWindowTitle(t("help"))
-        self.setMinimumSize(500, 590)
+        self.setMinimumSize(500, 630)
         self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         self._setup_shadow()
@@ -204,6 +184,7 @@ class HelpDialog(QDialog):
 
         # Close button
         close_btn = QPushButton(t("ok"))
+        close_btn.setProperty("role", "primary")
         close_btn.clicked.connect(self.accept)
         close_btn.setFixedWidth(100)
         close_btn.setCursor(Qt.PointingHandCursor)

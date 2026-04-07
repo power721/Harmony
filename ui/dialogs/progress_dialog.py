@@ -22,48 +22,6 @@ class ProgressDialog(QDialog):
 
     canceled = Signal()
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QProgressBar {
-            border: 2px solid %border%;
-            border-radius: 5px;
-            text-align: center;
-            color: %text%;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 3px;
-        }
-        QPushButton {
-            background-color: %border%;
-            color: %text%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-        }
-        QPushButton:hover {
-            background-color: %background_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-    """
-
     def __init__(self, title: str, label_text: str, cancel_text: str, minimum: int, maximum: int, parent=None):
         super().__init__(parent)
         self._drag_pos = None
@@ -75,6 +33,7 @@ class ProgressDialog(QDialog):
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowModality(Qt.WindowModal)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui(title, label_text, cancel_text)
@@ -93,8 +52,6 @@ class ProgressDialog(QDialog):
         self.setGraphicsEffect(shadow)
 
     def _setup_ui(self, title: str, label_text: str, cancel_text: str):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
-
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
@@ -122,6 +79,7 @@ class ProgressDialog(QDialog):
 
         # Cancel button
         self._cancel_button = QPushButton(cancel_text)
+        self._cancel_button.setProperty("role", "cancel")
         self._cancel_button.clicked.connect(self._on_cancel)
         layout.addWidget(self._cancel_button, alignment=Qt.AlignRight)
 
@@ -145,7 +103,6 @@ class ProgressDialog(QDialog):
         return self.result() == QDialog.DialogCode.Rejected
 
     def refresh_theme(self):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):

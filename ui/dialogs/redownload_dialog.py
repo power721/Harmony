@@ -23,21 +23,6 @@ class RedownloadDialog(QDialog):
     """Dialog for selecting audio quality when re-downloading a QQ Music track."""
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
         QLabel#hintLabel {
             color: %text_secondary%;
             font-size: 12px;

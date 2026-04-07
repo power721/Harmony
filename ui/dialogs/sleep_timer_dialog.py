@@ -273,10 +273,6 @@ class SleepTimerDialog(QDialog):
     # ----------------------- 样式 -----------------------
     def _apply_styles(self):
         style_template = """
-#dialogContainer { background-color: %background_alt%; border-radius: 12px; }
-#dialogTitle { font-size: 16px; font-weight: bold; color: %text%; }
-QLabel { color: %text%; }
-
 QRadioButton, QCheckBox { color: %text%; spacing: 8px; }
 QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid %border%; background-color: %background%; }
 QRadioButton::indicator { width: 18px; height: 18px; border-radius: 9px; border: 2px solid %border%; background-color: %background%; }

@@ -716,11 +716,13 @@ class GeneralSettingsDialog(QDialog):
         button_layout.addStretch()
 
         save_btn = QPushButton(t("save"))
+        save_btn.setProperty("role", "primary")
         save_btn.setCursor(Qt.PointingHandCursor)
         save_btn.clicked.connect(self._save_settings)
         button_layout.addWidget(save_btn)
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.setCursor(Qt.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)

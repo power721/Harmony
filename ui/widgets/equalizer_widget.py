@@ -547,36 +547,6 @@ class EqualizerWidget(QWidget):
 class EqualizerDialog:
     """Standalone themed equalizer dialog with custom title bar."""
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QWidget#dialogTitleBar {
-            background-color: %background_alt%;
-            border-top-left-radius: 12px;
-            border-top-right-radius: 12px;
-            border-bottom: 1px solid %border%;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 14px;
-            font-weight: bold;
-        }
-        QPushButton#dialogCloseBtn {
-            background: transparent;
-            border: none;
-            color: %text_secondary%;
-            border-radius: 4px;
-        }
-        QPushButton#dialogCloseBtn:hover {
-            background-color: %selection%;
-            color: %text%;
-        }
-    """
-
     def __init__(self, backend=None, parent=None, config_manager=None):
         self._dialog = QDialog(parent)
         self._drag_pos = None
@@ -658,7 +628,6 @@ class EqualizerDialog:
         self._eq_widget.apply_to_backend(backend)
 
     def refresh_theme(self):
-        self._dialog.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._eq_widget.refresh_theme()
 
     def _resize_event(self, event):

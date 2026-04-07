@@ -38,38 +38,6 @@ class PluginManagementTab(QWidget):
     _COLUMN_SOURCE = 2
     _COLUMN_ERROR = 3
     _COLUMN_ENABLED = 4
-    _STYLE_TEMPLATE = """
-        QTableWidget#pluginManagementTable {
-            background-color: %background%;
-            border: 1px solid %border%;
-            border-radius: 8px;
-            gridline-color: %background_hover%;
-        }
-        QTableWidget#pluginManagementTable::item {
-            padding: 8px 10px;
-            color: %text%;
-            border: none;
-            border-bottom: 1px solid %background_hover%;
-        }
-        QTableWidget#pluginManagementTable::item:selected {
-            background-color: %selection%;
-            color: %text%;
-        }
-        QTableWidget#pluginManagementTable QHeaderView::section {
-            background-color: %background_alt%;
-            color: %text%;
-            padding: 10px 12px;
-            border: none;
-            border-bottom: 1px solid %border%;
-            font-weight: bold;
-        }
-        QTableWidget#pluginManagementTable QTableCornerButton::section {
-            background-color: %background_alt%;
-            border: none;
-            border-bottom: 1px solid %border%;
-        }
-    """
-
     def __init__(self, plugin_manager, parent=None):
         super().__init__(parent)
         self._plugin_manager = plugin_manager
@@ -85,6 +53,7 @@ class PluginManagementTab(QWidget):
         layout = QVBoxLayout(self)
 
         self._table.setObjectName("pluginManagementTable")
+        self._table.setProperty("variant", "panel")
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels(
             [
@@ -195,9 +164,7 @@ class PluginManagementTab(QWidget):
             self._table.setRowHeight(row, max(56, self._table.rowHeight(row)))
 
     def refresh_theme(self) -> None:
-        if self._theme_manager is None:
-            return
-        self._table.setStyleSheet(self._theme_manager.get_qss(self._STYLE_TEMPLATE))
+        return
 
     def _resolve_theme_manager(self):
         try:

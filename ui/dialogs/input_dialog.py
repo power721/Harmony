@@ -69,6 +69,7 @@ class InputDialog(QDialog):
         btn_layout.addStretch()
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_layout.addWidget(cancel_btn)

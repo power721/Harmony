@@ -31,21 +31,6 @@ class LyricsEditDialog(QDialog):
     lyrics_saved = Signal(str, str)  # Emitted when lyrics are saved (track_path, lyrics)
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
         QTextEdit {
             background-color: %background%;
             color: %text%;

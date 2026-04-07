@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QFileDialog, QProgressBar,
+    QHeaderView, QFileDialog, QProgressBar, QLineEdit,
     QWidget, QGraphicsDropShadowEffect,
 )
 from shiboken6 import isValid
@@ -56,79 +56,6 @@ class OrganizeFilesThread(QThread):
 class OrganizeFilesDialog(QDialog):
     """Dialog for organizing music files into structured directories."""
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-        }
-        QPushButton {
-            background-color: %border%;
-            color: %text%;
-            border: 1px solid %background_hover%;
-            border-radius: 4px;
-            padding: 8px 16px;
-            min-width: 80px;
-        }
-        QPushButton:hover {
-            background-color: %background_hover%;
-        }
-        QPushButton:pressed {
-            background-color: %background_alt%;
-        }
-        QPushButton:disabled {
-            background-color: %background_alt%;
-            color: %border%;
-            border-color: %border%;
-        }
-        QTableWidget {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %background_hover%;
-            border-radius: 4px;
-            gridline-color: %border%;
-        }
-        QTableWidget::item {
-            padding: 8px;
-            border-bottom: 1px solid %border%;
-        }
-        QTableWidget::item:hover {
-            background-color: %border%;
-        }
-        QTableWidget::item:selected {
-            background-color: %highlight%;
-            color: %background%;
-        }
-        QHeaderView::section {
-            background-color: #383838;
-            color: %text%;
-            padding: 10px;
-            border: none;
-            border-bottom: 2px solid %background_hover%;
-            font-weight: bold;
-        }
-        QProgressBar {
-            background-color: %border%;
-            border: 1px solid %background_hover%;
-            border-radius: 4px;
-            text-align: center;
-            color: %text%;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 3px;
-        }
-    """
-
     def __init__(self, tracks: List[Track], file_org_service, config_manager, parent=None):
         super().__init__(parent)
         self.tracks = tracks
@@ -142,15 +69,16 @@ class OrganizeFilesDialog(QDialog):
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(30)
         shadow.setOffset(0, 8)
         shadow.setColor(QColor(0, 0, 0, 80))
         self.setGraphicsEffect(shadow)
 
-        ThemeManager.instance().register_widget(self)
         self._setup_ui()
         self._load_tracks()
+        ThemeManager.instance().register_widget(self)
 
         # If we have a saved directory, update the preview
         if self.target_dir:
@@ -163,9 +91,6 @@ class OrganizeFilesDialog(QDialog):
         self.setWindowTitle(t("organize_files"))
         self.setMinimumSize(900, 632)
         self.resize(1000, 732)
-
-        # Apply dark theme styling
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Root layout for frameless dialog
         root_layout = QVBoxLayout(self)
@@ -188,8 +113,7 @@ class OrganizeFilesDialog(QDialog):
         info_label = QLabel(
             f"{t('selected_tracks')}: {len(self.tracks)}"
         )
-        theme = ThemeManager.instance().current_theme
-        info_label.setStyleSheet(f"color: {theme.text_secondary};")
+        info_label.setProperty("secondary", True)
         layout.addWidget(info_label)
 
         # Directory selection
@@ -198,17 +122,9 @@ class OrganizeFilesDialog(QDialog):
         dir_label.setStyleSheet("font-weight: bold;")
         dir_layout.addWidget(dir_label)
 
-        self.dir_edit = QLabel()
-        theme = ThemeManager.instance().current_theme
-        self.dir_edit.setStyleSheet(f"""
-            QLabel {{
-                background-color: {theme.background_hover};
-                border: 1px solid {theme.background_hover};
-                border-radius: 4px;
-                padding: 6px 12px;
-            }}
-        """)
-        self.dir_edit.setText(t("select_directory"))
+        self.dir_edit = QLineEdit()
+        self.dir_edit.setReadOnly(True)
+        self.dir_edit.setPlaceholderText(t("select_directory"))
         dir_layout.addWidget(self.dir_edit, 1)
 
         self.browse_btn = QPushButton(t("browse"))
@@ -224,6 +140,8 @@ class OrganizeFilesDialog(QDialog):
         layout.addWidget(preview_label)
 
         self.preview_table = QTableWidget()
+        self.preview_table.setObjectName("organizeFilesPreviewTable")
+        self.preview_table.setProperty("variant", "panel")
         self.preview_table.setColumnCount(4)
         self.preview_table.setHorizontalHeaderLabels([
             t("track"), t("old_path"), t("new_path"), t("lyrics")
@@ -243,6 +161,8 @@ class OrganizeFilesDialog(QDialog):
         self.preview_table.setMinimumHeight(300)
         self.preview_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.preview_table.setFocusPolicy(Qt.NoFocus)
+        self.preview_table.setShowGrid(False)
+        self.preview_table.verticalHeader().setVisible(False)
         layout.addWidget(self.preview_table)
 
         # Progress bar
@@ -253,20 +173,22 @@ class OrganizeFilesDialog(QDialog):
         # Status label
         self.status_label = QLabel()
         self.status_label.setAlignment(Qt.AlignCenter)
-        theme = ThemeManager.instance().current_theme
-        self.status_label.setStyleSheet(f"color: {theme.text_secondary};")
+        self.status_label.setProperty("secondary", True)
         layout.addWidget(self.status_label)
 
         # Buttons
         button_layout = QHBoxLayout()
+        button_layout.addStretch()
 
         self.organize_btn = QPushButton(t("organize"))
+        self.organize_btn.setProperty("role", "primary")
         self.organize_btn.setCursor(Qt.PointingHandCursor)
         self.organize_btn.setEnabled(False)
         self.organize_btn.clicked.connect(self._organize_files)
         button_layout.addWidget(self.organize_btn)
 
         close_btn = QPushButton(t("cancel"))
+        close_btn.setProperty("role", "cancel")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)
@@ -516,18 +438,4 @@ class OrganizeFilesDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
-        # Update inline styles that use theme colors
-        theme = ThemeManager.instance().current_theme
-        if self.status_label:
-            self.status_label.setStyleSheet(f"color: {theme.text_secondary};")
-        if self.dir_edit:
-            self.dir_edit.setStyleSheet(f"""
-                QLabel {{
-                    background-color: {theme.background_hover};
-                    border: 1px solid {theme.background_hover};
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                }}
-            """)

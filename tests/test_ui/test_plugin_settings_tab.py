@@ -1,11 +1,11 @@
 from unittest.mock import Mock
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import QLabel, QTabWidget, QTableWidget, QWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QTabWidget, QTableWidget, QWidget
 
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
-from system.i18n import set_language
+from system.i18n import set_language, t
 from system.plugins.host_services import PluginSettingsBridgeImpl
 from system.theme import ThemeManager
 from ui.dialogs.plugin_management_tab import PluginManagementTab
@@ -238,7 +238,7 @@ def test_plugin_management_tab_localizes_version_header(qtbot):
     assert table.horizontalHeaderItem(1).text() == "版本"
 
 
-def test_plugin_management_tab_applies_themed_header_stylesheet(qtbot):
+def test_plugin_management_tab_uses_global_panel_table_variant(qtbot):
     config = Mock()
     config.get.return_value = "dark"
     ThemeManager._instance = None
@@ -251,10 +251,44 @@ def test_plugin_management_tab_applies_themed_header_stylesheet(qtbot):
     qtbot.addWidget(widget)
 
     table = _plugin_table(widget)
-    stylesheet = table.styleSheet()
-    assert "QHeaderView::section" in stylesheet
-    assert "%background%" not in stylesheet
-    assert "%text%" not in stylesheet
+    assert table.property("variant") == "panel"
+    assert table.styleSheet() == ""
+
+
+def test_settings_dialog_footer_cancel_button_uses_foundation_cancel_role(monkeypatch, qtbot):
+    config = Mock()
+    config.get.return_value = "dark"
+    config.get_ai_enabled.return_value = False
+    config.get_ai_base_url.return_value = ""
+    config.get_ai_api_key.return_value = ""
+    config.get_ai_model.return_value = ""
+    config.get_acoustid_enabled.return_value = False
+    config.get_acoustid_api_key.return_value = ""
+    config.get_online_music_download_dir.return_value = "data/online_cache"
+    config.get_cache_cleanup_strategy.return_value = "manual"
+    config.get_cache_cleanup_auto_enabled.return_value = False
+    config.get_cache_cleanup_time_days.return_value = 30
+    config.get_cache_cleanup_size_mb.return_value = 1000
+    config.get_cache_cleanup_count.return_value = 100
+    config.get_cache_cleanup_interval_hours.return_value = 1
+    config.get_audio_engine.return_value = "mpv"
+
+    fake_manager = Mock()
+    fake_manager.list_plugins.return_value = []
+    fake_manager.registry.settings_tabs.return_value = []
+    bootstrap = Mock(plugin_manager=fake_manager)
+    monkeypatch.setattr("ui.dialogs.settings_dialog.Bootstrap.instance", lambda: bootstrap)
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+
+    dialog = GeneralSettingsDialog(config)
+    qtbot.addWidget(dialog)
+
+    cancel_button = next(
+        button for button in dialog.findChildren(QPushButton) if button.text() == t("cancel")
+    )
+
+    assert cancel_button.property("role") == "cancel"
 
 
 def test_plugin_management_tab_uses_row_level_toggles(qtbot):

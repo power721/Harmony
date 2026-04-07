@@ -174,15 +174,6 @@ class BaseCoverDownloadDialog(QDialog):
 
     # Common stylesheet template for all dialogs
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel {
-            color: %text%;
-        }
         QPushButton#coverSearchBtn {
             background-color: %border%;
             color: %text%;

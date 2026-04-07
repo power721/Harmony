@@ -24,21 +24,6 @@ class AddToPlaylistDialog(QDialog):
     """Dialog for selecting a playlist to add tracks to."""
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel#dialogLabel {
-            color: %text_secondary%;
-            font-size: 13px;
-        }
         QListWidget {
             background-color: %background%;
             border: 1px solid %border%;
@@ -56,30 +41,6 @@ class AddToPlaylistDialog(QDialog):
         }
         QListWidget::item:hover {
             background-color: %background_hover%;
-        }
-        QPushButton#cancelBtn {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton#cancelBtn:hover {
-            background-color: %border%;
-        }
-        QPushButton#okBtn {
-            background-color: %highlight%;
-            color: %background%;
-            border: 1px solid %highlight%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton#okBtn:hover {
-            background-color: %highlight_hover%;
         }
     """
 
@@ -148,13 +109,13 @@ class AddToPlaylistDialog(QDialog):
         btn_layout.addStretch()
 
         cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setObjectName("cancelBtn")
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.clicked.connect(self.reject)
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_layout.addWidget(cancel_btn)
 
         ok_btn = QPushButton(t("ok"))
-        ok_btn.setObjectName("okBtn")
+        ok_btn.setProperty("role", "primary")
         ok_btn.clicked.connect(self.accept)
         ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_layout.addWidget(ok_btn)

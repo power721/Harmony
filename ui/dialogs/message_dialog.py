@@ -33,12 +33,6 @@ class MessageDialog(QDialog):
     """Theme-aware frameless message dialog."""
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
         QLabel#msgText {
             color: %text_secondary%;
             font-size: 13px;
@@ -47,30 +41,6 @@ class MessageDialog(QDialog):
         QScrollArea {
             background-color: transparent;
             border: none;
-        }
-        QPushButton#msgBtn {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton#msgBtn:hover {
-            background-color: %border%;
-        }
-        QPushButton#msgPrimaryBtn {
-            background-color: %highlight%;
-            color: %background%;
-            border: 1px solid %highlight%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton#msgPrimaryBtn:hover {
-            background-color: %highlight_hover%;
         }
     """
 
@@ -150,7 +120,7 @@ class MessageDialog(QDialog):
 
     def _add_button(self, text, role, is_primary=False):
         btn = QPushButton(text)
-        btn.setObjectName("msgPrimaryBtn" if is_primary else "msgBtn")
+        btn.setProperty("role", "primary" if is_primary else "cancel")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.clicked.connect(lambda checked, r=role: self._on_clicked(r))
         self._btn_layout.addWidget(btn)

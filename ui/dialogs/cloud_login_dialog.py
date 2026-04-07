@@ -27,20 +27,6 @@ class CloudLoginDialog(QDialog):
     login_success = Signal(dict)  # Emits account info on success
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-        }
         QPushButton#cloudLoginModeBtn,
         QPushButton#cloudLoginActionBtn {
             background-color: %border%;
