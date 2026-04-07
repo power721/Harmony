@@ -948,106 +948,50 @@ class QQMusicClient:
         try:
             musicid = self.credential.get('musicid', '')
 
-            # Use musicu.fcg endpoint via _make_request (same as other API calls)
-            data = self._make_request(
-                'music.userInfo.Profile',
-                'GetUserProfile',
-                {'user_id': str(musicid)},
-            )
-
-            if data and data.get('code') == 0:
-                profile = data.get('data', {})
-                identity = self._extract_profile_identity(profile)
-                result['valid'] = bool(identity.get('valid'))
-                result['nick'] = str(identity.get('nick', '') or '')
-                result['uin'] = int(identity.get('uin', 0) or 0)
-
-            logger.debug(f"=== result: {musicid} {data}")
-            # Fallback: try the profile homepage API if musicu.fcg didn't work
-            if not result['valid']:
-                self._verify_login_fallback(result)
-
-            return result
-
-        except Exception as e:
-            logger.warning("musicu.fcg verify_login failed, trying fallback: %s", e)
-            self._verify_login_fallback(result)
-            return result
-
-    @staticmethod
-    def _extract_profile_identity(profile: Dict[str, Any]) -> Dict[str, Any]:
-        candidates: list[Dict[str, Any]] = []
-        if isinstance(profile, dict):
-            for key in ("creator", "user", "profile", "owner"):
-                value = profile.get(key)
-                if isinstance(value, dict):
-                    candidates.append(value)
-            candidates.append(profile)
-
-        identity = {"valid": False, "nick": "", "uin": 0}
-        for candidate in candidates:
-            if not isinstance(candidate, dict) or not candidate:
-                continue
-            nick = (
-                candidate.get("nick")
-                or candidate.get("nickname")
-                or candidate.get("name")
-                or candidate.get("hostname")
-                or ""
-            )
-            uin = (
-                candidate.get("uin")
-                or candidate.get("userid")
-                or candidate.get("user_id")
-                or 0
-            )
-            if nick or uin:
-                identity["valid"] = True
-                identity["nick"] = str(nick or "")
-                try:
-                    identity["uin"] = int(uin or 0)
-                except (TypeError, ValueError):
-                    identity["uin"] = 0
-                return identity
-
-        if isinstance(profile, dict) and profile:
-            identity["valid"] = True
-        return identity
-
-    def _verify_login_fallback(self, result: Dict[str, Any]) -> None:
-        """Fallback: use profile homepage API to verify login and get nick."""
-        try:
-            musicid = self.credential.get('musicid', '')
+            # Use profile homepage API to verify login
             url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
+
+            # Build cookies from credential
+            cookies = {
+                'uin': str(musicid),
+                'qqmusic_key': self.credential.get('musickey', ''),
+                'qm_keyst': self.credential.get('musickey', ''),
+                'tmeLoginType': str(self.credential.get('login_type', 2)),
+            }
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+                'Referer': 'https://y.qq.com/',
+            }
 
             params = {
                 'format': 'json',
-                'userid': musicid,
+                'uin': musicid,
                 'cid': '205360838',
                 'reqfrom': '1',
+                'reqtype': '0',
             }
 
-            # Use a separate request without session cookie header conflicts
-            import requests as _req
-            sess = _req.Session()
-            sess.headers.update({
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-                'Referer': 'https://y.qq.com/',
-            })
-            response = sess.get(url, params=params, timeout=10)
+            response = self.session.get(
+                url,
+                params=params,
+                cookies=cookies,
+                headers=headers,
+                timeout=10
+            )
             response.raise_for_status()
 
             data = response.json()
 
             if data.get('code') == 0:
-                result['valid'] = True
-                resp_data = data.get('data', {})
-                # Try creator.nick first, then top-level hostname
-                creator = resp_data.get('creator', {})
+                creator = data.get('data', {}).get('creator', {})
                 if creator:
-                    result['nick'] = creator.get('nick', '') or ''
-                if not result['nick']:
-                    result['nick'] = resp_data.get('hostname', '') or ''
-                result['uin'] = (creator.get('uin', 0) or resp_data.get('uin', 0) or 0)
+                    result['valid'] = True
+                    result['nick'] = creator.get('nick', '')
+                    result['uin'] = creator.get('uin', 0)
+
+            return result
+
         except Exception as e:
-            logger.debug("verify_login fallback also failed: %s", e)
+            logger.error(f"Failed to verify login: {e}")
+            return result
