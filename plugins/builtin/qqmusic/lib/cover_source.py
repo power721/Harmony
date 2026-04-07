@@ -24,29 +24,41 @@ class QQMusicCoverPluginSource:
     ) -> list[PluginCoverResult]:
         try:
             keyword = f"{artist} {title}" if artist else title
-            songs = self._api.search(keyword, limit=5)
+            search_payload = self._api.search(
+                keyword,
+                search_type="song",
+                limit=5,
+            )
+            songs = (
+                search_payload.get("tracks", [])
+                if isinstance(search_payload, dict)
+                else search_payload
+            )
             results = []
             for song in songs:
-                artist_name = ""
-                if isinstance(song.get("singer"), list) and song["singer"]:
-                    artist_name = song["singer"][0].get("name", "")
-                elif isinstance(song.get("singer"), str):
-                    artist_name = song.get("singer", "")
+                artist_name = song.get("artist", "")
+                singer_data = song.get("singer")
+                if not artist_name:
+                    if isinstance(singer_data, list) and singer_data:
+                        artist_name = singer_data[0].get("name", "")
+                    elif isinstance(singer_data, str):
+                        artist_name = singer_data
 
-                album_name = ""
-                album_mid = ""
                 album_data = song.get("album")
                 if isinstance(album_data, dict):
                     album_name = album_data.get("name", "")
                     album_mid = album_data.get("mid", "")
+                else:
+                    album_name = album_data or ""
+                    album_mid = song.get("album_mid", "")
 
                 results.append(
                     PluginCoverResult(
                         item_id=song.get("mid", ""),
-                        title=song.get("name", ""),
+                        title=song.get("name", "") or song.get("title", ""),
                         artist=artist_name,
                         album=album_name,
-                        duration=song.get("interval"),
+                        duration=song.get("duration") or song.get("interval"),
                         source="qqmusic",
                         cover_url=None,
                         extra_id=album_mid,

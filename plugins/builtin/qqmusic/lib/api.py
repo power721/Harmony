@@ -70,6 +70,19 @@ class QQMusicPluginAPI:
             ]
         }
 
+    def search_artist(
+        self,
+        keyword: str,
+        limit: int = 20,
+        page: int = 1,
+    ) -> list[dict]:
+        return self.search(
+            keyword,
+            search_type="singer",
+            limit=limit,
+            page=page,
+        ).get("artists", [])
+
     def get_top_lists(self) -> list[dict]:
         response = self._context.http.get(f"{self.REMOTE_BASE_URL}/top", timeout=20)
         data = response.json()

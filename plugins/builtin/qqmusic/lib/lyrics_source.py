@@ -17,18 +17,38 @@ class QQMusicLyricsPluginSource:
     def search(self, title: str, artist: str, limit: int = 10) -> list[PluginLyricsResult]:
         try:
             keyword = f"{title} {artist}" if artist else title
-            search_results = self._api.search(keyword, limit)
+            search_payload = self._api.search(
+                keyword,
+                search_type="song",
+                limit=limit,
+            )
+            search_results = (
+                search_payload.get("tracks", [])
+                if isinstance(search_payload, dict)
+                else search_payload
+            )
             return [
                 PluginLyricsResult(
                     song_id=item.get("mid", ""),
-                    title=item.get("title", ""),
-                    artist=item.get("singer", ""),
-                    album=item.get("album", ""),
-                    duration=item.get("interval"),
+                    title=item.get("title", "") or item.get("name", ""),
+                    artist=item.get("singer", "") or item.get("artist", ""),
+                    album=(
+                        item.get("album", {}).get("name", "")
+                        if isinstance(item.get("album"), dict)
+                        else item.get("album", "")
+                    ),
+                    duration=item.get("duration") or item.get("interval"),
                     source="qqmusic",
                     cover_url=self._api.get_cover_url(
                         mid=item.get("mid", ""),
-                        album_mid=item.get("album_mid", ""),
+                        album_mid=(
+                            item.get("album_mid", "")
+                            or (
+                                item.get("album", {}).get("mid", "")
+                                if isinstance(item.get("album"), dict)
+                                else ""
+                            )
+                        ),
                         size=500,
                     ),
                 )

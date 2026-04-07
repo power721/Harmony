@@ -31,17 +31,25 @@ class QQMusicArtistCoverPluginSource:
             artists = self._api.search_artist(artist_name, limit)
             results = []
             for artist in artists:
-                name = artist.get("singerName", "") or artist.get("name", "")
-                singer_mid = artist.get("singerMID", "") or artist.get("mid", "")
-                cover_url = artist.get("singerPic", "")
-                album_count = artist.get("albumNum", 0)
+                name = artist.get("name", "") or artist.get("singerName", "")
+                singer_mid = artist.get("mid", "") or artist.get("singerMID", "")
+                cover_url = (
+                    artist.get("avatar_url", "")
+                    or artist.get("singerPic", "")
+                    or artist.get("pic_url", "")
+                )
+                album_count = artist.get("album_count", artist.get("albumNum", 0))
                 if name and singer_mid:
                     results.append(
                         PluginArtistCoverResult(
                             artist_id=singer_mid,
                             name=name,
                             source="qqmusic",
-                            cover_url=self._convert_cover_url(cover_url) if cover_url else None,
+                            cover_url=(
+                                self._convert_cover_url(cover_url)
+                                if cover_url
+                                else self._api.get_artist_cover_url(singer_mid)
+                            ),
                             album_count=album_count,
                         )
                     )

@@ -4,6 +4,8 @@ from PySide6.QtCore import Qt, Property, QPropertyAnimation, QEasingCurve, Signa
 from PySide6.QtGui import QPainter, QColor
 from PySide6.QtWidgets import QWidget, QSizePolicy, QGraphicsDropShadowEffect, QApplication
 
+from system.theme import ThemeManager
+
 
 class ToggleSwitch(QWidget):
     toggled = Signal(bool)
@@ -26,7 +28,7 @@ class ToggleSwitch(QWidget):
         self.anim.setEasingCurve(QEasingCurve.OutCubic)
 
         # 主题
-        self.bg_on = QColor("#22c55e")
+        self.bg_on = QColor(ThemeManager.instance().current_theme.highlight)
         self.bg_off = QColor("#3f3f46")
         self.bg_disabled = QColor("#2a2a2a")
         self.circle_color = QColor("#ffffff")
