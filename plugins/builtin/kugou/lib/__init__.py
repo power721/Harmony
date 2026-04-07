@@ -1,0 +1,1 @@
+"""Kugou plugin internals."""

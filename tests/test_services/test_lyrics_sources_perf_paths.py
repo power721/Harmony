@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI
 from plugins.builtin.qqmusic.lib.lyrics_source import QQMusicLyricsPluginSource
-from services.sources.lyrics_sources import KugouLyricsSource
 
 
 def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
@@ -34,16 +33,3 @@ def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
     assert len(results) == 1
     assert results[0].song_id == "song-1"
     assert results[0].title == "Song 1"
-
-
-def test_kugou_lyrics_source_search_builds_results():
-    fake_response = SimpleNamespace(
-        json=lambda: {"candidates": [{"id": 1, "name": "Song 1", "singer": "Singer 1", "accesskey": "k1"}]}
-    )
-    source = KugouLyricsSource(SimpleNamespace(get=lambda *_args, **_kwargs: fake_response))
-
-    results = source.search("Song 1", "Singer 1")
-
-    assert len(results) == 1
-    assert results[0].id == "1"
-    assert results[0].accesskey == "k1"

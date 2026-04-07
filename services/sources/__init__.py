@@ -15,7 +15,6 @@ from .cover_sources import (
 )
 from .lyrics_sources import (
     NetEaseLyricsSource,
-    KugouLyricsSource,
 )
 from .artist_cover_sources import (
     NetEaseArtistCoverSource,
@@ -36,7 +35,6 @@ __all__ = [
     "SpotifyCoverSource",
     # Lyrics sources
     "NetEaseLyricsSource",
-    "KugouLyricsSource",
     # Artist cover sources
     "NetEaseArtistCoverSource",
     "ITunesArtistCoverSource",
