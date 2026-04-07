@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import services.metadata.cover_service as cover_service_module
+from harmony_plugin_api.cover import PluginArtistCoverResult
 from services.metadata.cover_service import CoverService
 from services.sources.base import CoverSearchResult
 
@@ -70,3 +71,27 @@ def test_search_covers_converts_and_scores_results(monkeypatch):
     assert len(results) == 1
     assert results[0]["id"] == "song-1"
     assert results[0]["score"] == 88.0
+
+
+def test_search_artist_covers_supports_plugin_artist_result_shape(monkeypatch):
+    source = SimpleNamespace(
+        name="QQMusic",
+        search=lambda *_args, **_kwargs: [
+            PluginArtistCoverResult(
+                artist_id="artist-1",
+                name="Singer 1",
+                source="qqmusic",
+                cover_url=None,
+                album_count=12,
+            )
+        ],
+    )
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_artist_sources", lambda: [source])
+
+    results = service.search_artist_covers("Singer 1", limit=5)
+
+    assert len(results) == 1
+    assert results[0]["id"] == "artist-1"
+    assert results[0]["singer_mid"] == "artist-1"
+    assert results[0]["album_count"] == 12

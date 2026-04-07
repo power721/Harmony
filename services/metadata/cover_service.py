@@ -47,12 +47,10 @@ class CoverService:
         """Get built-in host cover sources."""
         from services.sources import (
             NetEaseCoverSource,
-            ITunesCoverSource,
             LastFmCoverSource,
         )
         return [
             NetEaseCoverSource(self.http_client),
-            ITunesCoverSource(self.http_client),
             LastFmCoverSource(self.http_client),
         ]
 
@@ -68,11 +66,9 @@ class CoverService:
         """Get built-in host artist cover sources."""
         from services.sources import (
             NetEaseArtistCoverSource,
-            ITunesArtistCoverSource,
         )
         return [
             NetEaseArtistCoverSource(self.http_client),
-            ITunesArtistCoverSource(self.http_client),
         ]
 
     def _get_artist_sources(self) -> List["ArtistCoverSource"]:
@@ -563,13 +559,17 @@ class CoverService:
                     # Convert ArtistCoverSearchResult to dict for compatibility
                     for r in search_results:
                         score = self._calculate_artist_name_score(artist_name, r.name)
+                        artist_id = getattr(r, "id", None) or getattr(r, "artist_id", "")
+                        singer_mid = getattr(r, "singer_mid", None)
+                        if singer_mid is None and getattr(r, "source", "") == "qqmusic":
+                            singer_mid = getattr(r, "artist_id", None)
                         results.append({
                             'name': r.name,
-                            'id': r.id,
+                            'id': artist_id,
                             'cover_url': r.cover_url,
                             'album_count': r.album_count,
                             'source': r.source,
-                            'singer_mid': r.singer_mid,
+                            'singer_mid': singer_mid,
                             'score': score,
                         })
                 except Exception as e:

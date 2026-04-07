@@ -76,64 +76,6 @@ class NetEaseArtistCoverSource(ArtistCoverSource):
         self._http_client = http_client
 
 
-class ITunesArtistCoverSource(ArtistCoverSource):
-    """iTunes Search API artist cover source."""
-
-    @property
-    def name(self) -> str:
-        return "iTunes"
-
-    def search(
-        self,
-        artist_name: str,
-        limit: int = 10
-    ) -> List[ArtistCoverSearchResult]:
-        """Search for artist covers from iTunes Search API."""
-        results = []
-
-        try:
-            search_url = "https://itunes.apple.com/search"
-            params = {
-                'term': artist_name,
-                'media': 'music',
-                'entity': 'album',
-                'limit': limit
-            }
-
-            response = self._http_client.get(search_url, params=params, timeout=5)
-
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('results'):
-                    seen_artists = set()
-                    for item in data['results']:
-                        name = item.get('artistName', '')
-                        # Skip duplicate artists
-                        if name.lower() in seen_artists:
-                            continue
-                        seen_artists.add(name.lower())
-
-                        artwork_url = item.get('artworkUrl100')
-                        if artwork_url:
-                            artwork_url = artwork_url.replace('100x100', '600x600')
-
-                            results.append(ArtistCoverSearchResult(
-                                id=str(item.get('artistId', '')),
-                                name=name,
-                                cover_url=artwork_url,
-                                album_count=None,
-                                source='itunes'
-                            ))
-
-        except Exception as e:
-            logger.debug(f"iTunes artist cover search error: {e}")
-
-        return results
-
-    def __init__(self, http_client):
-        self._http_client = http_client
-
-
 class SpotifyArtistCoverSource(ArtistCoverSource):
     """Spotify Web API artist cover source."""
 

@@ -34,6 +34,24 @@ class _RegistryContextFactory:
         return _Context()
 
 
+class _LyricsRegistryContextFactory:
+    def __init__(self, registry):
+        self._registry = registry
+
+    def build(self, manifest):
+        registry = self._registry
+        plugin_id = manifest.id
+
+        class _ServicesBridge:
+            def register_lyrics_source(self, source):
+                registry.register_lyrics_source(plugin_id, source)
+
+        class _Context:
+            services = _ServicesBridge()
+
+        return _Context()
+
+
 def test_state_store_persists_enabled_flag(tmp_path: Path):
     store = PluginStateStore(tmp_path / "state.json")
     store.set_enabled("qqmusic", True, source="builtin", version="1.0.0")
@@ -182,6 +200,53 @@ def test_manager_can_toggle_plugin_enabled_state_without_loading(tmp_path: Path)
     assert enabled_state is not None
     assert enabled_state["enabled"] is True
     assert enabled_state["version"] == "1.0.0"
+
+
+def test_manager_disabling_loaded_plugin_unregisters_runtime_lyrics_sources(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "lyrics"
+    plugin_root.mkdir(parents=True)
+
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "lyrics",
+                "name": "Lyrics Plugin",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "LyricsPlugin",
+                "capabilities": ["lyrics_source"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "class LyricsPlugin:\n"
+        "    plugin_id = 'lyrics'\n"
+        "    def register(self, context):\n"
+        "        context.services.register_lyrics_source(object())\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_LyricsRegistryContextFactory(None),
+    )
+    manager._context_factory = _LyricsRegistryContextFactory(manager.registry)
+
+    manager.load_enabled_plugins()
+    assert len(manager.registry.lyrics_sources()) == 1
+
+    manager.set_plugin_enabled("lyrics", False)
+
+    assert manager.registry.lyrics_sources() == []
 
 
 def test_manager_loads_plugin_with_relative_import(tmp_path: Path):

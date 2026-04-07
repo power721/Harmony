@@ -8,7 +8,6 @@ online sources (NetEase, QQ Music, iTunes, etc.).
 from .base import CoverSource, LyricsSource, ArtistCoverSource
 from .cover_sources import (
     NetEaseCoverSource,
-    ITunesCoverSource,
     LastFmCoverSource,
     MusicBrainzCoverSource,
     SpotifyCoverSource,
@@ -18,7 +17,6 @@ from .lyrics_sources import (
 )
 from .artist_cover_sources import (
     NetEaseArtistCoverSource,
-    ITunesArtistCoverSource,
     SpotifyArtistCoverSource,
 )
 
@@ -29,7 +27,6 @@ __all__ = [
     "ArtistCoverSource",
     # Cover sources
     "NetEaseCoverSource",
-    "ITunesCoverSource",
     "LastFmCoverSource",
     "MusicBrainzCoverSource",
     "SpotifyCoverSource",
@@ -37,6 +34,5 @@ __all__ = [
     "NetEaseLyricsSource",
     # Artist cover sources
     "NetEaseArtistCoverSource",
-    "ITunesArtistCoverSource",
     "SpotifyArtistCoverSource",
 ]
