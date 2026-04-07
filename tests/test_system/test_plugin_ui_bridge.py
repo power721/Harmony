@@ -52,6 +52,11 @@ def test_plugin_context_ui_bridge_exposes_theme_and_dialog_helpers(tmp_path: Pat
     assert callable(context.ui.dialogs.question)
     assert callable(context.ui.dialogs.critical)
     assert callable(context.ui.dialogs.setup_title_bar)
+    assert callable(context.runtime.create_online_music_service)
+    assert callable(context.runtime.create_online_download_service)
+    assert callable(context.runtime.get_icon)
+    assert callable(context.runtime.http_get_content)
+    assert callable(context.runtime.event_bus)
 
 
 def test_plugin_context_ui_bridge_exposes_foundation_theme_helpers(tmp_path: Path):

@@ -124,7 +124,13 @@ class PluginManager:
                 and not path.name.endswith(".staging")
                 and not path.name.endswith(".backup")
             )
-        return sorted(roots, key=lambda item: (item[0], item[1].name))
+        selected: dict[str, tuple[str, Path]] = {}
+        for source, plugin_root in sorted(roots, key=lambda item: (item[0], item[1].name)):
+            manifest = self._loader.read_manifest(plugin_root)
+            current = selected.get(manifest.id)
+            if current is None or source == "external":
+                selected[manifest.id] = (source, plugin_root)
+        return sorted(selected.values(), key=lambda item: (item[0], item[1].name))
 
     def load_enabled_plugins(self) -> None:
         roots = self.discover_roots()

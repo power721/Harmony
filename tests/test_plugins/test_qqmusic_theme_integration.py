@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
 from system.theme import ThemeManager
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def _plugin_settings(tmp_path: Path):
@@ -23,6 +24,7 @@ def _plugin_settings(tmp_path: Path):
 def test_plugin_login_dialog_uses_host_owned_shell_and_title_bar_styles(qtbot, monkeypatch, tmp_path):
     ThemeManager._instance = None
     ThemeManager.instance(_plugin_settings(tmp_path))
+    bind_test_context()
     monkeypatch.setattr(
         "plugins.builtin.qqmusic.lib.login_dialog.QQMusicLoginDialog._start_login",
         lambda self, login_type=None: None,
@@ -53,9 +55,10 @@ def test_online_music_view_search_input_uses_theme_variant_and_host_popup_helper
     settings = _plugin_settings(tmp_path)
     ThemeManager._instance = None
     ThemeManager.instance(settings)
+    context = bind_test_context()
     _stub_online_services(monkeypatch)
 
-    view = OnlineMusicView(config_manager=settings, qqmusic_service=None)
+    view = OnlineMusicView(config_manager=settings, qqmusic_service=None, plugin_context=context)
     qtbot.addWidget(view)
 
     assert view._search_input.property("variant") == "search"
@@ -67,9 +70,10 @@ def test_online_music_view_tabs_use_global_style_and_pointing_cursor(qtbot, monk
     settings = _plugin_settings(tmp_path)
     ThemeManager._instance = None
     ThemeManager.instance(settings)
+    context = bind_test_context()
     _stub_online_services(monkeypatch)
 
-    view = OnlineMusicView(config_manager=settings, qqmusic_service=None)
+    view = OnlineMusicView(config_manager=settings, qqmusic_service=None, plugin_context=context)
     qtbot.addWidget(view)
 
     assert view._tabs.cursor().shape() == view._search_btn.cursor().shape()

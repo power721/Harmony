@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 
 from PySide6.QtCore import Qt
 
-from ui.views.online_music_view import OnlineMusicView
+from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def test_click_outside_search_input_clears_focus(qtbot):
@@ -16,7 +17,8 @@ def test_click_outside_search_input_clears_focus(qtbot):
     theme_manager.current_theme = MagicMock(highlight="#1db954")
 
     with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
-        view = OnlineMusicView(config_manager=None, qqmusic_service=None)
+        context = bind_test_context(theme_manager=theme_manager)
+        view = OnlineMusicView(config_manager=None, qqmusic_service=None, plugin_context=context)
         view._top_lists_loaded = True  # Avoid loading top list workers in this test.
         qtbot.addWidget(view)
         view.show()

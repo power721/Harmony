@@ -8,8 +8,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from domain.online_music import OnlineTrack
-import ui.views.online_tracks_list_view as online_tracks_list_view
-from ui.views.online_tracks_list_view import OnlineTracksListView
+import plugins.builtin.qqmusic.lib.online_tracks_list_view as online_tracks_list_view
+from plugins.builtin.qqmusic.lib.online_tracks_list_view import OnlineTracksListView
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def test_online_tracks_cover_hover_starts_timer_on_cover_area():
@@ -28,6 +29,9 @@ def test_online_tracks_cover_hover_starts_timer_on_cover_area():
     type(theme_manager).current_theme = PropertyMock(return_value=theme)
 
     bus = MagicMock()
+    bus.favorite_changed = MagicMock()
+    bus.favorite_changed.connect = MagicMock()
+    bus.favorite_changed.disconnect = MagicMock()
 
     class _MouseEvent:
         def __init__(self, pos):
@@ -36,8 +40,8 @@ def test_online_tracks_cover_hover_starts_timer_on_cover_area():
         def pos(self):
             return self._pos
 
-    with patch("system.theme.ThemeManager.instance", return_value=theme_manager), \
-         patch("system.event_bus.EventBus.instance", return_value=bus):
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        bind_test_context(theme_manager=theme_manager, event_bus=bus)
         view = OnlineTracksListView()
         view.resize(900, 300)
         view.show()
@@ -74,9 +78,12 @@ def test_online_tracks_handle_mouse_leave_is_idempotent_when_idle():
     type(theme_manager).current_theme = PropertyMock(return_value=theme)
 
     bus = MagicMock()
+    bus.favorite_changed = MagicMock()
+    bus.favorite_changed.connect = MagicMock()
+    bus.favorite_changed.disconnect = MagicMock()
 
-    with patch("system.theme.ThemeManager.instance", return_value=theme_manager), \
-         patch("system.event_bus.EventBus.instance", return_value=bus):
+    with patch("system.theme.ThemeManager.instance", return_value=theme_manager):
+        bind_test_context(theme_manager=theme_manager, event_bus=bus)
         view = OnlineTracksListView()
         view.show()
         app.processEvents()
@@ -106,8 +113,6 @@ def test_online_tracks_cover_resolution_uses_existing_cover_service_only(monkeyp
             raise RuntimeError("cover_service should not be initialized in worker")
 
     bootstrap = _BootstrapStub()
-    monkeypatch.setattr("app.bootstrap.Bootstrap.instance", lambda: bootstrap)
-
     track = OnlineTrack(mid="mid-1", title="Song", duration=180)
 
     assert online_tracks_list_view._resolve_online_cover_path(track) is None

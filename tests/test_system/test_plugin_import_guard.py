@@ -35,6 +35,32 @@ def test_plugin_import_audit_rejects_host_imports(tmp_path: Path):
         audit_plugin_imports(plugin_root)
 
 
+def test_plugin_import_audit_rejects_dynamic_host_imports(tmp_path: Path):
+    plugin_root = tmp_path / "bad_dynamic_imports"
+    plugin_root.mkdir()
+    (plugin_root / "plugin_main.py").write_text(
+        "import importlib\n"
+        "\n"
+        "importlib.import_module('system.plugins.plugin_sdk_runtime')\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception):
+        audit_plugin_imports(plugin_root)
+
+
+def test_plugin_import_audit_rejects_dynamic_dunder_imports(tmp_path: Path):
+    plugin_root = tmp_path / "bad_dunder_imports"
+    plugin_root.mkdir()
+    (plugin_root / "plugin_main.py").write_text(
+        "__import__('ui.dialogs.message_dialog')\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception):
+        audit_plugin_imports(plugin_root)
+
+
 def test_runtime_import_guard_rejects_host_module_import(tmp_path: Path):
     plugin_root = tmp_path / "bad_runtime"
     plugin_root.mkdir()
@@ -81,3 +107,12 @@ def test_qqmusic_ui_modules_do_not_import_sdk_runtime_modules_directly():
         source = path.read_text(encoding="utf-8")
         assert "from harmony_plugin_api.ui import" not in source
         assert "from harmony_plugin_api.runtime import" not in source
+
+
+def test_qqmusic_runtime_bridge_does_not_import_host_bridge_modules_by_name():
+    source = Path("plugins/builtin/qqmusic/lib/runtime_bridge.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "system.plugins.plugin_sdk_runtime" not in source
+    assert "system.plugins.plugin_sdk_ui" not in source

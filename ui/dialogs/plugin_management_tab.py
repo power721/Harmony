@@ -88,6 +88,10 @@ class PluginManagementTab(QWidget):
 
         layout.addWidget(self._table)
 
+        warning_label = QLabel(t("plugins_install_warning"), self)
+        warning_label.setWordWrap(True)
+        layout.addWidget(warning_label)
+
         controls = QHBoxLayout()
         self._url_input.setPlaceholderText("https://example.com/plugin.zip")
         install_zip_btn = QPushButton(t("plugins_install_zip"), self)

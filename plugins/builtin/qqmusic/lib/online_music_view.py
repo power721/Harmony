@@ -42,6 +42,7 @@ from .recommend_card import RecommendSection
 from .runtime_bridge import (
     IconName,
     add_track_ids_to_playlist,
+    bind_context,
     bootstrap,
     create_online_download_service,
     create_online_music_service,
@@ -787,6 +788,7 @@ class OnlineMusicView(QWidget):
         self._config = config_manager
         self._qqmusic_service = qqmusic_service
         self._plugin_context = plugin_context
+        bind_context(plugin_context)
         self._language_connected = False
 
         # Create services

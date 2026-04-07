@@ -318,6 +318,7 @@
     "plugins_tab": "Plugins",
     "plugins_install_zip": "Install Zip",
     "plugins_install_url": "Install URL",
+    "plugins_install_warning": "Only install plugins from trusted sources. Plugins run trusted Python code inside the app.",
     "plugins_load_error": "Load Error",
     "plugins_enabled": "Enabled",
     "plugins_disabled": "Disabled",
