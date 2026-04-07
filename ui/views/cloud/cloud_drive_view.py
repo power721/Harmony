@@ -231,40 +231,6 @@ class CloudDriveView(QWidget):
         }
     """
 
-    _SEARCH_INPUT_STYLE_TEMPLATE = """
-        QLineEdit {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 2px solid %border%;
-            border-radius: 20px;
-            padding: 10px 15px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid %highlight%;
-            background-color: %background_hover%;
-        }
-        QLineEdit::placeholder {
-            color: %text_secondary%;
-        }
-        QLineEdit::clear-button {
-            subcontrol-origin: padding;
-            subcontrol-position: right;
-            width: 18px;
-            height: 18px;
-            margin-right: 8px;
-            border-radius: 9px;
-            background-color: %border%;
-        }
-        QLineEdit::clear-button:hover {
-            background-color: %background_hover%;
-            border: 1px solid %border%;
-        }
-        QLineEdit::clear-button:pressed {
-            background-color: %background_alt%;
-        }
-    """
-
     _SEARCH_BUTTON_STYLE_TEMPLATE = """
         QPushButton {
             background: %background_alt%;
@@ -441,6 +407,7 @@ class CloudDriveView(QWidget):
         self._share_search_input = QLineEdit()
         self._share_search_input.setPlaceholderText(t("cloud_share_search_placeholder"))
         self._share_search_input.setClearButtonEnabled(True)
+        self._share_search_input.setProperty("variant", "search")
         self._share_search_input.returnPressed.connect(self._search_shares)
         self._share_search_input.textChanged.connect(self._on_share_search_text_changed)
         search_layout.addWidget(self._share_search_input)
@@ -2327,7 +2294,10 @@ class CloudDriveView(QWidget):
         from system.theme import ThemeManager
         tm = ThemeManager.instance()
         self.setStyleSheet(tm.get_qss(self._STYLE_TEMPLATE))
-        self._share_search_input.setStyleSheet(tm.get_qss(self._SEARCH_INPUT_STYLE_TEMPLATE))
+        style = self._share_search_input.style()
+        if style is not None:
+            style.unpolish(self._share_search_input)
+            style.polish(self._share_search_input)
         self._share_search_btn.setStyleSheet(tm.get_qss(self._SEARCH_BUTTON_STYLE_TEMPLATE))
         self._path_label.set_breadcrumb_color(tm.current_theme.text)
 

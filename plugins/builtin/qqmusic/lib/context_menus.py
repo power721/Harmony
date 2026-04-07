@@ -7,26 +7,6 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
 from .i18n import t
-from .runtime_bridge import get_qss
-
-
-_CONTEXT_MENU_STYLE = """
-    QMenu {
-        background-color: %background_alt%;
-        color: %text%;
-        border: 1px solid %border%;
-    }
-    QMenu::item {
-        padding: 8px 20px;
-    }
-    QMenu::item:selected {
-        background-color: %highlight%;
-        color: %background%;
-    }
-    QMenu::item:disabled {
-        color: %text_secondary%;
-    }
-"""
 
 
 class OnlineTrackContextMenu(QObject):
@@ -45,7 +25,6 @@ class OnlineTrackContextMenu(QObject):
             return
 
         menu = QMenu(parent_widget)
-        menu.setStyleSheet(get_qss(_CONTEXT_MENU_STYLE))
 
         action = menu.addAction(t("play"))
         action.triggered.connect(lambda: self.play.emit(tracks))

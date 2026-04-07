@@ -24,6 +24,14 @@ def current_theme():
     return _ui_module().current_theme()
 
 
+def get_popup_surface_style() -> str:
+    return _ui_module().get_popup_surface_style()
+
+
+def get_completer_popup_style() -> str:
+    return _ui_module().get_completer_popup_style()
+
+
 def show_information(parent, title: str, message: str) -> None:
     _ui_module().information(parent, title, message)
 

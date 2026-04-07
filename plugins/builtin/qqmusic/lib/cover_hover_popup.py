@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QTimer, QRect, QPoint
 from PySide6.QtGui import QColor, QPixmap, QPainter
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication
 
-from .runtime_bridge import current_theme
+from .runtime_bridge import current_theme, register_themed_widget
 
 
 class CoverHoverPopup(QWidget):
@@ -15,6 +15,7 @@ class CoverHoverPopup(QWidget):
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setProperty("popupSurface", True)
 
         self._size = size
 
@@ -31,6 +32,7 @@ class CoverHoverPopup(QWidget):
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self.hide)
+        register_themed_widget(self)
 
     def show_cover(self, cover_path: str | None, track_id: str, pos: QPoint):
         """Show cover at specified position."""

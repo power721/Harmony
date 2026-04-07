@@ -48,6 +48,7 @@ from .runtime_bridge import (
     create_qqmusic_login_dialog,
     create_qqmusic_service,
     current_theme,
+    get_completer_popup_style,
     event_bus,
     format_duration,
     get_icon,
@@ -96,7 +97,7 @@ class CustomQCompleter(QCompleter):
 
     def _apply_theme(self):
         """Apply themed styles to popup."""
-        self.popup().setStyleSheet(get_qss(self._STYLE_POPUP))
+        self.popup().setStyleSheet(get_completer_popup_style())
 
     def refresh_theme(self):
         """Refresh popup styles."""
@@ -619,39 +620,6 @@ class OnlineMusicView(QWidget):
 
     _STYLE_TITLE = "color: %highlight%; font-size: 24px; font-weight: bold;"
     _STYLE_STATUS_LABEL = "color: %text_secondary%; font-size: 12px;"
-    _STYLE_SEARCH_INPUT = """
-        QLineEdit {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 2px solid %border%;
-            border-radius: 25px;
-            padding: 10px 20px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid %highlight%;
-            background-color: %background_alt%;
-        }
-        QLineEdit::placeholder {
-            color: %text_secondary%;
-        }
-        QLineEdit::clear-button {
-            subcontrol-origin: padding;
-            subcontrol-position: right;
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-            border-radius: 10px;
-            background-color: %border%;
-        }
-        QLineEdit::clear-button:hover {
-            background-color: %text_secondary%;
-            border: 1px solid %text%;
-        }
-        QLineEdit::clear-button:pressed {
-            background-color: %background_hover%;
-        }
-    """
     _STYLE_TABS = """
         QTabBar::tab {
             background: transparent;
@@ -1093,6 +1061,7 @@ class OnlineMusicView(QWidget):
         # Search input with built-in clear button
         self._search_input = SearchInputWithHotkey()
         self._search_input.setPlaceholderText(t("search_online_music"))
+        self._search_input.setProperty("variant", "search")
         self._search_input.returnPressed.connect(self._on_search)
         self._search_input.textChanged.connect(self._on_search_text_changed)
         self._search_input.setFixedHeight(50)
@@ -1365,7 +1334,10 @@ class OnlineMusicView(QWidget):
         self._login_status_label.setStyleSheet(get_qss(self._STYLE_STATUS_LABEL))
 
         # Search input
-        self._search_input.setStyleSheet(get_qss(self._STYLE_SEARCH_INPUT))
+        style = self._search_input.style()
+        if style is not None:
+            style.unpolish(self._search_input)
+            style.polish(self._search_input)
 
         # Tabs
         self._tabs.setStyleSheet(get_qss(self._STYLE_TABS))

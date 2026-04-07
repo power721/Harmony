@@ -55,21 +55,6 @@ class GeneralSettingsDialog(QDialog):
             color: %text%;
             font-size: 13px;
         }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:disabled {
-            background-color: %background_hover%;
-            color: %text_secondary%;
-        }
         QPushButton {
             background-color: %background_hover%;
             color: %text%;
@@ -84,48 +69,6 @@ class GeneralSettingsDialog(QDialog):
         QPushButton:pressed {
             background-color: %background%;
         }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-        }
-        QGroupBox {
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            margin-top: 10px;
-            padding-top: 10px;
-            font-size: 13px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            subcontrol-position: top left;
-            padding: 0 8px;
-            color: %text%;
-        }
-        QTabWidget::pane {
-            border: 1px solid %border%;
-            background-color: %background_alt%;
-        }
-        QTabBar::tab {
-            background-color: %background%;
-            color: %text_secondary%;
-            padding: 8px 16px;
-            border: 1px solid %border%;
-            font-size: 13px;
-        }
-        QTabBar::tab:selected {
-            background-color: %background_hover%;
-            color: %text%;
-            border-bottom-color: %background_hover%;
-        }
-        QTabBar::tab:hover:!selected {
-            background-color: %selection%;
-        }
-        """ + ThemeManager.get_combobox_style() + """
     """
 
     def __init__(self, config_manager, parent=None):
@@ -145,6 +88,7 @@ class GeneralSettingsDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()

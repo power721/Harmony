@@ -21,39 +21,13 @@ class DialogTitleBarController:
     close_btn: QPushButton
 
     def refresh_theme(self):
-        """Apply theme to title bar widgets."""
-        tm = ThemeManager.instance()
-        self.title_bar.setStyleSheet(
-            tm.get_qss(
-                """
-                QWidget#dialogTitleBar {
-                    background-color: %background_alt%;
-                    border-top-left-radius: 12px;
-                    border-top-right-radius: 12px;
-                    border-bottom: 1px solid %border%;
-                }
-                """
-            )
-        )
-        self.title_label.setStyleSheet(
-            tm.get_qss("color: %text%; font-size: 14px; font-weight: bold;")
-        )
-        self.close_btn.setStyleSheet(
-            tm.get_qss(
-                """
-                QPushButton#dialogCloseBtn {
-                    background: transparent;
-                    border: none;
-                    color: %text_secondary%;
-                    border-radius: 4px;
-                }
-                QPushButton#dialogCloseBtn:hover {
-                    background-color: %selection%;
-                    color: %text%;
-                }
-                """
-            )
-        )
+        """Refresh icons and re-polish global theme selectors."""
+        self.close_btn.setIcon(get_icon(IconName.TIMES, None, 14))
+        for widget in (self.title_bar, self.title_label, self.close_btn):
+            style = widget.style()
+            if style is not None:
+                style.unpolish(widget)
+                style.polish(widget)
 
 
 def setup_equalizer_title_layout(
@@ -98,6 +72,7 @@ def setup_equalizer_title_layout(
 
     controller = DialogTitleBarController(dialog, title_bar, title_label, close_btn)
     controller.refresh_theme()
+    ThemeManager.instance().register_widget(title_bar)
 
     _bind_title_bar_drag(dialog, title_bar)
 

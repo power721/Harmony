@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from .runtime_bridge import get_icon, get_qss
+from .runtime_bridge import get_icon, register_themed_widget
 
 
 @dataclass
@@ -20,38 +20,13 @@ class DialogTitleBarController:
     close_btn: QPushButton
 
     def refresh_theme(self):
-        """Apply theme to title bar widgets."""
-        self.title_bar.setStyleSheet(
-            get_qss(
-                """
-                QWidget#dialogTitleBar {
-                    background-color: %background_alt%;
-                    border-top-left-radius: 12px;
-                    border-top-right-radius: 12px;
-                    border-bottom: 1px solid %border%;
-                }
-                """
-            )
-        )
-        self.title_label.setStyleSheet(
-            get_qss("color: %text%; font-size: 14px; font-weight: bold;")
-        )
-        self.close_btn.setStyleSheet(
-            get_qss(
-                """
-                QPushButton#dialogCloseBtn {
-                    background: transparent;
-                    border: none;
-                    color: %text_secondary%;
-                    border-radius: 4px;
-                }
-                QPushButton#dialogCloseBtn:hover {
-                    background-color: %selection%;
-                    color: %text%;
-                }
-                """
-            )
-        )
+        """Refresh icons and re-polish global theme selectors."""
+        self.close_btn.setIcon(get_icon("times.svg", None, 14))
+        for widget in (self.title_bar, self.title_label, self.close_btn):
+            style = widget.style()
+            if style is not None:
+                style.unpolish(widget)
+                style.polish(widget)
 
 
 def setup_dialog_title_layout(
@@ -96,6 +71,7 @@ def setup_dialog_title_layout(
 
     controller = DialogTitleBarController(dialog, title_bar, title_label, close_btn)
     controller.refresh_theme()
+    register_themed_widget(title_bar)
 
     _bind_title_bar_drag(dialog, title_bar)
 

@@ -52,55 +52,6 @@ class BaseRenameDialog(QDialog):
             color: %text%;
             font-size: 13px;
         }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 10px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:read-only {
-            background-color: %background%;
-            color: %text_secondary%;
-        }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QProgressBar {
-            background-color: %background%;
-            border: none;
-            border-radius: 4px;
-            height: 6px;
-            text-align: center;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 4px;
-        }
     """
 
     def __init__(self, parent=None):
@@ -116,6 +67,7 @@ class BaseRenameDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         ThemeManager.instance().register_widget(self)
@@ -214,6 +166,7 @@ class BaseRenameDialog(QDialog):
         button_layout.addWidget(self._cancel_btn)
 
         self._rename_btn = QPushButton(t("rename"))
+        self._rename_btn.setProperty("role", "primary")
         self._rename_btn.setCursor(Qt.PointingHandCursor)
         self._rename_btn.clicked.connect(self._on_rename_clicked)
         button_layout.addWidget(self._rename_btn)

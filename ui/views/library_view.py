@@ -49,38 +49,6 @@ class LibraryView(QWidget):
             font-weight: bold;
             padding: 10px;
         }
-        """ + ThemeManager.get_combobox_style() + """
-        QLineEdit {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 2px solid %border%;
-            border-radius: 20px;
-            padding: 10px 15px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid %highlight%;
-            background-color: %background_hover%;
-        }
-        QLineEdit::placeholder {
-            color: %text_secondary%;
-        }
-        QLineEdit::clear-button {
-            subcontrol-origin: padding;
-            subcontrol-position: right;
-            width: 18px;
-            height: 18px;
-            margin-right: 8px;
-            border-radius: 9px;
-            background-color: %border%;
-        }
-        QLineEdit::clear-button:hover {
-            background-color: %background_hover%;
-            border: 1px solid %border%;
-        }
-        QLineEdit::clear-button:pressed {
-            background-color: %background_alt%;
-        }
     """
 
     track_double_clicked = Signal(int)  # Signal when track is double-clicked
@@ -164,6 +132,7 @@ class LibraryView(QWidget):
         self._source_filter.addItem(t("source_baidu"), "BAIDU")
         self._source_filter.addItem(t("source_qq"), "QQ")
         self._source_filter.setFixedWidth(120)
+        self._source_filter.setProperty("compact", True)
         header_layout.addWidget(self._source_filter)
 
         # Add spacing between filter and search box
@@ -174,6 +143,7 @@ class LibraryView(QWidget):
         self._search_input.setPlaceholderText(t("search_tracks"))
         self._search_input.setFixedWidth(300)
         self._search_input.setClearButtonEnabled(True)  # 启用清除按钮
+        self._search_input.setProperty("variant", "search")
         header_layout.addWidget(self._search_input)
 
         layout.addLayout(header_layout)

@@ -14,6 +14,21 @@ QMainWindow {
     color: %text%;
 }
 
+QDialog[shell="true"] {
+    background-color: %background_alt%;
+    color: %text%;
+    border: 1px solid %border%;
+    border-radius: 12px;
+}
+
+QWidget#dialogContainer,
+QWidget#settingsContainer {
+    background-color: %background_alt%;
+    color: %text%;
+    border: 1px solid %border%;
+    border-radius: 12px;
+}
+
 /* Scrollbar */
 QScrollBar:vertical {
     background: transparent;
@@ -100,17 +115,117 @@ QPushButton[primary="true"]:hover {
     background-color: %highlight_hover%;
 }
 
+QPushButton[role="primary"] {
+    background-color: %highlight%;
+    color: %text%;
+    font-weight: bold;
+    padding: 12px 24px;
+    border-radius: 25px;
+}
+
+QPushButton[role="primary"]:hover {
+    background-color: %highlight_hover%;
+}
+
+QPushButton[role="cancel"] {
+    background-color: %border%;
+    color: %text%;
+}
+
+QPushButton[role="cancel"]:hover {
+    background-color: %background_hover%;
+}
+
+QWidget#titleBar,
+QWidget#dialogTitleBar {
+    color: %text%;
+}
+
+QWidget#titleBar {
+    background-color: %background%;
+}
+
+QWidget#dialogTitleBar {
+    background-color: %background_alt%;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom: 1px solid %border%;
+}
+
+QPushButton#winBtn,
+QPushButton#closeBtn,
+QPushButton#dialogCloseBtn {
+    background: transparent;
+    border: none;
+    color: %text_secondary%;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 6px;
+    padding: 0;
+}
+
+QPushButton#winBtn:hover,
+QPushButton#dialogCloseBtn:hover {
+    background-color: %selection%;
+    color: %text%;
+}
+
+QPushButton#closeBtn:hover {
+    background-color: #e81123;
+    color: white;
+}
+
 /* Input Fields */
 QLineEdit, QTextEdit {
-    background-color: %text%;
-    border: none;
-    border-radius: 4px;
-    padding: 10px;
-    color: %background%;
+    background-color: %background_hover%;
+    border: 1px solid %border%;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: %text%;
 }
 
 QLineEdit:focus, QTextEdit:focus {
     border: 2px solid %highlight%;
+}
+
+QLineEdit:read-only {
+    background-color: %background_hover%;
+    color: %text_secondary%;
+}
+
+QLineEdit[variant="search"] {
+    border: 2px solid %border%;
+    border-radius: 20px;
+    padding: 10px 15px;
+    padding-right: 30px;
+    font-size: 14px;
+}
+
+QLineEdit[variant="search"]:focus {
+    border: 2px solid %highlight%;
+}
+
+QLineEdit[variant="search"]::placeholder {
+    color: %text_secondary%;
+}
+
+QLineEdit[variant="search"]::clear-button {
+    subcontrol-origin: padding;
+    subcontrol-position: right;
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    border-radius: 9px;
+    background-color: %border%;
+}
+
+QLineEdit[variant="search"]::clear-button:hover {
+    background-color: %background_hover%;
+    border: 1px solid %border%;
+}
+
+QLineEdit[variant="search"]::clear-button:pressed {
+    background-color: %background_alt%;
 }
 
 /* Labels */
@@ -121,6 +236,129 @@ QLabel {
 
 QLabel[secondary="true"] {
     color: %text_secondary%;
+}
+
+QLabel#titleLabel,
+QLabel#dialogTitle {
+    color: %text%;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QLabel#trackLabel {
+    color: %text_secondary%;
+    font-size: 13px;
+}
+
+QLabel#dialogLabel {
+    color: %text_secondary%;
+    font-size: 13px;
+}
+
+QCheckBox,
+QRadioButton,
+QGroupBox,
+QComboBox,
+QSpinBox,
+QProgressBar {
+    color: %text%;
+}
+
+QCheckBox::indicator,
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid %border%;
+    border-radius: 9px;
+    background-color: %background_alt%;
+}
+
+QCheckBox::indicator:checked,
+QRadioButton::indicator:checked {
+    border-color: %highlight%;
+    background-color: %highlight%;
+}
+
+QGroupBox {
+    border: 1px solid %border%;
+    border-radius: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+    color: %text%;
+}
+
+QComboBox,
+QSpinBox {
+    background-color: %background_hover%;
+    border: 1px solid %border%;
+    border-radius: 8px;
+    padding: 4px 12px;
+    min-height: 32px;
+}
+
+QComboBox[compact="true"] {
+    min-height: 28px;
+    padding: 2px 10px;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: %background_alt%;
+    border: 1px solid %border%;
+    color: %text%;
+    selection-background-color: %highlight%;
+    selection-color: %background%;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    min-height: 20px;
+}
+
+QProgressBar {
+    background-color: %background_hover%;
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+    color: %text%;
+}
+
+QProgressBar::chunk {
+    background-color: %highlight%;
+    border-radius: 4px;
+}
+
+QTabWidget::pane {
+    border: 1px solid %border%;
+    background-color: %background_alt%;
+}
+
+QTabBar::tab {
+    background-color: %background%;
+    color: %text_secondary%;
+    padding: 8px 16px;
+    border: 1px solid %border%;
+}
+
+QTabBar::tab:selected {
+    background-color: %background_hover%;
+    color: %text%;
+    border-bottom-color: %background_hover%;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: %selection%;
 }
 
 /* Lists */

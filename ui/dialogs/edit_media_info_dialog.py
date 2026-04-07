@@ -52,62 +52,6 @@ class EditMediaInfoDialog(QDialog):
             color: %text%;
             font-size: 13px;
         }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:read-only {
-            background-color: %background_hover%;
-            color: %text_secondary%;
-        }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-        }
-        QCheckBox::indicator:checked {
-            background-color: %highlight%;
-            border: 2px solid %highlight%;
-            border-radius: 3px;
-        }
-        QCheckBox::indicator:unchecked {
-            background-color: %background%;
-            border: 2px solid %border%;
-            border-radius: 3px;
-        }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
     """
 
     _PROGRESS_STYLE_TEMPLATE = """
@@ -141,6 +85,7 @@ class EditMediaInfoDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()
@@ -297,6 +242,7 @@ class EditMediaInfoDialog(QDialog):
         buttons = QDialogButtonBox()
         self._ok_button = QPushButton(t("save"))
         self._ok_button.setObjectName("saveBtn")
+        self._ok_button.setProperty("role", "primary")
         self._ok_button.setCursor(Qt.PointingHandCursor)
         self._ok_button.setEnabled(self._can_save)
         cancel_button = QPushButton(t("cancel"))

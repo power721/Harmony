@@ -19,63 +19,13 @@ from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 class InputDialog(QDialog):
     """Custom input dialog with dark theme styling and frameless window."""
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel#dialogLabel {
-            color: %text_secondary%;
-            font-size: 13px;
-        }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QPushButton {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            padding: 8px 20px;
-            min-width: 80px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %border%;
-        }
-        QPushButton#primaryBtn {
-            background-color: %highlight%;
-            color: %background%;
-            border: 1px solid %highlight%;
-        }
-        QPushButton#primaryBtn:hover {
-            background-color: %highlight_hover%;
-        }
-        QDialogButtonBox {
-            button-layout: 2;
-        }
-    """
-
     def __init__(self, title: str, label: str, text: str = "", parent=None):
         super().__init__(parent)
         self._drag_pos = None
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
         self.setFixedSize(380, 200)
         self.setWindowTitle(title)
 
@@ -124,7 +74,7 @@ class InputDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
 
         ok_btn = QPushButton(t("ok"))
-        ok_btn.setObjectName("primaryBtn")
+        ok_btn.setProperty("role", "primary")
         ok_btn.clicked.connect(self.accept)
         ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_layout.addWidget(ok_btn)
@@ -132,7 +82,10 @@ class InputDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _apply_style(self):
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
 
     def refresh_theme(self):
         self._apply_style()

@@ -370,6 +370,52 @@ class ThemeManager(QObject):
             }
         """
 
+    @staticmethod
+    def get_completer_popup_style() -> str:
+        """Get themed QListView popup style for completers."""
+        return """
+            QListView {
+                background-color: %background_alt%;
+                border: 1px solid %border%;
+                border-radius: 8px;
+                color: %text%;
+                selection-background-color: %highlight%;
+                selection-color: %background%;
+                outline: none;
+            }
+            QListView::item {
+                padding: 8px 12px;
+                border-bottom: 1px solid %border%;
+            }
+            QListView::item:selected {
+                background-color: %highlight%;
+                color: %background%;
+            }
+            QListView::item:hover {
+                background-color: %border%;
+            }
+        """
+
+    @staticmethod
+    def get_popup_surface_style() -> str:
+        """Get themed popup surface style for custom popup widgets."""
+        return """
+            QWidget[popupSurface="true"] {
+                background-color: %background_alt%;
+                border: 1px solid %border%;
+                border-radius: 10px;
+                color: %text%;
+            }
+        """
+
+    def get_themed_completer_popup_style(self) -> str:
+        """Return popup completer style with current theme tokens resolved."""
+        return self.get_qss(self.get_completer_popup_style())
+
+    def get_themed_popup_surface_style(self) -> str:
+        """Return popup surface style with current theme tokens resolved."""
+        return self.get_qss(self.get_popup_surface_style())
+
     def apply_global_stylesheet(self):
         """Load and apply themed global stylesheet to QApplication."""
         app = QApplication.instance()

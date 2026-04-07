@@ -469,41 +469,7 @@ class AlbumsView(QWidget):
         self._search_input.setPlaceholderText(t("search"))
         self._search_input.setFixedWidth(300)
         self._search_input.setClearButtonEnabled(True)  # 启用清除按钮
-        self._search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 2px solid {theme.border};
-                border-radius: 20px;
-                padding: 10px 15px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {theme.highlight};
-                background-color: {theme.background_hover};
-            }}
-            /* 占位符文本样式 */
-            QLineEdit::placeholder {{
-                color: {theme.text_secondary};
-            }}
-            /* 清除按钮样式 */
-            QLineEdit::clear-button {{
-                subcontrol-origin: padding;
-                subcontrol-position: right;
-                width: 18px;
-                height: 18px;
-                margin-right: 8px;
-                border-radius: 9px;
-                background-color: {theme.border};
-            }}
-            QLineEdit::clear-button:hover {{
-                background-color: {theme.background_hover};
-                border: 1px solid {theme.border};
-            }}
-            QLineEdit::clear-button:pressed {{
-                background-color: {theme.background_alt};
-            }}
-        """)
+        self._search_input.setProperty("variant", "search")
         layout.addWidget(self._search_input)
 
         return header
@@ -633,39 +599,10 @@ class AlbumsView(QWidget):
 
         # Update search input
         if hasattr(self, '_search_input'):
-            self._search_input.setStyleSheet(f"""
-                QLineEdit {{
-                    background-color: {theme.background_hover};
-                    color: {theme.text};
-                    border: 2px solid {theme.border};
-                    border-radius: 20px;
-                    padding: 10px 15px;
-                    font-size: 14px;
-                }}
-                QLineEdit:focus {{
-                    border: 2px solid {theme.highlight};
-                    background-color: {theme.background_hover};
-                }}
-                QLineEdit::placeholder {{
-                    color: {theme.text_secondary};
-                }}
-                QLineEdit::clear-button {{
-                    subcontrol-origin: padding;
-                    subcontrol-position: right;
-                    width: 18px;
-                    height: 18px;
-                    margin-right: 8px;
-                    border-radius: 9px;
-                    background-color: {theme.border};
-                }}
-                QLineEdit::clear-button:hover {{
-                    background-color: {theme.background_hover};
-                    border: 1px solid {theme.border};
-                }}
-                QLineEdit::clear-button:pressed {{
-                    background-color: {theme.background_alt};
-                }}
-            """)
+            style = self._search_input.style()
+            if style is not None:
+                style.unpolish(self._search_input)
+                style.polish(self._search_input)
 
         # Update loading label
         if hasattr(self, '_loading_label'):
@@ -693,23 +630,6 @@ class AlbumsView(QWidget):
         theme = ThemeManager.instance().current_theme
 
         menu = QMenu(self)
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 1px solid {theme.border};
-                border-radius: 6px;
-                padding: 4px;
-            }}
-            QMenu::item {{
-                padding: 8px 24px;
-                border-radius: 4px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme.highlight};
-                color: {theme.background};
-            }}
-        """)
 
         # View details action
         view_action = QAction(t("view_details"), self)

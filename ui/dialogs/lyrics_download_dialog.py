@@ -114,55 +114,6 @@ class LyricsDownloadDialog(QDialog):
             background-color: %highlight%;
             color: %background%;
         }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border-radius: 3px;
-            border: 2px solid %border%;
-            background-color: %background%;
-        }
-        QCheckBox::indicator:checked {
-            background-color: %highlight%;
-            border-color: %highlight%;
-        }
-        QProgressBar {
-            background-color: %border%;
-            border: 1px solid %background_hover%;
-            border-radius: 4px;
-            text-align: center;
-            color: %text%;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 3px;
-        }
     """
 
     def __init__(
@@ -198,6 +149,7 @@ class LyricsDownloadDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()
@@ -274,6 +226,7 @@ class LyricsDownloadDialog(QDialog):
         cancel_btn.clicked.connect(self._on_cancel_clicked)
 
         self._download_btn = QPushButton(t("download"))
+        self._download_btn.setProperty("role", "primary")
         self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
         self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._download_btn.clicked.connect(self.accept)

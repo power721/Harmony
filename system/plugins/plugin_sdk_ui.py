@@ -17,6 +17,16 @@ class PluginThemeBridgeImpl:
 
         return ThemeManager.instance().current_theme
 
+    def get_popup_surface_style(self) -> str:
+        from system.theme import ThemeManager
+
+        return ThemeManager.instance().get_themed_popup_surface_style()
+
+    def get_completer_popup_style(self) -> str:
+        from system.theme import ThemeManager
+
+        return ThemeManager.instance().get_themed_completer_popup_style()
+
 
 class PluginDialogBridgeImpl:
     def information(self, parent, title: str, message: str, buttons=None, default_button=None):
@@ -61,6 +71,14 @@ def get_qss(template: str) -> str:
 
 def current_theme():
     return PluginThemeBridgeImpl().current_theme()
+
+
+def get_popup_surface_style() -> str:
+    return PluginThemeBridgeImpl().get_popup_surface_style()
+
+
+def get_completer_popup_style() -> str:
+    return PluginThemeBridgeImpl().get_completer_popup_style()
 
 
 def information(parent, title: str, message: str, buttons=None, default_button=None):

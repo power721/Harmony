@@ -11,25 +11,6 @@ from plugins.builtin.qqmusic.lib.context_menus import OnlineTrackContextMenu
 from system.i18n import t
 
 
-_CONTEXT_MENU_STYLE = """
-    QMenu {
-        background-color: %background_alt%;
-        color: %text%;
-        border: 1px solid %border%;
-    }
-    QMenu::item {
-        padding: 8px 20px;
-    }
-    QMenu::item:selected {
-        background-color: %highlight%;
-        color: %background%;
-    }
-    QMenu::item:disabled {
-        color: %text_secondary%;
-    }
-"""
-
-
 class LocalTrackContextMenu(QObject):
     """Context menu for local tracks. Emits signals for each action."""
 
@@ -47,13 +28,10 @@ class LocalTrackContextMenu(QObject):
 
     def build_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
         """Build and return the context menu (without showing)."""
-        from system.theme import ThemeManager
-
         if not tracks:
             return None
 
         menu = QMenu(parent_widget)
-        menu.setStyleSheet(ThemeManager.instance().get_qss(_CONTEXT_MENU_STYLE))
 
         all_favorited = all(
             getattr(track, 'id', None) and track.id in favorite_ids
