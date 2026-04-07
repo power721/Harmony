@@ -620,21 +620,7 @@ class OnlineMusicView(QWidget):
 
     _STYLE_TITLE = "color: %highlight%; font-size: 24px; font-weight: bold;"
     _STYLE_STATUS_LABEL = "color: %text_secondary%; font-size: 12px;"
-    _STYLE_TABS = """
-        QTabBar::tab {
-            background: transparent;
-            color: %text_secondary%;
-            padding: 8px 20px;
-            border-bottom: 2px solid transparent;
-        }
-        QTabBar::tab:selected {
-            color: %highlight%;
-            border-bottom: 2px solid %highlight%;
-        }
-        QTabBar::tab:hover {
-            color: %highlight%;
-        }
-    """
+    _STYLE_TABS = ""
     _STYLE_RANKINGS_TITLE = "color: %highlight%; font-size: 16px; font-weight: bold;"
     _STYLE_FAV_BACK_BTN = """
         QPushButton {
@@ -1109,21 +1095,6 @@ class OnlineMusicView(QWidget):
         tabs.addTab(t("playlists"))
 
         tabs.currentChanged.connect(self._on_tab_changed)
-        tabs.setStyleSheet("""
-            QTabBar::tab {
-                background: transparent;
-                color: #808080;
-                padding: 8px 20px;
-                border-bottom: 2px solid transparent;
-            }
-            QTabBar::tab:selected {
-                color: #1db954;
-                border-bottom: 2px solid #1db954;
-            }
-            QTabBar::tab:hover {
-                color: #1db954;
-            }
-        """)
 
         return tabs
 

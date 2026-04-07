@@ -36,10 +36,24 @@ def test_plugin_login_dialog_uses_host_owned_shell_and_title_bar_styles(qtbot, m
     assert dialog._title_bar_controller.close_btn.styleSheet() == ""
     assert dialog._cancel_button.property("role") == "cancel"
 
-def test_online_music_view_search_input_uses_theme_variant_and_host_popup_helper(qtbot, tmp_path):
+def _stub_online_services(monkeypatch):
+    service = Mock()
+    service._has_qqmusic_credential.return_value = False
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_online_music_service",
+        lambda **kwargs: service,
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_online_download_service",
+        lambda **kwargs: Mock(),
+    )
+
+
+def test_online_music_view_search_input_uses_theme_variant_and_host_popup_helper(qtbot, monkeypatch, tmp_path):
     settings = _plugin_settings(tmp_path)
     ThemeManager._instance = None
     ThemeManager.instance(settings)
+    _stub_online_services(monkeypatch)
 
     view = OnlineMusicView(config_manager=settings, qqmusic_service=None)
     qtbot.addWidget(view)
@@ -47,3 +61,16 @@ def test_online_music_view_search_input_uses_theme_variant_and_host_popup_helper
     assert view._search_input.property("variant") == "search"
     assert view._search_input.styleSheet() == ""
     assert view._completer.popup().styleSheet()
+
+
+def test_online_music_view_tabs_use_global_style_and_pointing_cursor(qtbot, monkeypatch, tmp_path):
+    settings = _plugin_settings(tmp_path)
+    ThemeManager._instance = None
+    ThemeManager.instance(settings)
+    _stub_online_services(monkeypatch)
+
+    view = OnlineMusicView(config_manager=settings, qqmusic_service=None)
+    qtbot.addWidget(view)
+
+    assert view._tabs.cursor().shape() == view._search_btn.cursor().shape()
+    assert view._tabs.styleSheet() == ""

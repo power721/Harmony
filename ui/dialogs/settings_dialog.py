@@ -39,38 +39,6 @@ def _get_audio_engine_options() -> list[tuple[str, str]]:
 class GeneralSettingsDialog(QDialog):
     """Dialog for configuring host and plugin settings."""
 
-    _STYLE_TEMPLATE = """
-        QWidget#settingsContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QPushButton {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-        }
-        QPushButton:hover {
-            background-color: %selection%;
-        }
-        QPushButton:pressed {
-            background-color: %background%;
-        }
-    """
-
     def __init__(self, config_manager, parent=None):
         """
         Initialize the AI settings dialog.
@@ -108,7 +76,6 @@ class GeneralSettingsDialog(QDialog):
         self.setWindowTitle(t("settings"))
         self.setMinimumWidth(550)
         theme = ThemeManager.instance().current_theme
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -130,6 +97,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Tab widget for AI and AcoustID settings
         tab_widget = QTabWidget()
+        tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
 
         # AI Settings Tab
         ai_tab = QWidget()
@@ -1652,7 +1620,6 @@ class GeneralSettingsDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):

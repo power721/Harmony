@@ -370,24 +370,25 @@ QProgressBar::chunk {
 
 QTabWidget::pane {
     border: 1px solid %border%;
+    border-top: none;
     background-color: %background_alt%;
 }
 
 QTabBar::tab {
-    background-color: %background%;
+    background-color: transparent;
     color: %text_secondary%;
     padding: 8px 16px;
-    border: 1px solid %border%;
+    border: none;
+    border-bottom: 2px solid transparent;
 }
 
 QTabBar::tab:selected {
-    background-color: %background_hover%;
-    color: %text%;
-    border-bottom-color: %background_hover%;
+    color: %highlight%;
+    border-bottom-color: %highlight%;
 }
 
 QTabBar::tab:hover:!selected {
-    background-color: %selection%;
+    color: %highlight%;
 }
 
 /* Lists */
