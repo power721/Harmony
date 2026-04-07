@@ -124,6 +124,17 @@ QWidget#dialogTitleBar {
     color: %text%;
 }
 
+QWidget#titleBar {
+    background-color: %background%;
+}
+
+QWidget#dialogTitleBar {
+    background-color: %background_alt%;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom: 1px solid %border%;
+}
+
 QPushButton#winBtn,
 QPushButton#closeBtn,
 QPushButton#dialogCloseBtn {
@@ -140,6 +151,11 @@ QPushButton#winBtn:hover,
 QPushButton#dialogCloseBtn:hover {
     background-color: %selection%;
     color: %text%;
+}
+
+QPushButton#closeBtn:hover {
+    background-color: #e81123;
+    color: white;
 }
 
 /* Input Fields */
@@ -167,6 +183,18 @@ QLabel {
 
 QLabel[secondary="true"] {
     color: %text_secondary%;
+}
+
+QLabel#titleLabel,
+QLabel#dialogTitle {
+    color: %text%;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+QLabel#trackLabel {
+    color: %text_secondary%;
+    font-size: 13px;
 }
 
 QCheckBox,

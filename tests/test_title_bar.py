@@ -176,6 +176,7 @@ def test_refresh_theme(qtbot, patch_theme):
 
     # Should not raise
     bar.refresh_theme()
+    assert bar.styleSheet() == ""
 
 
 def test_drag_to_move(qtbot, patch_theme):
