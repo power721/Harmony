@@ -55,24 +55,6 @@ class LyricsEditDialog(QDialog):
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 13px;
         }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
     """
 
     def __init__(
@@ -172,6 +154,7 @@ class LyricsEditDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
 
         save_btn = QPushButton(t("save"))
+        save_btn.setProperty("role", "primary")
         save_btn.setCursor(QCursor(Qt.PointingHandCursor))
         save_btn.clicked.connect(self._save_lyrics)
         btn_layout.addWidget(save_btn)

@@ -34,6 +34,7 @@ def test_plugin_login_dialog_uses_host_owned_shell_and_title_bar_styles(qtbot, m
     assert dialog.property("shell") is True
     assert dialog._title_bar_controller.title_bar.styleSheet() == ""
     assert dialog._title_bar_controller.close_btn.styleSheet() == ""
+    assert dialog._cancel_button.property("role") == "cancel"
 
 def test_online_music_view_search_input_uses_theme_variant_and_host_popup_helper(qtbot, tmp_path):
     settings = _plugin_settings(tmp_path)

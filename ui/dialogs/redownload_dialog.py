@@ -42,28 +42,6 @@ class RedownloadDialog(QDialog):
             color: %text_secondary%;
             font-size: 12px;
         }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
     """ + ThemeManager.get_combobox_style() + """
     """
     _POPUP_STYLE_TEMPLATE = """
@@ -171,6 +149,7 @@ class RedownloadDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
 
         confirm_btn = QPushButton(t("ok"))
+        confirm_btn.setProperty("role", "primary")
         confirm_btn.setCursor(Qt.PointingHandCursor)
         confirm_btn.clicked.connect(self.accept)
 

@@ -448,7 +448,7 @@ class PlayerControls(QWidget):
         layout.addWidget(self._volume_btn)
 
         # Volume slider
-        self._volume_slider = QSlider(Qt.Horizontal)
+        self._volume_slider = ClickableSlider(Qt.Horizontal)
         self._volume_slider.setRange(0, 100)
         self._volume_slider.setValue(70)
         self._volume_slider.setFixedWidth(100)

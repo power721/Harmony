@@ -183,7 +183,7 @@ class BaseCoverDownloadDialog(QDialog):
         QLabel {
             color: %text%;
         }
-        QPushButton {
+        QPushButton#coverSearchBtn {
             background-color: %border%;
             color: %text%;
             border: 1px solid %background_hover%;
@@ -191,13 +191,14 @@ class BaseCoverDownloadDialog(QDialog):
             padding: 8px 16px;
             min-width: 80px;
         }
-        QPushButton:hover {
+        QPushButton#coverSearchBtn:hover {
             background-color: %background_hover%;
         }
-        QPushButton:pressed {
+        QPushButton#coverSearchBtn:pressed {
             background-color: %background_alt%;
         }
-        QPushButton:disabled {
+        QPushButton#coverSearchBtn:disabled,
+        QPushButton[role="primary"]:disabled {
             background-color: %background_alt%;
             color: %border%;
             border-color: %border%;
@@ -354,6 +355,7 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Search button
         self._search_btn = QPushButton(t("search"))
+        self._search_btn.setObjectName("coverSearchBtn")
         self._search_btn.setCursor(Qt.PointingHandCursor)
         self._search_btn.clicked.connect(self._search_covers)
         left_layout.addWidget(self._search_btn)
@@ -434,12 +436,14 @@ class BaseCoverDownloadDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._save_btn = QPushButton(t("save"))
+        self._save_btn.setProperty("role", "primary")
         self._save_btn.setCursor(Qt.PointingHandCursor)
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._save_cover)
         button_layout.addWidget(self._save_btn)
 
         close_btn = QPushButton(t("cancel"))
+        close_btn.setProperty("role", "cancel")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)

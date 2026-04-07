@@ -649,4 +649,4 @@ def test_qqmusic_settings_tab_keeps_content_padding(qtbot):
 def test_qqmusic_login_dialog_uses_dialog_container_selector_and_scoped_button_style():
     assert "QWidget#dialogContainer" in QQMusicLoginDialog._STYLE_TEMPLATE
     assert "QWidget#settingsContainer" not in QQMusicLoginDialog._STYLE_TEMPLATE
-    assert "QPushButton#loginDialogActionBtn" in QQMusicLoginDialog._STYLE_TEMPLATE
+    assert "QPushButton {" not in QQMusicLoginDialog._STYLE_TEMPLATE

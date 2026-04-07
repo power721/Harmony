@@ -193,7 +193,7 @@ class QQMusicLoginDialog(QDialog):
         QRadioButton::indicator:hover {
             border: 2px solid %highlight%;
         }
-        QPushButton#loginDialogActionBtn {
+        QPushButton#qqmusicRefreshBtn {
             background-color: %border%;
             color: %text%;
             font-size: 13px;
@@ -201,16 +201,16 @@ class QQMusicLoginDialog(QDialog):
             border-radius: 4px;
             padding: 8px 16px;
         }
-        QPushButton#loginDialogActionBtn:hover {
+        QPushButton#qqmusicRefreshBtn:hover {
             background-color: %background_hover%;
             border: 1px solid %highlight%;
         }
-        QPushButton#loginDialogActionBtn:pressed {
+        QPushButton#qqmusicRefreshBtn:pressed {
             background-color: %background_alt%;
         }
-        QPushButton#loginDialogActionBtn:disabled {
+        QPushButton#qqmusicRefreshBtn:disabled {
             background-color: %background_alt%;
-            color: %border%;
+            color: %text_secondary%;
         }
         QProgressBar {
             border: none;
@@ -379,14 +379,14 @@ class QQMusicLoginDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._refresh_button = QPushButton(t("qqmusic_refresh_qr"))
-        self._refresh_button.setObjectName("loginDialogActionBtn")
+        self._refresh_button.setObjectName("qqmusicRefreshBtn")
         self._refresh_button.setCursor(Qt.PointingHandCursor)
         self._refresh_button.clicked.connect(self._refresh_qr)
         self._refresh_button.setEnabled(False)
         button_layout.addWidget(self._refresh_button)
 
         self._cancel_button = QPushButton(t("cancel"))
-        self._cancel_button.setObjectName("loginDialogActionBtn")
+        self._cancel_button.setProperty("role", "cancel")
         self._cancel_button.setCursor(Qt.PointingHandCursor)
         self._cancel_button.clicked.connect(self._cancel_login)
         button_layout.addWidget(self._cancel_button)
