@@ -90,7 +90,7 @@ class ImageCache:
         cutoff = time.time() - days * 86400
         deleted = 0
 
-        for f in cls.CACHE_DIR.iterdir():
+        for f in list(cls.CACHE_DIR.iterdir()):
             try:
                 if f.is_file() and f.stat().st_mtime < cutoff:
                     f.unlink()
