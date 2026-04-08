@@ -427,6 +427,7 @@ class MPRISController:
         self.service = None
         self.bus = None
         self._started = False
+        self._service_lock = threading.Lock()
 
         event_bus = Bootstrap.instance().event_bus
         event_bus.track_changed.connect(self.on_track_changed)
@@ -442,12 +443,13 @@ class MPRISController:
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.bus = dbus.SessionBus()
 
-        self.service = MPRISService(
-            self.bus,
-            self.playback_service,
-            self._main_window,
-            ui_dispatcher=self.ui_dispatcher,
-        )
+        with self._service_lock:
+            self.service = MPRISService(
+                self.bus,
+                self.playback_service,
+                self._main_window,
+                ui_dispatcher=self.ui_dispatcher,
+            )
 
         self.loop = GLib.MainLoop()
         self.loop_thread = threading.Thread(
@@ -469,14 +471,16 @@ class MPRISController:
         except Exception:
             pass
 
-        self.service = None
+        with self._service_lock:
+            self.service = None
         self.bus = None
         self.loop = None
         self.loop_thread = None
         self._started = False
 
     def _emit_tracklist(self):
-        if not self.service:
+        service = self._get_service()
+        if not service:
             return
 
         tracks = [
@@ -491,34 +495,44 @@ class MPRISController:
             dbus.ObjectPath("/org/mpris/MediaPlayer2/track/none")
         )
 
-        self.service.TrackListReplaced(
+        service.TrackListReplaced(
             dbus.Array(tracks, signature="o"),
             current_id
         )
 
+    def _get_service(self):
+        with self._service_lock:
+            return self.service
+
     def on_playback_state_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["PlaybackStatus"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["PlaybackStatus"])
 
     def on_track_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata", "PlaybackStatus"])
-            self.service.Seeked(dbus.Int64(self.service._position_us()))
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata", "PlaybackStatus"])
+            service.Seeked(dbus.Int64(service._position_us()))
             self._emit_tracklist()
 
     def on_metadata_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata"])
 
     def on_duration_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata"])
 
     def on_volume_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Volume"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Volume"])
 
     def on_cover_updated(self, *args):
-        if self.service:
+        service = self._get_service()
+        if service:
             # 封面在 Metadata 里
-            self.service.emit_player_properties(["Metadata"])
+            service.emit_player_properties(["Metadata"])

@@ -221,3 +221,31 @@ def test_mpris_controller_passes_ui_dispatcher_to_service(monkeypatch):
     assert captured["playback_service"] is playback_service
     assert captured["main_window"] is controller._main_window
     assert captured["ui_dispatcher"] is controller.ui_dispatcher
+
+
+def test_mpris_controller_track_change_uses_stable_service_reference(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    controller = mpris.MPRISController.__new__(mpris.MPRISController)
+    controller._service_lock = mpris.threading.Lock()
+    controller.playback_service = types.SimpleNamespace(playlist=[], current_track=None)
+
+    class _FakeService:
+        def __init__(self):
+            self.seeked = []
+
+        def emit_player_properties(self, _names):
+            controller.service = None
+
+        def Seeked(self, value):
+            self.seeked.append(value)
+
+        def _position_us(self):
+            return 123
+
+        def TrackListReplaced(self, *_args, **_kwargs):
+            pass
+
+    controller.service = _FakeService()
+
+    mpris.MPRISController.on_track_changed(controller)
