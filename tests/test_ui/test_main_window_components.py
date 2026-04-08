@@ -188,6 +188,10 @@ class TestOnlineMusicHandler:
         mock_playback.engine.add_track.assert_called_once()
         mock_playback._schedule_save_queue.assert_called_once()
 
+    def test_resolve_provider_id_does_not_fallback_to_placeholder(self, qapp):
+        """Missing provider metadata should not invent a non-existent provider id."""
+        assert OnlineMusicHandler._resolve_provider_id(None, {}) == ""
+
     def test_play_online_tracks_respects_shuffle_mode(self, qapp):
         """Batch online playback should preserve shuffle semantics."""
         mock_playback = Mock()

@@ -57,10 +57,13 @@ class OnlineMusicHandler(QObject):
     def _resolve_provider_id(provider_id: str | None, metadata: dict | None) -> str:
         """Resolve online provider id from explicit argument or metadata."""
         if provider_id:
-            return provider_id
-        if metadata and metadata.get("provider_id"):
-            return str(metadata.get("provider_id"))
-        return "online"
+            return str(provider_id).strip()
+        if metadata:
+            for key in ("provider_id", "source_id", "source", "provider"):
+                value = metadata.get(key)
+                if value:
+                    return str(value).strip()
+        return ""
 
     def _show_status(self, message: str):
         """Show status message."""

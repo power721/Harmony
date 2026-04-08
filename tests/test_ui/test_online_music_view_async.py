@@ -432,6 +432,7 @@ def test_build_track_metadata_uses_unified_fields():
         "artist": "Singer",
         "album": "Album",
         "duration": 210,
+        "provider_id": "qqmusic",
         "album_mid": "album-mid",
         "cover_url": "https://y.qq.com/music/photo_new/T002R300x300M000album-mid.jpg",
     }

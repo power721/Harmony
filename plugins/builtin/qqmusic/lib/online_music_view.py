@@ -2798,6 +2798,7 @@ class OnlineMusicView(QWidget):
     def _build_track_metadata(self, track: OnlineTrack) -> Dict[str, Any]:
         """Build standardized metadata payload for online track playback/queue actions."""
         return {
+            "provider_id": "qqmusic",
             "title": track.title,
             "artist": track.singer_name,
             "album": track.album_name,
