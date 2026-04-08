@@ -164,14 +164,19 @@ class FileOrganizationService:
                 track.path = str(final_audio_path)
                 if not self._track_repo.update(track):
                     # 回滚文件移动
+                    rollback_failed = False
                     try:
                         shutil.move(str(final_audio_path), str(old_audio_path))
                         for old_path, new_path in moved_lyrics:
                             shutil.move(str(new_path), str(old_path))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        rollback_failed = True
+                        logger.error(f"文件回滚失败: {exc}", exc_info=True)
                     results['failed'] += 1
-                    results['errors'].append(f"{track.title}: 数据库更新失败")
+                    message = f"{track.title}: 数据库更新失败"
+                    if rollback_failed:
+                        message += "（文件回滚失败）"
+                    results['errors'].append(message)
                     continue
 
                 # 更新 play_queue 和 cloud_files 中的路径
