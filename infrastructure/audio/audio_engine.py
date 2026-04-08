@@ -652,7 +652,8 @@ class PlayerEngine(QObject):
         # Load track if not already loaded (outside lock)
         current_source = self._backend.get_source_path()
         if current_source != local_path:
-            self._load_track(current_index)
+            if not self._load_track_if_match(current_index, item, require_current=True):
+                return
 
         self._backend.play()
 
@@ -1194,6 +1195,47 @@ class PlayerEngine(QObject):
         self._media_loaded_flag = False  # Reset flag for new source
         self._backend.set_source(local_path)
         self.current_track_changed.emit(item_dict)
+
+    def _get_playlist_item_if_match(
+        self,
+        index: int,
+        expected_item: PlaylistItem,
+        *,
+        require_current: bool = False,
+    ) -> Optional[PlaylistItem]:
+        with self._playlist_lock:
+            if not (0 <= index < len(self._playlist)):
+                return None
+            if require_current and self._current_index != index:
+                return None
+
+            item = self._playlist[index]
+            if item is not expected_item:
+                return None
+            return item
+
+    def _load_track_if_match(
+        self,
+        index: int,
+        expected_item: PlaylistItem,
+        *,
+        require_current: bool = False,
+    ) -> bool:
+        item = self._get_playlist_item_if_match(
+            index,
+            expected_item,
+            require_current=require_current,
+        )
+        if item is None:
+            return False
+
+        item_dict = item.to_dict()
+        local_path = item.local_path
+
+        self._media_loaded_flag = False
+        self._backend.set_source(local_path)
+        self.current_track_changed.emit(item_dict)
+        return True
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""
