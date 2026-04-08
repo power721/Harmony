@@ -18,6 +18,7 @@ class ImageCache:
     """Manages cached images for online music views."""
 
     CACHE_DIR = get_cache_dir('online_images')
+    MAX_CACHE_SIZE = 500 * 1024 * 1024
 
     # Supported image extensions
     EXTENSIONS = {b'\xff\xd8\xff': '.jpg', b'\x89PNG': '.png', b'GIF8': '.gif'}
@@ -63,6 +64,7 @@ class ImageCache:
 
             temp_path.write_bytes(data)
             temp_path.replace(cache_path)
+            cls._enforce_cache_limit()
             return str(cache_path)
 
         except Exception as e:
@@ -106,6 +108,39 @@ class ImageCache:
 
         if deleted > 0:
             logger.info(f"Cleaned up {deleted} cached images older than {days} days")
+
+        return deleted
+
+    @classmethod
+    def _enforce_cache_limit(cls) -> int:
+        """Evict the oldest cache files until the cache fits within the size limit."""
+        if not cls.CACHE_DIR.exists():
+            return 0
+
+        entries = []
+        total_size = 0
+        for file_path in list(cls.CACHE_DIR.iterdir()):
+            try:
+                if not file_path.is_file():
+                    continue
+                stat = file_path.stat()
+            except FileNotFoundError:
+                continue
+            entries.append((file_path, stat.st_mtime, stat.st_size))
+            total_size += stat.st_size
+
+        deleted = 0
+        for file_path, _, file_size in sorted(entries, key=lambda item: item[1]):
+            if total_size <= cls.MAX_CACHE_SIZE:
+                break
+            try:
+                file_path.unlink()
+                total_size -= file_size
+                deleted += 1
+            except FileNotFoundError:
+                total_size -= file_size
+            except OSError as e:
+                logger.debug(f"Could not evict cache file {file_path}: {e}")
 
         return deleted
 
