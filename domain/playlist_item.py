@@ -174,7 +174,7 @@ class PlaylistItem:
 
         return cls(
             source=source,
-            track_id=data.get("id"),
+            track_id=int(data["id"]) if data.get("id") is not None else None,
             cloud_file_id=data.get("cloud_file_id"),
             online_provider_id=data.get("online_provider_id"),
             cloud_account_id=data.get("cloud_account_id"),
@@ -182,7 +182,7 @@ class PlaylistItem:
             title=data.get("title", ""),
             artist=data.get("artist", ""),
             album=data.get("album", ""),
-            duration=data.get("duration", 0.0),
+            duration=float(data.get("duration", 0.0)),
             cover_path=data.get("cover_path"),
             needs_download=data.get("needs_download", False),
             needs_metadata=needs_metadata,
