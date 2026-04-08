@@ -177,7 +177,6 @@ class QQMusicLoginDialog(QDialog):
         }
         QRadioButton {
             color: %text%;
-            border: 1px solid %border%;
             font-size: 13px;
             spacing: 8px;
         }
@@ -281,6 +280,7 @@ class QQMusicLoginDialog(QDialog):
         self._setup_shadow()
 
         self._login_thread: Optional[QRLoginThread] = None
+        self._retired_login_threads: list[QRLoginThread] = []
         self._login_type = 'wx'  # default to WeChat
         self._language_connected = False
 
@@ -439,17 +439,25 @@ class QQMusicLoginDialog(QDialog):
 
     def _restart_login(self):
         """Restart login process - stop old thread and start new one."""
-        # Keep reference to old thread
         old_thread = self._login_thread
         self._login_thread = None
 
-        # Stop old thread if exists
         if old_thread:
             old_thread.stop()
-            old_thread.wait(2000)
+            self._retire_login_thread(old_thread)
 
-        # Start new login
         self._start_login()
+
+    def _retire_login_thread(self, thread: QRLoginThread | None) -> None:
+        if thread is None or thread in self._retired_login_threads:
+            return
+        self._retired_login_threads.append(thread)
+
+    def _dispatch_thread_event(self, thread, callback, *args) -> bool:
+        if thread is not self._login_thread:
+            return False
+        callback(*args)
+        return True
 
     def _start_login(self):
         """Start QR code login process."""
@@ -458,24 +466,59 @@ class QQMusicLoginDialog(QDialog):
         self._qr_label.clear()
         self._status_label.setText(t("qqmusic_fetching_qr"))
 
-        # Create new thread
         thread = QRLoginThread(self._login_type, http_client=self._context.http)
-        thread.qr_code_ready.connect(self._on_qr_code_ready)
-        thread.login_success.connect(self._on_login_success)
-        thread.login_failed.connect(self._on_login_failed)
-        thread.login_refused.connect(self._on_login_refused)
-        thread.login_timeout.connect(self._on_login_timeout)
-        thread.status_update.connect(self._on_status_update)
-        thread.finished.connect(lambda: self._on_thread_finished(thread))
+        thread.qr_code_ready.connect(
+            lambda data, current=thread: self._dispatch_thread_event(
+                current,
+                self._on_qr_code_ready,
+                data,
+            )
+        )
+        thread.login_success.connect(
+            lambda credential, current=thread: self._dispatch_thread_event(
+                current,
+                self._on_login_success,
+                credential,
+            )
+        )
+        thread.login_failed.connect(
+            lambda error, current=thread: self._dispatch_thread_event(
+                current,
+                self._on_login_failed,
+                error,
+            )
+        )
+        thread.login_refused.connect(
+            lambda current=thread: self._dispatch_thread_event(
+                current,
+                self._on_login_refused,
+            )
+        )
+        thread.login_timeout.connect(
+            lambda current=thread: self._dispatch_thread_event(
+                current,
+                self._on_login_timeout,
+            )
+        )
+        thread.status_update.connect(
+            lambda status, current=thread: self._dispatch_thread_event(
+                current,
+                self._on_status_update,
+                status,
+            )
+        )
+        thread.finished.connect(lambda current=thread: self._on_thread_finished(current))
 
         self._login_thread = thread
         thread.start()
 
     def _on_thread_finished(self, thread):
         """Handle thread finished event."""
-        # Clean up reference if this is the current thread
-        if self._login_thread == thread:
+        if self._login_thread is thread:
             self._login_thread = None
+        if thread in self._retired_login_threads:
+            self._retired_login_threads.remove(thread)
+        thread.deleteLater()
 
     def _refresh_qr(self):
         """Refresh QR code."""
@@ -487,6 +530,8 @@ class QQMusicLoginDialog(QDialog):
         """Cancel login and close dialog."""
         if self._login_thread:
             self._login_thread.stop()
+            self._retire_login_thread(self._login_thread)
+            self._login_thread = None
         self.reject()
 
     def resizeEvent(self, event):
@@ -514,6 +559,8 @@ class QQMusicLoginDialog(QDialog):
         """Handle dialog close event."""
         if self._login_thread:
             self._login_thread.stop()
+            self._retire_login_thread(self._login_thread)
+            self._login_thread = None
         event.accept()
 
     @Slot(bytes)
