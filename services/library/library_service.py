@@ -206,6 +206,13 @@ class LibraryService:
         if self._genre_repo:
             self._genre_repo.refresh()
 
+    def _sync_track_artists_if_needed(self, track_id: int | None, old_artist: str | None, new_artist: str | None) -> bool:
+        """Update the track_artists junction when the canonical artist string changes."""
+        if not track_id or old_artist == new_artist:
+            return False
+        self._track_repo.sync_track_artists(track_id, new_artist or "")
+        return True
+
     def add_online_track(
             self,
             provider_id: str,
@@ -281,7 +288,9 @@ class LibraryService:
             # Check if album or artist changed
             album_changed = old_track.album != track.album
             artist_changed = old_track.artist != track.artist
-            if album_changed or artist_changed:
+            genre_changed = old_track.genre != track.genre
+            self._sync_track_artists_if_needed(track.id, old_track.artist, track.artist)
+            if album_changed or artist_changed or genre_changed:
                 # Refresh albums and artists cache tables
                 self._refresh_albums_artist_async()
 
@@ -299,8 +308,7 @@ class LibraryService:
         """
         Update track metadata directly.
 
-        This is a lightweight update that doesn't trigger album/artist recalculation.
-        Used for cloud file metadata updates.
+        Used for metadata edits from dialogs, cloud parsing, and enrichment workers.
 
         Args:
             track_id: Track ID
@@ -317,6 +325,10 @@ class LibraryService:
         if not track:
             return False
 
+        old_artist = track.artist
+        old_album = track.album
+        old_genre = track.genre
+
         # Update track object
         if title is not None:
             track.title = title
@@ -329,8 +341,18 @@ class LibraryService:
         if cloud_file_id is not None:
             track.cloud_file_id = cloud_file_id
 
-        # Use repository to update
-        return self._track_repo.update(track)
+        updated = self._track_repo.update(track)
+        if not updated:
+            return False
+
+        artist_changed = self._sync_track_artists_if_needed(track_id, old_artist, track.artist)
+        album_changed = old_album != track.album
+        genre_changed = old_genre != track.genre
+
+        if artist_changed or album_changed or genre_changed:
+            self.refresh_albums_artists(immediate=True)
+
+        return True
 
     def update_track_path(self, track_id: int, path: str) -> bool:
         """Update a track's file path."""

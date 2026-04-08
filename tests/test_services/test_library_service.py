@@ -52,6 +52,11 @@ class TestLibraryService:
         return Mock()
 
     @pytest.fixture
+    def mock_genre_repo(self):
+        """Create mock genre repository."""
+        return Mock()
+
+    @pytest.fixture
     def mock_event_bus(self):
         """Create mock event bus."""
         bus = Mock()
@@ -67,13 +72,23 @@ class TestLibraryService:
         return Mock()
 
     @pytest.fixture
-    def library_service(self, mock_track_repo, mock_playlist_repo, mock_album_repo, mock_artist_repo, mock_event_bus, mock_cover_service):
+    def library_service(
+        self,
+        mock_track_repo,
+        mock_playlist_repo,
+        mock_album_repo,
+        mock_artist_repo,
+        mock_genre_repo,
+        mock_event_bus,
+        mock_cover_service,
+    ):
         """Create LibraryService instance with mocked dependencies."""
         return LibraryService(
             track_repo=mock_track_repo,
             playlist_repo=mock_playlist_repo,
             album_repo=mock_album_repo,
             artist_repo=mock_artist_repo,
+            genre_repo=mock_genre_repo,
             event_bus=mock_event_bus,
             cover_service=mock_cover_service,
         )
@@ -640,19 +655,20 @@ class TestLibraryService:
         mock_album_repo.refresh.assert_called_once()
         mock_artist_repo.refresh.assert_not_called()
 
-    def test_refresh_albums_artists(self, library_service, mock_album_repo, mock_artist_repo):
+    def test_refresh_albums_artists(self, library_service, mock_album_repo, mock_artist_repo, mock_genre_repo):
         """Test refresh_albums_artists refreshes both tables."""
         library_service.refresh_albums_artists(immediate=True)
 
         mock_album_repo.refresh.assert_called_once()
         mock_artist_repo.refresh.assert_called_once()
+        mock_genre_repo.refresh.assert_called_once()
 
     def test_refresh_albums_artists_defined_once(self):
         """LibraryService should expose only one refresh_albums_artists entry point."""
         assert self._refresh_albums_artists_definition_count() == 1
 
     def test_refresh_albums_artists_without_immediate_uses_debounce(
-        self, library_service, mock_album_repo, mock_artist_repo
+        self, library_service, mock_album_repo, mock_artist_repo, mock_genre_repo
     ):
         """Default refresh should debounce via timer and keep a single public entry point."""
         assert self._refresh_albums_artists_definition_count() == 1
@@ -663,6 +679,7 @@ class TestLibraryService:
         mock_start.assert_called_once_with(500)
         mock_album_repo.refresh.assert_not_called()
         mock_artist_repo.refresh.assert_not_called()
+        mock_genre_repo.refresh.assert_not_called()
 
     def test_rebuild_albums_artists(self, library_service, mock_album_repo, mock_artist_repo, mock_track_repo, mock_event_bus):
         """Test rebuild_albums_artists rebuilds both tables."""
@@ -973,6 +990,67 @@ class TestLibraryService:
         assert result is True
         assert track.title == "New Title"
         assert track.artist == "New Artist"
+
+    def test_update_track_metadata_refreshes_aggregates_when_artist_album_or_genre_changes(
+        self,
+        library_service,
+        mock_track_repo,
+        mock_album_repo,
+        mock_artist_repo,
+        mock_genre_repo,
+    ):
+        """Artist/album/genre edits should refresh derived library caches and track artists."""
+        track = Track(
+            id=1,
+            path="/tmp/a.mp3",
+            title="Song",
+            artist="Old Artist",
+            album="Old Album",
+            genre="Old Genre",
+        )
+        mock_track_repo.get_by_id.return_value = track
+        mock_track_repo.update.return_value = True
+
+        result = library_service.update_track_metadata(
+            1,
+            artist="New Artist",
+            album="New Album",
+            genre="New Genre",
+        )
+
+        assert result is True
+        mock_track_repo.sync_track_artists.assert_called_once_with(1, "New Artist")
+        mock_album_repo.refresh.assert_called_once()
+        mock_artist_repo.refresh.assert_called_once()
+        mock_genre_repo.refresh.assert_called_once()
+
+    def test_update_track_metadata_skips_refresh_when_only_title_changes(
+        self,
+        library_service,
+        mock_track_repo,
+        mock_album_repo,
+        mock_artist_repo,
+        mock_genre_repo,
+    ):
+        """Title-only edits should not trigger aggregate refresh work."""
+        track = Track(
+            id=1,
+            path="/tmp/a.mp3",
+            title="Old Title",
+            artist="Artist",
+            album="Album",
+            genre="Genre",
+        )
+        mock_track_repo.get_by_id.return_value = track
+        mock_track_repo.update.return_value = True
+
+        result = library_service.update_track_metadata(1, title="New Title")
+
+        assert result is True
+        mock_track_repo.sync_track_artists.assert_not_called()
+        mock_album_repo.refresh.assert_not_called()
+        mock_artist_repo.refresh.assert_not_called()
+        mock_genre_repo.refresh.assert_not_called()
 
     def test_update_track_metadata_not_found(self, library_service, mock_track_repo):
         """Test updating metadata for non-existent track."""

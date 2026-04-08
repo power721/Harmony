@@ -1018,6 +1018,19 @@ class TestTrackRepositoryMultiArtist:
         names = track_repo.get_track_artist_names(tid)
         assert names == []
 
+    def test_update_then_sync_track_artists_rebuilds_junction_rows(self, track_repo):
+        """Updating artist text then syncing should rebuild ordered junction rows."""
+        tid = track_repo.add(Track(
+            path="/music/song.mp3", title="Song", artist="Artist A"
+        ))
+
+        track = track_repo.get_by_id(tid)
+        track.artist = "Artist A, Artist B"
+
+        assert track_repo.update(track) is True
+        assert track_repo.sync_track_artists(tid, "Artist A, Artist B") is True
+        assert track_repo.get_track_artist_names(tid) == ["Artist A", "Artist B"]
+
     def test_rebuild_track_artists(self, track_repo):
         """Test rebuilding the track_artists junction table for all tracks."""
         t1 = track_repo.add(Track(
