@@ -136,6 +136,9 @@ class Application(QObject):
         # Stop MPRIS D-Bus service
         self._bootstrap.stop_mpris()
 
+        from system import hotkeys
+        hotkeys.cleanup()
+
         # Stop cache cleaner service
         cache_cleaner = self._bootstrap.cache_cleaner_service
         if cache_cleaner:
