@@ -7,7 +7,9 @@ import logging
 import time
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
 
+from .media_helpers import build_album_cover_url
 from .qqmusic_client import QQMusicClient
+from .search_normalizers import normalize_detail_song, normalize_top_list_track
 
 if TYPE_CHECKING:
     pass
@@ -34,6 +36,46 @@ class QQMusicService:
     def credential(self) -> Optional[Dict[str, Any]]:
         """Get current credential."""
         return self._credential
+
+    @staticmethod
+    def _build_song_payload(song_info: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = normalize_detail_song(
+            {
+                "mid": song_info.get("mid", "") or song_info.get("songmid", ""),
+                "title": song_info.get("name", "") or song_info.get("songname", "") or song_info.get("title", ""),
+                "singer": song_info.get("singer", []),
+                "album": song_info.get("album", {}),
+                "albumname": song_info.get("albumname", ""),
+                "albummid": song_info.get("albummid", ""),
+                "interval": song_info.get("interval", 0) or song_info.get("duration", 0),
+            }
+        )
+        singers = song_info.get("singer", [])
+        singer_list = []
+        if isinstance(singers, list):
+            singer_list = [
+                {
+                    "mid": singer.get("mid", ""),
+                    "name": singer.get("name", ""),
+                }
+                for singer in singers
+                if isinstance(singer, dict)
+            ]
+        return {
+            "mid": normalized["mid"],
+            "songmid": normalized["mid"],
+            "id": song_info.get("id"),
+            "name": normalized["title"],
+            "title": normalized["title"],
+            "singer": singer_list,
+            "album": {
+                "mid": normalized["album_mid"],
+                "name": normalized["album"],
+            },
+            "albummid": normalized["album_mid"],
+            "albumname": normalized["album"],
+            "interval": normalized["duration"],
+        }
 
     def is_credential_expired(self) -> bool:
         """
@@ -730,45 +772,7 @@ class QQMusicService:
                 song_list = songs_result.get('songList', [])
                 for song in song_list:
                     song_info = song.get('songInfo', song)
-
-                    # Get basic song data
-                    songmid = song_info.get('mid', '') or song_info.get('songmid', '')
-                    songname = song_info.get('name', '') or song_info.get('songname', '') or song_info.get('title', '')
-                    songid = song_info.get('id')
-
-                    # Build singer list
-                    singer_info = song_info.get('singer', [])
-                    singer_list_data = []
-                    if isinstance(singer_info, list):
-                        singer_list_data.extend({
-                                'mid': s.get('mid', ''),
-                                'name': s.get('name', '')
-                            } for s in singer_info)
-
-                    # Build album info
-                    album_data = song_info.get('album', {})
-                    if isinstance(album_data, dict):
-                        albummid = album_data.get('mid', '')
-                        albumname = album_data.get('name', '')
-                    else:
-                        albummid = song_info.get('albummid', '')
-                        albumname = song_info.get('albumname', '')
-
-                    songs.append({
-                        'mid': songmid,
-                        'songmid': songmid,
-                        'id': songid,
-                        'name': songname,
-                        'title': songname,
-                        'singer': singer_list_data,
-                        'album': {
-                            'mid': albummid,
-                            'name': albumname
-                        },
-                        'albummid': albummid,
-                        'albumname': albumname,
-                        'interval': song_info.get('interval', 0) or song_info.get('duration', 0),
-                    })
+                    songs.append(self._build_song_payload(song_info))
 
                 logger.info(f"Page {page}: Got {len(songs)} songs for {singer_name}")
 
@@ -905,28 +909,7 @@ class QQMusicService:
 
                 for song in song_list:
                     song_info = song.get("songInfo", song)
-                    singers = song_info.get("singer", [])
-
-                    # Get album info
-                    album_data = song_info.get("album", {})
-                    albummid = album_data.get("mid", "") or album_data.get("albummid", "")
-                    albumname = album_data.get("name", "") or album_data.get("name", "")
-
-                    songs.append({
-                        'mid': song_info.get("mid", "") or song_info.get("songmid", ""),
-                        'id': song_info.get("id", 0),
-                        'name': song_info.get("name", ""),
-                        'title': song_info.get("name", ""),
-                        'singer': [{'mid': s.get("mid", ""), 'name': s.get("name", "")} for s in singers] if isinstance(
-                            singers, list) else [],
-                        'album': {
-                            'mid': albummid,
-                            'name': albumname
-                        },
-                        'albummid': albummid,
-                        'albumname': albumname,
-                        'interval': song_info.get('interval', 0) or song_info.get('duration', 0),
-                    })
+                    songs.append(self._build_song_payload(song_info))
 
             # Parse albums from req_3
             albums = []
@@ -939,7 +922,7 @@ class QQMusicService:
 
                 for album in album_list:
                     album_mid = album.get("albumMid", "")
-                    cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else ''
+                    cover_url = build_album_cover_url(album_mid, 300) or ""
                     albums.append({
                         'mid': album_mid,
                         'id': album.get("albumID", 0),
@@ -1002,7 +985,7 @@ class QQMusicService:
 
             for album in album_list:
                 album_mid = album.get('albumMid', '') or album.get('mid', '')
-                cover_url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else ''
+                cover_url = build_album_cover_url(album_mid, 300) or ""
 
                 albums.append({
                     'mid': album_mid,
@@ -1098,46 +1081,7 @@ class QQMusicService:
                     if track_info:
                         song['songmid'] = track_info.get('mid', '')
 
-            tracks = []
-
-            for song in songs:
-                # Handle singer data - can be singerName (string) or singer (list/dict)
-                singer_info = song.get('singer') or song.get('singerName', '')
-                if isinstance(singer_info, str):
-                    singer_name = singer_info
-                elif isinstance(singer_info, list) and singer_info:
-                    singer_name = singer_info[0].get('name', '')
-                elif isinstance(singer_info, dict):
-                    singer_name = singer_info.get('name', '')
-                else:
-                    singer_name = ''
-
-                # Handle album data - can be albumName, albumname, album (dict)
-                album_info = song.get('album') or {}
-                if isinstance(album_info, str):
-                    album_name = album_info
-                    album_mid = ''
-                elif isinstance(album_info, dict):
-                    album_name = album_info.get('name', '')
-                    album_mid = album_info.get('mid', '')
-                else:
-                    album_name = song.get('albumName', '') or song.get('albumname', '')
-                    album_mid = song.get('albumMid', '') or song.get('albummid', '')
-
-                # Handle duration - interval is in seconds
-                duration = song.get('interval') or song.get('duration') or 0
-
-                track = {
-                    'mid': song.get('songmid', '') or song.get('mid', ''),
-                    'title': song.get('songname', '') or song.get('title', '') or song.get('name', ''),
-                    'singer': singer_name,
-                    'album': album_name,
-                    'album_mid': album_mid,
-                    'duration': duration,
-                }
-                tracks.append(track)
-
-            return tracks
+            return [normalize_top_list_track(song) for song in songs]
 
         except Exception as e:
             logger.error(f"Get top list songs failed: {e}", exc_info=True)

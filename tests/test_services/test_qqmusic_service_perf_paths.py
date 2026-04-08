@@ -74,3 +74,58 @@ def test_get_top_lists_flattens_groups():
         {"id": 1, "title": "Top 1", "type": 0},
         {"id": 2, "title": "Top 2", "type": 1},
     ]
+
+
+def test_get_singer_albums_builds_cover_url_from_shared_helper():
+    service = QQMusicService()
+    service.client = SimpleNamespace(
+        get_album_list=lambda *_args, **_kwargs: {
+            "albumList": [
+                {
+                    "albumMid": "album-1",
+                    "albumName": "Album 1",
+                    "singerName": "Singer 1",
+                    "totalNum": 10,
+                    "publishDate": "2024-01-01",
+                }
+            ],
+            "total": 1,
+        }
+    )
+
+    result = service.get_singer_albums("singer-1")
+
+    assert result["albums"][0]["cover_url"] == (
+        "https://y.gtimg.cn/music/photo_new/T002R300x300M000album-1.jpg"
+    )
+
+
+def test_get_top_list_songs_uses_shared_top_list_normalizer():
+    service = QQMusicService()
+    service.client = SimpleNamespace(
+        get_top_list_detail=lambda *_args, **_kwargs: {
+            "songInfoList": [
+                {
+                    "mid": "song-1",
+                    "title": "Song 1",
+                    "artist": [{"name": "Singer 1"}],
+                    "album": {"name": "Album 1", "mid": "album-1"},
+                    "interval": 180,
+                }
+            ]
+        },
+        query_songs_by_ids=lambda _ids: [],
+    )
+
+    songs = service.get_top_list_songs(1)
+
+    assert songs == [
+        {
+            "mid": "song-1",
+            "title": "Song 1",
+            "artist": "Singer 1",
+            "album": "Album 1",
+            "album_mid": "album-1",
+            "duration": 180,
+        }
+    ]

@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .api import QQMusicPluginAPI
 from harmony_plugin_api.media import PluginTrack
 
+from .api import QQMusicPluginAPI
 from .client import QQMusicPluginClient
 from .common import get_quality_label_key, get_selectable_qualities
 from .config_adapter import QQMusicConfigAdapter
 from .i18n import t
+from .media_helpers import build_album_cover_url, extract_album_mid, pick_lyric_text
 from .online_music_view import OnlineMusicView
 from .runtime_bridge import (
     bind_context,
@@ -130,37 +131,14 @@ class QQMusicOnlineProvider:
                 lyric_data = service.get_lyrics(song_mid) or {}
             except Exception:
                 lyric_data = {}
-            qrc = lyric_data.get("qrc")
-            if qrc:
-                return qrc
-            lyric = lyric_data.get("lyric")
-            if lyric:
-                return lyric
+            lyric_text = pick_lyric_text(lyric_data)
+            if lyric_text:
+                return lyric_text
 
         try:
             return QQMusicPluginAPI(self._context).get_lyrics(song_mid)
         except Exception:
             return None
-
-    @staticmethod
-    def _build_album_cover_url(album_mid: str, size: int) -> str | None:
-        if not album_mid:
-            return None
-        return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{album_mid}.jpg"
-
-    @staticmethod
-    def _extract_album_mid_from_song_detail(detail: dict[str, Any] | None) -> str:
-        if not isinstance(detail, dict):
-            return ""
-        track = detail.get("track_info", detail.get("data", detail))
-        if not isinstance(track, dict):
-            return ""
-        album = track.get("album", {})
-        if isinstance(album, dict):
-            album_mid = album.get("mid") or album.get("albumMid") or album.get("albummid")
-            if album_mid:
-                return str(album_mid)
-        return str(track.get("album_mid") or track.get("albummid") or track.get("albumMid") or "")
 
     def get_cover_url(
         self,
@@ -168,7 +146,7 @@ class QQMusicOnlineProvider:
         album_mid: str | None = None,
         size: int = 500,
     ) -> str | None:
-        cover_url = self._build_album_cover_url(album_mid or "", size)
+        cover_url = build_album_cover_url(album_mid or "", size)
         if cover_url:
             return cover_url
 
@@ -178,8 +156,7 @@ class QQMusicOnlineProvider:
                 detail = service.client.get_song_detail(mid)
             except Exception:
                 detail = {}
-            local_album_mid = self._extract_album_mid_from_song_detail(detail)
-            cover_url = self._build_album_cover_url(local_album_mid, size)
+            cover_url = build_album_cover_url(extract_album_mid(detail), size)
             if cover_url:
                 return cover_url
 

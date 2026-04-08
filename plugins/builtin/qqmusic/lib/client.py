@@ -6,6 +6,14 @@ from typing import Any
 
 from .api import QQMusicPluginAPI
 from .qqmusic_service import QQMusicService
+from .search_normalizers import (
+    normalize_album_item,
+    normalize_artist_item,
+    normalize_detail_song,
+    normalize_playlist_item,
+    normalize_top_list_track,
+)
+from .section_builders import build_section
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +124,7 @@ class QQMusicPluginClient:
             items = song_section.get("list", [])
             total = song_section.get("totalnum") or song_section.get("totalNum") or len(items)
             return {
-                "tracks": [self._normalize_detail_song(item) for item in items if isinstance(item, dict)],
+                "tracks": [normalize_detail_song(item) for item in items if isinstance(item, dict)],
                 "total": int(total or 0),
             }
 
@@ -127,10 +135,8 @@ class QQMusicPluginClient:
             return {
                 "artists": [
                     {
-                        "mid": str(item.get("singerMID", "") or item.get("mid", "")),
-                        "name": str(item.get("singerName", "") or item.get("name", "")),
+                        **normalize_artist_item(item),
                         "pic_url": item.get("pic") or item.get("pic_url") or "",
-                        "song_count": int(item.get("songNum", 0) or item.get("song_count", 0) or 0),
                     }
                     for item in items
                     if isinstance(item, dict)
@@ -145,8 +151,8 @@ class QQMusicPluginClient:
             return {
                 "albums": [
                     {
+                        **normalize_album_item(item),
                         "mid": str(item.get("albumMID", "") or item.get("mid", "")),
-                        "name": str(item.get("albumName", "") or item.get("name", "")),
                         "artist": str(item.get("singerName", "") or item.get("artist", "")),
                         "cover_url": item.get("albumPic", "") or item.get("cover_url", ""),
                     }
@@ -163,7 +169,7 @@ class QQMusicPluginClient:
             return {
                 "playlists": [
                     {
-                        "id": str(item.get("dissid", "") or item.get("id", "")),
+                        **normalize_playlist_item(item),
                         "title": str(item.get("dissname", "") or item.get("title", "")),
                         "creator": str(
                             item.get("creator", {}).get("name", "")
@@ -191,7 +197,7 @@ class QQMusicPluginClient:
         if service is not None and self._can_use_legacy_network():
             data = service.get_top_list_songs(int(top_id), num=100)
             if isinstance(data, list) and data:
-                return [self._normalize_top_list_track(item) for item in data]
+                return [normalize_top_list_track(item) for item in data]
         return api_data if isinstance(api_data, list) else []
 
     def get_recommendations(self) -> list[dict]:
@@ -213,14 +219,12 @@ class QQMusicPluginClient:
                 data = []
             if data:
                 items.append(
-                    {
-                        "id": card_id,
-                        "title": title,
-                        "subtitle": f"{len(data)} 项",
-                        "cover_url": self._pick_cover(data),
-                        "items": data,
-                        "entry_type": entry_type,
-                    }
+                    build_section(
+                        card_id=card_id,
+                        title=title,
+                        entry_type=entry_type,
+                        items=data,
+                    )
                 )
         return items
 
@@ -243,15 +247,13 @@ class QQMusicPluginClient:
                 data = []
             if data:
                 sections.append(
-                    {
-                        "id": card_id,
-                        "title": title,
-                        "count": len(data),
-                        "subtitle": f"{len(data)} 项",
-                        "cover_url": self._pick_cover(data),
-                        "items": data,
-                        "entry_type": entry_type,
-                    }
+                    build_section(
+                        card_id=card_id,
+                        title=title,
+                        entry_type=entry_type,
+                        items=data,
+                        include_count=True,
+                    )
                 )
         return sections
 
@@ -272,7 +274,7 @@ class QQMusicPluginClient:
                 return {
                     "title": detail.get("name", ""),
                     "description": detail.get("desc", ""),
-                    "songs": [self._normalize_detail_song(item) for item in detail.get("songs", [])],
+                    "songs": [normalize_detail_song(item) for item in detail.get("songs", [])],
                     "follow_status": bool(detail.get("follow_status", False)),
                 }
         return self._api.get_artist_detail(singer_mid)
@@ -295,7 +297,7 @@ class QQMusicPluginClient:
                 return {
                     "title": detail.get("name", ""),
                     "description": detail.get("description", ""),
-                    "songs": [self._normalize_detail_song(item) for item in detail.get("songs", [])],
+                    "songs": [normalize_detail_song(item) for item in detail.get("songs", [])],
                     "is_faved": bool(detail.get("fav_status", False)),
                 }
         return self._api.get_album_detail(album_mid)
@@ -308,7 +310,7 @@ class QQMusicPluginClient:
                 return {
                     "title": detail.get("name", ""),
                     "description": detail.get("description", ""),
-                    "songs": [self._normalize_detail_song(item) for item in detail.get("songs", [])],
+                    "songs": [normalize_detail_song(item) for item in detail.get("songs", [])],
                     "is_faved": bool(detail.get("fav_status", False)),
                 }
         return self._api.get_playlist_detail(playlist_id)
@@ -375,105 +377,3 @@ class QQMusicPluginClient:
 
     def complete(self, keyword: str) -> list[dict]:
         return self._api.complete(keyword)
-
-    def _normalize_detail_song(self, item: dict) -> dict:
-        singer_value = item.get("singer", "")
-        if isinstance(singer_value, list):
-            singer_name = ", ".join(entry.get("name", "") for entry in singer_value if isinstance(entry, dict) and entry.get("name"))
-        else:
-            singer_name = str(singer_value or "")
-        album_value = item.get("album", {})
-        if isinstance(album_value, dict):
-            album_name = album_value.get("name", item.get("albumname", ""))
-        else:
-            album_name = str(album_value or item.get("albumname", ""))
-        return {
-            "mid": item.get("mid", "") or item.get("songmid", ""),
-            "title": item.get("title", item.get("name", "")),
-            "artist": singer_name,
-            "album": album_name,
-            "duration": item.get("interval", item.get("duration", 0)),
-        }
-
-    def _normalize_top_list_track(self, item: Any) -> dict[str, Any]:
-        if isinstance(item, dict):
-            singer_value = item.get("artist", item.get("singer", ""))
-            if isinstance(singer_value, list):
-                artist = ", ".join(
-                    entry.get("name", "")
-                    for entry in singer_value
-                    if isinstance(entry, dict) and entry.get("name")
-                )
-            elif isinstance(singer_value, dict):
-                artist = str(singer_value.get("name", ""))
-            else:
-                artist = str(singer_value or "")
-
-            album_value = item.get("album", "")
-            album_mid = ""
-            if isinstance(album_value, dict):
-                album = str(album_value.get("name", item.get("albumname", "")))
-                album_mid = str(album_value.get("mid", item.get("album_mid", "")) or "")
-            else:
-                album = str(album_value or item.get("albumname", ""))
-                album_mid = str(item.get("album_mid", item.get("albummid", "")) or "")
-
-            return {
-                "mid": str(item.get("mid", item.get("songmid", ""))),
-                "title": str(item.get("title", item.get("name", ""))),
-                "artist": artist,
-                "album": album,
-                "album_mid": album_mid,
-                "duration": int(item.get("interval", item.get("duration", 0)) or 0),
-            }
-
-        return {
-            "mid": getattr(item, "mid", ""),
-            "title": getattr(item, "title", ""),
-            "artist": getattr(item, "singer_name", ""),
-            "album": getattr(item, "album_name", ""),
-            "album_mid": getattr(getattr(item, "album", None), "mid", ""),
-            "duration": getattr(item, "duration", 0),
-        }
-
-    def _pick_cover(self, items: list[dict[str, Any]]) -> str:
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if isinstance(item.get("Track"), dict):
-                track = item["Track"]
-                album = track.get("album", {})
-                if isinstance(album, dict) and album.get("mid"):
-                    return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album.get('mid')}.jpg"
-                cover_url = track.get("cover_url") or track.get("cover") or track.get("picurl") or track.get("pic")
-                if isinstance(cover_url, dict):
-                    cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-                if cover_url:
-                    return str(cover_url)
-            if isinstance(item.get("Playlist"), dict):
-                playlist = item["Playlist"]
-                basic = playlist.get("basic", {}) if isinstance(playlist.get("basic"), dict) else {}
-                content = playlist.get("content", {}) if isinstance(playlist.get("content"), dict) else {}
-                cover_url = (
-                    basic.get("cover_url")
-                    or basic.get("cover")
-                    or content.get("cover_url")
-                    or content.get("cover")
-                    or playlist.get("cover_url")
-                    or playlist.get("cover")
-                )
-                if isinstance(cover_url, dict):
-                    cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-                if cover_url:
-                    return str(cover_url)
-            cover_url = item.get("cover_url") or item.get("cover") or item.get("picurl") or item.get("pic")
-            if isinstance(cover_url, dict):
-                cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-            if cover_url:
-                return str(cover_url)
-            album = item.get("album", {})
-            if isinstance(album, dict) and album.get("mid"):
-                return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album.get('mid')}.jpg"
-            if item.get("album_mid"):
-                return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{item.get('album_mid')}.jpg"
-        return ""

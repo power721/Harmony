@@ -85,6 +85,17 @@ class _DialogBridge:
         return None
 
 
+class _SettingsBridge:
+    def __init__(self):
+        self._values = {}
+
+    def get(self, key, default=None):
+        return self._values.get(key, default)
+
+    def set(self, key, value):
+        self._values[key] = value
+
+
 class _RuntimeBridge:
     def __init__(
         self,
@@ -176,6 +187,7 @@ def bind_test_context(
             theme=_ThemeBridge(theme_manager),
             dialogs=_DialogBridge(),
         ),
+        settings=_SettingsBridge(),
         runtime=_RuntimeBridge(
             online_service=online_service,
             download_service=download_service,
