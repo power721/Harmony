@@ -36,11 +36,7 @@ class QQMusicLyricsPluginSource:
                     album=item.get("album", ""),
                     duration=item.get("duration") or item.get("interval"),
                     source="qqmusic",
-                    cover_url=self._provider.get_cover_url(
-                        mid=item.get("mid", ""),
-                        album_mid=item.get("album_mid", ""),
-                        size=500,
-                    ),
+                    cover_url=None,
                 )
                 for item in search_results
             ]

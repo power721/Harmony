@@ -56,12 +56,6 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
         }
 
     monkeypatch.setattr(QQMusicOnlineProvider, "search", fake_search)
-    monkeypatch.setattr(
-        QQMusicOnlineProvider,
-        "get_cover_url",
-        lambda *_args, **_kwargs: "cover-1",
-    )
-
     source = QQMusicLyricsPluginSource(SimpleNamespace())
 
     results = source.search("Song 1", "Singer 1", limit=7)
@@ -78,7 +72,37 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
     assert results[0].artist == "Singer 1"
     assert results[0].album == "Album 1"
     assert results[0].duration == 180
-    assert results[0].cover_url == "cover-1"
+    assert results[0].cover_url is None
+
+
+def test_qqmusic_lyrics_source_search_does_not_request_cover_data(monkeypatch):
+    monkeypatch.setattr(
+        QQMusicOnlineProvider,
+        "search",
+        lambda *_args, **_kwargs: {
+            "tracks": [
+                {
+                    "mid": "song-1",
+                    "title": "Song 1",
+                    "artist": "Singer 1",
+                    "album": "Album 1",
+                    "album_mid": "album-1",
+                    "duration": 180,
+                }
+            ]
+        },
+    )
+
+    def fail_get_cover_url(*_args, **_kwargs):
+        raise AssertionError("provider.get_cover_url should not be called for lyrics search")
+
+    monkeypatch.setattr(QQMusicOnlineProvider, "get_cover_url", fail_get_cover_url)
+
+    source = QQMusicLyricsPluginSource(SimpleNamespace())
+
+    results = source.search("Song 1", "Singer 1")
+
+    assert results[0].cover_url is None
 
 
 def test_qqmusic_cover_source_search_reads_tracks_payload(monkeypatch):

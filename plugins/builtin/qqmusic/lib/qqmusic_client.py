@@ -358,7 +358,7 @@ class QQMusicClient:
             'search_type': search_type_enum.value,
             'num_per_page': page_size,
             'page_num': page_num,
-            'highlight': 1,
+            'highlight': False,
             'grp': 1,
         }
 
