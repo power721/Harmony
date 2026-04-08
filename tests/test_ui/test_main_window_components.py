@@ -344,6 +344,92 @@ class TestMainWindowPlayerProxy:
         event.accept.assert_called_once_with()
 
 
+class TestMainWindowRestoreState:
+    """Tests for targeted restore lookups."""
+
+    def _make_restore_window(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        MainWindow.__mro__[1].__init__(window)
+        window._nav_stack = []
+        window._stacked_widget = Mock()
+        window._stacked_widget.currentIndex.return_value = 0
+        window._album_view = Mock()
+        window._artist_view = Mock()
+        window._genre_view = Mock()
+        window._update_nav_buttons_for_detail_view = Mock()
+        window._show_page = Mock()
+        window._show_favorites = Mock()
+        window._show_history = Mock()
+        window._plugin_page_keys = {}
+        return window
+
+    def test_restore_view_state_uses_targeted_album_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "album"
+        window._config.get_view_data.return_value = '{"name": "Album", "artist": "Artist"}'
+
+        album = SimpleNamespace(name="Album", artist="Artist")
+        library_service = Mock()
+        library_service.get_album_by_name.return_value = album
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_album_by_name.assert_called_once_with("Album", "Artist")
+        library_service.get_albums.assert_not_called()
+        window._album_view.set_album.assert_called_once_with(album)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(7)
+
+    def test_restore_view_state_uses_targeted_artist_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "artist"
+        window._config.get_view_data.return_value = '{"name": "Artist"}'
+
+        artist = SimpleNamespace(name="Artist")
+        library_service = Mock()
+        library_service.get_artist_by_name.return_value = artist
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_artist_by_name.assert_called_once_with("Artist")
+        library_service.get_artists.assert_not_called()
+        window._artist_view.set_artist.assert_called_once_with(artist)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(6)
+
+    def test_restore_view_state_uses_targeted_genre_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "genre"
+        window._config.get_view_data.return_value = '{"name": "Genre"}'
+
+        genre = SimpleNamespace(name="Genre")
+        library_service = Mock()
+        library_service.get_genre_by_name.return_value = genre
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_genre_by_name.assert_called_once_with("Genre")
+        library_service.get_genres.assert_not_called()
+        window._genre_view.set_genre.assert_called_once_with(genre)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(9)
+
+
 class TestSidebarWithConfig:
     """Tests for Sidebar with ConfigManager."""
 

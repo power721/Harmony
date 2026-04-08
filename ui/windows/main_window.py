@@ -2074,28 +2074,24 @@ class MainWindow(QMainWindow):
                     # Find album from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    albums = bootstrap.library_service.get_albums()
-                    for album in albums:
-                        if album.name == name and album.artist == artist:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._album_view.set_album(album)
-                            self._stacked_widget.setCurrentIndex(7)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    album = bootstrap.library_service.get_album_by_name(name, artist)
+                    if album:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._album_view.set_album(album)
+                        self._stacked_widget.setCurrentIndex(7)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "artist":
                 name = view_data.get("name")
                 if name:
                     # Find artist from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    artists = bootstrap.library_service.get_artists()
-                    for artist in artists:
-                        if artist.name == name:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._artist_view.set_artist(artist)
-                            self._stacked_widget.setCurrentIndex(6)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    artist = bootstrap.library_service.get_artist_by_name(name)
+                    if artist:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._artist_view.set_artist(artist)
+                        self._stacked_widget.setCurrentIndex(6)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "cloud":
                 self._show_page(1)
             elif view_type == "playlists":
@@ -2119,14 +2115,12 @@ class MainWindow(QMainWindow):
                     # Find genre from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    genres = bootstrap.library_service.get_genres()
-                    for genre in genres:
-                        if genre.name == name:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._genre_view.set_genre(genre)
-                            self._stacked_widget.setCurrentIndex(9)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    genre = bootstrap.library_service.get_genre_by_name(name)
+                    if genre:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._genre_view.set_genre(genre)
+                        self._stacked_widget.setCurrentIndex(9)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":
