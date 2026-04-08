@@ -148,3 +148,15 @@ def test_force_download_prefers_provider_redownload_api(tmp_path):
         progress_callback=None,
     )
     provider.download_track.assert_not_called()
+
+
+def test_delete_cached_file_removes_provider_namespaced_cache(tmp_path):
+    gateway = _build_gateway(tmp_path)
+    provider_file = tmp_path / "qqmusic" / "song.flac"
+    provider_file.parent.mkdir()
+    provider_file.write_bytes(b"data")
+
+    deleted = gateway.delete_cached_file("song")
+
+    assert deleted is True
+    assert provider_file.exists() is False

@@ -50,6 +50,16 @@ class OnlineDownloadGateway:
                 return candidate
         return None
 
+    def _iter_cache_dirs(self) -> list[str]:
+        cache_dirs = [self._download_dir]
+        try:
+            for entry in os.scandir(self._download_dir):
+                if entry.is_dir():
+                    cache_dirs.append(entry.path)
+        except FileNotFoundError:
+            return cache_dirs
+        return cache_dirs
+
     def _provider_cache_dir(self, provider_id: Optional[str]) -> str:
         normalized = str(provider_id or "").strip()
         if not normalized:
@@ -176,14 +186,15 @@ class OnlineDownloadGateway:
 
     def delete_cached_file(self, song_mid: str) -> bool:
         deleted = False
-        for ext in self._CACHE_EXTENSIONS:
-            path = os.path.join(self._download_dir, f"{song_mid}{ext}")
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                    deleted = True
-                except OSError:
-                    logger.warning("[OnlineDownloadGateway] Failed to remove %s", path)
+        for cache_dir in self._iter_cache_dirs():
+            for ext in self._CACHE_EXTENSIONS:
+                path = os.path.join(cache_dir, f"{song_mid}{ext}")
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                        deleted = True
+                    except OSError:
+                        logger.warning("[OnlineDownloadGateway] Failed to remove %s", path)
         self._last_download_qualities.pop(song_mid, None)
         return deleted
 
