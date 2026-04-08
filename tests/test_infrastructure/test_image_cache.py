@@ -118,3 +118,30 @@ class TestImageCache:
         """Test cleanup on empty directory."""
         deleted = ImageCache.cleanup(days=7)
         assert deleted == 0
+
+    def test_set_writes_via_temp_file_then_replaces(self, monkeypatch):
+        """Test cache writes use a temp file before atomically replacing the target."""
+        url = "https://example.com/atomic.jpg"
+        data = b'\xff\xd8\xff' + b'data'
+        cache_key = ImageCache._get_cache_key(url)
+
+        writes = []
+        replaces = []
+        real_write_bytes = Path.write_bytes
+        real_replace = Path.replace
+
+        def tracking_write_bytes(path_obj, payload):
+            writes.append(path_obj.name)
+            return real_write_bytes(path_obj, payload)
+
+        def tracking_replace(path_obj, target):
+            replaces.append((path_obj.name, target.name))
+            return real_replace(path_obj, target)
+
+        monkeypatch.setattr(Path, "write_bytes", tracking_write_bytes)
+        monkeypatch.setattr(Path, "replace", tracking_replace)
+
+        ImageCache.set(url, data)
+
+        assert writes == [f"{cache_key}.jpg.tmp"]
+        assert replaces == [(f"{cache_key}.jpg.tmp", f"{cache_key}.jpg")]

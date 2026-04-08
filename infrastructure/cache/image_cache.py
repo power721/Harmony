@@ -59,8 +59,10 @@ class ImageCache:
             cache_key = cls._get_cache_key(url)
             ext = cls._detect_extension(data)
             cache_path = cls.CACHE_DIR / f"{cache_key}{ext}"
+            temp_path = cache_path.with_suffix(f"{cache_path.suffix}.tmp")
 
-            cache_path.write_bytes(data)
+            temp_path.write_bytes(data)
+            temp_path.replace(cache_path)
             return str(cache_path)
 
         except Exception as e:
