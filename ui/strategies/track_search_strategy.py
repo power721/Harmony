@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from infrastructure.network import HttpClient
 from services.metadata import CoverService
-from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
+from system.plugins.online_cover_helpers import get_online_cover_url
 from ui.strategies.cover_search_strategy import CoverSearchStrategy
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class TrackSearchStrategy(CoverSearchStrategy):
     Handles:
     - Multiple tracks with combo box navigation
     - search_covers() API with title/artist/album/duration
-    - QQ Music lazy fetch with album_mid or song_mid
+    - Provider lazy fetch with album_mid or song_mid
     - Save via track_repo.update() or custom callback
     """
 
@@ -89,25 +89,30 @@ class TrackSearchStrategy(CoverSearchStrategy):
         return result.get('cover_url')
 
     def needs_lazy_fetch(self, result: dict) -> bool:
-        """Check if result needs QQ Music lazy fetch."""
+        """Check if result needs provider lazy fetch."""
         return (
-                result.get('source') == 'qqmusic' and
+                bool(result.get('source')) and
                 not result.get('cover_url') and
                 bool(result.get('album_mid') or result.get('id'))
         )
 
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:
-        """Fetch QQ Music cover with lazy loading."""
+        """Fetch provider cover with lazy loading."""
         album_mid = result.get('album_mid')
         song_mid = result.get('id')  # Note: 'id' field contains song mid
+        provider_id = result.get('source')
 
         # Get cover URL
-        if album_mid:
-            cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
-        elif song_mid:
-            cover_url = get_qqmusic_cover_url(mid=song_mid, size=500)
-        else:
+        if not (album_mid or song_mid):
             raise ValueError("No album_mid or song_mid for lazy fetch")
+        cover_url = get_online_cover_url(
+            provider_id=provider_id,
+            track_id=song_mid,
+            album_id=album_mid,
+            size=500,
+        )
+        if not cover_url:
+            raise ValueError("No cover URL returned by provider")
 
         # Download cover
         http_client = HttpClient()

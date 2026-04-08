@@ -118,9 +118,15 @@ class LibraryService:
         """Get a track by file path."""
         return self._track_repo.get_by_path(path)
 
-    def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
+    def get_track_by_cloud_file_id(
+        self,
+        cloud_file_id: str,
+        provider_id: str | None = None,
+    ) -> Optional[Track]:
         """Get a track by cloud file ID."""
-        return self._track_repo.get_by_cloud_file_id(cloud_file_id)
+        if provider_id is None:
+            return self._track_repo.get_by_cloud_file_id(cloud_file_id)
+        return self._track_repo.get_by_cloud_file_id(cloud_file_id, provider_id=provider_id)
 
     def get_track_index_for_paths(self, paths: List[str]) -> dict[str, dict[str, int | float | None]]:
         """Get path -> {size, mtime} index for incremental scan."""
@@ -202,6 +208,7 @@ class LibraryService:
 
     def add_online_track(
             self,
+            provider_id: str,
             song_mid: str,
             title: str,
             artist: str,
@@ -212,11 +219,12 @@ class LibraryService:
         """
         Add an online track to the library.
 
-        Creates a track record for online music (QQ Music, etc.)
+        Creates a track record for online music provided by plugins
         with a virtual path, indicating it needs to be downloaded before playback.
 
         Args:
-            song_mid: Song MID (unique identifier from QQ Music)
+            provider_id: Plugin provider id
+            song_mid: Provider-side track id
             title: Track title
             artist: Artist name
             album: Album name
@@ -227,12 +235,12 @@ class LibraryService:
             Track ID (existing or newly created)
         """
         # Check if already exists by cloud_file_id
-        existing = self._track_repo.get_by_cloud_file_id(song_mid)
+        existing = self._track_repo.get_by_cloud_file_id(song_mid, provider_id=provider_id)
         if existing:
             return existing.id
 
         # Use virtual path for online tracks (required for UNIQUE constraint on path)
-        virtual_path = f"qqmusic://song/{song_mid}"
+        virtual_path = f"online://{provider_id}/track/{song_mid}"
 
         # Create Track record with virtual path
         track = Track(
@@ -242,8 +250,9 @@ class LibraryService:
             album=album,
             duration=duration,
             cover_path=cover_url,
-            source=TrackSource.QQ,
-            cloud_file_id=song_mid
+            source=TrackSource.ONLINE,
+            cloud_file_id=song_mid,
+            online_provider_id=provider_id,
         )
 
         track_id = self._track_repo.add(track)

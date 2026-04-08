@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .legacy.client import QQMusicClient
+from .qqmusic_client import QQMusicClient
 
 _shared_client = None
 

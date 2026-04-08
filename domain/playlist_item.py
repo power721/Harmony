@@ -30,6 +30,7 @@ class PlaylistItem:
 
     # Cloud file fields
     cloud_file_id: Optional[str] = None
+    online_provider_id: Optional[str] = None
     cloud_account_id: Optional[int] = None
 
     # Common fields
@@ -55,7 +56,7 @@ class PlaylistItem:
         """
         Create a PlaylistItem from a Track.
 
-        Handles both local tracks and online tracks (QQ Music, etc.)
+        Handles both local tracks and plugin-provided online tracks
         by checking if path is empty (indicating online track needs download).
 
         Args:
@@ -64,16 +65,17 @@ class PlaylistItem:
         Returns:
             PlaylistItem instance
         """
-        # QQ tracks may have either a virtual path (download required) or a
+        # Online tracks may have either a virtual path (download required) or a
         # real cached file path after download. Keep cached files playable.
         has_cached_local_file = bool(track.path) and os.path.exists(track.path)
-        is_online = not track.path or (track.source == TrackSource.QQ and not has_cached_local_file)
+        is_online = not track.path or (track.source == TrackSource.ONLINE and not has_cached_local_file)
 
         if is_online:
             return cls(
                 source=track.source,
                 track_id=track.id,
                 cloud_file_id=track.cloud_file_id,
+                online_provider_id=track.online_provider_id,
                 local_path="",  # No local path yet
                 title=track.title or "",
                 artist=track.artist or "",
@@ -90,6 +92,7 @@ class PlaylistItem:
             source=track.source,
             track_id=track.id,
             cloud_file_id=track.cloud_file_id,
+            online_provider_id=track.online_provider_id,
             local_path=track.path,
             title=track.title or "",
             artist=track.artist or "",
@@ -149,13 +152,14 @@ class PlaylistItem:
         # Determine source from saved value or infer from other fields
         source_str = data.get("source")
         if source_str:
-            try:
-                source = TrackSource(source_str)
-            except ValueError:
-                # Fallback to inference if invalid value
-                source = TrackSource.LOCAL
-                if data.get("cloud_file_id"):
-                    source = TrackSource.QUARK
+            source = TrackSource.from_value(source_str)
+            # Legacy fallback: unknown cloud sources defaulted to QUARK.
+            if (
+                source == TrackSource.LOCAL
+                and data.get("cloud_file_id")
+                and str(source_str).strip() not in ("Local",)
+            ):
+                source = TrackSource.QUARK
         else:
             # Legacy: infer from other fields
             source = TrackSource.LOCAL
@@ -172,6 +176,7 @@ class PlaylistItem:
             source=source,
             track_id=data.get("id"),
             cloud_file_id=data.get("cloud_file_id"),
+            online_provider_id=data.get("online_provider_id"),
             cloud_account_id=data.get("cloud_account_id"),
             local_path=data.get("path", "") or data.get("local_path", ""),
             title=data.get("title", ""),
@@ -201,6 +206,7 @@ class PlaylistItem:
             "cover_path": self.cover_path,
             "source": self.source.value,
             "cloud_file_id": self.cloud_file_id,
+            "online_provider_id": self.online_provider_id,
             "cloud_account_id": self.cloud_account_id,
             "needs_download": self.needs_download,
             "needs_metadata": self.needs_metadata,
@@ -217,6 +223,11 @@ class PlaylistItem:
     def is_local(self) -> bool:
         """Check if this is a local file."""
         return self.source == TrackSource.LOCAL
+
+    @property
+    def is_online(self) -> bool:
+        """Check if this is an online music item provided by a plugin."""
+        return self.source == TrackSource.ONLINE
 
     @property
     def is_ready(self) -> bool:
@@ -265,9 +276,10 @@ class PlaylistItem:
 
         return PlayQueueItem(
             position=position,
-            source=self.source.value,  # "Local", "QQ", "QUARK", "BAIDU"
+            source=self.source.value,  # "Local", "ONLINE", "QUARK", "BAIDU"
             track_id=self.track_id,
             cloud_file_id=self.cloud_file_id,
+            online_provider_id=self.online_provider_id,
             cloud_account_id=self.cloud_account_id,
             local_path=self.local_path,
             title=self.title,
@@ -294,18 +306,15 @@ class PlaylistItem:
         from pathlib import Path
 
         # Determine source from item.source
-        try:
-            source = TrackSource(item.source)
-        except ValueError:
-            source = TrackSource.LOCAL
+        source = TrackSource.from_value(item.source)
 
         # Determine needs_download based on source and path
         local_path = item.local_path or ""
         file_exists = local_path and Path(local_path).exists()
 
         needs_download = False
-        if source == TrackSource.QQ:
-            # QQ Music tracks need download if file doesn't exist
+        if source == TrackSource.ONLINE:
+            # Online tracks need download if file doesn't exist
             needs_download = not file_exists
             if not file_exists:
                 local_path = ""
@@ -319,6 +328,7 @@ class PlaylistItem:
             source=source,
             track_id=item.track_id,
             cloud_file_id=item.cloud_file_id,
+            online_provider_id=item.online_provider_id,
             cloud_account_id=item.cloud_account_id,
             local_path=local_path,
             title=item.title or "",
@@ -369,6 +379,7 @@ class PlaylistItem:
             source=self.source,
             track_id=track_id if track_id is not None else self.track_id,
             cloud_file_id=self.cloud_file_id,
+            online_provider_id=self.online_provider_id,
             cloud_account_id=self.cloud_account_id,
             local_path=local_path if local_path is not None else self.local_path,
             title=title if title is not None else self.title,

@@ -333,18 +333,10 @@ class LyricsDownloadDialog(QDialog):
             result['_score'] = score
             scored_results.append(result)
 
-        # Define source priority (lower number = higher priority)
-        source_priority = {
-            'qqmusic': 0,  # QQ Music first
-            'netease': 1,
-            'kugou': 2,
-            'lrclib': 3,
-        }
-
-        # Sort by score descending, then by source priority (QQ Music first for same score)
+        # Sort by score descending, then by source name for deterministic ordering
         scored_results.sort(key=lambda x: (
             -x.get('_score', 0),  # Negative for descending score
-            source_priority.get(x.get('source', ''), 99)  # Lower priority number first
+            x.get('source', '')
         ))
 
         # Add new results to the list (clear existing and rebuild to maintain sorting)
@@ -366,10 +358,10 @@ class LyricsDownloadDialog(QDialog):
                 seen.add(key)
                 unique_results.append(result)
 
-        # Sort all results by score, then by source priority
+        # Sort all results by score, then by source name
         unique_results.sort(key=lambda x: (
             -x.get('_score', 0),
-            source_priority.get(x.get('source', ''), 99)
+            x.get('source', '')
         ))
 
         # Clear and repopulate the list
@@ -437,7 +429,7 @@ class LyricsDownloadDialog(QDialog):
         if result.get('supports_yrc'):
             source = f"{source} YRC"  # Indicate YRC (word-by-word) support
         elif result.get('supports_qrc'):
-            source = f"{source} QRC"  # Indicate QRC (word-by-word) support for QQ Music
+            source = f"{source} QRC"  # Indicate QRC (word-by-word) support
         item_text += f" [{source}]"
 
         # Score at the end

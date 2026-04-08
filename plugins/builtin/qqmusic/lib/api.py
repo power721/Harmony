@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 
 class QQMusicPluginAPI:
@@ -15,16 +15,23 @@ class QQMusicPluginAPI:
         search_type: str = "song",
         limit: int = 20,
         page: int = 1,
-    ) -> dict[str, list[dict]]:
+    ) -> dict[str, Any]:
         response = self._context.http.get(
             f"{self.REMOTE_BASE_URL}/search",
             params={"keyword": keyword, "type": search_type, "num": limit, "page": page},
             timeout=10,
         )
         data = response.json()
-        items = data.get("data", {}).get("list", [])
+        payload = data.get("data", {}) if isinstance(data.get("data"), dict) else {}
+        items = payload.get("list", [])
+        if not isinstance(items, list):
+            items = []
+        total = self._extract_search_total(data, payload, items)
         if search_type == "song":
-            return {"tracks": [self._format_song_item(song) for song in items[:limit]]}
+            return {
+                "tracks": [self._format_song_item(song) for song in items[:limit]],
+                "total": total,
+            }
         if search_type == "singer":
             return {
                 "artists": [
@@ -38,7 +45,8 @@ class QQMusicPluginAPI:
                         "fan_count": item.get("fansNum", item.get("fan_count", item.get("FanNum", 0))),
                     }
                     for item in items[:limit]
-                ]
+                ],
+                "total": total,
             }
         if search_type == "album":
             return {
@@ -53,7 +61,8 @@ class QQMusicPluginAPI:
                         "publish_date": item.get("publish_date", item.get("pubTime", "")),
                     }
                     for item in items[:limit]
-                ]
+                ],
+                "total": total,
             }
         return {
             "playlists": [
@@ -67,8 +76,53 @@ class QQMusicPluginAPI:
                     "play_count": item.get("listennum", item.get("play_count", 0)),
                 }
                 for item in items[:limit]
-            ]
+            ],
+            "total": total,
         }
+
+    @staticmethod
+    def _extract_search_total(raw_data: dict[str, Any], payload: dict[str, Any], items: list[Any]) -> int:
+        """Extract total hit count from heterogeneous search payloads."""
+        total_keys = (
+            "total",
+            "totalnum",
+            "totalNum",
+            "record_num",
+            "recordNum",
+            "count",
+            "sum",
+            "sum_count",
+        )
+
+        def _to_non_negative_int(value: Any) -> Optional[int]:
+            if value is None or isinstance(value, bool):
+                return None
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed >= 0 else None
+
+        candidates: list[dict[str, Any]] = [payload]
+        if isinstance(raw_data, dict):
+            candidates.append(raw_data)
+            raw_data_payload = raw_data.get("data")
+            if isinstance(raw_data_payload, dict):
+                candidates.append(raw_data_payload)
+                meta = raw_data_payload.get("meta")
+                if isinstance(meta, dict):
+                    candidates.append(meta)
+                extra_data = raw_data_payload.get("data")
+                if isinstance(extra_data, dict):
+                    candidates.append(extra_data)
+
+        for container in candidates:
+            for key in total_keys:
+                parsed = _to_non_negative_int(container.get(key))
+                if parsed is not None:
+                    return parsed
+
+        return len(items)
 
     def search_artist(
         self,

@@ -131,6 +131,8 @@ class DatabaseManager:
                            TEXT
                            DEFAULT
                            'Local',
+                           online_provider_id
+                           TEXT,
                            created_at
                            TIMESTAMP
                            DEFAULT
@@ -549,6 +551,8 @@ class DatabaseManager:
                            INTEGER,
                            cloud_file_id
                            TEXT,
+                           online_provider_id
+                           TEXT,
                            cloud_account_id
                            INTEGER,
                            local_path
@@ -722,16 +726,12 @@ class DatabaseManager:
         """
         if "source" not in row.keys() or not row["source"]:
             return TrackSource.LOCAL
-        try:
-            return TrackSource(row["source"])
-        except ValueError:
-            # Invalid source value, fallback to Local
-            return TrackSource.LOCAL
+        return TrackSource.from_value(row["source"])
 
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 9
+        CURRENT_SCHEMA_VERSION = 10
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -859,7 +859,7 @@ class DatabaseManager:
             # Copy and transform data
             # source_type + cloud_type -> source
             # 'local' + '' -> 'Local'
-            # 'online' + 'QQ' -> 'QQ'
+            # 'online' + any provider -> 'ONLINE'
             # 'cloud' + 'quark' -> 'QUARK'
             # 'cloud' + 'baidu' -> 'BAIDU'
             cursor.execute("""
@@ -870,7 +870,7 @@ class DatabaseManager:
                     id, position,
                     CASE
                         WHEN source_type = 'local' THEN 'Local'
-                        WHEN source_type = 'online' THEN 'QQ'
+                        WHEN source_type = 'online' THEN 'ONLINE'
                         WHEN source_type = 'cloud' THEN UPPER(cloud_type)
                         ELSE 'Local'
                     END,
@@ -896,6 +896,16 @@ class DatabaseManager:
         pq_columns = {row[1] for row in cursor.fetchall()}
         if "download_failed" not in pq_columns:
             cursor.execute("ALTER TABLE play_queue ADD COLUMN download_failed INTEGER DEFAULT 0")
+
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = {row[1] for row in cursor.fetchall()}
+        if "online_provider_id" not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN online_provider_id TEXT")
+
+        cursor.execute("PRAGMA table_info(play_queue)")
+        pq_columns = {row[1] for row in cursor.fetchall()}
+        if "online_provider_id" not in pq_columns:
+            cursor.execute("ALTER TABLE play_queue ADD COLUMN online_provider_id TEXT")
 
         # Migration 2: Initialize FTS5 index for existing tracks
         # Only validate/rebuild FTS when schema has changed (not on every startup)

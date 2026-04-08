@@ -22,6 +22,7 @@ class PluginMediaBridge:
         return self._download_service.download(
             request.track_id,
             song_title=request.title,
+            provider_id=request.provider_id,
             quality=request.quality,
             progress_callback=progress_callback,
             force=force,
@@ -30,6 +31,7 @@ class PluginMediaBridge:
     def add_online_track(self, request: PluginPlaybackRequest):
         metadata = request.metadata
         return self._library_service.add_online_track(
+            request.provider_id,
             request.track_id,
             metadata.get("title", request.title),
             metadata.get("artist", ""),
@@ -70,12 +72,18 @@ class PluginMediaBridge:
         metadata = request.metadata
         local_path = ""
         needs_download = True
-        if self._download_service and self._download_service.is_cached(request.track_id):
-            local_path = self._download_service.get_cached_path(request.track_id)
+        if self._download_service and self._download_service.is_cached(
+            request.track_id,
+            provider_id=request.provider_id,
+        ):
+            local_path = self._download_service.get_cached_path(
+                request.track_id,
+                provider_id=request.provider_id,
+            )
             needs_download = False
         return PlaylistItem(
             track_id=track_id,
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
             local_path=local_path,
             title=metadata.get("title", request.title),
             artist=metadata.get("artist", ""),
@@ -83,6 +91,7 @@ class PluginMediaBridge:
             duration=float(metadata.get("duration", 0.0) or 0.0),
             cover_path=metadata.get("cover_url"),
             cloud_file_id=request.track_id,
+            online_provider_id=request.provider_id,
             needs_download=needs_download,
             needs_metadata=False,
         )

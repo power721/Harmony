@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 from domain.genre import Genre
-from domain.track import Track
+from domain.track import Track, TrackSource
 from domain.playlist import Playlist
 from services.library.library_service import LibraryService
 
@@ -929,6 +929,7 @@ class TestLibraryService:
         mock_track_repo.add.return_value = 42
 
         result = library_service.add_online_track(
+            provider_id="qqmusic",
             song_mid="qq_001",
             title="Online Song",
             artist="Online Artist",
@@ -941,14 +942,20 @@ class TestLibraryService:
         mock_track_repo.add.assert_called_once()
         call_args = mock_track_repo.add.call_args[0][0]
         assert call_args.cloud_file_id == "qq_001"
-        assert call_args.source.value == "QQ"
+        assert call_args.source == TrackSource.ONLINE
+        assert call_args.online_provider_id == "qqmusic"
 
     def test_add_online_track_existing(self, library_service, mock_track_repo):
         """Test adding online track that already exists returns existing ID."""
-        existing_track = Track(id=10, cloud_file_id="qq_001")
+        existing_track = Track(
+            id=10,
+            cloud_file_id="qq_001",
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+        )
         mock_track_repo.get_by_cloud_file_id.return_value = existing_track
 
-        result = library_service.add_online_track("qq_001", "Title", "Artist", "Album", 200.0)
+        result = library_service.add_online_track("qqmusic", "qq_001", "Title", "Artist", "Album", 200.0)
 
         assert result == 10
         mock_track_repo.add.assert_not_called()

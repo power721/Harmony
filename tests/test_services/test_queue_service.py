@@ -155,8 +155,8 @@ class FakePagedTrackRepo(FakeTrackRepo):
         return merged[offset:offset + limit]
 
 
-def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
-    """QQ items with an existing cached file should remain ready after enrichment."""
+def test_enrich_metadata_batch_preserves_cached_online_file(temp_dir):
+    """Online items with an existing cached file should remain ready after enrichment."""
     cached_path = temp_dir / "downloaded.mp3"
     cached_path.write_text("cached")
 
@@ -167,7 +167,8 @@ def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
                 path=str(cached_path),
                 title="Downloaded Song",
                 artist="Online Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song_mid_123",
             )
         }
@@ -179,7 +180,8 @@ def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
         track_repo=track_repo,
     )
     item = PlaylistItem(
-        source=TrackSource.QQ,
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
         track_id=9,
         cloud_file_id="song_mid_123",
         local_path=str(cached_path),

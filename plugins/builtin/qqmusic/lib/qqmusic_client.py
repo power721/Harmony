@@ -8,10 +8,12 @@ import logging
 import time
 from typing import Dict, List, Optional, Any
 
+import requests
+
 from .crypto import generate_sign
 from .common import (
     APIConfig, get_guid, get_search_id, parse_quality, normalize_quality,
-    parse_search_type, create_qq_session
+    parse_search_type
 )
 
 logger = logging.getLogger(__name__)
@@ -22,8 +24,12 @@ class QQMusicClient:
     Client for QQ Music API.
     """
 
-    def __init__(self, credential: Optional[Dict[str, Any]] = None,
-                 on_credential_updated: Optional[callable] = None):
+    def __init__(
+        self,
+        credential: Optional[Dict[str, Any]] = None,
+        on_credential_updated: Optional[callable] = None,
+        http_client=None,
+    ):
         """
         Initialize QQ Music client.
 
@@ -33,30 +39,35 @@ class QQMusicClient:
         """
         self.credential = credential
         self._on_credential_updated = on_credential_updated
-        self.session = create_qq_session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://y.qq.com/',
-            'Origin': 'https://y.qq.com',
-            'Content-Type': 'application/json',
-        })
+        self._http_client = http_client
 
         if credential:
             self._set_credential_headers()
 
     def _set_credential_headers(self):
         """Set credential-related headers and cookies."""
-        if not self.credential:
-            return
+        return
 
-        # Set cookie
+    def _build_cookie_header(self) -> str:
+        if not self.credential:
+            return ""
         cookies = [
             f"uin={self.credential.get('musicid', '')}",
             f"qqmusic_key={self.credential.get('musickey', '')}",
             f"qm_keyst={self.credential.get('musickey', '')}",
             f"tmeLoginType={self.credential.get('login_type') or self.credential.get('loginType', 2)}",
         ]
-        self.session.headers['Cookie'] = '; '.join(cookies)
+        return "; ".join(cookies)
+
+    def _http_post(self, url: str, *, data=None, headers=None, timeout: int = 30):
+        if self._http_client is not None and hasattr(self._http_client, "post"):
+            return self._http_client.post(url, data=data, headers=headers, timeout=timeout)
+        return requests.post(url, data=data, headers=headers, timeout=timeout)
+
+    def _http_get(self, url: str, *, params=None, headers=None, timeout: int = 10):
+        if self._http_client is not None and hasattr(self._http_client, "get"):
+            return self._http_client.get(url, params=params, headers=headers, timeout=timeout)
+        return requests.get(url, params=params, headers=headers, timeout=timeout)
 
     def needs_refresh(self) -> bool:
         """
@@ -130,10 +141,16 @@ class QQMusicClient:
             signature = generate_sign(request_data)
             url = f"{APIConfig.ENDPOINT}?sign={signature}"
 
-            response = self.session.post(
+            response = self._http_post(
                 url,
                 data=json_str.encode('utf-8'),
-                headers={'Content-Type': 'application/json'},
+                headers={
+                    'Content-Type': 'application/json',
+                    'Referer': 'https://y.qq.com/',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Origin': 'https://y.qq.com',
+                    'Cookie': self._build_cookie_header(),
+                },
                 timeout=30
             )
             response.raise_for_status()
@@ -263,7 +280,7 @@ class QQMusicClient:
             url = APIConfig.ENDPOINT
             data_to_send = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
-        response = self.session.post(
+        response = self._http_post(
             url,
             data=data_to_send,
             headers=headers,
@@ -860,7 +877,7 @@ class QQMusicClient:
         url = APIConfig.ENDPOINT
         data_to_send = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
 
-        response = self.session.post(url, data=data_to_send, headers=headers, timeout=30)
+        response = self._http_post(url, data=data_to_send, headers=headers, timeout=30)
         response.raise_for_status()
 
         try:
@@ -904,11 +921,7 @@ class QQMusicClient:
                 'Referer': 'https://y.qq.com/',
             }
 
-            # Use a separate session to avoid cookie header conflicts
-            import requests as _req
-            sess = _req.Session()
-            sess.headers.update(headers)
-            response = sess.get(url, params=params, timeout=10)
+            response = self._http_get(url, params=params, headers=headers, timeout=10)
             response.raise_for_status()
 
             data = response.json()
@@ -936,32 +949,45 @@ class QQMusicClient:
                 - nick: str - nickname if valid
                 - uin: int - user ID if valid
         """
-        result = {
-            'valid': False,
-            'nick': '',
-            'uin': 0,
-        }
-
+        result = {'valid': False, 'nick': '', 'uin': 0}
         if not self.credential:
             return result
 
+        try:
+            profile = self._make_request(
+                "music.userInfo.UserInfoServer",
+                "GetLoginUserInfo",
+                {},
+            )
+            hostname = ""
+            if isinstance(profile, dict):
+                if isinstance(profile.get("data"), dict):
+                    hostname = str(profile["data"].get("hostname", "") or "")
+                if not hostname:
+                    hostname = str(profile.get("hostname", "") or "")
+            if hostname:
+                return {
+                    "valid": True,
+                    "nick": hostname,
+                    "uin": int(self.credential.get("musicid", 0) or 0),
+                }
+        except Exception:
+            pass
+
+        return self._verify_login_fallback()
+
+    def _verify_login_fallback(self) -> Dict[str, Any]:
+        result = {'valid': False, 'nick': '', 'uin': 0}
         try:
             musicid = self.credential.get('musicid', '')
 
             # Use profile homepage API to verify login
             url = 'https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'
 
-            # Build cookies from credential
-            cookies = {
-                'uin': str(musicid),
-                'qqmusic_key': self.credential.get('musickey', ''),
-                'qm_keyst': self.credential.get('musickey', ''),
-                'tmeLoginType': str(self.credential.get('login_type', 2)),
-            }
-
             headers = {
                 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
                 'Referer': 'https://y.qq.com/',
+                'Cookie': self._build_cookie_header(),
             }
 
             params = {
@@ -972,10 +998,9 @@ class QQMusicClient:
                 'reqtype': '0',
             }
 
-            response = self.session.get(
+            response = self._http_get(
                 url,
                 params=params,
-                cookies=cookies,
                 headers=headers,
                 timeout=10
             )

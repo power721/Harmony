@@ -78,8 +78,8 @@ class TestQQMusicLazyFetch:
             'id': 'song456'
         }
 
-        # Mock the QQ Music API
-        with patch('ui.strategies.track_search_strategy.get_qqmusic_cover_url') as mock_get_url, \
+        # Mock provider cover helper
+        with patch('ui.strategies.track_search_strategy.get_online_cover_url') as mock_get_url, \
              patch('ui.strategies.track_search_strategy.HttpClient') as mock_http:
 
             mock_get_url.return_value = 'https://y.gtimg.cn/music/photo_new/T002R500x500M000album123.jpg'
@@ -89,8 +89,13 @@ class TestQQMusicLazyFetch:
 
             cover_data = strategy.lazy_fetch(mock_cover_service, result)
 
-            # Verify correct API was called with album_mid
-            mock_get_url.assert_called_once_with(album_mid='album123', size=500)
+            # Verify correct API was called with provider and album id
+            mock_get_url.assert_called_once_with(
+                provider_id='qqmusic',
+                track_id='song456',
+                album_id='album123',
+                size=500,
+            )
             assert cover_data == b'fake_image_data'
 
     def test_track_strategy_lazy_fetch_with_song_id(self, qapp):
@@ -109,8 +114,8 @@ class TestQQMusicLazyFetch:
             'id': 'song456'
         }
 
-        # Mock the QQ Music API
-        with patch('ui.strategies.track_search_strategy.get_qqmusic_cover_url') as mock_get_url, \
+        # Mock provider cover helper
+        with patch('ui.strategies.track_search_strategy.get_online_cover_url') as mock_get_url, \
              patch('ui.strategies.track_search_strategy.HttpClient') as mock_http:
 
             mock_get_url.return_value = 'https://y.gtimg.cn/music/photo_new/T002R500x500M000song456.jpg'
@@ -120,8 +125,13 @@ class TestQQMusicLazyFetch:
 
             cover_data = strategy.lazy_fetch(mock_cover_service, result)
 
-            # Verify correct API was called with song mid
-            mock_get_url.assert_called_once_with(mid='song456', size=500)
+            # Verify correct API was called with provider and track id
+            mock_get_url.assert_called_once_with(
+                provider_id='qqmusic',
+                track_id='song456',
+                album_id=None,
+                size=500,
+            )
             assert cover_data == b'fake_image_data'
 
     def test_album_strategy_uses_correct_fields(self, qapp):
@@ -174,8 +184,8 @@ class TestQQMusicLazyFetch:
             'singer_mid': 'singer123'
         }
 
-        # Mock the QQ Music API
-        with patch('ui.strategies.artist_search_strategy.get_qqmusic_artist_cover_url') as mock_get_url, \
+        # Mock provider artist cover helper
+        with patch('ui.strategies.artist_search_strategy.get_online_artist_cover_url') as mock_get_url, \
              patch('ui.strategies.artist_search_strategy.HttpClient') as mock_http:
 
             mock_get_url.return_value = 'https://y.gtimg.cn/music/photo_new/T001R500x500M000singer123.jpg'
@@ -186,5 +196,9 @@ class TestQQMusicLazyFetch:
             cover_data = strategy.lazy_fetch(mock_cover_service, result)
 
             # Verify correct API was called
-            mock_get_url.assert_called_once_with('singer123', size=500)
+            mock_get_url.assert_called_once_with(
+                provider_id='qqmusic',
+                artist_id='singer123',
+                size=500,
+            )
             assert cover_data == b'fake_artist_image'

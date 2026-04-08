@@ -48,7 +48,15 @@ def mock_theme_config():
 def sample_tracks():
     return [
         Track(id=1, path="/music/one.mp3", title="One", artist="Artist 1", source=TrackSource.LOCAL),
-        Track(id=2, path="/music/two.mp3", title="Two", artist="Artist 2", source=TrackSource.QQ),
+        Track(
+            id=2,
+            path="online://qqmusic/track/two",
+            title="Two",
+            artist="Artist 2",
+            source=TrackSource.ONLINE,
+            cloud_file_id="two",
+            online_provider_id="qqmusic",
+        ),
     ]
 
 

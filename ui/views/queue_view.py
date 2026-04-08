@@ -282,7 +282,8 @@ def _resolve_cover_path(track: dict) -> str | None:
 
     source = track.get("source", "") or track.get("source_type", "")
     cloud_file_id = track.get("cloud_file_id", "")
-    is_online = source == "QQ" or source == "online"
+    provider_id = track.get("online_provider_id")
+    is_online = source in ("online", "ONLINE")
 
     if is_online and cloud_file_id:
         try:
@@ -294,6 +295,7 @@ def _resolve_cover_path(track: dict) -> str | None:
                     album_mid=None,
                     artist=track.get("artist", ""),
                     title=track.get("title", ""),
+                    provider_id=provider_id,
                 )
                 if cover_path:
                     return cover_path
@@ -453,16 +455,13 @@ class QueueItemDelegate(QStyledItemDelegate):
         # Source indicator
         from domain.track import TrackSource
         source_str = track.get("source", "Local") if isinstance(track, dict) else "Local"
-        try:
-            source = TrackSource(source_str) if source_str else TrackSource.LOCAL
-        except ValueError:
-            source = TrackSource.LOCAL
+        source = TrackSource.from_value(source_str)
 
         source_text = ""
         if source == TrackSource.LOCAL:
             source_text = t("source_local")
-        elif source == TrackSource.QQ:
-            source_text = t("source_qq")
+        elif source == TrackSource.ONLINE:
+            source_text = t("online_track")
         elif source == TrackSource.QUARK:
             source_text = t("source_quark")
         elif source == TrackSource.BAIDU:
@@ -1523,10 +1522,9 @@ class QueueView(QWidget):
         for track in tracks:
             if track:
                 from pathlib import Path
-                from domain.track import TrackSource
 
                 # Include online tracks (empty path) and existing local files
-                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                is_online = not track.path or not track.path.strip() or track.is_online
                 if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,
@@ -1555,10 +1553,9 @@ class QueueView(QWidget):
         for track in tracks:
             if track:
                 from pathlib import Path
-                from domain.track import TrackSource
 
                 # Include online tracks (empty path) and existing local files
-                is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                is_online = not track.path or not track.path.strip() or track.is_online
                 if is_online or Path(track.path).exists():
                     track_dict = {
                         "id": track.id,

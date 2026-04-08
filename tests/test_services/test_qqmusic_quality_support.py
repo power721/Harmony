@@ -1,7 +1,7 @@
-from plugins.builtin.qqmusic.lib.legacy.client import QQMusicClient
+from plugins.builtin.qqmusic.lib.qqmusic_client import QQMusicClient
 from plugins.builtin.qqmusic.lib.qr_login import QQMusicQRLogin
-from services.online.quality import (
-    QUALITY_FALLBACK,
+from plugins.builtin.qqmusic.lib.common import (
+    APIConfig,
     parse_quality,
     get_selectable_qualities,
     get_quality_label_key,
@@ -35,11 +35,12 @@ def test_parse_quality_supports_chinese_quality_names():
 
 
 def test_quality_fallback_contains_extended_quality_levels():
-    assert "ogg_640" in QUALITY_FALLBACK
-    assert "aac_320" in QUALITY_FALLBACK
-    assert "aac_24" in QUALITY_FALLBACK
-    assert "hires" in QUALITY_FALLBACK
-    assert "dolby" in QUALITY_FALLBACK
+    quality_fallback = APIConfig.QUALITY_FALLBACK
+    assert "ogg_640" in quality_fallback
+    assert "aac_320" in quality_fallback
+    assert "aac_24" in quality_fallback
+    assert "hires" in quality_fallback
+    assert "dolby" in quality_fallback
 
 
 def test_get_song_url_accepts_chinese_quality_name():
@@ -78,14 +79,12 @@ def test_get_song_url_returns_file_type_for_fallback_quality():
     assert result["extension"] == ".ogg"
 
 
-def test_qqmusic_client_uses_expanded_connection_pool():
-    client = QQMusicClient()
+def test_qqmusic_client_uses_injected_http_client():
+    fake_http = object()
 
-    https_adapter = client.session.get_adapter("https://u.y.qq.com/cgi-bin/musicu.fcg")
+    client = QQMusicClient(http_client=fake_http)
 
-    assert https_adapter._pool_connections == 20
-    assert https_adapter._pool_maxsize == 20
-    assert https_adapter._pool_block is True
+    assert client._http_client is fake_http
 
 
 def test_qqmusic_qr_login_uses_expanded_connection_pool():

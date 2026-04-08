@@ -1321,13 +1321,14 @@ class PlayerControls(QWidget):
                     logger.debug(self._format_log_message(f"Found cover_path in track_dict: {cover_path}"))
                     return cover_path
 
-            # Check if this is an online QQ Music track
+            # Check if this is an online track
             source = track_dict.get("source", "") or track_dict.get("source_type", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source == "QQ" or source == "online"
+            provider_id = track_dict.get("online_provider_id")
+            is_online = source in ("online", "ONLINE")
 
             if is_online and cloud_file_id:
-                # For online QQ Music tracks, get cover directly by song_mid
+                # For online tracks, get cover directly by provider-side track id
                 logger.debug(self._format_log_message(f"Getting cover for online track: song_mid={cloud_file_id}"))
                 try:
                     cover_service = self._player.cover_service
@@ -1336,7 +1337,8 @@ class PlayerControls(QWidget):
                             song_mid=cloud_file_id,
                             album_mid=None,  # We don't have album_mid in track_dict yet
                             artist=track_dict.get("artist", ""),
-                            title=track_dict.get("title", "")
+                            title=track_dict.get("title", ""),
+                            provider_id=provider_id,
                         )
                         if cover_path:
                             return cover_path

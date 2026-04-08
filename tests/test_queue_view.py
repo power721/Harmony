@@ -137,8 +137,8 @@ def test_get_tracks_by_ids_uses_batch_api_when_available():
     view = QueueView.__new__(QueueView)
     view._library_service = MagicMock()
     view._library_service.get_tracks_by_ids.return_value = [
-        Track(id=1, title="One", source=TrackSource.QQ),
-        Track(id=2, title="Two", source=TrackSource.QQ),
+        Track(id=1, title="One", source=TrackSource.ONLINE, online_provider_id="qqmusic"),
+        Track(id=2, title="Two", source=TrackSource.ONLINE, online_provider_id="qqmusic"),
     ]
     view._library_service.get_track.side_effect = AssertionError("Should not call per-item lookup")
 
@@ -159,7 +159,7 @@ def test_get_tracks_by_ids_falls_back_to_single_lookup():
 
         def get_track(self, track_id):
             self.calls.append(track_id)
-            return Track(id=track_id, title=str(track_id), source=TrackSource.QQ)
+            return Track(id=track_id, title=str(track_id), source=TrackSource.ONLINE, online_provider_id="qqmusic")
 
     view = QueueView.__new__(QueueView)
     view._library_service = LegacyLibraryService()

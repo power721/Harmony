@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from plugins.builtin.qqmusic.lib.legacy.qqmusic_service import QQMusicService
+from plugins.builtin.qqmusic.lib.qqmusic_service import QQMusicService
 
 
 def test_get_playback_url_info_uses_first_non_empty_url():

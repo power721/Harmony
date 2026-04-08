@@ -218,6 +218,37 @@ def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
     assert view._qqmusic_service.credential["musicid"] == "1"
 
 
+def test_on_artist_clicked_accepts_dict_payload():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._stack = Mock()
+    view._results_page = object()
+    view._results_stack = Mock()
+    view._singers_page = object()
+    view._detail_view = Mock()
+    view._navigation_stack = []
+
+    OnlineMusicView._on_artist_clicked(
+        view,
+        {"mid": "artist-mid", "name": "Artist A"},
+    )
+
+    view._detail_view.load_artist.assert_called_once_with("artist-mid", "Artist A")
+
+
+def test_display_playlists_uses_total_for_load_more_when_page_size_mismatch():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._grid_total = 302
+    view._grid_page = 1
+    view._grid_page_size = 30
+    view._playlists_page = Mock()
+
+    playlists = [{"id": "p1"} for _ in range(20)]  # API may return 20 despite num=30
+
+    OnlineMusicView._display_playlists(view, playlists, is_append=False)
+
+    view._playlists_page.set_has_more.assert_called_once_with(True)
+
+
 def test_online_music_view_syncs_plugin_language_from_context_events(qtbot):
     plugin_i18n.set_language("en")
     theme_manager = Mock()

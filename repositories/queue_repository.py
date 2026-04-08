@@ -44,7 +44,7 @@ class SqliteQueueRepository(BaseRepository):
                 if source_type == "local":
                     return "Local"
                 elif source_type == "online":
-                    return "QQ"
+                    return "ONLINE"
                 elif source_type == "cloud" and cloud_type:
                     return cloud_type.upper()
             return "Local"
@@ -62,6 +62,7 @@ class SqliteQueueRepository(BaseRepository):
                 source=get_source(row, columns),
                 track_id=row["track_id"],
                 cloud_file_id=row["cloud_file_id"],
+                online_provider_id=row["online_provider_id"] if "online_provider_id" in columns else None,
                 cloud_account_id=row["cloud_account_id"],
                 local_path=row["local_path"] or "",
                 title=row["title"] or "",
@@ -87,12 +88,12 @@ class SqliteQueueRepository(BaseRepository):
             if items:
                 cursor.executemany("""
                                    INSERT INTO play_queue (position, source, track_id, cloud_file_id,
-                                                           cloud_account_id, local_path, title, artist, album, duration, created_at,
+                                                           online_provider_id, cloud_account_id, local_path, title, artist, album, duration, created_at,
                                                            download_failed)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    """, [
                                        (item.position, item.source, item.track_id,
-                                        item.cloud_file_id, item.cloud_account_id, item.local_path,
+                                        item.cloud_file_id, item.online_provider_id, item.cloud_account_id, item.local_path,
                                         item.title, item.artist, item.album, item.duration,
                                         (item.created_at or datetime.now()).isoformat(sep=" "),
                                         int(item.download_failed))

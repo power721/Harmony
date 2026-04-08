@@ -80,7 +80,8 @@ def make_cloud_item(cloud_file_id: str) -> PlaylistItem:
 
 def make_online_item(cloud_file_id: str) -> PlaylistItem:
     return PlaylistItem(
-        source=TrackSource.QQ,
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
         cloud_file_id=cloud_file_id,
         title="Online",
         artist="Artist",

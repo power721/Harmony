@@ -1,7 +1,7 @@
 """
 Tests for bug fix: Bug 1 - from_track should preserve original track source.
 
-Previously, from_track() hardcoded source=TrackSource.QQ for all online tracks,
+Previously, from_track() hardcoded one online source for all online tracks,
 even QUARK/BAIDU tracks that hadn't been downloaded yet.
 """
 
@@ -10,7 +10,7 @@ from domain.track import Track, TrackSource
 
 
 class TestBug1TrackSourcePreservation:
-    """Bug 1: from_track() should use track.source, not hardcoded QQ."""
+    """Bug 1: from_track() should use track.source, not a hardcoded provider source."""
 
     def test_quark_online_track_preserves_source(self):
         """QUARK track with empty path should keep QUARK source."""
@@ -38,18 +38,19 @@ class TestBug1TrackSourcePreservation:
         item = PlaylistItem.from_track(track)
         assert item.source == TrackSource.BAIDU
 
-    def test_qq_online_track_still_qq(self):
-        """QQ track with empty path should still be QQ."""
+    def test_online_track_still_online(self):
+        """Online track with empty path should still be ONLINE."""
         track = Track(
             id=3,
             path="",
-            title="QQ Song",
+            title="Online Song",
             artist="Artist",
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="song_mid",
         )
         item = PlaylistItem.from_track(track)
-        assert item.source == TrackSource.QQ
+        assert item.source == TrackSource.ONLINE
 
     def test_local_track_still_local(self):
         """Local track with path should remain LOCAL."""

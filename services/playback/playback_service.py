@@ -8,7 +8,7 @@ Architecture:
 - PlaybackService acts as a coordinator/facade
 - LocalTrackHandler handles local file playback
 - CloudTrackHandler handles cloud file playback
-- OnlineTrackHandler handles online (QQ Music) playback
+- OnlineTrackHandler handles plugin-provided online playback
 """
 
 import logging
@@ -31,7 +31,7 @@ from utils.helpers import get_cache_dir
 if TYPE_CHECKING:
     from domain import CloudFile, CloudAccount
     from services.metadata import CoverService
-    from services.online import OnlineDownloadService
+    from services.download.online_download_gateway import OnlineDownloadGateway
     from repositories.track_repository import SqliteTrackRepository
     from repositories.favorite_repository import SqliteFavoriteRepository
     from repositories.queue_repository import SqliteQueueRepository
@@ -97,7 +97,7 @@ class PlaybackService(QObject):
             self,
             config_manager: ConfigManager = None,
             cover_service: 'CoverService' = None,
-            online_download_service: 'OnlineDownloadService' = None,
+            online_download_service: 'OnlineDownloadGateway' = None,
             event_bus: EventBus = None,
             track_repo: 'SqliteTrackRepository' = None,
             favorite_repo: 'SqliteFavoriteRepository' = None,
@@ -114,7 +114,7 @@ class PlaybackService(QObject):
         Args:
             config_manager: Configuration manager for settings
             cover_service: Cover service for album art
-            online_download_service: Service for downloading online tracks (QQ Music)
+            online_download_service: Service for downloading online tracks
             event_bus: Event bus for event publishing (defaults to singleton)
             track_repo: Track repository
             favorite_repo: Favorite repository
@@ -415,7 +415,7 @@ class PlaybackService(QObject):
         This helper method consolidates the common logic for:
         - Filtering out invalid tracks
         - Checking file existence for local tracks
-        - Including online tracks (QQ Music)
+        - Including online tracks
         - Converting Track to PlaylistItem
 
         Args:
@@ -436,10 +436,10 @@ class PlaybackService(QObject):
             if not track or not track.id or track.id <= 0:
                 continue
 
-            # QQ items stay in the queue even when they still need download, but
-            # downloaded QQ files should be treated as ready local files.
+            # Online items stay in the queue even when they still need download, but
+            # downloaded online files should be treated as ready local files.
             has_local_file = bool(track.path) and track.path in existing_paths
-            is_online = track.source == TrackSource.QQ and not has_local_file
+            is_online = track.is_online and not has_local_file
             if is_online or (track.path and track.path in existing_paths):
                 items.append(PlaylistItem.from_track(track))
 
@@ -544,7 +544,7 @@ class PlaybackService(QObject):
         """
         Play a local track by ID.
 
-        Handles both local files and online tracks (QQ Music).
+        Handles both local files and online tracks.
         Online tracks (empty path) will be downloaded before playback.
 
         Args:
@@ -556,7 +556,7 @@ class PlaybackService(QObject):
             return
 
         has_local_file = bool(track.path) and Path(track.path).exists()
-        is_online_track = track.source == TrackSource.QQ and not has_local_file
+        is_online_track = track.is_online and not has_local_file
 
         # For local tracks with path, verify file exists
         if not is_online_track and (not track.path or not Path(track.path).exists()):
@@ -841,13 +841,13 @@ class PlaybackService(QObject):
             if cloud_file_id in self._preload_attempts:
                 del self._preload_attempts[cloud_file_id]
 
-        # Check if this is an online track (QQ Music) by looking up the playlist item
-        # QQ Music downloads are handled by on_online_track_downloaded
+        # Check if this is an online track by looking up the playlist item
+        # Online downloads are handled by on_online_track_downloaded
         for item in self._engine.playlist_items:
             if item.cloud_file_id == cloud_file_id:
-                if item.source == TrackSource.QQ:
+                if item.is_online:
                     logger.debug(
-                        f"[PlaybackService] Skipping on_cloud_file_downloaded for QQ Music track: {cloud_file_id}")
+                        f"[PlaybackService] Skipping on_cloud_file_downloaded for online track: {cloud_file_id}")
                     return
                 break
 
@@ -1128,7 +1128,10 @@ class PlaybackService(QObject):
             track = self._track_repo.get_by_id(item.track_id)
         # For online/cloud tracks, try to get by cloud_file_id
         elif item.is_cloud and item.cloud_file_id:
-            track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+            track = self._track_repo.get_by_cloud_file_id(
+                item.cloud_file_id,
+                provider_id=item.online_provider_id if item.is_online else None,
+            )
         # For local files without track_id, try to find by path
         elif item.local_path and not item.cloud_file_id:
             track = self._track_repo.get_by_path(item.local_path)
@@ -1140,7 +1143,7 @@ class PlaybackService(QObject):
             file_exists = local_path and Path(local_path).exists()
             needs_download = False
 
-            if item.source == TrackSource.QQ:
+            if item.is_online:
                 needs_download = not file_exists
                 if not file_exists:
                     local_path = ""
@@ -1231,7 +1234,7 @@ class PlaybackService(QObject):
             file_exists = local_path and local_path in existing_paths
             needs_download = False
 
-            if item.source == TrackSource.QQ:
+            if item.is_online:
                 needs_download = not file_exists
                 if not file_exists:
                     local_path = ""
@@ -1430,12 +1433,9 @@ class PlaybackService(QObject):
             source_str = item.source.value
 
         from domain.track import TrackSource
-        try:
-            source = TrackSource(source_str)
-        except ValueError:
-            source = TrackSource.LOCAL
+        source = TrackSource.from_value(source_str)
 
-        if source == TrackSource.QQ:
+        if source == TrackSource.ONLINE:
             self._download_online_track(item if hasattr(item, 'source') else PlaylistItem.from_dict(item))
         else:
             self._download_cloud_track(item if hasattr(item, 'source') else PlaylistItem.from_dict(item))
@@ -1474,21 +1474,27 @@ class PlaybackService(QObject):
             class OnlineDownloadWorker(QThread):
                 download_finished = Signal(str, str)  # (song_mid, local_path) - path is empty if failed
 
-                def __init__(self, service, song_mid, title):
+                def __init__(self, service, song_mid, title, provider_id):
                     super().__init__()
                     self._service = service
                     self._song_mid = song_mid
                     self._title = title
+                    self._provider_id = provider_id
 
                 def run(self):
-                    path = self._service.download(self._song_mid, self._title)
+                    path = self._service.download(
+                        self._song_mid,
+                        self._title,
+                        provider_id=self._provider_id,
+                    )
                     # Always emit, even if path is None (failed)
                     self.download_finished.emit(self._song_mid, path or "")
 
             worker = OnlineDownloadWorker(
                 self._online_download_service,
                 song_mid,
-                item.title
+                item.title,
+                item.online_provider_id,
             )
 
             # Handle download result
@@ -1548,9 +1554,9 @@ class PlaybackService(QObject):
                 matching_item = item
                 break
 
-        if matching_item and matching_item.source == TrackSource.QQ:
+        if matching_item and matching_item.is_online:
             logger.debug(
-                "[PlaybackService] Ignoring download_error EventBus signal for QQ track: %s",
+                "[PlaybackService] Ignoring download_error EventBus signal for online track: %s",
                 file_id,
             )
             return
@@ -1657,7 +1663,13 @@ class PlaybackService(QObject):
             return None
 
         # Check if track already exists by cloud_file_id (song_mid)
-        existing = self._track_repo.get_by_cloud_file_id(song_mid)
+        provider_id = None
+        for playlist_item in self._engine.playlist_items:
+            if playlist_item.cloud_file_id == song_mid and playlist_item.is_online:
+                provider_id = playlist_item.online_provider_id
+                break
+
+        existing = self._track_repo.get_by_cloud_file_id(song_mid, provider_id=provider_id)
         if existing:
             # Update existing track with local path
             self._track_repo.update_path(existing.id, local_path)
@@ -1686,7 +1698,8 @@ class PlaybackService(QObject):
             album=album,
             duration=duration,
             cloud_file_id=song_mid,  # Store song_mid as cloud_file_id
-            source=TrackSource.QQ,  # Online music from QQ
+            source=TrackSource.ONLINE,
+            online_provider_id=provider_id,
         )
 
         # DBWriteWorker handles serialization
@@ -1712,7 +1725,7 @@ class PlaybackService(QObject):
         if not next_item.needs_download or (next_item.local_path and Path(next_item.local_path).exists()):
             return None
 
-        if next_item.source == TrackSource.QQ or next_item.is_cloud:
+        if next_item.is_online or next_item.is_cloud:
             return next_item
 
         return None
@@ -1733,8 +1746,8 @@ class PlaybackService(QObject):
             timer.stop()
 
     def _dispatch_preload_for_item(self, item: PlaylistItem):
-        """Dispatch preload to the existing QQ/cloud handlers."""
-        if item.source == TrackSource.QQ:
+        """Dispatch preload to the existing online/cloud handlers."""
+        if item.is_online:
             self._preload_online_track(item)
         elif item.is_cloud:
             self._preload_cloud_track(item)
@@ -1904,7 +1917,7 @@ class PlaybackService(QObject):
         Args:
             file_id: Cloud file ID
             local_path: Local path of downloaded file
-            source: Track source (QUARK, BAIDU, or QQ). If None, infers from cloud_account.
+            source: Track source (QUARK, BAIDU, or ONLINE). If None, infers from cloud_account.
 
         Returns:
             cover_path: Path to the extracted cover art, or None
@@ -1925,7 +1938,7 @@ class PlaybackService(QObject):
                 if current_item and current_item.cloud_file_id == file_id:
                     source = current_item.source
                 else:
-                    source = TrackSource.QQ  # Default fallback
+                    source = TrackSource.ONLINE
         from services.metadata.metadata_service import MetadataService
         from services.lyrics.lyrics_service import LyricsService
         from utils.helpers import is_filename_like
@@ -1938,7 +1951,13 @@ class PlaybackService(QObject):
         new_duration = metadata.get("duration", 0)
 
         # Check if track already exists
-        existing = self._track_repo.get_by_cloud_file_id(file_id)
+        provider_id = None
+        if source == TrackSource.ONLINE:
+            current_item = self._engine.current_playlist_item
+            if current_item and current_item.cloud_file_id == file_id and current_item.is_online:
+                provider_id = current_item.online_provider_id
+
+        existing = self._track_repo.get_by_cloud_file_id(file_id, provider_id=provider_id)
         if existing:
             # Update path if it's empty or different
             if not existing.path or existing.path != local_path:
@@ -2029,8 +2048,17 @@ class PlaybackService(QObject):
         # Fetch cover art
         cover_path = None
         if self._cover_service:
-            cover_path = self._fetch_cover_for_track(file_id, title, artist, album, duration, metadata, local_path,
-                                                     source)
+            cover_path = self._fetch_cover_for_track(
+                file_id,
+                title,
+                artist,
+                album,
+                duration,
+                metadata,
+                local_path,
+                source,
+                provider_id=provider_id,
+            )
 
         track = Track(
             path=local_path,
@@ -2040,7 +2068,8 @@ class PlaybackService(QObject):
             duration=duration,
             cloud_file_id=file_id,
             cover_path=cover_path,
-            source=source,  # Use determined source (QUARK, BAIDU, or QQ)
+            source=source,
+            online_provider_id=provider_id,
         )
 
         self._track_repo.add(track)
@@ -2056,8 +2085,18 @@ class PlaybackService(QObject):
 
         return cover_path
 
-    def _fetch_cover_for_track(self, file_id: str, title: str, artist: str, album: str,
-                               duration: float, metadata: dict, local_path: str, source: TrackSource = None) -> \
+    def _fetch_cover_for_track(
+        self,
+        file_id: str,
+        title: str,
+        artist: str,
+        album: str,
+        duration: float,
+        metadata: dict,
+        local_path: str,
+        source: TrackSource = None,
+        provider_id: str | None = None,
+    ) -> \
             Optional[str]:
         """
         Fetch cover art for a track from various sources.
@@ -2085,19 +2124,20 @@ class PlaybackService(QObject):
             )
             logger.info(f"[PlaybackService] Embedded cover saved: {embedded_cover_path}")
 
-        # Step 2: For QQ Music online tracks, try to get cover directly by song_mid
+        # Step 2: For online tracks, try to get cover directly by track id
         if file_id:
-            qq_cover_path = None
-            if source == TrackSource.QQ:
-                logger.info(f"[PlaybackService] Trying QQ Music cover by song_mid: {file_id}")
-                qq_cover_path = self._cover_service.get_online_cover(
+            online_cover_path = None
+            if source == TrackSource.ONLINE:
+                logger.info(f"[PlaybackService] Trying online cover by track id: {file_id}")
+                online_cover_path = self._cover_service.get_online_cover(
                     song_mid=file_id,
                     artist=artist,
-                    title=title
+                    title=title,
+                    provider_id=provider_id,
                 )
-            if qq_cover_path:
-                logger.info(f"[PlaybackService] QQ Music cover downloaded: {qq_cover_path}")
-                cover_path = qq_cover_path
+            if online_cover_path:
+                logger.info(f"[PlaybackService] Online cover downloaded: {online_cover_path}")
+                cover_path = online_cover_path
             elif title and artist:
                 # Fallback to search if direct fetch failed
                 logger.info(f"[PlaybackService] Searching cover: {title} - {artist}")
@@ -2149,10 +2189,21 @@ class PlaybackService(QObject):
             return self._cover_service.get_cover(track_path, title, artist, album, skip_online=skip_online)
         return None
 
-    def get_online_track_cover(self, source: str, cloud_file_id: str, artist: str = "", title: str = "") -> Optional[
-        str]:
+    def get_online_track_cover(
+        self,
+        provider_id: str,
+        cloud_file_id: str,
+        artist: str = "",
+        title: str = "",
+    ) -> Optional[str]:
         if self._cover_service:
-            return self._cover_service.get_online_cover(cloud_file_id, "", artist, title)
+            return self._cover_service.get_online_cover(
+                cloud_file_id,
+                "",
+                artist,
+                title,
+                provider_id=provider_id,
+            )
         return None
 
     def save_cover_from_metadata(self, track_path: str, cover_data: bytes) -> Optional[str]:

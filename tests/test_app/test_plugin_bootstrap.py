@@ -1,8 +1,11 @@
 from pathlib import Path
+import builtins
+import logging
+import os
+import sys
 from unittest.mock import MagicMock
 
 import app.bootstrap as bootstrap_module
-import services.online as online_module
 
 
 def test_bootstrap_exposes_plugin_manager(monkeypatch):
@@ -52,14 +55,13 @@ def test_bootstrap_only_loads_plugins_once(monkeypatch):
     fake_manager.load_enabled_plugins.assert_called_once()
 
 
-def test_online_download_service_is_created_with_host_online_music_service(monkeypatch):
+def test_online_download_service_is_created_with_plugin_agnostic_gateway(monkeypatch):
     fake_download_service = object()
     download_ctor = MagicMock(return_value=fake_download_service)
-    fake_online_service = object()
-    online_ctor = MagicMock(return_value=fake_online_service)
-
-    monkeypatch.setattr(online_module, "OnlineDownloadService", download_ctor)
-    monkeypatch.setattr(online_module, "OnlineMusicService", online_ctor)
+    monkeypatch.setattr(
+        "services.download.online_download_gateway.OnlineDownloadGateway",
+        download_ctor,
+    )
 
     bootstrap = bootstrap_module.Bootstrap(":memory:")
     bootstrap._config = object()
@@ -69,25 +71,8 @@ def test_online_download_service_is_created_with_host_online_music_service(monke
     assert service is fake_download_service
     _, kwargs = download_ctor.call_args
     assert kwargs["config_manager"] is bootstrap._config
-    assert kwargs["credential_provider"] is None
-    assert kwargs["online_music_service"] is fake_online_service
-
-
-def test_online_music_service_is_created_without_host_credential_provider(monkeypatch):
-    fake_online_service = object()
-    online_ctor = MagicMock(return_value=fake_online_service)
-
-    monkeypatch.setattr(online_module, "OnlineMusicService", online_ctor)
-
-    bootstrap = bootstrap_module.Bootstrap(":memory:")
-    bootstrap._config = object()
-
-    service = bootstrap.online_music_service
-
-    assert service is fake_online_service
-    _, kwargs = online_ctor.call_args
-    assert kwargs["config_manager"] is bootstrap._config
-    assert kwargs["credential_provider"] is None
+    assert callable(kwargs["plugin_manager"])
+    assert kwargs["event_bus"] is bootstrap.event_bus
 
 
 def test_bootstrap_no_longer_exposes_qqmusic_client_helpers():
@@ -95,3 +80,75 @@ def test_bootstrap_no_longer_exposes_qqmusic_client_helpers():
 
     assert not hasattr(bootstrap_module.Bootstrap, "qqmusic_client")
     assert not hasattr(bootstrap_module.Bootstrap, "refresh_qqmusic_client")
+
+
+def test_mpris_controller_logs_warning_when_linux_dbus_support_is_missing(monkeypatch, caplog):
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "dbus" or name.startswith("dbus."):
+            raise ImportError("dbus unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+
+    with caplog.at_level(logging.WARNING, logger="app.bootstrap"):
+        controller = bootstrap.mpris_controller
+
+    assert controller is None
+    assert "MPRIS disabled" in caplog.text
+    assert "dbus unavailable" in caplog.text
+
+
+def test_enable_linux_mpris_runtime_adds_system_module_roots(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_discover_linux_python_module_roots",
+        lambda: [os.fspath(tmp_path)],
+    )
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != os.fspath(tmp_path)])
+
+    def fake_can_import():
+        if os.fspath(tmp_path) in sys.path:
+            return True, None
+        return False, "gi unavailable"
+
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_can_import_linux_mpris_runtime",
+        fake_can_import,
+    )
+
+    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
+
+    assert ready is True
+    assert reason is None
+    assert sys.path[0] == os.fspath(tmp_path)
+
+
+def test_enable_linux_mpris_runtime_reports_missing_modules_when_recovery_fails(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_discover_linux_python_module_roots",
+        lambda: [],
+    )
+
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "dbus" or name.startswith("dbus.") or name == "gi" or name.startswith("gi."):
+            raise ImportError(f"{name} unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
+
+    assert ready is False
+    assert reason is not None
+    assert "unavailable" in reason

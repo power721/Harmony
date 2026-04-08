@@ -31,9 +31,10 @@ class PlayQueueItem:
 
     id: Optional[int] = None
     position: int = 0  # Order in the queue (determines playback order)
-    source: str = "Local"  # TrackSource value: "Local", "QQ", "QUARK", "BAIDU"
+    source: str = "Local"  # TrackSource value: "Local", "ONLINE", "QUARK", "BAIDU"
     track_id: Optional[int] = None  # Track ID in database
     cloud_file_id: Optional[str] = None  # Cloud file ID / Song MID
+    online_provider_id: Optional[str] = None  # Plugin provider id for online tracks
     cloud_account_id: Optional[int] = None  # Cloud account ID
     local_path: str = ""  # Local file path
     title: str = ""

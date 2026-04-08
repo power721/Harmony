@@ -11,18 +11,6 @@ import requests
 from requests.adapters import HTTPAdapter
 
 
-def create_qq_session(pool_size: int = 20, pool_block: bool = True) -> requests.Session:
-    session = requests.Session()
-    adapter = HTTPAdapter(
-        pool_connections=pool_size,
-        pool_maxsize=pool_size,
-        pool_block=pool_block,
-    )
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    return session
-
-
 def hash33(s: str, h: int = 0) -> int:
     for c in s:
         h = (h << 5) + h + ord(c)
@@ -123,18 +111,29 @@ class QQMusicQRLogin:
     WX_QR_IMAGE_URL = "https://open.weixin.qq.com/connect/qrcode/{uuid}"
     MUSIC_API_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 
-    def __init__(self):
-        self._session = create_qq_session()
-        self._session.headers.update(
-            {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/123.0.0.0 Safari/537.36"
-                ),
-                "Referer": "https://y.qq.com/",
-            }
-        )
+    def __init__(self, http_client=None):
+        if http_client is not None:
+            self._session = http_client
+        else:
+            self._session = requests.Session()
+            adapter = HTTPAdapter(
+                pool_connections=20,
+                pool_maxsize=20,
+                pool_block=True,
+            )
+            self._session.mount("https://", adapter)
+            self._session.mount("http://", adapter)
+        if hasattr(self._session, "headers"):
+            self._session.headers.update(
+                {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/123.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": "https://y.qq.com/",
+                }
+            )
 
     def get_qrcode(self, login_type: QRLoginType = QRLoginType.QQ) -> Optional[QR]:
         if login_type == QRLoginType.WX:

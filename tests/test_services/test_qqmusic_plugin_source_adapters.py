@@ -137,3 +137,32 @@ def test_qqmusic_artist_cover_source_search_reads_normalized_artist_payload(monk
     assert results[0].name == "Singer 1"
     assert results[0].album_count == 12
     assert results[0].cover_url == "https://y.gtimg.cn/music/photo_new/T001R500x500M000artist1.jpg"
+
+
+def test_qqmusic_api_search_extracts_total_from_payload():
+    response = SimpleNamespace(
+        json=lambda: {
+            "code": 0,
+            "data": {
+                "totalnum": 321,
+                "list": [
+                    {
+                        "mid": "song-1",
+                        "name": "Song 1",
+                        "singer": [{"name": "Singer 1"}],
+                        "album": {"name": "Album 1", "mid": "album-1"},
+                        "interval": 180,
+                    }
+                ],
+            },
+        }
+    )
+    context = SimpleNamespace(
+        http=SimpleNamespace(get=lambda *_args, **_kwargs: response)
+    )
+    api = QQMusicPluginAPI(context)
+
+    result = api.search("Song 1", search_type="song", limit=10, page=1)
+
+    assert result["total"] == 321
+    assert len(result["tracks"]) == 1

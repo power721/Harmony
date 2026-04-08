@@ -21,8 +21,6 @@ from PySide6.QtWidgets import (
 
 from domain.playback import PlaybackState
 from domain.track import Track
-from services.online.quality import get_quality_label_key, normalize_quality
-from services.download import DownloadManager
 from services.metadata import CoverService
 from services.playback import PlaybackService
 from system.config import ConfigManager
@@ -31,6 +29,7 @@ from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.redownload_dialog import RedownloadDialog
 from ui.views.history_list_view import HistoryListView
 from ui.views.local_tracks_list_view import LocalTracksListView
 from utils import format_count_message
@@ -100,6 +99,7 @@ class LibraryView(QWidget):
         self._all_tracks_loading = False
         self._all_tracks_query = ""
         self._all_tracks_source = None
+        self._pending_redownload_mids: set[str] = set()
 
         from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
@@ -131,7 +131,7 @@ class LibraryView(QWidget):
         self._source_filter.addItem(t("source_local"), "Local")
         self._source_filter.addItem(t("source_quark"), "QUARK")
         self._source_filter.addItem(t("source_baidu"), "BAIDU")
-        self._source_filter.addItem(t("source_qq"), "QQ")
+        self._source_filter.addItem(t("online_track"), "ONLINE")
         self._source_filter.setFixedWidth(120)
         self._source_filter.setProperty("compact", True)
         header_layout.addWidget(self._source_filter)
@@ -198,7 +198,7 @@ class LibraryView(QWidget):
         self._all_tracks_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
         self._all_tracks_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
         self._all_tracks_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
-        self._all_tracks_list_view.redownload_requested.connect(self._redownload_qq_track)
+        self._all_tracks_list_view.redownload_requested.connect(self._redownload_online_track)
         self._all_tracks_list_view._list_view.verticalScrollBar().valueChanged.connect(
             self._on_all_tracks_scroll_changed
         )
@@ -216,7 +216,7 @@ class LibraryView(QWidget):
         self._favorites_list_view.open_file_location_requested.connect(self._on_all_tracks_open_file_location)
         self._favorites_list_view.remove_from_library_requested.connect(self._on_all_tracks_remove_from_library)
         self._favorites_list_view.delete_file_requested.connect(self._on_all_tracks_delete_file)
-        self._favorites_list_view.redownload_requested.connect(self._redownload_qq_track)
+        self._favorites_list_view.redownload_requested.connect(self._redownload_online_track)
 
         # History list view
         self._history_list_view.track_activated.connect(self._on_history_track_activated)
@@ -231,7 +231,7 @@ class LibraryView(QWidget):
         self._history_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
         self._history_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
         self._history_list_view.delete_file_requested.connect(self._on_history_delete_file)
-        self._history_list_view.redownload_requested.connect(self._redownload_qq_track)
+        self._history_list_view.redownload_requested.connect(self._redownload_online_track)
 
         # Connect to player engine signals
         self._player.engine.current_track_changed.connect(
@@ -246,6 +246,11 @@ class LibraryView(QWidget):
         event_bus = EventBus.instance()
         event_bus.tracks_organized.connect(self._on_tracks_organized)
         event_bus.favorite_changed.connect(self._on_favorite_changed)
+
+        from services.download.download_manager import DownloadManager
+        manager = DownloadManager.instance()
+        manager.download_completed.connect(self._on_redownload_completed)
+        manager.download_failed.connect(self._on_redownload_failed)
 
     @staticmethod
     def _disconnect_signal(signal, slot):
@@ -266,6 +271,10 @@ class LibraryView(QWidget):
         event_bus = EventBus.instance()
         self._disconnect_signal(event_bus.tracks_organized, self._on_tracks_organized)
         self._disconnect_signal(event_bus.favorite_changed, self._on_favorite_changed)
+        from services.download.download_manager import DownloadManager
+        manager = DownloadManager.instance()
+        self._disconnect_signal(manager.download_completed, self._on_redownload_completed)
+        self._disconnect_signal(manager.download_failed, self._on_redownload_failed)
 
         search_timer = getattr(self, "_search_timer", None)
         if search_timer is not None:
@@ -945,92 +954,61 @@ class LibraryView(QWidget):
         if dialog.exec() == QDialog.Accepted:
             self.refresh()
 
-    def _redownload_qq_track(self, track):
-        """Re-download a QQ Music track with quality selection."""
-        from ui.dialogs.redownload_dialog import RedownloadDialog
-        from app.bootstrap import Bootstrap
-
-        bootstrap = Bootstrap.instance()
-        song_mid = track.cloud_file_id
-        default_quality = (
-            bootstrap.config.get_plugin_setting("qqmusic", "quality", "320")
-            if bootstrap and bootstrap.config
-            else "320"
-        )
-        quality = RedownloadDialog.show_dialog(
-            track.title,
-            current_quality=default_quality,
-            parent=self,
-        )
-        if quality is None:
+    def _redownload_online_track(self, track):
+        """Request plugin-driven online re-download for a single track."""
+        if not track or not track.is_online:
+            self._status_label.setText(t("not_supported_yet"))
             return
 
-        online_download_service = bootstrap.online_download_service
+        song_mid = str(track.cloud_file_id or "").strip()
+        provider_id = str(track.online_provider_id or "").strip()
+        if not song_mid or not provider_id:
+            self._status_label.setText(t("not_supported_yet"))
+            return
 
-        # Delete cached files for all quality variants
-        online_download_service.delete_cached_file(song_mid)
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        service = getattr(bootstrap, "online_download_service", None)
+        if not service:
+            self._status_label.setText(t("not_supported_yet"))
+            return
 
-        # Delete local file if exists
-        import os
-        if track.path and os.path.exists(track.path):
-            try:
-                os.remove(track.path)
-            except OSError:
-                pass
-            # Clear path in DB
-            if track.id:
-                self._library_service.update_track_path(track.id, "")
-
-        # Start re-download
-        dm = DownloadManager.instance()
-        dm.download_completed.connect(self._on_redownload_completed)
-        dm.download_failed.connect(self._on_redownload_failed)
-        dm.redownload_online_track(
-            song_mid, track.title, quality=quality, force=True
+        quality_options = service.get_download_qualities(song_mid, provider_id=provider_id)
+        selected_quality = RedownloadDialog.show_dialog(
+            track.title or song_mid,
+            quality_options=quality_options,
+            parent=self,
         )
-        self._status_label.setText(
-            f"{t('downloading')}... {track.title} ({self._format_quality_label(quality)})"
+        if not selected_quality:
+            return
+
+        from services.download.download_manager import DownloadManager
+        started = DownloadManager.instance().redownload_online_track(
+            song_mid=song_mid,
+            title=track.title or "",
+            provider_id=provider_id,
+            quality=selected_quality,
         )
+        if started:
+            self._pending_redownload_mids.add(song_mid)
+            self._status_label.setText(t("redownload"))
+        else:
+            self._status_label.setText(t("download_failed"))
 
     def _on_redownload_completed(self, song_mid: str, local_path: str):
         """Handle re-download completion."""
-        from app.bootstrap import Bootstrap
-
-        try:
-            dm = DownloadManager.instance()
-            dm.download_completed.disconnect(self._on_redownload_completed)
-            dm.download_failed.disconnect(self._on_redownload_failed)
-        except RuntimeError:
+        if song_mid not in self._pending_redownload_mids:
             return
-        if local_path:
-            bootstrap = Bootstrap.instance()
-            actual_quality = None
-            if bootstrap and bootstrap.online_download_service:
-                actual_quality = bootstrap.online_download_service.pop_last_download_quality(song_mid)
-            self._reload_current_list_view()
-            if actual_quality:
-                self._status_label.setText(
-                    f"{t('download_complete')} ({self._format_quality_label(actual_quality)})"
-                )
-            else:
-                self._status_label.setText(t("download_complete"))
+        self._pending_redownload_mids.discard(song_mid)
+        del local_path
+        self._status_label.setText(t("download_complete"))
 
     def _on_redownload_failed(self, song_mid: str):
         """Handle re-download failure."""
-        try:
-            dm = DownloadManager.instance()
-            dm.download_completed.disconnect(self._on_redownload_completed)
-            dm.download_failed.disconnect(self._on_redownload_failed)
-        except RuntimeError:
+        if song_mid not in self._pending_redownload_mids:
             return
+        self._pending_redownload_mids.discard(song_mid)
         self._status_label.setText(t("download_failed"))
-
-    @staticmethod
-    def _format_quality_label(quality: str) -> str:
-        """Return the translated label for a QQ Music quality code."""
-        normalized = normalize_quality(quality)
-        label_key = get_quality_label_key(normalized)
-        return t(label_key) if label_key else normalized
 
     def _on_history_remove_from_library(self, tracks: list):
         """Remove tracks from library."""

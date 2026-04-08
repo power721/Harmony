@@ -83,7 +83,7 @@ def test_redownload_dialog_uses_foundation_action_button_roles(qtbot):
 
     assert "QPushButton {" not in RedownloadDialog._STYLE_TEMPLATE
     assert len(roles["primary"]) == 1
-    assert len(roles["cancel"]) == 1
+    assert len(roles["cancel"]) == 0
 
 
 def test_cloud_login_dialog_uses_foundation_cancel_button_role(qtbot, monkeypatch):

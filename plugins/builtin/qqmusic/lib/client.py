@@ -4,7 +4,7 @@ import socket
 from typing import Any
 
 from .api import QQMusicPluginAPI
-from .legacy.qqmusic_service import QQMusicService
+from .qqmusic_service import QQMusicService
 
 
 class QQMusicPluginClient:
@@ -24,7 +24,7 @@ class QQMusicPluginClient:
         credential = self._get_credential()
         if not credential:
             return None
-        return QQMusicService(credential)
+        return QQMusicService(credential, http_client=self._context.http)
 
     def _can_use_legacy_network(self) -> bool:
         if self._legacy_network_reachable is not None:
@@ -56,11 +56,25 @@ class QQMusicPluginClient:
         # Prefer QQ Music direct client when logged in
         if self._get_credential() and self._can_use_legacy_network():
             result = self._search_legacy(keyword, search_type, page, limit)
-            if result:
+            if self._has_search_results(result, search_type):
                 return result
 
         # Fallback to remote API
         return self._api.search(keyword, search_type=search_type, limit=limit, page=page)
+
+    @staticmethod
+    def _has_search_results(result: dict[str, Any] | None, search_type: str) -> bool:
+        if not isinstance(result, dict):
+            return False
+        key_by_type = {
+            "song": "tracks",
+            "singer": "artists",
+            "album": "albums",
+            "playlist": "playlists",
+        }
+        result_key = key_by_type.get(search_type, "tracks")
+        items = result.get(result_key, [])
+        return isinstance(items, list) and len(items) > 0
 
     def _search_legacy(
         self,

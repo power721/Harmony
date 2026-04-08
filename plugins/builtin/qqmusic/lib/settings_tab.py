@@ -27,15 +27,16 @@ logger = logging.getLogger(__name__)
 class VerifyLoginThread(QThread):
     verified = Signal(bool, str, int)
 
-    def __init__(self, credential: dict, parent=None):
+    def __init__(self, credential: dict, http_client=None, parent=None):
         super().__init__(parent)
         self._credential = credential
+        self._http_client = http_client
 
     def run(self):
         try:
-            from .legacy.qqmusic_service import QQMusicService
+            from .qqmusic_service import QQMusicService
 
-            service = QQMusicService(self._credential)
+            service = QQMusicService(self._credential, http_client=self._http_client)
             result = service.client.verify_login()
             self.verified.emit(
                 bool(result.get("valid")),
@@ -326,7 +327,11 @@ class QQMusicSettingsTab(QWidget):
                     self._verify_thread.quit()
                     self._verify_thread.wait()
 
-                self._verify_thread = VerifyLoginThread(credential, parent=self)
+                self._verify_thread = VerifyLoginThread(
+                    credential,
+                    http_client=self._context.http,
+                    parent=self,
+                )
                 self._verify_thread.verified.connect(
                     lambda valid, nick, uin, musicid=musicid, login_type=login_type: self._on_login_verified(
                         valid, nick, uin, musicid, login_type

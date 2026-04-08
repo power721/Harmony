@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # Configure logging
 logger = logging.getLogger(__name__)
 
-_qqmusic_cover_singleflight: SingleFlight[Optional[str]] = SingleFlight()
+_online_cover_singleflight: SingleFlight[Optional[str]] = SingleFlight()
 
 
 class CoverService:
@@ -248,18 +248,25 @@ class CoverService:
         print(f"Fetching cover from online sources: {artist} {album} {title}")
         return self._fetch_online_cover(title, artist, album, cache_key, duration)
 
-    def get_online_cover(self, song_mid: str, album_mid: str = None,
-                         artist: str = "", title: str = "") -> Optional[str]:
+    def get_online_cover(
+        self,
+        song_mid: str,
+        album_mid: str = None,
+        artist: str = "",
+        title: str = "",
+        provider_id: str | None = None,
+    ) -> Optional[str]:
         """
-        Get cover for online QQ Music track by song_mid or album_mid.
+        Get cover for online track by provider-side track id.
 
-        This directly fetches cover from QQ Music without searching.
+        This directly fetches cover from a plugin provider without searching.
 
         Args:
-            song_mid: QQ Music song MID
-            album_mid: QQ Music album MID (preferred, if available)
+            song_mid: Provider-side song id
+            album_mid: Provider-side album id (preferred, if available)
             artist: Artist name (for cache key)
             title: Track title (for cache key)
+            provider_id: Online provider id
 
         Returns:
             Path to cached cover, or None
@@ -274,10 +281,17 @@ class CoverService:
             return str(cached_cover)
 
         try:
-            request_key = ("qqmusic_cover", song_mid or "", album_mid or "", artist or "", title or "")
-            return _qqmusic_cover_singleflight.do(
+            request_key = (
+                "online_cover",
+                provider_id or "",
+                song_mid or "",
+                album_mid or "",
+                artist or "",
+                title or "",
+            )
+            return _online_cover_singleflight.do(
                 request_key,
-                lambda: self._fetch_online_cover_by_mid(song_mid, album_mid),
+                lambda: self._fetch_online_cover_by_mid(song_mid, album_mid, provider_id=provider_id),
             )
 
         except Exception as e:
@@ -285,11 +299,21 @@ class CoverService:
 
         return None
 
-    def _fetch_online_cover_by_mid(self, song_mid: str, album_mid: str | None) -> Optional[str]:
-        """Fetch QQ Music cover bytes by song/album mid and cache the result."""
-        from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
+    def _fetch_online_cover_by_mid(
+        self,
+        song_mid: str,
+        album_mid: str | None,
+        provider_id: str | None = None,
+    ) -> Optional[str]:
+        """Fetch online cover bytes by song/album id and cache the result."""
+        from system.plugins.online_cover_helpers import get_online_cover_url
 
-        cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
+        cover_url = get_online_cover_url(
+            provider_id=provider_id,
+            track_id=song_mid,
+            album_id=album_mid,
+            size=500,
+        )
         if not cover_url:
             logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
             return None
@@ -424,7 +448,7 @@ class CoverService:
                     'source': result.source,
                     'id': result.id,
                     'score': score,
-                    'album_mid': result.album_mid,  # For QQ Music lazy cover fetch
+                    'album_mid': result.album_mid,  # For provider-side lazy cover fetch
                 })
 
             # Sort by score descending
@@ -550,7 +574,7 @@ class CoverService:
                         score = self._calculate_artist_name_score(artist_name, r.name)
                         artist_id = getattr(r, "id", None) or getattr(r, "artist_id", "")
                         singer_mid = getattr(r, "singer_mid", None)
-                        if singer_mid is None and getattr(r, "source", "") == "qqmusic":
+                        if singer_mid is None:
                             singer_mid = getattr(r, "artist_id", None)
                         results.append({
                             'name': r.name,

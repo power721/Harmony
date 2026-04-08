@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from plugins.builtin.qqmusic.lib.legacy.client import QQMusicClient
+from plugins.builtin.qqmusic.lib.qqmusic_client import QQMusicClient
 
 
 def test_verify_login_accepts_hostname_when_profile_request_succeeds(monkeypatch):

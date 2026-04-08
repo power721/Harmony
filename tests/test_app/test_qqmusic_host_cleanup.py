@@ -17,9 +17,7 @@ def test_packaging_scripts_no_longer_collect_qqmusic_api():
 
 
 def test_online_download_service_no_longer_imports_plugin_qqmusic_impl():
-    source = Path("services/online/download_service.py").read_text(encoding="utf-8")
-
-    assert "plugins.builtin.qqmusic" not in source
+    assert not Path("services/online/download_service.py").exists()
 
 
 def test_host_qqmusic_compatibility_view_modules_are_removed():
@@ -89,21 +87,16 @@ def test_qqmusic_plugin_no_longer_imports_host_online_models_or_widgets():
 
 
 def test_online_services_no_longer_expose_qqmusic_service_parameter_names():
-    online_service_source = Path("services/online/online_music_service.py").read_text(encoding="utf-8")
-    download_service_source = Path("services/online/download_service.py").read_text(encoding="utf-8")
     bootstrap_source = Path("app/bootstrap.py").read_text(encoding="utf-8")
 
-    assert "qqmusic_service" not in online_service_source
-    assert "qqmusic_service" not in download_service_source
+    assert not Path("services/online/online_music_service.py").exists()
+    assert not Path("services/online/download_service.py").exists()
     assert "qqmusic_service" not in bootstrap_source
 
 
 def test_online_services_no_longer_store_private_qqmusic_field_names():
-    online_service_source = Path("services/online/online_music_service.py").read_text(encoding="utf-8")
-    download_service_source = Path("services/online/download_service.py").read_text(encoding="utf-8")
-
-    assert "self._qqmusic =" not in online_service_source
-    assert "self._qqmusic =" not in download_service_source
+    assert not Path("services/online/online_music_service.py").exists()
+    assert not Path("services/online/download_service.py").exists()
 
 
 def test_plugin_page_modules_do_not_directly_import_host_layers():
@@ -137,3 +130,36 @@ def test_plugin_page_modules_do_not_directly_import_host_layers():
     ):
         source = Path(relative_path).read_text(encoding="utf-8")
         assert not any(prefix in source for prefix in forbidden_prefixes), relative_path
+
+
+def test_qqmusic_plugin_legacy_directory_is_removed():
+    assert not Path("plugins/builtin/qqmusic/lib/legacy").exists()
+
+
+def test_qqmusic_plugin_modules_do_not_import_legacy_package():
+    for path in Path("plugins/builtin/qqmusic/lib").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "from .legacy import" not in source, str(path)
+        assert "from .legacy." not in source, str(path)
+        assert "import .legacy" not in source, str(path)
+
+
+def test_host_quality_modules_are_removed():
+    assert not Path("services/download/quality.py").exists()
+    assert not Path("services/online/quality.py").exists()
+
+
+def test_online_download_gateway_no_longer_contains_host_http_download_logic():
+    source = Path("services/download/online_download_gateway.py").read_text(encoding="utf-8")
+
+    assert "HttpClient" not in source
+    assert "get_playback_url_info" not in source
+    assert "download_track(" in source
+
+
+def test_download_manager_redownload_entry_is_provider_driven():
+    source = Path("services/download/download_manager.py").read_text(encoding="utf-8")
+
+    assert "def redownload_online_track(" in source
+    assert "provider_id" in source
+    assert "TrackSource.QQ" not in source

@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from system.plugins.qqmusic_lyrics_helpers import download_qqmusic_lyrics
+from system.plugins.online_lyrics_helpers import download_online_lyrics
 
 
-def test_download_qqmusic_lyrics_uses_registered_plugin_source(monkeypatch):
+def test_download_online_lyrics_uses_registered_plugin_source(monkeypatch):
     source = SimpleNamespace(
         source="qqmusic",
         get_lyrics_by_song_id=lambda song_id: f"lyrics:{song_id}",
@@ -16,4 +16,4 @@ def test_download_qqmusic_lyrics_uses_registered_plugin_source(monkeypatch):
         lambda: SimpleNamespace(plugin_manager=fake_manager),
     )
 
-    assert download_qqmusic_lyrics("mid123") == "lyrics:mid123"
+    assert download_online_lyrics("mid123", provider_id="qqmusic") == "lyrics:mid123"

@@ -229,7 +229,8 @@ class LyricsController(QObject):
             title: str,
             artist: str,
             song_mid: str = None,
-            is_online: bool = False
+            is_online: bool = False,
+            provider_id: str | None = None,
     ):
         """
         Load lyrics asynchronously with version control.
@@ -238,8 +239,9 @@ class LyricsController(QObject):
             path: Path to the audio file
             title: Track title
             artist: Track artist
-            song_mid: QQ Music song MID (for online tracks)
-            is_online: Whether this is an online QQ Music track
+            song_mid: Provider-side song id (for online tracks)
+            is_online: Whether this is an online track
+            provider_id: Online provider id
         """
         # Increment version to invalidate pending results
         self._lyrics_load_version += 1
@@ -250,7 +252,12 @@ class LyricsController(QObject):
 
         # Create new loader
         self._lyrics_thread = LyricsLoader(
-            path, title, artist, song_mid=song_mid, is_online=is_online
+            path,
+            title,
+            artist,
+            song_mid=song_mid,
+            is_online=is_online,
+            provider_id=provider_id,
         )
         self._lyrics_thread._load_version = current_version
 
@@ -455,7 +462,7 @@ class LyricsController(QObject):
         source = current_track.get("source", "Local")
 
         # Check if this is a cloud/network track
-        is_cloud_track = source in ("QQ", "QUARK", "BAIDU")
+        is_cloud_track = source in ("ONLINE", "QUARK", "BAIDU")
 
         if not track_path:
             if is_cloud_track:
@@ -515,10 +522,11 @@ class LyricsController(QObject):
             title = track_item.title
             artist = track_item.artist
             song_mid = track_item.cloud_file_id
-            is_online = track_item.source == TrackSource.QQ
+            is_online = track_item.is_online
+            provider_id = track_item.online_provider_id
 
             if path:
-                self.load_lyrics_async(path, title, artist, song_mid, is_online)
+                self.load_lyrics_async(path, title, artist, song_mid, is_online, provider_id)
             else:
                 self._panel.set_no_lyrics()
         elif isinstance(track_item, dict):

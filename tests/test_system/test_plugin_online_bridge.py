@@ -157,6 +157,7 @@ def test_media_bridge_passes_explicit_quality_to_download_service():
     download_service.download.assert_called_once_with(
         "mid-1",
         song_title="Song 1",
+        provider_id="qqmusic",
         quality="flac",
         progress_callback=None,
         force=False,
@@ -164,6 +165,7 @@ def test_media_bridge_passes_explicit_quality_to_download_service():
 
     bridge.add_online_track(request)
     library_service.add_online_track.assert_called_once_with(
+        "qqmusic",
         "mid-1",
         "Song 1",
         "Singer 1",
@@ -200,6 +202,9 @@ def test_media_bridge_can_play_online_track():
     playback_service.engine.load_playlist_items.assert_called_once()
     playback_service.engine.play.assert_called_once_with()
     playback_service.save_queue.assert_called_once_with()
+    item = playback_service.engine.load_playlist_items.call_args[0][0][0]
+    assert item.source.value == "ONLINE"
+    assert item.online_provider_id == "qqmusic"
 
 
 def test_media_bridge_can_add_and_insert_online_track_to_queue():
@@ -230,3 +235,7 @@ def test_media_bridge_can_add_and_insert_online_track_to_queue():
     assert playback_service.engine.add_track.call_count == 1
     playback_service.engine.insert_track.assert_called_once()
     assert playback_service._schedule_save_queue.call_count == 2
+    queued_item = playback_service.engine.add_track.call_args[0][0]
+    inserted_item = playback_service.engine.insert_track.call_args[0][1]
+    assert queued_item.online_provider_id == "qqmusic"
+    assert inserted_item.online_provider_id == "qqmusic"

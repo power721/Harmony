@@ -1,4 +1,4 @@
-"""Regression tests for QQ online download failure handling."""
+"""Regression tests for online download failure handling."""
 
 from __future__ import annotations
 
@@ -10,18 +10,19 @@ from domain.track import TrackSource
 from services.playback.playback_service import PlaybackService
 
 
-def test_cloud_download_error_ignores_qq_online_track():
+def test_cloud_download_error_ignores_online_track():
     service = PlaybackService.__new__(PlaybackService)
-    qq_item = PlaylistItem(
-        source=TrackSource.QQ,
+    online_item = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
         cloud_file_id="song_mid_404",
         title="VIP Song",
         needs_download=True,
     )
 
     service._engine = Mock()
-    service._engine.playlist_items = [qq_item]
-    service._engine.current_playlist_item = qq_item
+    service._engine.playlist_items = [online_item]
+    service._engine.current_playlist_item = online_item
     service._schedule_save_queue = Mock()
 
     PlaybackService._on_cloud_download_error(service, "song_mid_404", "404 not found")

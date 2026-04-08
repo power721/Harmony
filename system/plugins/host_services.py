@@ -74,25 +74,6 @@ class PluginUiBridgeImpl:
 
 
 class PluginRuntimeBridgeImpl:
-    def create_online_music_service(self, *, config_manager=None, credential_provider=None):
-        return plugin_sdk_runtime.create_online_music_service(
-            config_manager=config_manager,
-            credential_provider=credential_provider,
-        )
-
-    def create_online_download_service(
-        self,
-        *,
-        config_manager=None,
-        credential_provider=None,
-        online_music_service=None,
-    ):
-        return plugin_sdk_runtime.create_online_download_service(
-            config_manager=config_manager,
-            credential_provider=credential_provider,
-            online_music_service=online_music_service,
-        )
-
     def get_icon(self, name, color, size: int = 16):
         return plugin_sdk_runtime.get_icon(name, color, size)
 
@@ -200,19 +181,36 @@ class BootstrapPluginContextFactory:
             self._bootstrap.playback_service,
             self._bootstrap.library_service,
         )
-        context = PluginContext(
-            plugin_id=plugin_id,
-            manifest=manifest,
-            logger=logging.getLogger(f"plugin.{plugin_id}"),
-            http=self._bootstrap.http_client,
-            events=self._bootstrap.event_bus,
-            language=self._bootstrap.config.get_language(),
-            storage=PluginStorageBridgeImpl(self._storage_root, plugin_id),
-            settings=PluginSettingsBridgeImpl(plugin_id, self._bootstrap.config),
-            ui=PluginUiBridgeImpl(plugin_id, registry),
-            services=PluginServiceBridgeImpl(plugin_id, registry, media_bridge),
-        )
-        object.__setattr__(context, "runtime", PluginRuntimeBridgeImpl())
+        runtime_bridge = PluginRuntimeBridgeImpl()
+        try:
+            context = PluginContext(
+                plugin_id=plugin_id,
+                manifest=manifest,
+                logger=logging.getLogger(f"plugin.{plugin_id}"),
+                http=self._bootstrap.http_client,
+                events=self._bootstrap.event_bus,
+                language=self._bootstrap.config.get_language(),
+                storage=PluginStorageBridgeImpl(self._storage_root, plugin_id),
+                settings=PluginSettingsBridgeImpl(plugin_id, self._bootstrap.config),
+                ui=PluginUiBridgeImpl(plugin_id, registry),
+                services=PluginServiceBridgeImpl(plugin_id, registry, media_bridge),
+                runtime=runtime_bridge,
+            )
+        except TypeError:
+            # Compatibility with older installed harmony-plugin-api packages.
+            context = PluginContext(
+                plugin_id=plugin_id,
+                manifest=manifest,
+                logger=logging.getLogger(f"plugin.{plugin_id}"),
+                http=self._bootstrap.http_client,
+                events=self._bootstrap.event_bus,
+                language=self._bootstrap.config.get_language(),
+                storage=PluginStorageBridgeImpl(self._storage_root, plugin_id),
+                settings=PluginSettingsBridgeImpl(plugin_id, self._bootstrap.config),
+                ui=PluginUiBridgeImpl(plugin_id, registry),
+                services=PluginServiceBridgeImpl(plugin_id, registry, media_bridge),
+            )
+            object.__setattr__(context, "runtime", runtime_bridge)
         return context
 
 

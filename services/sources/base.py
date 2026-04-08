@@ -22,7 +22,7 @@ class SourceResult:
 class CoverSearchResult(SourceResult):
     """Search result for cover art."""
     cover_url: Optional[str] = None
-    album_mid: Optional[str] = None  # For QQ Music lazy cover fetch
+    album_mid: Optional[str] = None  # For provider-side lazy cover fetch
 
 
 @dataclass
@@ -33,7 +33,7 @@ class ArtistCoverSearchResult:
     cover_url: Optional[str] = None
     album_count: Optional[int] = None
     source: str = ""
-    singer_mid: Optional[str] = None  # For QQ Music lazy cover fetch
+    singer_mid: Optional[str] = None  # For provider-side lazy cover fetch
 
 
 @dataclass
@@ -49,7 +49,7 @@ class CoverSource(ABC):
     """
     Abstract base class for cover art sources.
 
-    Each source (NetEase, QQ Music, iTunes, etc.) should implement
+    Each source (NetEase, online plugins, iTunes, etc.) should implement
     this interface to provide cover art search functionality.
     """
 
@@ -147,7 +147,7 @@ class LyricsSource(ABC):
     """
     Abstract base class for lyrics sources.
 
-    Each source (NetEase, QQ Music, Kugou, LRCLIB, etc.) should implement
+    Each source (NetEase, online plugins, Kugou, LRCLIB, etc.) should implement
     this interface to provide lyrics search functionality.
     """
 

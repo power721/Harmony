@@ -94,8 +94,8 @@ class EditMediaInfoDialog(QDialog):
         if not track.path:
             return False
 
-        # Check for online streaming URLs
-        if track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+        # Check for online/virtual streaming URLs
+        if track.path.startswith(('http://', 'https://', 'online://')):
             return False
 
         # Check if file exists locally
@@ -245,14 +245,12 @@ class EditMediaInfoDialog(QDialog):
         """Add file information to the form for single track edit."""
         try:
             # Check if this is a local file
-            if not track.path or track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+            if not track.path or track.path.startswith(('http://', 'https://', 'online://')):
                 # Online track - show online info
                 from domain.track import TrackSource
                 source_text = t("online_track")
                 if hasattr(track, 'source'):
-                    if track.source == TrackSource.QQ:
-                        source_text = "QQ音乐"
-                    elif track.source == TrackSource.QUARK:
+                    if track.source == TrackSource.QUARK:
                         source_text = "夸克网盘"
                     elif track.source == TrackSource.BAIDU:
                         source_text = "百度网盘"

@@ -1,5 +1,5 @@
 """
-Recommendation card widgets for QQ Music recommendations.
+Recommendation card widgets for online recommendations.
 """
 
 import logging

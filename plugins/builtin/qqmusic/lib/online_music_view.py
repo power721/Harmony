@@ -2525,11 +2525,8 @@ class OnlineMusicView(QWidget):
         else:
             self._singers_page.load_data(artists)
 
-        # Show "load more" button if there are more results
-        has_more = len(artists) >= self._grid_page_size and (
-                self._grid_total == 0 or  # Unknown total, assume more
-                self._grid_page * self._grid_page_size < self._grid_total
-        )
+        # Show "load more" button using total-first strategy.
+        has_more = self._has_more_grid_items(len(artists))
         self._singers_page.set_has_more(has_more)
 
     def _display_albums(self, albums: List[OnlineAlbum], is_append: bool = False):
@@ -2539,11 +2536,7 @@ class OnlineMusicView(QWidget):
         else:
             self._albums_page.load_data(albums)
 
-        # Show "load more" button if there are more results
-        has_more = len(albums) >= self._grid_page_size and (
-                self._grid_total == 0 or
-                self._grid_page * self._grid_page_size < self._grid_total
-        )
+        has_more = self._has_more_grid_items(len(albums))
         self._albums_page.set_has_more(has_more)
 
     def _display_playlists(self, playlists: List[OnlinePlaylist], is_append: bool = False):
@@ -2553,12 +2546,16 @@ class OnlineMusicView(QWidget):
         else:
             self._playlists_page.load_data(playlists)
 
-        # Show "load more" button if there are more results
-        has_more = len(playlists) >= self._grid_page_size and (
-                self._grid_total == 0 or
-                self._grid_page * self._grid_page_size < self._grid_total
-        )
+        has_more = self._has_more_grid_items(len(playlists))
         self._playlists_page.set_has_more(has_more)
+
+    def _has_more_grid_items(self, current_page_count: int) -> bool:
+        """Determine whether grid result types should show load-more."""
+        if self._grid_total > 0:
+            return current_page_count > 0 and (
+                self._grid_page * self._grid_page_size < self._grid_total
+            )
+        return current_page_count >= self._grid_page_size
 
     def _on_tab_changed(self, index: int):
         """Handle tab change."""
@@ -2576,7 +2573,7 @@ class OnlineMusicView(QWidget):
             self._grid_page = 1  # Reset grid page for new tab
             self._do_search()
 
-    def _on_artist_clicked(self, artist: OnlineArtist):
+    def _on_artist_clicked(self, artist: OnlineArtist | dict):
         """Handle artist click - show artist detail view."""
         # Push navigation state if we're coming from search results or grid view
         if self._stack.currentWidget() in [self._results_page]:
@@ -2584,10 +2581,15 @@ class OnlineMusicView(QWidget):
                 'page': 'results',
                 'tab': 'artists' if self._results_stack.currentWidget() == self._singers_page else 'other'
             })
-        self._detail_view.load_artist(artist.mid, artist.name)
+        artist_mid = artist.mid if hasattr(artist, "mid") else str(artist.get("mid", ""))
+        artist_name = artist.name if hasattr(artist, "name") else str(artist.get("name", ""))
+        if not artist_mid:
+            logger.warning("[QQMusic] Artist item missing mid: %s", artist)
+            return
+        self._detail_view.load_artist(artist_mid, artist_name)
         self._stack.setCurrentWidget(self._detail_view)
 
-    def _on_album_clicked(self, album: OnlineAlbum):
+    def _on_album_clicked(self, album: OnlineAlbum | dict):
         """Handle album click - show album detail view."""
         # Push navigation state if we're coming from search results or detail view
         current_widget = self._stack.currentWidget()
@@ -2603,10 +2605,16 @@ class OnlineMusicView(QWidget):
                 'type': self._detail_view._detail_type,
                 'mid': self._detail_view._mid
             })
-        self._detail_view.load_album(album.mid, album.name, album.singer_name)
+        album_mid = album.mid if hasattr(album, "mid") else str(album.get("mid", ""))
+        album_name = album.name if hasattr(album, "name") else str(album.get("name", ""))
+        singer_name = album.singer_name if hasattr(album, "singer_name") else str(album.get("singer_name", ""))
+        if not album_mid:
+            logger.warning("[QQMusic] Album item missing mid: %s", album)
+            return
+        self._detail_view.load_album(album_mid, album_name, singer_name)
         self._stack.setCurrentWidget(self._detail_view)
 
-    def _on_playlist_clicked(self, playlist: OnlinePlaylist):
+    def _on_playlist_clicked(self, playlist: OnlinePlaylist | dict):
         """Handle playlist click - show playlist detail view."""
         # Push navigation state if we're coming from search results or detail view
         current_widget = self._stack.currentWidget()
@@ -2622,7 +2630,15 @@ class OnlineMusicView(QWidget):
                 'type': self._detail_view._detail_type,
                 'mid': self._detail_view._mid
             })
-        self._detail_view.load_playlist(playlist.id, playlist.title, playlist.creator)
+        playlist_id = playlist.id if hasattr(playlist, "id") else str(playlist.get("id", ""))
+        playlist_title = playlist.title if hasattr(playlist, "title") else str(playlist.get("title", ""))
+        playlist_creator = (
+            playlist.creator if hasattr(playlist, "creator") else str(playlist.get("creator", ""))
+        )
+        if not playlist_id:
+            logger.warning("[QQMusic] Playlist item missing id: %s", playlist)
+            return
+        self._detail_view.load_playlist(playlist_id, playlist_title, playlist_creator)
         self._stack.setCurrentWidget(self._detail_view)
 
     def _on_load_more_artists(self):

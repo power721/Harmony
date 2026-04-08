@@ -1,26 +1,21 @@
 """
-Re-download dialog for QQ Music tracks.
+Re-download dialog for online tracks.
 Allows user to select audio quality before re-downloading.
 """
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QPushButton, QWidget, QGraphicsDropShadowEffect,
+    QPushButton, QWidget, QGraphicsDropShadowEffect, QComboBox,
 )
 
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
-from services.online.quality import (
-    get_selectable_qualities,
-    get_quality_label_key,
-    normalize_quality,
-)
 
 
 class RedownloadDialog(QDialog):
-    """Dialog for selecting audio quality when re-downloading a QQ Music track."""
+    """Dialog for selecting plugin-provided quality before re-download."""
 
     _STYLE_TEMPLATE = """
         QLabel#hintLabel {
@@ -57,10 +52,18 @@ class RedownloadDialog(QDialog):
         }
     """
 
-    def __init__(self, track_title: str, current_quality: str = None, parent=None):
+    def __init__(
+        self,
+        track_title: str,
+        current_quality: str = None,
+        quality_options: list[dict[str, str]] | list[str] | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
-        self._quality = current_quality or "320"
+        self._quality = None
         self._drag_pos = None
+        self._quality_options = self._normalize_quality_options(quality_options)
+        self._quality_combo = None
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -95,72 +98,109 @@ class RedownloadDialog(QDialog):
             f"{t('redownload')} - {track_title}",
         )
 
-        # Quality selection
-        quality_row = QHBoxLayout()
-        quality_label = QLabel(t("select_quality"))
-        quality_label.setFixedWidth(80)
-        quality_row.addWidget(quality_label)
-
-        self._quality_combo = QComboBox()
-        self._quality_combo.setCursor(Qt.PointingHandCursor)
-        normalized_current = normalize_quality(current_quality or "320")
-        default_index = 0
-        for i, value in enumerate(get_selectable_qualities()):
-            label_key = get_quality_label_key(value)
-            label = t(label_key) if label_key else value
-            self._quality_combo.addItem(label, value)
-            if value == normalized_current:
-                default_index = i
-        self._quality_combo.setCurrentIndex(default_index)
-        quality_row.addWidget(self._quality_combo)
-        layout.addLayout(quality_row)
-
-        # Hint label
         hint_label = QLabel(t("redownload_hint"))
         hint_label.setObjectName("hintLabel")
         hint_label.setWordWrap(True)
         layout.addWidget(hint_label)
 
+        if self._quality_options:
+            quality_row = QHBoxLayout()
+            quality_label = QLabel(t("select_quality"))
+            self._quality_combo = QComboBox()
+            self._quality_combo.setFixedWidth(260)
+            self._quality_combo.setProperty("compact", True)
+            for option in self._quality_options:
+                self._quality_combo.addItem(option["label"], option["value"])
+            self._select_initial_quality(current_quality)
+            quality_row.addWidget(quality_label)
+            quality_row.addWidget(self._quality_combo)
+            quality_row.addStretch()
+            layout.addLayout(quality_row)
+        else:
+            unsupported_label = QLabel(t("not_supported_yet"))
+            unsupported_label.setObjectName("hintLabel")
+            unsupported_label.setWordWrap(True)
+            layout.addWidget(unsupported_label)
+
         layout.addStretch()
 
-        # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        cancel_btn = QPushButton(t("cancel"))
-        cancel_btn.setProperty("role", "cancel")
-        cancel_btn.setCursor(Qt.PointingHandCursor)
-        cancel_btn.clicked.connect(self.reject)
+        if self._quality_options:
+            cancel_btn = QPushButton(t("cancel"))
+            cancel_btn.setProperty("role", "cancel")
+            cancel_btn.setCursor(Qt.PointingHandCursor)
+            cancel_btn.clicked.connect(self.reject)
+            button_layout.addWidget(cancel_btn)
 
-        confirm_btn = QPushButton(t("ok"))
-        confirm_btn.setProperty("role", "primary")
-        confirm_btn.setCursor(Qt.PointingHandCursor)
-        confirm_btn.clicked.connect(self.accept)
-
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(confirm_btn)
+            ok_btn = QPushButton(t("ok"))
+            ok_btn.setProperty("role", "primary")
+            ok_btn.setCursor(Qt.PointingHandCursor)
+            ok_btn.clicked.connect(self.accept)
+            button_layout.addWidget(ok_btn)
+        else:
+            close_btn = QPushButton(t("ok"))
+            close_btn.setProperty("role", "primary")
+            close_btn.setCursor(Qt.PointingHandCursor)
+            close_btn.clicked.connect(self.reject)
+            button_layout.addWidget(close_btn)
         layout.addLayout(button_layout)
 
     def get_quality(self) -> str:
         """Get selected quality value."""
-        return self._quality_combo.currentData()
+        if self._quality_combo is not None:
+            selected = self._quality_combo.currentData()
+            self._quality = str(selected or "").strip() or None
+        return self._quality
 
     @staticmethod
-    def show_dialog(track_title: str, current_quality: str = None, parent=None):
-        """Show dialog and return selected quality, or None if cancelled."""
-        dialog = RedownloadDialog(track_title, current_quality, parent)
+    def show_dialog(
+        track_title: str,
+        current_quality: str = None,
+        quality_options: list[dict[str, str]] | list[str] | None = None,
+        parent=None,
+    ):
+        dialog = RedownloadDialog(track_title, current_quality, quality_options, parent)
         if dialog.exec() == QDialog.Accepted:
             return dialog.get_quality()
         return None
 
+    @staticmethod
+    def _normalize_quality_options(options) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        if not options:
+            return normalized
+        for item in options:
+            if isinstance(item, str):
+                value = item.strip()
+                if value:
+                    normalized.append({"value": value, "label": value})
+                continue
+            if not isinstance(item, dict):
+                continue
+            value = str(item.get("value", "") or "").strip()
+            if not value:
+                continue
+            label = str(item.get("label", "") or value).strip() or value
+            normalized.append({"value": value, "label": label})
+        return normalized
+
+    def _select_initial_quality(self, current_quality: str | None) -> None:
+        if self._quality_combo is None:
+            return
+        preferred = str(current_quality or "").strip().lower()
+        index_to_select = 0
+        if preferred:
+            for i, option in enumerate(self._quality_options):
+                if option["value"].strip().lower() == preferred:
+                    index_to_select = i
+                    break
+        self._quality_combo.setCurrentIndex(index_to_select)
+
     def _apply_theme(self):
         theme_manager = ThemeManager.instance()
         self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))
-        popup_view = self._quality_combo.view()
-        popup_view.setStyleSheet(theme_manager.get_qss(self._POPUP_STYLE_TEMPLATE))
-        popup_view.window().setStyleSheet(
-            theme_manager.get_qss(self._POPUP_CONTAINER_STYLE_TEMPLATE)
-        )
 
     def refresh_theme(self):
         self._apply_theme()

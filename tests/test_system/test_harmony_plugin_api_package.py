@@ -34,6 +34,21 @@ def test_harmony_plugin_api_package_excludes_host_runtime_modules():
     assert not (PACKAGE_SRC / "runtime.py").exists()
 
 
+def test_plugin_context_declares_runtime_bridge_contract():
+    context_source = (PACKAGE_SRC / "context.py").read_text(encoding="utf-8")
+    tree = ast.parse(context_source, filename=str(PACKAGE_SRC / "context.py"))
+    plugin_context = next(
+        node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == "PluginContext"
+    )
+    annotated_fields = [
+        node.target.id
+        for node in plugin_context.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    ]
+
+    assert "runtime" in annotated_fields
+
+
 def test_harmony_plugin_api_package_has_no_host_imports():
     assert PACKAGE_SRC.exists()
 

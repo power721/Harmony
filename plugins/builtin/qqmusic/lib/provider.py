@@ -6,9 +6,15 @@ from typing import Any
 from harmony_plugin_api.media import PluginTrack
 
 from .client import QQMusicPluginClient
-from .legacy_config_adapter import QQMusicLegacyConfigAdapter
+from .common import get_quality_label_key, get_selectable_qualities
+from .config_adapter import QQMusicConfigAdapter
+from .i18n import t
 from .online_music_view import OnlineMusicView
-from .runtime_bridge import bind_context, create_qqmusic_service
+from .runtime_bridge import (
+    bind_context,
+    create_online_download_service,
+    create_qqmusic_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +27,13 @@ class QQMusicOnlineProvider:
         self._context = context
         bind_context(context)
         self._client = QQMusicPluginClient(context)
+        self._download_service = None
         self._logger = getattr(context, "logger", logger)
 
     def create_page(self, context, parent=None):
         bind_context(context)
-        self._logger.info("[QQMusic] Creating legacy online music view")
-        config = self._create_legacy_config_adapter(context)
+        self._logger.info("[QQMusic] Creating plugin online music view")
+        config = self._create_config_adapter(context)
         credential = config.get_plugin_secret("qqmusic", "credential", "")
         service = create_qqmusic_service(credential) if credential else None
         return OnlineMusicView(
@@ -37,8 +44,8 @@ class QQMusicOnlineProvider:
         )
 
     @staticmethod
-    def _create_legacy_config_adapter(context):
-        return QQMusicLegacyConfigAdapter(context.settings)
+    def _create_config_adapter(context):
+        return QQMusicConfigAdapter(context.settings)
 
     def is_logged_in(self) -> bool:
         return self._client.is_logged_in()
@@ -114,3 +121,57 @@ class QQMusicOnlineProvider:
 
     def get_playback_url_info(self, track_id: str, quality: str):
         return self._client.get_playback_url_info(track_id, quality)
+
+    def download_track(
+        self,
+        track_id: str,
+        quality: str,
+        target_dir: str | None = None,
+        progress_callback=None,
+        force: bool = False,
+    ) -> dict[str, Any] | None:
+        if self._download_service is None:
+            self._download_service = create_online_download_service(
+                config_manager=self._create_config_adapter(self._context),
+                credential_provider=self._client,
+                online_music_service=None,
+            )
+        if target_dir and hasattr(self._download_service, "set_download_dir"):
+            self._download_service.set_download_dir(target_dir)
+        local_path = self._download_service.download(
+            track_id,
+            quality=quality,
+            progress_callback=progress_callback,
+            force=force,
+        )
+        if not local_path:
+            return None
+        actual_quality = self._download_service.pop_last_download_quality(track_id)
+        return {
+            "local_path": local_path,
+            "quality": actual_quality or quality,
+        }
+
+    def get_download_qualities(self, track_id: str) -> list[dict[str, str]]:
+        del track_id
+        options: list[dict[str, str]] = []
+        for quality in get_selectable_qualities():
+            label_key = get_quality_label_key(quality)
+            label = t(label_key, quality)
+            options.append({"value": quality, "label": label})
+        return options
+
+    def redownload_track(
+        self,
+        track_id: str,
+        quality: str,
+        target_dir: str | None = None,
+        progress_callback=None,
+    ) -> dict[str, Any] | None:
+        return self.download_track(
+            track_id=track_id,
+            quality=quality,
+            target_dir=target_dir,
+            progress_callback=progress_callback,
+            force=True,
+        )

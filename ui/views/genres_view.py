@@ -249,7 +249,7 @@ class GenreDelegate(QStyledItemDelegate):
         request_url = url
         request_headers = None
 
-        # Legacy QQ URLs in database should use y.gtimg.cn for stable image access.
+        # Legacy provider URLs in database should use y.gtimg.cn for stable image access.
         if url.startswith("https://y.qq.com/music/photo_new/"):
             request_url = url.replace("https://y.qq.com/music/photo_new/", "https://y.gtimg.cn/music/photo_new/", 1)
             request_headers = {"Referer": "https://y.qq.com/"}

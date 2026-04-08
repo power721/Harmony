@@ -59,24 +59,29 @@ class GenreSearchStrategy(CoverSearchStrategy):
 
     def needs_lazy_fetch(self, result: dict) -> bool:
         return (
-            result.get("source") == "qqmusic"
+            bool(result.get("source"))
             and not result.get("cover_url")
             and bool(result.get("album_mid") or result.get("id"))
         )
 
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:
-        # Reuse generic QQ lazy fetch path from existing behavior by importing helper here.
+        # Reuse provider lazy fetch path from existing behavior by importing helper here.
         from infrastructure.network import HttpClient
-        from system.plugins.qqmusic_cover_helpers import get_qqmusic_cover_url
+        from system.plugins.online_cover_helpers import get_online_cover_url
 
         album_mid = result.get("album_mid")
         song_mid = result.get("id")
-        if album_mid:
-            cover_url = get_qqmusic_cover_url(album_mid=album_mid, size=500)
-        elif song_mid:
-            cover_url = get_qqmusic_cover_url(mid=song_mid, size=500)
-        else:
+        provider_id = result.get("source")
+        if not (album_mid or song_mid):
             raise ValueError("No album_mid or song_mid for lazy fetch")
+        cover_url = get_online_cover_url(
+            provider_id=provider_id,
+            track_id=song_mid,
+            album_id=album_mid,
+            size=500,
+        )
+        if not cover_url:
+            raise ValueError("No cover URL returned by provider")
 
         http_client = HttpClient()
         cover_data = http_client.get_content(cover_url, timeout=10)

@@ -171,16 +171,13 @@ class HistoryItemDelegate(QStyledItemDelegate):
         # Source indicator + Played time (relative)
         from domain.track import TrackSource
         source_str = track.source.value if track.source else "Local"
-        try:
-            source = TrackSource(source_str) if source_str else TrackSource.LOCAL
-        except ValueError:
-            source = TrackSource.LOCAL
+        source = TrackSource.from_value(source_str)
 
         source_text = ""
         if source == TrackSource.LOCAL:
             source_text = t("source_local")
-        elif source == TrackSource.QQ:
-            source_text = t("source_qq")
+        elif source == TrackSource.ONLINE:
+            source_text = t("online_track")
         elif source == TrackSource.QUARK:
             source_text = t("source_quark")
         elif source == TrackSource.BAIDU:

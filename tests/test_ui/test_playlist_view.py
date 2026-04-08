@@ -53,7 +53,14 @@ def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
     playlist = Playlist(id=1, name="My Playlist")
     tracks = [
         Track(id=1, path="/music/1.mp3", title="One", source=TrackSource.LOCAL),
-        Track(id=2, path="/music/2.mp3", title="Two", source=TrackSource.QQ),
+        Track(
+            id=2,
+            path="online://qqmusic/track/2",
+            title="Two",
+            source=TrackSource.ONLINE,
+            cloud_file_id="2",
+            online_provider_id="qqmusic",
+        ),
     ]
 
     playlist_service.get_all_playlists.return_value = [playlist]

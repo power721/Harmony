@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
+from domain.track import TrackSource
 from system.i18n import t
 
 
@@ -23,7 +24,22 @@ class LocalTrackContextMenu(QObject):
     open_file_location = Signal(object)
     remove_from_library = Signal(list)
     delete_file = Signal(list)
-    redownload = Signal(object)  # Track (QQ Music re-download)
+    redownload = Signal(object)  # Track (online re-download)
+
+    @staticmethod
+    def _is_online_track(track) -> bool:
+        if track is None:
+            return False
+        source = getattr(track, "source", None)
+        if isinstance(source, TrackSource):
+            is_online = source == TrackSource.ONLINE
+        else:
+            is_online = TrackSource.from_value(str(source or "")) == TrackSource.ONLINE
+        return (
+            is_online
+            and bool(getattr(track, "cloud_file_id", None))
+            and bool(getattr(track, "online_provider_id", None))
+        )
 
     def build_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
         """Build and return the context menu (without showing)."""
@@ -66,10 +82,9 @@ class LocalTrackContextMenu(QObject):
             a = menu.addAction(t("download_cover_manual"))
             a.triggered.connect(lambda: self.download_cover.emit(tracks[0]))
 
-            # Re-download for QQ Music
-            # if tracks[0].source == TrackSource.QQ:
-            #     a = menu.addAction(t("redownload"))
-            #     a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
+            if self._is_online_track(tracks[0]):
+                a = menu.addAction(t("redownload"))
+                a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
 
         a = menu.addAction(t("organize_files"))
         a.triggered.connect(lambda: self.organize_files.emit(tracks))

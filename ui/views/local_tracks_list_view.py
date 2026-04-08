@@ -71,7 +71,7 @@ def _resolve_local_cover_path(track: Track) -> str | None:
 
     source = track.source
     cloud_file_id = track.cloud_file_id
-    is_online = source == TrackSource.QQ
+    is_online = source == TrackSource.ONLINE
 
     if is_online and cloud_file_id:
         try:
@@ -83,6 +83,7 @@ def _resolve_local_cover_path(track: Track) -> str | None:
                     album_mid=None,
                     artist=track.artist,
                     title=track.title,
+                    provider_id=track.online_provider_id,
                 )
                 if cover_path:
                     return cover_path
@@ -390,16 +391,13 @@ class LocalTrackDelegate(QStyledItemDelegate):
         # Source indicator (if enabled)
         if self._show_source:
             source_str = track.source.value if track.source else "Local"
-            try:
-                source = TrackSource(source_str) if source_str else TrackSource.LOCAL
-            except ValueError:
-                source = TrackSource.LOCAL
+            source = TrackSource.from_value(source_str)
 
             source_text = ""
             if source == TrackSource.LOCAL:
                 source_text = t("source_local")
-            elif source == TrackSource.QQ:
-                source_text = t("source_qq")
+            elif source == TrackSource.ONLINE:
+                source_text = t("online_track")
             elif source == TrackSource.QUARK:
                 source_text = t("source_quark")
             elif source == TrackSource.BAIDU:

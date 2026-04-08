@@ -2,7 +2,10 @@
 Bootstrap - Dependency injection container.
 """
 
+import importlib
 import logging
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -34,13 +37,88 @@ from system.plugins.manager import PluginManager
 from system.plugins.state_store import PluginStateStore
 
 if TYPE_CHECKING:
-    from services.online import OnlineDownloadService, OnlineMusicService
-    from services.online.cache_cleaner_service import CacheCleanerService
+    from services.download.online_download_gateway import OnlineDownloadGateway
+    from services.download.cache_cleaner_service import CacheCleanerService
     from services.playback.sleep_timer_service import SleepTimerService
     from system.mpris import MPRISController
     from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
+
+
+def _can_import_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
+    try:
+        import dbus
+        import dbus.mainloop.glib
+        import dbus.service
+        from gi.repository import GLib
+
+        _ = (dbus.mainloop.glib, dbus.service, GLib)
+        return True, None
+    except ImportError as exc:
+        return False, str(exc)
+
+
+def _discover_linux_python_module_roots() -> list[str]:
+    python_bin = Path("/usr/bin/python3")
+    if not python_bin.exists():
+        return []
+
+    try:
+        result = subprocess.run(
+            [
+                str(python_bin),
+                "-c",
+                (
+                    "import importlib, os\n"
+                    "roots = []\n"
+                    "for name in ('dbus', 'gi'):\n"
+                    "    try:\n"
+                    "        module = importlib.import_module(name)\n"
+                    "    except Exception:\n"
+                    "        continue\n"
+                    "    path = getattr(module, '__file__', None)\n"
+                    "    if not path:\n"
+                    "        continue\n"
+                    "    root = os.path.dirname(os.path.dirname(path))\n"
+                    "    if root not in roots:\n"
+                    "        roots.append(root)\n"
+                    "print('\\n'.join(roots))\n"
+                ),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    roots = []
+    for line in result.stdout.splitlines():
+        root = line.strip()
+        if root and root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _ensure_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
+    if sys.platform != "linux":
+        return True, None
+
+    ready, reason = _can_import_linux_mpris_runtime()
+    if ready:
+        return True, None
+
+    added = False
+    for root in reversed(_discover_linux_python_module_roots()):
+        if root and root not in sys.path:
+            sys.path.insert(0, root)
+            added = True
+
+    if added:
+        importlib.invalidate_caches()
+
+    return _can_import_linux_mpris_runtime()
 
 
 class Bootstrap:
@@ -88,13 +166,13 @@ class Bootstrap:
         self._cloud_file_service: Optional[CloudFileService] = None
         self._cover_service: Optional[CoverService] = None
         self._file_org_service: Optional["FileOrganizationService"] = None
-        self._online_music_service: Optional["OnlineMusicService"] = None
-        self._online_download_service: Optional["OnlineDownloadService"] = None
+        self._online_download_service: Optional["OnlineDownloadGateway"] = None
 
         # Services
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
         self._sleep_timer_service: Optional["SleepTimerService"] = None
         self._mpris_controller: Optional["MPRISController"] = None
+        self._mpris_disabled_reason: Optional[str] = None
         self._plugin_manager: Optional[PluginManager] = None
         self._plugins_loaded = False
 
@@ -364,34 +442,22 @@ class Bootstrap:
             logger.info("[Bootstrap] Plugin loading finished")
         return self._plugin_manager
 
-    def refresh_online_music_service(self) -> "OnlineMusicService":
-        """Force refresh of online music service with current credentials."""
-        self._online_music_service = None
+    def refresh_online_download_service(self) -> "OnlineDownloadGateway":
+        """Force refresh of host online download gateway."""
         self._online_download_service = None
-        return self.online_music_service
+        return self.online_download_service
 
     # ===== Online Music =====
 
     @property
-    def online_music_service(self) -> "OnlineMusicService":
-        """Get online music service."""
-        if self._online_music_service is None:
-            from services.online import OnlineMusicService
-            self._online_music_service = OnlineMusicService(
-                config_manager=self.config,
-                credential_provider=None
-            )
-        return self._online_music_service
-
-    @property
-    def online_download_service(self) -> "OnlineDownloadService":
-        """Get online download service."""
+    def online_download_service(self) -> "OnlineDownloadGateway":
+        """Get host online download gateway."""
         if self._online_download_service is None:
-            from services.online import OnlineDownloadService
-            self._online_download_service = OnlineDownloadService(
+            from services.download.online_download_gateway import OnlineDownloadGateway
+            self._online_download_service = OnlineDownloadGateway(
                 config_manager=self.config,
-                credential_provider=None,
-                online_music_service=self.online_music_service
+                plugin_manager=lambda: self._plugin_manager,
+                event_bus=self.event_bus,
             )
         return self._online_download_service
 
@@ -399,7 +465,7 @@ class Bootstrap:
     def cache_cleaner_service(self) -> "CacheCleanerService":
         """Get cache cleaner service."""
         if self._cache_cleaner_service is None:
-            from services.online.cache_cleaner_service import CacheCleanerService
+            from services.download.cache_cleaner_service import CacheCleanerService
             self._cache_cleaner_service = CacheCleanerService(
                 config_manager=self.config,
                 download_service=self.online_download_service,
@@ -423,18 +489,18 @@ class Bootstrap:
     def mpris_controller(self) -> "MPRISController":
         """Get MPRIS D-Bus controller (Linux only)."""
         if self._mpris_controller is None:
-            import sys
             if sys.platform == "linux":
-                ready = False
-                try:
-                    import dbus
-                    import dbus.mainloop.glib
-                    import dbus.service
-                    from gi.repository import GLib
-                    _ = (dbus.mainloop.glib, dbus.service, GLib)
-                    ready = True
-                except ImportError:
-                    pass
+                if self._mpris_disabled_reason is not None:
+                    return None
+                ready, reason = _ensure_linux_mpris_runtime()
+                if not ready:
+                    self._mpris_disabled_reason = reason or "unknown import error"
+                    logger.warning(
+                        "MPRIS disabled: missing Linux D-Bus runtime (%s). "
+                        "Install the optional 'linux' dependencies and ensure system "
+                        "PyGObject bindings are available to the application.",
+                        self._mpris_disabled_reason,
+                    )
 
                 if ready:
                     from system.mpris import MPRISController

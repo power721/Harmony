@@ -2,7 +2,7 @@
 Source providers for cover art and lyrics search.
 
 This module provides strategy pattern implementations for multiple
-online sources (NetEase, QQ Music, iTunes, etc.).
+online sources (NetEase, plugin providers, iTunes, etc.).
 """
 
 from .base import CoverSource, LyricsSource, ArtistCoverSource

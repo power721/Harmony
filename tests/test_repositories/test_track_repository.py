@@ -33,6 +33,7 @@ def temp_db():
             duration REAL,
             cover_path TEXT,
             cloud_file_id TEXT,
+            online_provider_id TEXT,
             source TEXT DEFAULT 'Local',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -239,13 +240,14 @@ class TestSqliteTrackRepository:
         """Track listing should support filtering by source in SQL."""
         track_repo.add(Track(path="/music/local.mp3", title="Local", source=TrackSource.LOCAL))
         track_repo.add(Track(
-            path="qqmusic://song/abc",
+            path="online://qqmusic/track/abc",
             title="Online",
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="abc",
         ))
 
-        tracks = track_repo.get_all(source=TrackSource.QQ)
+        tracks = track_repo.get_all(source=TrackSource.ONLINE)
 
         assert len(tracks) == 1
         assert tracks[0].title == "Online"
@@ -364,17 +366,19 @@ class TestSqliteTrackRepository:
         tracks = [
             Track(path="/music/local-song.mp3", title="Song Alpha", artist="Local Artist", source=TrackSource.LOCAL),
             Track(
-                path="qqmusic://song/1",
+                path="online://qqmusic/track/1",
                 title="Song Beta",
                 artist="QQ Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song-1",
             ),
             Track(
-                path="qqmusic://song/2",
+                path="online://qqmusic/track/2",
                 title="Song Gamma",
                 artist="QQ Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song-2",
             ),
         ]
@@ -390,7 +394,7 @@ class TestSqliteTrackRepository:
         conn.commit()
         conn.close()
 
-        results = track_repo.search("Song", limit=1, offset=1, source=TrackSource.QQ)
+        results = track_repo.search("Song", limit=1, offset=1, source=TrackSource.ONLINE)
 
         assert len(results) == 1
         assert results[0].title == "Song Beta"

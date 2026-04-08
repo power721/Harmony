@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-class QQMusicLegacyConfigAdapter:
+class QQMusicConfigAdapter:
     def __init__(self, settings) -> None:
         self._settings = settings
 

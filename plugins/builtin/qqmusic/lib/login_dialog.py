@@ -43,9 +43,10 @@ class QRLoginThread(QThread):
     login_timeout = Signal()  # QR code expired
     status_update = Signal(str)  # status message
 
-    def __init__(self, login_type: str = 'qq'):
+    def __init__(self, login_type: str = 'qq', http_client=None):
         super().__init__()
         self.login_type = login_type
+        self._http_client = http_client
         self._running = True
 
     def stop(self):
@@ -59,7 +60,7 @@ class QRLoginThread(QThread):
             is_wechat = self.login_type == 'wx'
             logger.info(f"Starting QR login with type: {self.login_type} (is_wechat: {is_wechat})")
 
-            client = QQMusicQRLogin()
+            client = QQMusicQRLogin(http_client=self._http_client)
 
             # Get QR code
             app_name = t("qqmusic_wx_login").replace("登录", "").strip() if is_wechat else "QQ"
@@ -458,7 +459,7 @@ class QQMusicLoginDialog(QDialog):
         self._status_label.setText(t("qqmusic_fetching_qr"))
 
         # Create new thread
-        thread = QRLoginThread(self._login_type)
+        thread = QRLoginThread(self._login_type, http_client=self._context.http)
         thread.qr_code_ready.connect(self._on_qr_code_ready)
         thread.login_success.connect(self._on_login_success)
         thread.login_failed.connect(self._on_login_failed)
@@ -559,8 +560,8 @@ class QQMusicLoginDialog(QDialog):
             nick = credential.get("nick") or credential.get("nickname") or ""
             if not nick:
                 try:
-                    from .legacy.qqmusic_service import QQMusicService
-                    service = QQMusicService(credential)
+                    from .qqmusic_service import QQMusicService
+                    service = QQMusicService(credential, http_client=self._context.http)
                     verify_result = service.client.verify_login()
                     if isinstance(verify_result, dict) and verify_result.get("valid"):
                         nick = str(verify_result.get("nick", "") or "")

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from infrastructure.audio import PlayerEngine
     from system.config import ConfigManager
     from services.metadata import CoverService
-    from services.online import OnlineDownloadService
+    from services.download.online_download_gateway import OnlineDownloadGateway
     from repositories.track_repository import SqliteTrackRepository
     from repositories.favorite_repository import SqliteFavoriteRepository
     from repositories.cloud_repository import SqliteCloudRepository
@@ -85,7 +85,7 @@ class LocalTrackHandler:
         for track in tracks:
             if not track or not track.id or track.id <= 0:
                 continue
-            is_online = not track.path or track.source == TrackSource.QQ
+            is_online = not track.path or track.is_online
             if is_online or Path(track.path).exists():
                 items.append(PlaylistItem.from_track(track))
         return items
@@ -94,7 +94,7 @@ class LocalTrackHandler:
         """
         Play a local track by ID.
 
-        Handles both local files and online tracks (QQ Music).
+        Handles both local files and online tracks.
         Online tracks (empty path) will be downloaded before playback.
 
         Args:
@@ -106,7 +106,7 @@ class LocalTrackHandler:
             return
 
         # Check if this is an online track (empty path)
-        is_online_track = not track.path or track.source == TrackSource.QQ
+        is_online_track = not track.path or track.is_online
 
         # For local tracks with path, verify file exists
         if not is_online_track and not Path(track.path).exists():
@@ -126,7 +126,7 @@ class LocalTrackHandler:
         for t in tracks:
             if t.id and t.id > 0:
                 # Include online tracks (empty path) and existing local files
-                t_is_online = not t.path or t.source == TrackSource.QQ
+                t_is_online = not t.path or t.is_online
                 if t_is_online or Path(t.path).exists():
                     item = PlaylistItem.from_track(t)
                     if t.id == track_id:
@@ -243,7 +243,7 @@ class LocalTrackHandler:
         for track in tracks:
             if track.id:
                 # Include online tracks (empty path) and existing local files
-                is_online = not track.path or track.source == TrackSource.QQ
+                is_online = not track.path or track.is_online
                 if is_online or Path(track.path).exists():
                     items.append(PlaylistItem.from_track(track))
 
@@ -458,12 +458,12 @@ class CloudTrackHandler:
         Args:
             cloud_file_id: Cloud file ID
             local_path: Local path of downloaded file
-            online_handler: Optional online handler to check for QQ Music tracks
+            online_handler: Optional online handler to check for online tracks
         """
-        # Skip if this is an online track (QQ Music)
+        # Skip if this is an online track
         if online_handler:
             current_item = self._engine.current_playlist_item
-            if current_item and current_item.source == TrackSource.QQ:
+            if current_item and current_item.is_online:
                 logger.debug("[CloudTrackHandler] Skipping for online track")
                 return
 
@@ -612,7 +612,7 @@ class CloudTrackHandler:
                 if current_item and current_item.cloud_file_id == file_id:
                     source = current_item.source
                 else:
-                    source = TrackSource.QQ
+                    source = TrackSource.ONLINE
 
         # Extract metadata from downloaded file
         metadata = MetadataService.extract_metadata(local_path)
@@ -732,7 +732,7 @@ class CloudTrackHandler:
 
 class OnlineTrackHandler(QObject):
     """
-    Handles online track (QQ Music) playback operations.
+    Handles plugin-provided online track playback operations.
 
     This class encapsulates all logic for playing tracks from
     online music services.
@@ -744,7 +744,7 @@ class OnlineTrackHandler(QObject):
         track_repo: "SqliteTrackRepository",
         config_manager: "ConfigManager",
         cover_service: Optional["CoverService"],
-        online_download_service: Optional["OnlineDownloadService"],
+        online_download_service: Optional["OnlineDownloadGateway"],
         get_cloud_account_callback,
         save_queue_callback,
     ):
@@ -919,8 +919,14 @@ class OnlineTrackHandler(QObject):
         if not local_path or not Path(local_path).exists():
             return None
 
+        provider_id = None
+        for item in self._engine.playlist_items:
+            if item.cloud_file_id == song_mid and item.is_online:
+                provider_id = item.online_provider_id
+                break
+
         # Check if track already exists by cloud_file_id (song_mid)
-        existing = self._track_repo.get_by_cloud_file_id(song_mid)
+        existing = self._track_repo.get_by_cloud_file_id(song_mid, provider_id=provider_id)
         if existing:
             self._track_repo.update_path(existing.id, local_path)
             logger.info(f"[OnlineTrackHandler] Updated track {existing.id} with local path")
@@ -928,7 +934,12 @@ class OnlineTrackHandler(QObject):
 
         existing_by_path = self._track_repo.get_by_path(local_path)
         if existing_by_path:
-            self._update_track_fields(existing_by_path.id, cloud_file_id=song_mid)
+            self._update_track_fields(
+                existing_by_path.id,
+                cloud_file_id=song_mid,
+                online_provider_id=provider_id,
+                source=TrackSource.ONLINE,
+            )
             return existing_by_path.id
 
         # Extract metadata
@@ -938,16 +949,16 @@ class OnlineTrackHandler(QObject):
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0)
 
-        # Fetch cover from QQ Music API directly
+        # Fetch cover from online provider API directly
         cover_path = None
         if self._cover_service:
             try:
-                # Use get_online_cover for QQ Music tracks instead of searching
                 cover_path = self._cover_service.get_online_cover(
                     song_mid=song_mid,
                     album_mid=None,  # We don't have album_mid yet
                     artist=artist,
-                    title=title
+                    title=title,
+                    provider_id=provider_id,
                 )
             except Exception as e:
                 logger.error(f"[OnlineTrackHandler] Error fetching cover: {e}")
@@ -960,7 +971,8 @@ class OnlineTrackHandler(QObject):
             duration=duration,
             cover_path=cover_path,
             cloud_file_id=song_mid,
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id=provider_id,
         )
 
         track_id = self._track_repo.add(track)

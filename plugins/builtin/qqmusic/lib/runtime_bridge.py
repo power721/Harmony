@@ -52,7 +52,10 @@ def show_warning(parent, title: str, message: str) -> None:
 
 
 def create_online_music_service(*, config_manager=None, credential_provider=None):
-    return _require_context().runtime.create_online_music_service(
+    from .plugin_online_music_service import PluginOnlineMusicService
+
+    return PluginOnlineMusicService(
+        context=_require_context(),
         config_manager=config_manager,
         credential_provider=credential_provider,
     )
@@ -64,7 +67,10 @@ def create_online_download_service(
     credential_provider=None,
     online_music_service=None,
 ):
-    return _require_context().runtime.create_online_download_service(
+    from .plugin_online_download_service import PluginOnlineDownloadService
+
+    return PluginOnlineDownloadService(
+        context=_require_context(),
         config_manager=config_manager,
         credential_provider=credential_provider,
         online_music_service=online_music_service,
@@ -149,9 +155,9 @@ def event_bus():
 
 
 def create_qqmusic_service(credential):
-    from .legacy.qqmusic_service import QQMusicService
+    from .qqmusic_service import QQMusicService
 
-    return QQMusicService(credential)
+    return QQMusicService(credential, http_client=_require_context().http)
 
 
 def create_qqmusic_login_dialog(context=None, parent=None):

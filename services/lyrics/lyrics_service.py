@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from harmony_plugin_api.lyrics import PluginLyricsResult
-from system.plugins.qqmusic_lyrics_helpers import download_qqmusic_lyrics
+from system.plugins.online_lyrics_helpers import download_online_lyrics
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
@@ -31,7 +31,7 @@ except ImportError:
 
 # Shared HTTP client instance
 _shared_http_client = None
-_qqmusic_lyrics_singleflight: SingleFlight[str] = SingleFlight()
+_online_provider_lyrics_singleflight: SingleFlight[str] = SingleFlight()
 _online_track_lyrics_singleflight: SingleFlight[str] = SingleFlight()
 
 
@@ -160,7 +160,7 @@ class LyricsService:
 
         Args:
             song_id: Song ID
-            source: Source name ('lrclib', 'netease', 'kugou', or 'qqmusic')
+            source: Source name ('lrclib', 'netease', 'kugou', or provider id)
             accesskey: Access key for Kugou
 
         Returns:
@@ -238,49 +238,63 @@ class LyricsService:
         return None
 
     @classmethod
-    def get_lyrics_by_qqmusic_mid(cls, song_mid: str) -> str:
+    def get_lyrics_by_song_id(cls, song_id: str, provider_id: str) -> str:
         """
-        Get lyrics directly from QQ Music by song mid.
+        Get lyrics directly from an online provider by provider-side song id.
 
-        This is used for online QQ Music tracks where we already have the song_mid.
+        This is used for online tracks where provider id and song id are known.
 
         Args:
-            song_mid: QQ Music song MID
+            song_id: Provider-side song id
+            provider_id: Provider id (e.g. 'netease', 'kugou', plugin id)
 
         Returns:
             Lyrics content (QRC or LRC format) or empty string
         """
         try:
-            return _qqmusic_lyrics_singleflight.do(
-                ("qqmusic_lyrics", song_mid),
-                lambda: download_qqmusic_lyrics(song_mid),
+            normalized_provider = (provider_id or "").strip().lower()
+            if not normalized_provider:
+                return ""
+            return _online_provider_lyrics_singleflight.do(
+                ("online_provider_lyrics", normalized_provider, song_id),
+                lambda: download_online_lyrics(song_id=song_id, provider_id=normalized_provider),
             )
         except Exception as e:
-            logger.error(f"Error downloading QQ Music lyrics: {e}", exc_info=True)
+            logger.error(f"Error downloading online lyrics: {e}", exc_info=True)
             return ""
 
     @classmethod
-    def get_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
+    def get_online_track_lyrics(
+        cls,
+        song_mid: str,
+        track_path: str = "",
+        provider_id: str | None = None,
+    ) -> str:
         """
-        Load or download lyrics for an online QQ Music track once per song/path.
+        Load or download lyrics for an online track once per song/path.
 
         This wraps the local-file check, online fetch, and local save in a shared
         single-flight call so multiple windows do not repeat the same work.
         """
         return _online_track_lyrics_singleflight.do(
-            ("online_track_lyrics", song_mid, track_path or ""),
-            lambda: cls._load_or_download_online_track_lyrics(song_mid, track_path),
+            ("online_track_lyrics", provider_id or "", song_mid, track_path or ""),
+            lambda: cls._load_or_download_online_track_lyrics(song_mid, track_path, provider_id=provider_id),
         )
 
     @classmethod
-    def _load_or_download_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
-        """Internal helper for online QQ Music lyrics retrieval."""
+    def _load_or_download_online_track_lyrics(
+        cls,
+        song_mid: str,
+        track_path: str = "",
+        provider_id: str | None = None,
+    ) -> str:
+        """Internal helper for online lyrics retrieval."""
         if track_path and track_path not in (".", "", "/"):
             local_lyrics = cls._get_local_lyrics(track_path)
             if local_lyrics:
                 return local_lyrics
 
-        lyrics = cls.get_lyrics_by_qqmusic_mid(song_mid)
+        lyrics = cls.get_lyrics_by_song_id(song_mid, provider_id=provider_id)
         if lyrics and track_path and track_path not in (".", "", "/"):
             cls.save_lyrics(track_path, lyrics)
         return lyrics

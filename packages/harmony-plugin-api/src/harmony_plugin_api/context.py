@@ -112,6 +112,65 @@ class PluginServiceBridge(Protocol):
         ...
 
 
+class PluginRuntimeBridge(Protocol):
+    def get_icon(self, name, color, size: int = 16):
+        ...
+
+    def image_cache_get(self, url: str):
+        ...
+
+    def image_cache_set(self, url: str, image_data: bytes):
+        ...
+
+    def image_cache_path(self, url: str):
+        ...
+
+    def http_get_content(
+        self,
+        url: str,
+        *,
+        timeout: int,
+        headers: dict[str, str] | None = None,
+    ):
+        ...
+
+    def cover_pixmap_cache_initialize(self) -> None:
+        ...
+
+    def cover_pixmap_cache_get(self, cache_key: str):
+        ...
+
+    def cover_pixmap_cache_set(self, cache_key: str, pixmap) -> None:
+        ...
+
+    def bootstrap(self):
+        ...
+
+    def library_service(self):
+        ...
+
+    def favorites_service(self):
+        ...
+
+    def favorite_mids_from_library(self) -> set[str]:
+        ...
+
+    def remove_library_favorite_by_mid(self, mid: str) -> bool:
+        ...
+
+    def add_requests_to_favorites(self, requests):
+        ...
+
+    def add_requests_to_playlist(self, parent, requests, log_prefix: str):
+        ...
+
+    def add_track_ids_to_playlist(self, parent, track_ids, log_prefix: str) -> None:
+        ...
+
+    def event_bus(self):
+        ...
+
+
 @dataclass(frozen=True)
 class PluginContext:
     plugin_id: str
@@ -124,3 +183,4 @@ class PluginContext:
     settings: PluginSettingsBridge
     ui: PluginUiBridge
     services: PluginServiceBridge
+    runtime: PluginRuntimeBridge

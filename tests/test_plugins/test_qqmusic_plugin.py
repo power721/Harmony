@@ -2,8 +2,16 @@ from unittest.mock import Mock
 
 from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
 from plugins.builtin.qqmusic.lib.client import QQMusicPluginClient
+from plugins.builtin.qqmusic.lib.models import OnlineArtist
 from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
+from plugins.builtin.qqmusic.lib.plugin_online_music_service import PluginOnlineMusicService
 from plugins.builtin.qqmusic.lib.provider import QQMusicOnlineProvider
+from plugins.builtin.qqmusic.lib.runtime_bridge import (
+    bind_context,
+    clear_context,
+    create_online_download_service,
+    create_online_music_service,
+)
 from plugins.builtin.qqmusic.plugin_main import QQMusicPlugin
 
 
@@ -22,6 +30,37 @@ def test_qqmusic_plugin_registers_expected_capabilities():
     assert context.services.register_cover_source.call_count == 1
     assert context.services.register_artist_cover_source.call_count == 1
     assert context.services.register_online_music_provider.call_count == 1
+
+
+def test_runtime_bridge_uses_plugin_online_core_services():
+    context = Mock()
+    context.http = Mock()
+    context.settings = Mock()
+    context.runtime = Mock()
+    config = Mock()
+    config.get_online_music_download_dir.return_value = "data/online_cache"
+    bind_context(context)
+    try:
+        service = create_online_music_service(
+            config_manager=config,
+            credential_provider=None,
+        )
+        download_service = create_online_download_service(
+            config_manager=config,
+            credential_provider=None,
+            online_music_service=service,
+        )
+    finally:
+        clear_context(context)
+
+    assert service.__class__.__module__.startswith(
+        "plugins.builtin.qqmusic.lib.plugin_online_music_service"
+    )
+    assert download_service.__class__.__module__.startswith(
+        "plugins.builtin.qqmusic.lib.plugin_online_download_service"
+    )
+    context.runtime.create_online_music_service.assert_not_called()
+    context.runtime.create_online_download_service.assert_not_called()
 
 
 def test_qqmusic_provider_create_page_uses_legacy_online_music_view(monkeypatch):
@@ -91,6 +130,98 @@ def test_qqmusic_provider_create_page_passes_adapter_with_download_dir(monkeypat
     assert captured["qqmusic_service"] is None
 
 
+def test_qqmusic_provider_download_track_delegates_to_plugin_service(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "online_music_download_dir": "data/online_cache",
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    created = {}
+
+    class _DownloadService:
+        def __init__(self):
+            self.set_download_dir = Mock()
+            self.download = Mock(return_value="/tmp/song.ogg")
+            self.pop_last_download_quality = Mock(return_value="ogg_320")
+
+    download_service = _DownloadService()
+
+    def _create_service(**kwargs):
+        created.update(kwargs)
+        return download_service
+
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.create_online_download_service",
+        _create_service,
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    result = provider.download_track("song-mid", "flac", target_dir="/tmp/online-cache")
+
+    assert result == {"local_path": "/tmp/song.ogg", "quality": "ogg_320"}
+    assert created["config_manager"].get_online_music_download_dir() == "data/online_cache"
+    assert created["credential_provider"] is provider._client
+    download_service.set_download_dir.assert_called_once_with("/tmp/online-cache")
+    download_service.download.assert_called_once_with(
+        "song-mid",
+        quality="flac",
+        progress_callback=None,
+        force=False,
+    )
+    download_service.pop_last_download_quality.assert_called_once_with("song-mid")
+
+
+def test_qqmusic_provider_exposes_download_quality_options():
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: default
+    context = Mock(settings=settings)
+    context.logger = Mock()
+    provider = QQMusicOnlineProvider(context)
+
+    options = provider.get_download_qualities("song-mid")
+
+    assert options
+    assert all("value" in item and "label" in item for item in options)
+
+
+def test_qqmusic_provider_redownload_calls_download_with_force(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "online_music_download_dir": "data/online_cache",
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    class _DownloadService:
+        def __init__(self):
+            self.set_download_dir = Mock()
+            self.download = Mock(return_value="/tmp/song.flac")
+            self.pop_last_download_quality = Mock(return_value="flac")
+
+    download_service = _DownloadService()
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.create_online_download_service",
+        lambda **_kwargs: download_service,
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    result = provider.redownload_track(
+        "song-mid",
+        "flac",
+        target_dir="/tmp/online-cache",
+    )
+
+    assert result == {"local_path": "/tmp/song.flac", "quality": "flac"}
+    download_service.download.assert_called_once_with(
+        "song-mid",
+        quality="flac",
+        progress_callback=None,
+        force=True,
+    )
+
+
 def test_qqmusic_plugin_uses_private_translations_not_global(monkeypatch):
     import system.i18n as global_i18n
 
@@ -113,7 +244,7 @@ def test_qqmusic_provider_config_adapter_tracks_search_history_and_plugin_settin
     settings.get.side_effect = lambda key, default=None: store.get(key, default)
     settings.set.side_effect = lambda key, value: store.__setitem__(key, value)
 
-    adapter = QQMusicOnlineProvider._create_legacy_config_adapter(Mock(settings=settings))
+    adapter = QQMusicOnlineProvider._create_config_adapter(Mock(settings=settings))
 
     adapter.add_search_history("B")
     adapter.add_search_history("A")
@@ -130,7 +261,7 @@ def test_qqmusic_provider_config_adapter_exposes_download_dir():
         "online_music_download_dir": "data/online_cache",
     }.get(key, default)
 
-    adapter = QQMusicOnlineProvider._create_legacy_config_adapter(Mock(settings=settings))
+    adapter = QQMusicOnlineProvider._create_config_adapter(Mock(settings=settings))
 
     assert adapter.get_online_music_download_dir() == "data/online_cache"
 
@@ -321,3 +452,98 @@ def test_plugin_client_skips_private_legacy_calls_when_network_unreachable(monke
 
     service.get_home_feed.assert_not_called()
     service.get_my_fav_songs.assert_not_called()
+
+
+def test_plugin_client_search_falls_back_to_public_api_when_legacy_empty(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+
+    api = Mock()
+    api.search.return_value = {
+        "tracks": [{"mid": "api-song", "title": "API Song"}],
+        "total": 1,
+    }
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicPluginAPI",
+        Mock(return_value=api),
+    )
+
+    client = QQMusicPluginClient(context)
+    monkeypatch.setattr(client, "_can_use_legacy_network", lambda: True)
+    monkeypatch.setattr(
+        client,
+        "_search_legacy",
+        lambda keyword, search_type, page, limit: {"tracks": [], "total": 0},
+    )
+
+    result = client.search("keyword", search_type="song", limit=20, page=1)
+
+    assert result["tracks"][0]["mid"] == "api-song"
+    api.search.assert_called_once_with("keyword", search_type="song", limit=20, page=1)
+
+
+def test_plugin_online_music_service_converts_singer_payload_to_models(monkeypatch):
+    context = Mock()
+    context.settings = Mock()
+    service = PluginOnlineMusicService(context)
+    monkeypatch.setattr(
+        service,
+        "_client_adapter",
+        Mock(
+            search=Mock(
+                return_value={
+                    "artists": [
+                        {
+                            "mid": "artist-mid",
+                            "name": "Artist A",
+                            "avatar_url": "https://example.com/a.jpg",
+                            "song_count": 12,
+                        }
+                    ],
+                    "total": 1,
+                }
+            )
+        ),
+    )
+
+    result = service.search("artist", search_type="singer", page=1, page_size=30)
+
+    assert len(result.artists) == 1
+    assert isinstance(result.artists[0], OnlineArtist)
+    assert result.artists[0].mid == "artist-mid"
+    assert result.artists[0].name == "Artist A"
+
+
+def test_plugin_online_music_service_strips_em_tags_in_search_results(monkeypatch):
+    context = Mock()
+    context.settings = Mock()
+    service = PluginOnlineMusicService(context)
+    monkeypatch.setattr(
+        service,
+        "_client_adapter",
+        Mock(
+            search=Mock(
+                return_value={
+                    "tracks": [
+                        {
+                            "mid": "song-mid",
+                            "title": "<em>晴天</em>",
+                            "artist": "周<em>杰伦</em>",
+                            "album": "<em>叶惠美</em>",
+                            "duration": 269,
+                        }
+                    ],
+                    "total": 1,
+                }
+            )
+        ),
+    )
+
+    result = service.search("晴天", search_type="song", page=1, page_size=30)
+
+    assert result.tracks[0].title == "晴天"
+    assert result.tracks[0].singer_name == "周杰伦"
+    assert result.tracks[0].album_name == "叶惠美"

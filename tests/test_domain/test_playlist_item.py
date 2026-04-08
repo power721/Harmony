@@ -50,17 +50,19 @@ class TestPlaylistItem:
             path="",  # Empty path indicates online track
             title="Online Song",
             artist="Online Artist",
-            source=TrackSource.QQ,
-            cloud_file_id="song_mid_123"
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
         )
         item = PlaylistItem.from_track(track)
 
-        assert item.source == TrackSource.QQ
+        assert item.source == TrackSource.ONLINE
+        assert item.online_provider_id == "qqmusic"
         assert item.cloud_file_id == "song_mid_123"
         assert item.needs_download is True
 
     def test_from_downloaded_online_track_preserves_local_path(self, temp_dir):
-        """Downloaded QQ tracks should keep their cached local path."""
+        """Downloaded online tracks should keep provider id and cached local path."""
         cached_path = temp_dir / "song.mp3"
         cached_path.write_text("cached")
         track = Track(
@@ -68,12 +70,14 @@ class TestPlaylistItem:
             path=str(cached_path),
             title="Downloaded Song",
             artist="Online Artist",
-            source=TrackSource.QQ,
-            cloud_file_id="song_mid_123"
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
         )
         item = PlaylistItem.from_track(track)
 
-        assert item.source == TrackSource.QQ
+        assert item.source == TrackSource.ONLINE
+        assert item.online_provider_id == "qqmusic"
         assert item.cloud_file_id == "song_mid_123"
         assert item.local_path == str(cached_path)
         assert item.needs_download is False
@@ -144,13 +148,15 @@ class TestPlaylistItem:
         """Test creating PlaylistItem from dict with source field."""
         data = {
             "id": 1,
-            "source": "QQ",
+            "source": "ONLINE",
+            "online_provider_id": "qqmusic",
             "cloud_file_id": "song_mid",
             "title": "Online Song",
         }
         item = PlaylistItem.from_dict(data)
 
-        assert item.source == TrackSource.QQ
+        assert item.source == TrackSource.ONLINE
+        assert item.online_provider_id == "qqmusic"
 
     def test_to_dict(self):
         """Test converting PlaylistItem to dict."""
@@ -177,8 +183,8 @@ class TestPlaylistItem:
         cloud_item = PlaylistItem(source=TrackSource.QUARK)
         assert cloud_item.is_cloud is True
 
-        qq_item = PlaylistItem(source=TrackSource.QQ)
-        assert qq_item.is_cloud is True
+        online_item = PlaylistItem(source=TrackSource.ONLINE, online_provider_id="qqmusic")
+        assert online_item.is_cloud is True
 
     def test_is_local_property(self):
         """Test is_local property."""
@@ -278,7 +284,8 @@ class TestPlaylistItem:
     def test_to_play_queue_item_online(self):
         """Test converting online PlaylistItem to PlayQueueItem."""
         item = PlaylistItem(
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="song_mid_123",
             local_path="/cache/online/song.mp3",
             title="Online Song",
@@ -288,7 +295,8 @@ class TestPlaylistItem:
         )
         queue_item = item.to_play_queue_item(position=0)
 
-        assert queue_item.source == "QQ"
+        assert queue_item.source == "ONLINE"
+        assert queue_item.online_provider_id == "qqmusic"
         assert queue_item.cloud_file_id == "song_mid_123"
         assert queue_item.title == "Online Song"
         assert queue_item.artist == "Online Artist"
@@ -335,7 +343,8 @@ class TestPlaylistItem:
 
         queue_item = PlayQueueItem(
             position=1,
-            source="QQ",
+            source="ONLINE",
+            online_provider_id="qqmusic",
             cloud_file_id="song_mid_123",
             local_path="/cache/online/song.mp3",
             title="Online Song",
@@ -345,7 +354,8 @@ class TestPlaylistItem:
         )
         playlist_item = PlaylistItem.from_play_queue_item(queue_item)
 
-        assert playlist_item.source == TrackSource.QQ
+        assert playlist_item.source == TrackSource.ONLINE
+        assert playlist_item.online_provider_id == "qqmusic"
         assert playlist_item.cloud_file_id == "song_mid_123"
         assert playlist_item.title == "Online Song"
         assert playlist_item.artist == "Online Artist"

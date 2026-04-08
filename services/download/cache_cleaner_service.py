@@ -14,7 +14,7 @@ from PySide6.QtCore import QObject, QTimer
 if TYPE_CHECKING:
     from system.config import ConfigManager
     from system.event_bus import EventBus
-    from services.online.download_service import OnlineDownloadService
+    from services.download.online_download_gateway import OnlineDownloadGateway
     from services.playback.queue_service import QueueService
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class CacheCleanerService(QObject):
     def __init__(
         self,
         config_manager: "ConfigManager",
-        download_service: "OnlineDownloadService",
+        download_service: "OnlineDownloadGateway",
         event_bus: "EventBus",
         queue_service: Optional["QueueService"] = None
     ):
@@ -44,7 +44,7 @@ class CacheCleanerService(QObject):
 
         Args:
             config_manager: ConfigManager instance
-            download_service: OnlineDownloadService instance
+            download_service: host online download gateway instance
             event_bus: EventBus instance
             queue_service: QueueService instance (optional, for queue protection)
         """

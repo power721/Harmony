@@ -291,13 +291,14 @@ class SqliteTrackRepository(BaseRepository):
             known_artists = {row[0] for row in cursor.fetchall() if row[0]}
 
             cursor.execute("""
-                           INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source, online_provider_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            """, (
                                track.path, track.title, track.artist, track.album,
                                track.genre, track.duration, track.cover_path,
                                track.cloud_file_id,
-                               track.source.value if hasattr(track, 'source') and track.source else 'Local'
+                               track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                               track.online_provider_id,
                            ))
             track_id = cursor.lastrowid
 
@@ -347,13 +348,14 @@ class SqliteTrackRepository(BaseRepository):
             for track in tracks:
                 try:
                     cursor.execute("""
-                        INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path, cloud_file_id, source, online_provider_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         track.path, track.title, track.artist, track.album,
                         track.genre, track.duration, track.cover_path,
                         track.cloud_file_id,
-                        track.source.value if hasattr(track, 'source') and track.source else 'Local'
+                        track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                        track.online_provider_id,
                     ))
                     track_id = cursor.lastrowid
 
@@ -402,13 +404,15 @@ class SqliteTrackRepository(BaseRepository):
                            duration      = ?,
                            cover_path    = ?,
                            cloud_file_id = ?,
-                           source        = ?
+                           source        = ?,
+                           online_provider_id = ?
                        WHERE id = ?
                        """, (
                            track.path, track.title, track.artist, track.album,
                            track.genre, track.duration, track.cover_path,
                            track.cloud_file_id,
                            track.source.value if hasattr(track, 'source') and track.source else 'Local',
+                           track.online_provider_id,
                            track.id
                        ))
         conn.commit()
@@ -446,11 +450,21 @@ class SqliteTrackRepository(BaseRepository):
 
         return deleted_count
 
-    def get_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
+    def get_by_cloud_file_id(
+        self,
+        cloud_file_id: str,
+        provider_id: str | None = None,
+    ) -> Optional[Track]:
         """Get a track by cloud file ID."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
+        if provider_id:
+            cursor.execute(
+                "SELECT * FROM tracks WHERE cloud_file_id = ? AND online_provider_id = ?",
+                (cloud_file_id, provider_id),
+            )
+        else:
+            cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
         row = cursor.fetchone()
         if row:
             return self._row_to_track(row)
@@ -461,10 +475,7 @@ class SqliteTrackRepository(BaseRepository):
         from domain.track import TrackSource
         # Get source value from row, default to Local if not present
         source_value = row["source"] if "source" in row.keys() else "Local"
-        try:
-            source = TrackSource(source_value) if source_value else TrackSource.LOCAL
-        except ValueError:
-            source = TrackSource.LOCAL  # Fallback for invalid values
+        source = TrackSource.from_value(source_value)
 
         return Track(
             id=row["id"],
@@ -477,6 +488,7 @@ class SqliteTrackRepository(BaseRepository):
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],
             source=source,
+            online_provider_id=row["online_provider_id"] if "online_provider_id" in row.keys() else None,
             file_size=row["file_size"] if "file_size" in row.keys() else None,
             file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
         )

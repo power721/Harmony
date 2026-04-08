@@ -14,30 +14,6 @@ def event_bus():
     return EventBus.instance()
 
 
-def create_online_music_service(*, config_manager=None, credential_provider=None):
-    from services.online import OnlineMusicService
-
-    return OnlineMusicService(
-        config_manager=config_manager,
-        credential_provider=credential_provider,
-    )
-
-
-def create_online_download_service(
-    *,
-    config_manager=None,
-    credential_provider=None,
-    online_music_service=None,
-):
-    from services.online import OnlineDownloadService
-
-    return OnlineDownloadService(
-        config_manager=config_manager,
-        credential_provider=credential_provider,
-        online_music_service=online_music_service,
-    )
-
-
 def get_host_icon(name, color, size: int = 16):
     from ui.icons import get_icon as _get_icon
 
@@ -143,6 +119,7 @@ def add_requests_to_favorites(requests: list[Any]) -> list[int]:
     track_ids: list[int] = []
     for request in requests:
         track_id = instance.library_service.add_online_track(
+            request.provider_id,
             request.track_id,
             request.metadata.get("title", request.title),
             request.metadata.get("artist", ""),
@@ -166,6 +143,7 @@ def add_requests_to_playlist(parent, requests: list[Any], log_prefix: str) -> li
     track_ids: list[int] = []
     for request in requests:
         track_id = instance.library_service.add_online_track(
+            request.provider_id,
             request.track_id,
             request.metadata.get("title", request.title),
             request.metadata.get("artist", ""),

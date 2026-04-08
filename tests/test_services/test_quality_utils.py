@@ -1,4 +1,4 @@
-from services.online.quality import get_quality_label_key, parse_quality
+from plugins.builtin.qqmusic.lib.common import get_quality_label_key, parse_quality
 
 
 def test_parse_quality_and_label_lookup_work_in_shared_module():

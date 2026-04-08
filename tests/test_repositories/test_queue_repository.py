@@ -30,6 +30,7 @@ def temp_db():
             source TEXT NOT NULL,
             track_id INTEGER,
             cloud_file_id TEXT,
+            online_provider_id TEXT,
             cloud_account_id INTEGER,
             local_path TEXT,
             title TEXT,
@@ -163,12 +164,13 @@ class TestSqliteQueueRepository:
         assert loaded[0].title == "Cloud Song"
 
     def test_save_online_items(self, queue_repo):
-        """Test saving online (QQ Music) items."""
+        """Test saving online items."""
         items = [
             PlayQueueItem(
                 position=0,
-                source="QQ",
+                source="ONLINE",
                 cloud_file_id="song_mid_123",
+                online_provider_id="qqmusic",
                 title="Online Song",
                 artist="Online Artist",
                 duration=200.0
@@ -180,7 +182,7 @@ class TestSqliteQueueRepository:
 
         loaded = queue_repo.load()
         assert len(loaded) == 1
-        assert loaded[0].source == "QQ"
+        assert loaded[0].source == "ONLINE"
         assert loaded[0].cloud_file_id == "song_mid_123"
 
     def test_row_to_item_conversion(self, queue_repo):
@@ -273,8 +275,8 @@ class TestQueueRepositoryBoundaryCases:
                 cloud_account_id=1, title="Quark Song", duration=200.0
             ),
             PlayQueueItem(
-                position=2, source="QQ", cloud_file_id="qq1",
-                title="QQ Song", duration=150.0
+                position=2, source="ONLINE", cloud_file_id="online1",
+                online_provider_id="qqmusic", title="Online Song", duration=150.0
             ),
             PlayQueueItem(
                 position=3, source="BAIDU", cloud_file_id="b1",
@@ -289,7 +291,7 @@ class TestQueueRepositoryBoundaryCases:
         assert len(loaded) == 4
         assert loaded[0].source == "Local"
         assert loaded[1].source == "QUARK"
-        assert loaded[2].source == "QQ"
+        assert loaded[2].source == "ONLINE"
         assert loaded[3].source == "BAIDU"
 
     def test_save_large_queue(self, queue_repo):
@@ -382,7 +384,7 @@ class TestQueueRepositoryBoundaryCases:
         assert loaded[0].title == "Old Local Song"
 
     def test_load_old_schema_source_type_online(self, temp_db):
-        """Test loading from old schema with source_type='online' maps to 'QQ'."""
+        """Test loading from old schema with source_type='online' maps to 'ONLINE'."""
         conn = sqlite3.connect(temp_db)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -407,14 +409,14 @@ class TestQueueRepositoryBoundaryCases:
         cursor.execute("""
             INSERT INTO play_queue (position, source_type, cloud_file_id, title)
             VALUES (?, ?, ?, ?)
-        """, (0, "online", "mid_123", "QQ Song"))
+        """, (0, "online", "mid_123", "Online Song"))
         conn.commit()
         conn.close()
 
         repo = SqliteQueueRepository(temp_db)
         loaded = repo.load()
         assert len(loaded) == 1
-        assert loaded[0].source == "QQ"
+        assert loaded[0].source == "ONLINE"
         assert loaded[0].cloud_file_id == "mid_123"
 
     def test_load_old_schema_source_type_cloud(self, temp_db):

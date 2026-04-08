@@ -15,7 +15,7 @@ from system.i18n import t
 
 if TYPE_CHECKING:
     from services.playback import PlaybackService
-    from services.online import OnlineDownloadService
+    from services.download.online_download_gateway import OnlineDownloadGateway
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +47,33 @@ class OnlineMusicHandler(QObject):
         super().__init__(parent)
         self._playback = playback_service
         self._status_callback = status_callback
-        self._download_service: "OnlineDownloadService" = None
+        self._download_service: "OnlineDownloadGateway" = None
 
-    def set_download_service(self, service: "OnlineDownloadService"):
+    def set_download_service(self, service: "OnlineDownloadGateway"):
         """Set the download service for cache checking."""
         self._download_service = service
+
+    @staticmethod
+    def _resolve_provider_id(provider_id: str | None, metadata: dict | None) -> str:
+        """Resolve online provider id from explicit argument or metadata."""
+        if provider_id:
+            return provider_id
+        if metadata and metadata.get("provider_id"):
+            return str(metadata.get("provider_id"))
+        return "online"
 
     def _show_status(self, message: str):
         """Show status message."""
         if self._status_callback:
             self._status_callback(message)
 
-    def play_online_track(self, song_mid: str, local_path: str, metadata: dict = None):
+    def play_online_track(
+        self,
+        song_mid: str,
+        local_path: str,
+        metadata: dict = None,
+        provider_id: str | None = None,
+    ):
         """
         Play a downloaded online track.
 
@@ -76,10 +91,12 @@ class OnlineMusicHandler(QObject):
         album = metadata.get("album", "") if metadata else ""
         duration = metadata.get("duration", 0.0) if metadata else 0.0
         cover_url = metadata.get("cover_url", "") if metadata else ""
+        resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
         # Create track record in database first
         from app.bootstrap import Bootstrap
         track_id = Bootstrap.instance().library_service.add_online_track(
+            provider_id=resolved_provider_id,
             song_mid=song_mid,
             title=title,
             artist=artist,
@@ -90,7 +107,8 @@ class OnlineMusicHandler(QObject):
 
         item = PlaylistItem(
             track_id=track_id,
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id=resolved_provider_id,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -103,7 +121,7 @@ class OnlineMusicHandler(QObject):
         self._playback.engine.load_playlist_items([item])
         self._playback.engine.play()
 
-    def add_to_queue(self, song_mid: str, metadata: dict):
+    def add_to_queue(self, song_mid: str, metadata: dict, provider_id: str | None = None):
         """
         Add online track to the play queue.
 
@@ -116,10 +134,12 @@ class OnlineMusicHandler(QObject):
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0.0)
         cover_url = metadata.get("cover_url", "")
+        resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
         # Create track record in database first
         from app.bootstrap import Bootstrap
         track_id = Bootstrap.instance().library_service.add_online_track(
+            provider_id=resolved_provider_id,
             song_mid=song_mid,
             title=title,
             artist=artist,
@@ -131,13 +151,14 @@ class OnlineMusicHandler(QObject):
         local_path = ""
         needs_download = True
 
-        if self._download_service and self._download_service.is_cached(song_mid):
-            local_path = self._download_service.get_cached_path(song_mid)
+        if self._download_service and self._download_service.is_cached(song_mid, provider_id=resolved_provider_id):
+            local_path = self._download_service.get_cached_path(song_mid, provider_id=resolved_provider_id)
             needs_download = False
 
         item = PlaylistItem(
             track_id=track_id,
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id=resolved_provider_id,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -152,7 +173,7 @@ class OnlineMusicHandler(QObject):
 
         self._show_status(f"✓ {t('added_to_queue')}: {title}")
 
-    def insert_to_queue(self, song_mid: str, metadata: dict):
+    def insert_to_queue(self, song_mid: str, metadata: dict, provider_id: str | None = None):
         """
         Insert online track after current playing track.
 
@@ -165,10 +186,12 @@ class OnlineMusicHandler(QObject):
         album = metadata.get("album", "")
         duration = metadata.get("duration", 0.0)
         cover_url = metadata.get("cover_url", "")
+        resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
         # Create track record in database first
         from app.bootstrap import Bootstrap
         track_id = Bootstrap.instance().library_service.add_online_track(
+            provider_id=resolved_provider_id,
             song_mid=song_mid,
             title=title,
             artist=artist,
@@ -180,13 +203,14 @@ class OnlineMusicHandler(QObject):
         local_path = ""
         needs_download = True
 
-        if self._download_service and self._download_service.is_cached(song_mid):
-            local_path = self._download_service.get_cached_path(song_mid)
+        if self._download_service and self._download_service.is_cached(song_mid, provider_id=resolved_provider_id):
+            local_path = self._download_service.get_cached_path(song_mid, provider_id=resolved_provider_id)
             needs_download = False
 
         item = PlaylistItem(
             track_id=track_id,
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id=resolved_provider_id,
             local_path=local_path,
             title=title,
             artist=artist,
@@ -203,7 +227,7 @@ class OnlineMusicHandler(QObject):
         self._playback._schedule_save_queue()
         self._show_status(f"✓ {t('insert_to_queue')}: {title}")
 
-    def add_multiple_to_queue(self, tracks_data: List[Tuple[str, dict]]):
+    def add_multiple_to_queue(self, tracks_data: List[Tuple[str, dict]], provider_id: str | None = None):
         """
         Add multiple online tracks to the queue.
 
@@ -216,10 +240,12 @@ class OnlineMusicHandler(QObject):
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
             cover_url = metadata.get("cover_url", "")
+            resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
             from app.bootstrap import Bootstrap
             track_id = Bootstrap.instance().library_service.add_online_track(
+                provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
                 artist=artist,
@@ -231,13 +257,14 @@ class OnlineMusicHandler(QObject):
             local_path = ""
             needs_download = True
 
-            if self._download_service and self._download_service.is_cached(song_mid):
-                local_path = self._download_service.get_cached_path(song_mid)
+            if self._download_service and self._download_service.is_cached(song_mid, provider_id=resolved_provider_id):
+                local_path = self._download_service.get_cached_path(song_mid, provider_id=resolved_provider_id)
                 needs_download = False
 
             item = PlaylistItem(
                 track_id=track_id,
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id=resolved_provider_id,
                 local_path=local_path,
                 title=title,
                 artist=artist,
@@ -256,7 +283,7 @@ class OnlineMusicHandler(QObject):
         msg = t("added_to_queue").replace("{count}", str(count)).replace("{s}", s)
         self._show_status(msg)
 
-    def insert_multiple_to_queue(self, tracks_data: List[Tuple[str, dict]]):
+    def insert_multiple_to_queue(self, tracks_data: List[Tuple[str, dict]], provider_id: str | None = None):
         """
         Insert multiple online tracks after current playing track.
 
@@ -272,10 +299,12 @@ class OnlineMusicHandler(QObject):
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
             cover_url = metadata.get("cover_url", "")
+            resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
             from app.bootstrap import Bootstrap
             track_id = Bootstrap.instance().library_service.add_online_track(
+                provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
                 artist=artist,
@@ -287,13 +316,14 @@ class OnlineMusicHandler(QObject):
             local_path = ""
             needs_download = True
 
-            if self._download_service and self._download_service.is_cached(song_mid):
-                local_path = self._download_service.get_cached_path(song_mid)
+            if self._download_service and self._download_service.is_cached(song_mid, provider_id=resolved_provider_id):
+                local_path = self._download_service.get_cached_path(song_mid, provider_id=resolved_provider_id)
                 needs_download = False
 
             item = PlaylistItem(
                 track_id=track_id,
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id=resolved_provider_id,
                 local_path=local_path,
                 title=title,
                 artist=artist,
@@ -310,7 +340,12 @@ class OnlineMusicHandler(QObject):
         count = len(tracks_data)
         self._show_status(f"✓ {t('insert_to_queue')}: {count}")
 
-    def play_online_tracks(self, start_index: int, tracks_data: List[Tuple[str, dict]]):
+    def play_online_tracks(
+        self,
+        start_index: int,
+        tracks_data: List[Tuple[str, dict]],
+        provider_id: str | None = None,
+    ):
         """
         Play a list of online tracks starting from a specific index.
 
@@ -326,10 +361,12 @@ class OnlineMusicHandler(QObject):
             album = metadata.get("album", "")
             duration = metadata.get("duration", 0.0)
             cover_url = metadata.get("cover_url", "")
+            resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
             from app.bootstrap import Bootstrap
             track_id = Bootstrap.instance().library_service.add_online_track(
+                provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
                 artist=artist,
@@ -341,13 +378,14 @@ class OnlineMusicHandler(QObject):
             local_path = ""
             needs_download = True
 
-            if self._download_service and self._download_service.is_cached(song_mid):
-                local_path = self._download_service.get_cached_path(song_mid)
+            if self._download_service and self._download_service.is_cached(song_mid, provider_id=resolved_provider_id):
+                local_path = self._download_service.get_cached_path(song_mid, provider_id=resolved_provider_id)
                 needs_download = False
 
             item = PlaylistItem(
                 track_id=track_id,
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id=resolved_provider_id,
                 local_path=local_path,
                 title=title,
                 artist=artist,

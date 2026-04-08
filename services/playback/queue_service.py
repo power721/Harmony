@@ -127,7 +127,10 @@ class QueueService:
             track = self._track_repo.get_by_id(item.track_id)
         # For online/cloud tracks, try to get by cloud_file_id
         elif item.is_cloud and item.cloud_file_id:
-            track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+            track = self._track_repo.get_by_cloud_file_id(
+                item.cloud_file_id,
+                provider_id=item.online_provider_id if item.is_online else None,
+            )
         # For local files without track_id, try to find by path
         elif item.local_path and not item.cloud_file_id:
             track = self._track_repo.get_by_path(item.local_path)
@@ -138,7 +141,7 @@ class QueueService:
             file_exists = local_path and Path(local_path).exists()
             needs_download = False
 
-            if item.source == TrackSource.QQ:
+            if item.is_online:
                 needs_download = not file_exists
                 if not file_exists:
                     local_path = ""
@@ -212,7 +215,7 @@ class QueueService:
                 file_exists = local_path and local_path in existing_paths
                 needs_download = False
 
-                if item.source == TrackSource.QQ:
+                if item.is_online:
                     needs_download = not file_exists
                     if not file_exists:
                         local_path = ""
