@@ -74,6 +74,7 @@ class MetadataService:
         if not file_path or file_path.strip() in ('', '.', '/'):
             return metadata
 
+        path = None
         try:
             path = Path(file_path)
             if not path.exists():
@@ -87,7 +88,7 @@ class MetadataService:
             logger.error(f"Error extracting metadata from {file_path}: {e}", exc_info=True)
 
         # Fallback to filename if no title
-        if not metadata["title"]:
+        if not metadata["title"] and path is not None:
             metadata["title"] = path.stem
 
         # Default artist if none found
