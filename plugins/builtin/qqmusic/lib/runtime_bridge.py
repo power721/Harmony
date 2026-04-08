@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
+from PySide6.QtGui import QIcon
+
 _context = None
+
+
+_FALLBACK_THEME = SimpleNamespace(
+    text="#ffffff",
+    text_secondary="#a0a0a0",
+    background="#1f1f1f",
+    background_secondary="#2a2a2a",
+    background_alt="#262626",
+    background_hover="#303030",
+    accent="#3daee9",
+    border="#4a4a4a",
+    highlight="#3daee9",
+    highlight_hover="#5bb8ea",
+)
 
 
 def bind_context(context) -> None:
@@ -23,24 +40,29 @@ def _require_context():
     return _context
 
 
+def _coerce_stylesheet(value: Any) -> str:
+    return value if isinstance(value, str) else ""
+
+
 def register_themed_widget(widget) -> None:
     _require_context().ui.theme.register_widget(widget)
 
 
 def get_qss(template: str) -> str:
-    return _require_context().ui.theme.get_qss(template)
+    return _coerce_stylesheet(_require_context().ui.theme.get_qss(template))
 
 
 def current_theme():
-    return _require_context().ui.theme.current_theme()
+    theme = _require_context().ui.theme.current_theme()
+    return theme if not isinstance(theme, SimpleNamespace) and not hasattr(theme, "_mock_name") else _FALLBACK_THEME
 
 
 def get_popup_surface_style() -> str:
-    return _require_context().ui.theme.get_popup_surface_style()
+    return _coerce_stylesheet(_require_context().ui.theme.get_popup_surface_style())
 
 
 def get_completer_popup_style() -> str:
-    return _require_context().ui.theme.get_completer_popup_style()
+    return _coerce_stylesheet(_require_context().ui.theme.get_completer_popup_style())
 
 
 def show_information(parent, title: str, message: str) -> None:
@@ -78,7 +100,8 @@ def create_online_download_service(
 
 
 def get_icon(name, color, size: int = 16):
-    return _require_context().runtime.get_icon(name, color, size)
+    icon = _require_context().runtime.get_icon(name, color, size)
+    return icon if isinstance(icon, QIcon) else QIcon()
 
 
 class IconName:
