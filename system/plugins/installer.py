@@ -4,7 +4,7 @@ import ast
 import json
 import shutil
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from harmony_plugin_api.manifest import PluginManifest
 
@@ -84,6 +84,42 @@ class PluginInstaller:
         raw = manifest_path.read_text(encoding="utf-8")
         return PluginManifest.from_dict(json.loads(raw))
 
+    def _validate_archive_entries(
+        self,
+        archive: zipfile.ZipFile,
+        extract_root: Path,
+    ) -> None:
+        root = extract_root.resolve()
+        for info in archive.infolist():
+            raw_name = str(info.filename or "")
+            if not raw_name:
+                raise PluginInstallError("Plugin archive entry name cannot be empty")
+
+            normalized = raw_name.replace("\\", "/")
+            member_path = PurePosixPath(normalized)
+            if member_path.is_absolute():
+                raise PluginInstallError(
+                    f"Plugin archive entry escapes extraction root: {raw_name}"
+                )
+
+            if any(part == ".." for part in member_path.parts):
+                raise PluginInstallError(
+                    f"Plugin archive entry escapes extraction root: {raw_name}"
+                )
+
+            if member_path.parts and member_path.parts[0].endswith(":"):
+                raise PluginInstallError(
+                    f"Plugin archive entry uses unsupported drive path: {raw_name}"
+                )
+
+            candidate = (extract_root / Path(*member_path.parts)).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError as exc:
+                raise PluginInstallError(
+                    f"Plugin archive entry escapes extraction root: {raw_name}"
+                ) from exc
+
     def _validate_entrypoint_structure(
         self, plugin_root: Path, manifest: PluginManifest
     ) -> None:
@@ -112,6 +148,7 @@ class PluginInstaller:
             extract_root.mkdir(parents=True, exist_ok=True)
 
             with zipfile.ZipFile(zip_path) as archive:
+                self._validate_archive_entries(archive, extract_root)
                 archive.extractall(extract_root)
 
             audit_plugin_imports(extract_root)

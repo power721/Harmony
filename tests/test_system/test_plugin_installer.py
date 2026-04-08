@@ -216,6 +216,40 @@ def test_install_zip_does_not_execute_plugin_top_level_code(tmp_path: Path):
     ).exists()
 
 
+def test_install_zip_rejects_path_traversal_entries(tmp_path: Path):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "zip_slip.zip",
+        {
+            "plugin.json": json.dumps(
+                {
+                    "id": "zip-slip",
+                    "name": "Zip Slip",
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "ZipSlipPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            "plugin_main.py": "class ZipSlipPlugin:\n    pass\n",
+            "../escaped.txt": "owned\n",
+        },
+    )
+
+    with pytest.raises(PluginInstallError, match="archive entry"):
+        installer.install_zip(plugin_zip)
+
+    assert not (tmp_path / "temp" / "escaped.txt").exists()
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (tmp_path / "external" / "zip-slip").exists()
+
+
 def test_install_zip_replacement_is_transactional_on_copy_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
