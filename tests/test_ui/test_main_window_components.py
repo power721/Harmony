@@ -192,6 +192,14 @@ class TestOnlineMusicHandler:
         """Missing provider metadata should not invent a non-existent provider id."""
         assert OnlineMusicHandler._resolve_provider_id(None, {}) == ""
 
+    def test_resolve_provider_id_ignores_placeholder_source(self, qapp):
+        """Legacy placeholder source should not override a real provider id."""
+        assert OnlineMusicHandler._resolve_provider_id(None, {"source": "online"}) == ""
+        assert OnlineMusicHandler._resolve_provider_id(
+            None,
+            {"source": "online", "provider_id": "qqmusic"},
+        ) == "qqmusic"
+
     def test_play_online_tracks_respects_shuffle_mode(self, qapp):
         """Batch online playback should preserve shuffle semantics."""
         mock_playback = Mock()

@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from domain.online_music import OnlineTrack, SearchResult, SearchType
 from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
-from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
+from plugins.builtin.qqmusic.lib.online_music_view import DownloadWorker, OnlineMusicView
 import plugins.builtin.qqmusic.lib.online_music_view as online_music_view
 from tests.test_plugins.qqmusic_test_context import bind_test_context
 
@@ -465,6 +465,30 @@ def test_build_tracks_payload_keeps_order_and_metadata():
     assert [item[0] for item in payload] == ["m1", "m2"]
     assert payload[0][1]["title"] == "Song 1"
     assert payload[1][1]["title"] == "Song 2"
+
+
+def test_download_worker_passes_provider_id_to_gateway():
+    download_service = Mock()
+    download_service.download.return_value = "/tmp/song.mp3"
+    worker = DownloadWorker(
+        download_service,
+        "song-mid",
+        "Song",
+        provider_id="qqmusic",
+    )
+    captured = []
+    worker.download_finished.connect(
+        lambda song_mid, local_path: captured.append((song_mid, local_path))
+    )
+
+    worker.run()
+
+    download_service.download.assert_called_once_with(
+        "song-mid",
+        "Song",
+        provider_id="qqmusic",
+    )
+    assert captured == [("song-mid", "/tmp/song.mp3")]
 
 
 def test_attach_download_worker_cleanup_clears_single_worker_reference():

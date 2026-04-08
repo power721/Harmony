@@ -46,6 +46,13 @@ def test_get_provider_matches_provider_id(tmp_path):
     assert gateway._get_provider("missing") is None
 
 
+def test_get_provider_treats_legacy_online_placeholder_as_unspecified_when_single_provider(tmp_path):
+    provider = MagicMock(provider_id="qqmusic")
+    gateway = _build_gateway(tmp_path, provider=provider)
+
+    assert gateway._get_provider("online") is provider
+
+
 def test_get_download_qualities_is_provider_aware(tmp_path):
     provider = MagicMock()
     provider.provider_id = "qqmusic"

@@ -77,8 +77,15 @@ class OnlineDownloadGateway:
         if manager is None:
             return None
         providers = manager.registry.online_providers()
+        normalized_provider_id = str(provider_id or "").strip()
+        if normalized_provider_id.lower() == "online":
+            normalized_provider_id = ""
+            if len(providers) == 1:
+                provider = providers[0]
+                if callable(getattr(provider, "download_track", None)):
+                    return provider
         for provider in providers:
-            if provider_id and getattr(provider, "provider_id", None) != provider_id:
+            if normalized_provider_id and getattr(provider, "provider_id", None) != normalized_provider_id:
                 continue
             if callable(getattr(provider, "download_track", None)):
                 return provider
@@ -199,7 +206,7 @@ class OnlineDownloadGateway:
 
         provider = self._get_provider(provider_id)
         if provider is None:
-            logger.error("[OnlineDownloadGateway] No online provider available")
+            logger.error(f"[OnlineDownloadGateway] [{provider_id}] No online provider available")
             return None
 
         if self._event_bus and hasattr(self._event_bus, "download_started"):

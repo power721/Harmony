@@ -2868,8 +2868,9 @@ class OnlineMusicView(QWidget):
         metadata = self._build_track_metadata(track)
 
         # Check cache
-        if self._download_service.is_cached(track.mid):
-            cached_path = self._download_service.get_cached_path(track.mid)
+        provider_id = self.provider_id
+        if self._download_service.is_cached(track.mid, provider_id=provider_id):
+            cached_path = self._download_service.get_cached_path(track.mid, provider_id=provider_id)
             self.play_online_track.emit(track.mid, cached_path, metadata)
             return
 
@@ -2892,7 +2893,10 @@ class OnlineMusicView(QWidget):
 
         # Create download worker
         self._download_worker = DownloadWorker(
-            self._download_service, track.mid, track.title
+            self._download_service,
+            track.mid,
+            track.title,
+            provider_id=self.provider_id,
         )
         self._download_worker.download_finished.connect(self._on_download_finished)
         self._attach_download_worker_cleanup(
@@ -3018,12 +3022,17 @@ class OnlineMusicView(QWidget):
 
         # Download each track
         for track in tracks:
-            if not self._download_service.is_cached(track.mid):
+            if not self._download_service.is_cached(track.mid, provider_id=self.provider_id):
                 self._start_download(track)
 
     def _start_download(self, track: OnlineTrack):
         """Start downloading a track."""
-        worker = DownloadWorker(self._download_service, track.mid, track.title)
+        worker = DownloadWorker(
+            self._download_service,
+            track.mid,
+            track.title,
+            provider_id=self.provider_id,
+        )
         worker.download_finished.connect(self._on_batch_download_finished)
         self._attach_download_worker_cleanup(worker, list_attr="_download_workers")
         worker.start()
@@ -3368,11 +3377,12 @@ class DownloadWorker(QThread):
 
     download_finished = Signal(str, str)  # (song_mid, local_path)
 
-    def __init__(self, download_service, song_mid: str, song_title: str):
+    def __init__(self, download_service, song_mid: str, song_title: str, provider_id: str | None = None):
         super().__init__()
         self._download_service = download_service
         self._song_mid = song_mid
         self._song_title = song_title
+        self._provider_id = provider_id
         self._cancelled = False
 
     def cancel(self):
@@ -3385,7 +3395,11 @@ class DownloadWorker(QThread):
             self.download_finished.emit(self._song_mid, "")
             return
         try:
-            result = self._download_service.download(self._song_mid, self._song_title)
+            result = self._download_service.download(
+                self._song_mid,
+                self._song_title,
+                provider_id=self._provider_id,
+            )
             self.download_finished.emit(self._song_mid, result or "")
         except Exception as e:
             logger.error(f"Download worker error: {e}")
