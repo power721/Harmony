@@ -188,11 +188,17 @@ class QueueService:
 
         # Batch fetch
         id_map = {t.id: t for t in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
-        if cloud_file_ids and hasattr(self._track_repo, "get_by_non_online_cloud_file_ids"):
+        has_non_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_non_online_cloud_file_ids", None)
+        )
+        has_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_online_track_keys", None)
+        )
+        if cloud_file_ids and has_non_online_batch_lookup:
             cloud_map = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids)
         else:
             cloud_map = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) if cloud_file_ids else {}
-        if online_keys and hasattr(self._track_repo, "get_by_online_track_keys"):
+        if online_keys and has_online_batch_lookup:
             online_map = self._track_repo.get_by_online_track_keys(online_keys)
         else:
             legacy_online = self._track_repo.get_by_cloud_file_ids(

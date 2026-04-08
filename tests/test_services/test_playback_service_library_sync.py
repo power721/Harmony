@@ -88,23 +88,26 @@ def test_play_cloud_playlist_uses_non_online_track_lookup_for_cached_cloud_files
         duration=123.0,
         cover_path="/tmp/cloud.jpg",
     )
-    track_repo = Mock()
-    track_repo.get_by_cloud_file_ids.return_value = {
-        "shared-id": SimpleNamespace(
-            id=99,
-            path="online://qqmusic/track/shared-id",
-            title="Wrong Online Song",
-            artist="Wrong Artist",
-            album="Wrong Album",
-            duration=300.0,
-            cover_path="wrong.jpg",
-            cloud_file_id="shared-id",
-            online_provider_id="qqmusic",
-        )
-    }
-    track_repo.get_by_non_online_cloud_file_ids.return_value = {
-        "shared-id": cached_cloud_track
-    }
+    class _TrackRepo:
+        def get_by_cloud_file_ids(self, cloud_file_ids):
+            return {
+                "shared-id": SimpleNamespace(
+                    id=99,
+                    path="online://qqmusic/track/shared-id",
+                    title="Wrong Online Song",
+                    artist="Wrong Artist",
+                    album="Wrong Album",
+                    duration=300.0,
+                    cover_path="wrong.jpg",
+                    cloud_file_id="shared-id",
+                    online_provider_id="qqmusic",
+                )
+            }
+
+        def get_by_non_online_cloud_file_ids(self, cloud_file_ids):
+            return {"shared-id": cached_cloud_track}
+
+    track_repo = _TrackRepo()
 
     service = PlaybackService.__new__(PlaybackService)
     service._track_repo = track_repo

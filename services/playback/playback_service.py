@@ -783,7 +783,10 @@ class PlaybackService(QObject):
 
         # Batch-load all tracks by cloud file IDs
         cloud_file_ids = [cf.file_id for cf in cloud_files]
-        if hasattr(self._track_repo, "get_by_non_online_cloud_file_ids"):
+        has_non_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_non_online_cloud_file_ids", None)
+        )
+        if has_non_online_batch_lookup:
             tracks_by_cloud_id = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids)
         else:
             tracks_by_cloud_id = self._track_repo.get_by_cloud_file_ids(cloud_file_ids)
@@ -1213,9 +1216,16 @@ class PlaybackService(QObject):
 
         id_map = {track.id: track for track in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
 
+        has_non_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_non_online_cloud_file_ids", None)
+        )
+        has_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_online_track_keys", None)
+        )
+
         cloud_map = {}
         if cloud_file_ids:
-            if hasattr(self._track_repo, "get_by_non_online_cloud_file_ids"):
+            if has_non_online_batch_lookup:
                 cloud_tracks = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids) or {}
             else:
                 cloud_tracks = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) or {}
@@ -1230,7 +1240,7 @@ class PlaybackService(QObject):
 
         online_map = {}
         if online_keys:
-            if hasattr(self._track_repo, "get_by_online_track_keys"):
+            if has_online_batch_lookup:
                 online_tracks = self._track_repo.get_by_online_track_keys(online_keys) or {}
                 if isinstance(online_tracks, dict):
                     online_map = online_tracks
