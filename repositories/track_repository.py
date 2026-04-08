@@ -31,6 +31,25 @@ class SqliteTrackRepository(BaseRepository):
         super().__init__(db_path, db_manager)
 
     @staticmethod
+    def _normalize_online_provider_id(value):
+        normalized = str(value or "").strip()
+        if not normalized or normalized.lower() == "online":
+            return None
+        return normalized
+
+    @staticmethod
+    def _infer_online_provider_id(source_value: str | None, path: str | None, provider_id: str | None):
+        normalized = SqliteTrackRepository._normalize_online_provider_id(provider_id)
+        if normalized:
+            return normalized
+        if str(source_value or "").strip().upper() == "QQ":
+            return "qqmusic"
+        path_value = str(path or "").strip().lower()
+        if path_value.startswith("online://qqmusic/"):
+            return "qqmusic"
+        return None
+
+    @staticmethod
     def _build_safe_fts_query(query: str) -> Optional[str]:
         """Normalize user input into a literal-term FTS query."""
         cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", query)
@@ -298,7 +317,7 @@ class SqliteTrackRepository(BaseRepository):
                                track.genre, track.duration, track.cover_path,
                                track.cloud_file_id,
                                track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                               track.online_provider_id,
+                               self._normalize_online_provider_id(track.online_provider_id),
                            ))
             track_id = cursor.lastrowid
 
@@ -355,7 +374,7 @@ class SqliteTrackRepository(BaseRepository):
                         track.genre, track.duration, track.cover_path,
                         track.cloud_file_id,
                         track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                        track.online_provider_id,
+                        self._normalize_online_provider_id(track.online_provider_id),
                     ))
                     track_id = cursor.lastrowid
 
@@ -412,7 +431,7 @@ class SqliteTrackRepository(BaseRepository):
                            track.genre, track.duration, track.cover_path,
                            track.cloud_file_id,
                            track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                           track.online_provider_id,
+                           self._normalize_online_provider_id(track.online_provider_id),
                            track.id
                        ))
         conn.commit()
@@ -463,6 +482,24 @@ class SqliteTrackRepository(BaseRepository):
                 "SELECT * FROM tracks WHERE cloud_file_id = ? AND online_provider_id = ?",
                 (cloud_file_id, provider_id),
             )
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_track(row)
+            cursor.execute(
+                """
+                SELECT * FROM tracks
+                WHERE cloud_file_id = ?
+                  AND (online_provider_id IS NULL OR TRIM(online_provider_id) = '' OR LOWER(online_provider_id) = 'online')
+                ORDER BY CASE
+                    WHEN UPPER(COALESCE(source, '')) = 'QQ' THEN 0
+                    WHEN LOWER(COALESCE(path, '')) LIKE ? THEN 1
+                    ELSE 2
+                END,
+                id DESC
+                LIMIT 1
+                """,
+                (cloud_file_id, f"online://{str(provider_id).strip().lower()}/%"),
+            )
         else:
             cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
         row = cursor.fetchone()
@@ -476,6 +513,25 @@ class SqliteTrackRepository(BaseRepository):
         # Get source value from row, default to Local if not present
         source_value = row["source"] if "source" in row.keys() else "Local"
         source = TrackSource.from_value(source_value)
+        online_provider_id = self._infer_online_provider_id(
+            source_value,
+            row["path"] if "path" in row.keys() else "",
+            row["online_provider_id"] if "online_provider_id" in row.keys() else None,
+        )
+        if (
+            "online_provider_id" in row.keys()
+            and (
+                online_provider_id != (row["online_provider_id"] if "online_provider_id" in row.keys() else None)
+                or str(source_value or "").strip().upper() == "QQ"
+            )
+        ):
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE tracks SET source = ?, online_provider_id = ? WHERE id = ?",
+                (TrackSource.ONLINE.value, online_provider_id, row["id"]),
+            )
+            conn.commit()
 
         return Track(
             id=row["id"],
@@ -488,7 +544,7 @@ class SqliteTrackRepository(BaseRepository):
             cover_path=row["cover_path"],
             cloud_file_id=row["cloud_file_id"],
             source=source,
-            online_provider_id=row["online_provider_id"] if "online_provider_id" in row.keys() else None,
+            online_provider_id=online_provider_id,
             file_size=row["file_size"] if "file_size" in row.keys() else None,
             file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
         )

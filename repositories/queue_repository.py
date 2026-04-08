@@ -20,6 +20,13 @@ class SqliteQueueRepository(BaseRepository):
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         super().__init__(db_path, db_manager)
 
+    @staticmethod
+    def _normalize_online_provider_id(value):
+        normalized = str(value or "").strip()
+        if not normalized or normalized.lower() == "online":
+            return None
+        return normalized
+
     def load(self) -> List[PlayQueueItem]:
         """Load the saved play queue."""
         conn = self._get_connection()
@@ -55,14 +62,16 @@ class SqliteQueueRepository(BaseRepository):
                 return bool(row["download_failed"])
             return False
 
-        return [
+        normalized_items = [
             PlayQueueItem(
                 id=row["id"],
                 position=row["position"],
                 source=get_source(row, columns),
                 track_id=row["track_id"],
                 cloud_file_id=row["cloud_file_id"],
-                online_provider_id=row["online_provider_id"] if "online_provider_id" in columns else None,
+                online_provider_id=self._normalize_online_provider_id(
+                    row["online_provider_id"] if "online_provider_id" in columns else None
+                ),
                 cloud_account_id=row["cloud_account_id"],
                 local_path=row["local_path"] or "",
                 title=row["title"] or "",
@@ -76,6 +85,21 @@ class SqliteQueueRepository(BaseRepository):
             )
             for row in rows
         ]
+        if "online_provider_id" in columns:
+            repair_ids = [
+                row["id"]
+                for row in rows
+                if self._normalize_online_provider_id(row["online_provider_id"]) is None
+                and str(row["online_provider_id"] or "").strip().lower() == "online"
+            ]
+            if repair_ids:
+                placeholders = ",".join("?" * len(repair_ids))
+                cursor.execute(
+                    f"UPDATE play_queue SET online_provider_id = NULL WHERE id IN ({placeholders})",
+                    repair_ids,
+                )
+                conn.commit()
+        return normalized_items
 
     def save(self, items: List[PlayQueueItem]) -> bool:
         """Save the play queue."""
@@ -93,7 +117,8 @@ class SqliteQueueRepository(BaseRepository):
                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    """, [
                                        (item.position, item.source, item.track_id,
-                                        item.cloud_file_id, item.online_provider_id, item.cloud_account_id, item.local_path,
+                                        item.cloud_file_id, self._normalize_online_provider_id(item.online_provider_id),
+                                        item.cloud_account_id, item.local_path,
                                         item.title, item.artist, item.album, item.duration,
                                         (item.created_at or datetime.now()).isoformat(sep=" "),
                                         int(item.download_failed))

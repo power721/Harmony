@@ -1657,6 +1657,7 @@ class PlaybackService(QObject):
             Track ID if saved successfully
         """
         from pathlib import Path
+        from domain.track import TrackSource
         from services.metadata.metadata_service import MetadataService
 
         if not local_path or not Path(local_path).exists():
@@ -1671,10 +1672,24 @@ class PlaybackService(QObject):
 
         existing = self._track_repo.get_by_cloud_file_id(song_mid, provider_id=provider_id)
         if existing:
-            # Update existing track with local path
-            self._track_repo.update_path(existing.id, local_path)
-            logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
-            return existing.id
+            # Update existing track with local path, but reuse an existing path-owned
+            # record when the downloaded file is already indexed elsewhere.
+            try:
+                self._track_repo.update_path(existing.id, local_path)
+                logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
+                return existing.id
+            except Exception:
+                existing_by_path = self._track_repo.get_by_path(local_path)
+                if existing_by_path and existing_by_path.id != existing.id:
+                    existing_by_path.cloud_file_id = song_mid
+                    existing_by_path.online_provider_id = provider_id
+                    existing_by_path.source = TrackSource.ONLINE
+                    self._track_repo.update(existing_by_path)
+                    logger.info(
+                        f"[PlaybackService] Reused existing path track {existing_by_path.id} for online download"
+                    )
+                    return existing_by_path.id
+                raise
 
         # Extract metadata from file
         metadata = MetadataService.extract_metadata(local_path)
@@ -1690,7 +1705,7 @@ class PlaybackService(QObject):
             return existing.id
 
         # Create new track
-        from domain.track import Track, TrackSource
+        from domain.track import Track
         track = Track(
             path=local_path,
             title=title,

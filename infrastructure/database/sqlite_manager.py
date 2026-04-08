@@ -731,7 +731,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 10
+        CURRENT_SCHEMA_VERSION = 11
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -1056,6 +1056,48 @@ class DatabaseManager:
                     WHERE cloud_file_id IS NOT NULL
             """)
             logger.info("[Database] Added unique indexes for UPSERT support")
+
+        # Migration 10: Repair legacy QQ online-provider rows.
+        if stored_version < 11:
+            cursor.execute("""
+                UPDATE tracks
+                SET source = 'ONLINE',
+                    online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'QQ'
+                  AND (
+                    online_provider_id IS NULL
+                    OR TRIM(online_provider_id) = ''
+                    OR LOWER(online_provider_id) = 'online'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE tracks
+                SET online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'ONLINE'
+                  AND LOWER(COALESCE(path, '')) LIKE 'online://qqmusic/%'
+                  AND (
+                    online_provider_id IS NULL
+                    OR TRIM(online_provider_id) = ''
+                    OR LOWER(online_provider_id) = 'online'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE play_queue
+                SET online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'ONLINE'
+                  AND LOWER(COALESCE(online_provider_id, '')) = 'online'
+                  AND cloud_file_id IN (
+                    SELECT cloud_file_id
+                    FROM tracks
+                    WHERE online_provider_id = 'qqmusic'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE play_queue
+                SET online_provider_id = NULL
+                WHERE LOWER(COALESCE(online_provider_id, '')) = 'online'
+            """)
+            logger.info("[Database] Repaired legacy QQ online provider ids")
 
         # Update schema version after all migrations complete
         if schema_changed:

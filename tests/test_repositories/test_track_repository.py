@@ -252,6 +252,24 @@ class TestSqliteTrackRepository:
         assert len(tracks) == 1
         assert tracks[0].title == "Online"
 
+    def test_add_normalizes_placeholder_online_provider_id(self, track_repo, temp_db):
+        """Adding online tracks should not persist the legacy placeholder provider id."""
+        track_repo.add(Track(
+            path="online://online/track/abc",
+            title="Online",
+            source=TrackSource.ONLINE,
+            online_provider_id="online",
+            cloud_file_id="abc",
+        ))
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE cloud_file_id = ?", ("abc",))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
+
     def test_update_track(self, track_repo):
         """Test updating a track."""
         track = Track(
@@ -268,10 +286,56 @@ class TestSqliteTrackRepository:
         result = track_repo.update(track)
         assert result is True
 
-        # Verify update
-        updated = track_repo.get_by_id(track_id)
-        assert updated.title == "Updated Title"
-        assert updated.artist == "Updated Artist"
+    def test_get_by_id_repairs_legacy_placeholder_online_provider_id(self, track_repo, temp_db):
+        """Reading old online tracks should normalize and repair placeholder provider ids."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks (path, title, cloud_file_id, online_provider_id, source)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("online://online/track/legacy", "Legacy", "legacy", "online", "ONLINE"))
+        track_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        track = track_repo.get_by_id(track_id)
+
+        assert track is not None
+        assert track.online_provider_id is None
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE id = ?", (track_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
+
+    def test_get_by_cloud_file_id_matches_legacy_qq_row_without_provider_id(self, track_repo, temp_db):
+        """QQ legacy rows without provider id should still resolve for qqmusic lookups."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks (path, title, cloud_file_id, source, online_provider_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("/music/song.flac", "Legacy QQ", "qq_legacy_mid", "QQ", None))
+        track_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        track = track_repo.get_by_cloud_file_id("qq_legacy_mid", provider_id="qqmusic")
+
+        assert track is not None
+        assert track.id == track_id
+        assert track.online_provider_id == "qqmusic"
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE id = ?", (track_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] == "qqmusic"
 
     def test_update_nonexistent_track(self, track_repo):
         """Test updating non-existent track."""

@@ -185,6 +185,28 @@ class TestSqliteQueueRepository:
         assert loaded[0].source == "ONLINE"
         assert loaded[0].cloud_file_id == "song_mid_123"
 
+    def test_save_normalizes_placeholder_online_provider_id(self, queue_repo, temp_db):
+        """Saving queue items should not persist the legacy placeholder provider id."""
+        items = [
+            PlayQueueItem(
+                position=0,
+                source="ONLINE",
+                cloud_file_id="song_mid_123",
+                online_provider_id="online",
+                title="Online Song",
+            )
+        ]
+
+        assert queue_repo.save(items) is True
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM play_queue")
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
+
     def test_row_to_item_conversion(self, queue_repo):
         """Test conversion from database row to PlayQueueItem."""
         items = [
@@ -345,6 +367,30 @@ class TestQueueRepositoryBoundaryCases:
         assert loaded[0].duration == 0.0
         assert loaded[0].download_failed is False
         assert loaded[0].created_at is not None
+
+    def test_load_normalizes_legacy_online_provider_placeholder(self, queue_repo, temp_db):
+        """Loading old queue rows should repair placeholder provider ids in memory and in DB."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO play_queue (position, source, cloud_file_id, online_provider_id, title, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (0, "ONLINE", "song_mid_123", "online", "Online Song", "2026-04-08 00:00:00"))
+        conn.commit()
+        conn.close()
+
+        loaded = queue_repo.load()
+
+        assert len(loaded) == 1
+        assert loaded[0].online_provider_id is None
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM play_queue")
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
 
     def test_load_old_schema_source_type_local(self, temp_db):
         """Test loading from old schema with source_type='local' maps to 'Local'."""

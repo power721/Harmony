@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 from unittest.mock import Mock
 
 from domain.playlist_item import PlaylistItem
+from domain.track import Track
 from domain.track import TrackSource
 from services.playback.playback_service import PlaybackService
 
@@ -79,3 +81,49 @@ def test_cleanup_download_workers_stops_running_worker_without_terminate():
     worker.wait.assert_called_once_with(1000)
     worker.terminate.assert_not_called()
     assert service._online_download_workers == {}
+
+
+def test_save_online_track_to_library_reuses_existing_path_track_on_unique_conflict(tmp_path):
+    service = PlaybackService.__new__(PlaybackService)
+    local_path = tmp_path / "song.mp3"
+    local_path.write_bytes(b"data")
+    playlist_item = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="song_mid_123",
+        title="Online Song",
+        needs_download=True,
+    )
+    existing_cloud = Track(
+        id=1,
+        path="online://qqmusic/track/song_mid_123",
+        source=TrackSource.ONLINE,
+        cloud_file_id="song_mid_123",
+        online_provider_id="qqmusic",
+    )
+    existing_path = Track(
+        id=2,
+        path=str(local_path),
+        title="Cached Song",
+        source=TrackSource.LOCAL,
+    )
+
+    service._engine = Mock()
+    service._engine.playlist_items = [playlist_item]
+    service._track_repo = Mock()
+    service._track_repo.get_by_cloud_file_id.return_value = existing_cloud
+    service._track_repo.update_path.side_effect = sqlite3.IntegrityError("UNIQUE constraint failed: tracks.path")
+    service._track_repo.get_by_path.return_value = existing_path
+    service._track_repo.update.return_value = True
+
+    track_id = PlaybackService._save_online_track_to_library(
+        service,
+        "song_mid_123",
+        str(local_path),
+    )
+
+    assert track_id == 2
+    assert existing_path.cloud_file_id == "song_mid_123"
+    assert existing_path.online_provider_id == "qqmusic"
+    assert existing_path.source == TrackSource.ONLINE
+    service._track_repo.update.assert_called_once_with(existing_path)
