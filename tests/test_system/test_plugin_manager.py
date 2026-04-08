@@ -1236,3 +1236,52 @@ def test_discover_roots_ignores_non_plugin_directories(tmp_path: Path):
 
     assert ("builtin", real_plugin) in discovered
     assert all(path.name != "__pycache__" for _source, path in discovered)
+
+
+def test_discover_roots_skips_invalid_manifest_plugin(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    external_root = tmp_path / "external"
+    builtin_root.mkdir()
+    external_root.mkdir()
+
+    good_plugin = builtin_root / "good"
+    good_plugin.mkdir()
+    (good_plugin / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "good",
+                "name": "Good",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "GoodPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (good_plugin / "plugin_main.py").write_text(
+        "class GoodPlugin:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    broken_plugin = external_root / "broken"
+    broken_plugin.mkdir()
+    (broken_plugin / "plugin.json").write_text(
+        json.dumps({"name": "Broken"}),
+        encoding="utf-8",
+    )
+
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=external_root,
+        state_store=PluginStateStore(tmp_path / "state.json"),
+        context_factory=_ContextFactory(),
+    )
+
+    discovered = manager.discover_roots()
+    listed = manager.list_plugins()
+
+    assert discovered == [("builtin", good_plugin)]
+    assert [plugin["id"] for plugin in listed] == ["good"]

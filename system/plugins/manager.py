@@ -27,6 +27,17 @@ class PluginManager:
         self.registry = PluginRegistry()
         self._loaded_plugins: dict[str, tuple[object, object, object]] = {}
 
+    def _read_manifest_or_none(self, plugin_root: Path):
+        try:
+            return self._loader.read_manifest(plugin_root)
+        except Exception as exc:
+            logger.warning(
+                "[PluginManager] Ignoring invalid plugin manifest at %s: %s",
+                plugin_root,
+                exc,
+            )
+            return None
+
     def _load_plugin_root(self, source: str, plugin_root: Path) -> None:
         manifest = None
         state = None
@@ -126,7 +137,9 @@ class PluginManager:
             )
         selected: dict[str, tuple[str, Path]] = {}
         for source, plugin_root in sorted(roots, key=lambda item: (item[0], item[1].name)):
-            manifest = self._loader.read_manifest(plugin_root)
+            manifest = self._read_manifest_or_none(plugin_root)
+            if manifest is None:
+                continue
             current = selected.get(manifest.id)
             if current is None or source == "external":
                 selected[manifest.id] = (source, plugin_root)
@@ -141,7 +154,9 @@ class PluginManager:
     def list_plugins(self) -> list[dict]:
         plugins = []
         for source, plugin_root in self.discover_roots():
-            manifest = self._loader.read_manifest(plugin_root)
+            manifest = self._read_manifest_or_none(plugin_root)
+            if manifest is None:
+                continue
             state = self._state_store.get(manifest.id) or {}
             plugins.append(
                 {
@@ -157,7 +172,9 @@ class PluginManager:
 
     def set_plugin_enabled(self, plugin_id: str, enabled: bool) -> None:
         for source, plugin_root in self.discover_roots():
-            manifest = self._loader.read_manifest(plugin_root)
+            manifest = self._read_manifest_or_none(plugin_root)
+            if manifest is None:
+                continue
             if manifest.id != plugin_id:
                 continue
             existing = self._state_store.get(plugin_id) or {}
