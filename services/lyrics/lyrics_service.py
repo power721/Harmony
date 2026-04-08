@@ -3,7 +3,7 @@ Lyrics service for fetching and parsing lyrics.
 """
 import logging
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 

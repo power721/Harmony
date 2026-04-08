@@ -618,6 +618,61 @@ def test_plugin_client_search_falls_back_to_public_api_when_legacy_empty(monkeyp
     api.search.assert_called_once_with("keyword", search_type="song", limit=20, page=1)
 
 
+def test_plugin_client_search_uses_top_level_body_from_legacy_payload(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+
+    api = Mock()
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicPluginAPI",
+        Mock(return_value=api),
+    )
+
+    client = QQMusicPluginClient(context)
+    monkeypatch.setattr(client, "_can_use_legacy_network", lambda: True)
+    monkeypatch.setattr(
+        client,
+        "_search_legacy",
+        lambda keyword, search_type, page, limit: client._normalize_legacy_search_payload(
+            {
+                "body": {
+                    "item_song": [
+                        {
+                            "mid": "legacy-song",
+                            "title": "Legacy Song",
+                            "singer": [{"name": "Singer 1"}],
+                            "album": {"name": "Album 1", "mid": "album-1"},
+                            "interval": 180,
+                        }
+                    ]
+                },
+                "meta": {"sum": 1},
+            },
+            search_type,
+        ),
+    )
+
+    result = client.search("keyword", search_type="song", limit=20, page=1)
+
+    assert result == {
+        "tracks": [
+            {
+                "mid": "legacy-song",
+                "title": "Legacy Song",
+                "artist": "Singer 1",
+                "album": "Album 1",
+                "album_mid": "album-1",
+                "duration": 180,
+            }
+        ],
+        "total": 1,
+    }
+    api.search.assert_not_called()
+
+
 def test_plugin_online_music_service_converts_singer_payload_to_models(monkeypatch):
     context = Mock()
     context.settings = Mock()

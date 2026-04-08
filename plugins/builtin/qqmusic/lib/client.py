@@ -10,6 +10,7 @@ from .search_normalizers import (
     normalize_album_item,
     normalize_artist_item,
     normalize_detail_song,
+    normalize_song_item,
     normalize_playlist_item,
     normalize_top_list_track,
 )
@@ -118,20 +119,24 @@ class QQMusicPluginClient:
         if not isinstance(raw_data, dict):
             return None
 
-        root = raw_data.get("data", {}).get("body", {})
+        root = self._extract_legacy_search_root(raw_data)
+        meta = raw_data.get("meta", {}) if isinstance(raw_data.get("meta"), dict) else {}
         if search_type == "song":
-            song_section = root.get("song", {}) if isinstance(root, dict) else {}
-            items = song_section.get("list", [])
-            total = song_section.get("totalnum") or song_section.get("totalNum") or len(items)
+            items = self._extract_legacy_song_items(root)
+            total = (
+                self._extract_total(meta)
+                or self._extract_total(root.get("song", {}) if isinstance(root, dict) else {})
+                or len(items)
+            )
             return {
-                "tracks": [normalize_detail_song(item) for item in items if isinstance(item, dict)],
+                "tracks": [self._normalize_legacy_song_item(item) for item in items if isinstance(item, dict)],
                 "total": int(total or 0),
             }
 
         if search_type == "singer":
             singer_section = root.get("singer", {}) if isinstance(root, dict) else {}
             items = singer_section.get("list", [])
-            total = singer_section.get("totalnum") or singer_section.get("totalNum") or len(items)
+            total = self._extract_total(meta) or self._extract_total(singer_section) or len(items)
             return {
                 "artists": [
                     {
@@ -147,7 +152,7 @@ class QQMusicPluginClient:
         if search_type == "album":
             album_section = root.get("album", {}) if isinstance(root, dict) else {}
             items = album_section.get("list", [])
-            total = album_section.get("totalnum") or album_section.get("totalNum") or len(items)
+            total = self._extract_total(meta) or self._extract_total(album_section) or len(items)
             return {
                 "albums": [
                     {
@@ -165,7 +170,7 @@ class QQMusicPluginClient:
         if search_type == "playlist":
             playlist_section = root.get("songlist", {}) if isinstance(root, dict) else {}
             items = playlist_section.get("list", [])
-            total = playlist_section.get("totalnum") or playlist_section.get("totalNum") or len(items)
+            total = self._extract_total(meta) or self._extract_total(playlist_section) or len(items)
             return {
                 "playlists": [
                     {
@@ -184,6 +189,50 @@ class QQMusicPluginClient:
                 "total": int(total or 0),
             }
 
+        return None
+
+    @staticmethod
+    def _extract_legacy_search_root(raw_data: dict[str, Any]) -> dict[str, Any]:
+        data = raw_data.get("data")
+        if isinstance(data, dict):
+            body = data.get("body")
+            if isinstance(body, dict):
+                return body
+        body = raw_data.get("body")
+        if isinstance(body, dict):
+            return body
+        return {}
+
+    @staticmethod
+    def _extract_legacy_song_items(root: dict[str, Any]) -> list[dict[str, Any]]:
+        if not isinstance(root, dict):
+            return []
+        song_section = root.get("song", {})
+        if isinstance(song_section, dict):
+            items = song_section.get("list", [])
+            if isinstance(items, list) and items:
+                return items
+        items = root.get("item_song", [])
+        return items if isinstance(items, list) else []
+
+    @staticmethod
+    def _normalize_legacy_song_item(item: dict[str, Any]) -> dict[str, Any]:
+        if any(key in item for key in ("songmid", "songname", "albumname")):
+            return normalize_song_item(item)
+        return normalize_detail_song(item)
+
+    @staticmethod
+    def _extract_total(container: Any) -> int | None:
+        if not isinstance(container, dict):
+            return None
+        for key in ("totalnum", "totalNum", "sum", "estimate_sum"):
+            value = container.get(key)
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
         return None
 
     def get_top_lists(self) -> list[dict]:
