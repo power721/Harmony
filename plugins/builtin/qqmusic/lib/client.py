@@ -6,6 +6,7 @@ from typing import Any
 
 from .api import QQMusicPluginAPI
 from .qqmusic_service import QQMusicService
+from .section_builders import build_section
 
 logger = logging.getLogger(__name__)
 
@@ -213,14 +214,12 @@ class QQMusicPluginClient:
                 data = []
             if data:
                 items.append(
-                    {
-                        "id": card_id,
-                        "title": title,
-                        "subtitle": f"{len(data)} 项",
-                        "cover_url": self._pick_cover(data),
-                        "items": data,
-                        "entry_type": entry_type,
-                    }
+                    build_section(
+                        card_id=card_id,
+                        title=title,
+                        entry_type=entry_type,
+                        items=data,
+                    )
                 )
         return items
 
@@ -243,15 +242,13 @@ class QQMusicPluginClient:
                 data = []
             if data:
                 sections.append(
-                    {
-                        "id": card_id,
-                        "title": title,
-                        "count": len(data),
-                        "subtitle": f"{len(data)} 项",
-                        "cover_url": self._pick_cover(data),
-                        "items": data,
-                        "entry_type": entry_type,
-                    }
+                    build_section(
+                        card_id=card_id,
+                        title=title,
+                        entry_type=entry_type,
+                        items=data,
+                        include_count=True,
+                    )
                 )
         return sections
 
@@ -435,45 +432,3 @@ class QQMusicPluginClient:
             "album_mid": getattr(getattr(item, "album", None), "mid", ""),
             "duration": getattr(item, "duration", 0),
         }
-
-    def _pick_cover(self, items: list[dict[str, Any]]) -> str:
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if isinstance(item.get("Track"), dict):
-                track = item["Track"]
-                album = track.get("album", {})
-                if isinstance(album, dict) and album.get("mid"):
-                    return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album.get('mid')}.jpg"
-                cover_url = track.get("cover_url") or track.get("cover") or track.get("picurl") or track.get("pic")
-                if isinstance(cover_url, dict):
-                    cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-                if cover_url:
-                    return str(cover_url)
-            if isinstance(item.get("Playlist"), dict):
-                playlist = item["Playlist"]
-                basic = playlist.get("basic", {}) if isinstance(playlist.get("basic"), dict) else {}
-                content = playlist.get("content", {}) if isinstance(playlist.get("content"), dict) else {}
-                cover_url = (
-                    basic.get("cover_url")
-                    or basic.get("cover")
-                    or content.get("cover_url")
-                    or content.get("cover")
-                    or playlist.get("cover_url")
-                    or playlist.get("cover")
-                )
-                if isinstance(cover_url, dict):
-                    cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-                if cover_url:
-                    return str(cover_url)
-            cover_url = item.get("cover_url") or item.get("cover") or item.get("picurl") or item.get("pic")
-            if isinstance(cover_url, dict):
-                cover_url = cover_url.get("default_url") or cover_url.get("small_url")
-            if cover_url:
-                return str(cover_url)
-            album = item.get("album", {})
-            if isinstance(album, dict) and album.get("mid"):
-                return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album.get('mid')}.jpg"
-            if item.get("album_mid"):
-                return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{item.get('album_mid')}.jpg"
-        return ""
