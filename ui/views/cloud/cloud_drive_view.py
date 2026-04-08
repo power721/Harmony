@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
 )
+from shiboken6 import isValid
 
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.cache_paths import build_cloud_cache_path
