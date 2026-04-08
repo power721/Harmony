@@ -110,7 +110,8 @@ class SqliteArtistRepository(BaseRepository):
             SELECT
                 artist as name,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
             FROM tracks
             WHERE artist = ?
             GROUP BY artist
@@ -119,18 +120,9 @@ class SqliteArtistRepository(BaseRepository):
         if not row:
             return None
 
-        # Get cover from first track of artist
-        cursor.execute("""
-            SELECT cover_path FROM tracks
-            WHERE artist = ? AND cover_path IS NOT NULL
-            LIMIT 1
-        """, (artist_name,))
-        cover_row = cursor.fetchone()
-        cover_path = cover_row["cover_path"] if cover_row else None
-
         return Artist(
             name=row["name"] or "",
-            cover_path=cover_path,
+            cover_path=row["cover_path"],
             song_count=row["song_count"] or 0,
             album_count=row["album_count"] or 0,
         )
