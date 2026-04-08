@@ -45,7 +45,7 @@ class SqliteGenreRepository(BaseRepository):
                                 WHERE t.genre = g.name
                                   AND t.cover_path IS NOT NULL
                                   AND t.cover_path != ''
-                                ORDER BY RANDOM()
+                                ORDER BY t.id
                                 LIMIT 1
                             ),
                             (
@@ -55,7 +55,7 @@ class SqliteGenreRepository(BaseRepository):
                                 WHERE t.genre = g.name
                                   AND a.cover_path IS NOT NULL
                                   AND a.cover_path != ''
-                                ORDER BY RANDOM()
+                                ORDER BY t.id
                                 LIMIT 1
                             ),
                             g.cover_path
@@ -88,7 +88,7 @@ class SqliteGenreRepository(BaseRepository):
                     WHERE t2.genre = t.genre
                       AND t2.cover_path IS NOT NULL
                       AND t2.cover_path != ''
-                    ORDER BY RANDOM()
+                    ORDER BY t2.id
                     LIMIT 1
                 ) as track_cover_path,
                 (
@@ -98,7 +98,7 @@ class SqliteGenreRepository(BaseRepository):
                     WHERE t3.genre = t.genre
                       AND a.cover_path IS NOT NULL
                       AND a.cover_path != ''
-                    ORDER BY RANDOM()
+                    ORDER BY t3.id
                     LIMIT 1
                 ) as album_cover_path,
                 COUNT(*) as song_count,
@@ -145,7 +145,7 @@ class SqliteGenreRepository(BaseRepository):
                             WHERE t.genre = g.name
                               AND t.cover_path IS NOT NULL
                               AND t.cover_path != ''
-                            ORDER BY RANDOM()
+                            ORDER BY t.id
                             LIMIT 1
                         ),
                         (
@@ -155,7 +155,7 @@ class SqliteGenreRepository(BaseRepository):
                             WHERE t.genre = g.name
                               AND a.cover_path IS NOT NULL
                               AND a.cover_path != ''
-                            ORDER BY RANDOM()
+                            ORDER BY t.id
                             LIMIT 1
                         ),
                         g.cover_path
@@ -187,7 +187,7 @@ class SqliteGenreRepository(BaseRepository):
                     WHERE t2.genre = t.genre
                       AND t2.cover_path IS NOT NULL
                       AND t2.cover_path != ''
-                    ORDER BY RANDOM()
+                    ORDER BY t2.id
                     LIMIT 1
                 ) as track_cover_path,
                 (
@@ -197,7 +197,7 @@ class SqliteGenreRepository(BaseRepository):
                     WHERE t3.genre = t.genre
                       AND a.cover_path IS NOT NULL
                       AND a.cover_path != ''
-                    ORDER BY RANDOM()
+                    ORDER BY t3.id
                     LIMIT 1
                 ) as album_cover_path,
                 COUNT(*) as song_count,
@@ -268,7 +268,7 @@ class SqliteGenreRepository(BaseRepository):
                     WHERE t2.genre = t.genre
                       AND t2.cover_path IS NOT NULL
                       AND t2.cover_path != ''
-                    ORDER BY RANDOM()
+                    ORDER BY t2.id
                     LIMIT 1
                 ) as cover_path,
                 COUNT(*) as song_count,

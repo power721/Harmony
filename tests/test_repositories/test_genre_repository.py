@@ -97,6 +97,94 @@ def test_get_all_uses_random_track_cover_when_cached_cover_missing():
             pass
 
 
+def test_get_all_cached_query_avoids_order_by_random():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 1", "Rock", 200.0, "/covers/rock1.jpg"),
+                ("/music/c.mp3", "C", "Artist", "Album 2", "Rock", 210.0, "/covers/rock2.jpg"),
+            ],
+        )
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', NULL, 3, 2, 590.0)
+            """
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            genres = repo.get_all(use_cache=True)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert len(genres) == 1
+        assert genres[0].cover_path in {"/covers/rock1.jpg", "/covers/rock2.jpg"}
+        assert all("ORDER BY RANDOM()" not in statement.upper() for statement in statements)
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_refresh_query_avoids_order_by_random():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 1", "Rock", 200.0, "/covers/rock1.jpg"),
+                ("/music/c.mp3", "C", "Artist", "Album 2", "Rock", 210.0, "/covers/rock2.jpg"),
+            ],
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            assert repo.refresh() is True
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert any("INSERT INTO GENRES" in statement.upper() for statement in statements)
+        assert all("ORDER BY RANDOM()" not in statement.upper() for statement in statements)
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_update_cover_path_works_without_updated_at_column():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
