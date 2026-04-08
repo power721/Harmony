@@ -39,9 +39,9 @@ class SingleFlight(Generic[T]):
             except BaseException as exc:
                 state.error = exc
             finally:
+                state.event.set()
                 with self._lock:
                     self._calls.pop(key, None)
-                state.event.set()
 
             if state.error is not None:
                 raise state.error
