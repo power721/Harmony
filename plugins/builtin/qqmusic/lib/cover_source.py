@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from harmony_plugin_api.cover import PluginCoverResult
 
-from .api import QQMusicPluginAPI
+from .provider import QQMusicOnlineProvider
 
 
 class QQMusicCoverPluginSource:
@@ -13,7 +13,7 @@ class QQMusicCoverPluginSource:
 
     def __init__(self, context):
         self._context = context
-        self._api = QQMusicPluginAPI(context)
+        self._provider = QQMusicOnlineProvider(context)
 
     def search(
         self,
@@ -24,10 +24,11 @@ class QQMusicCoverPluginSource:
     ) -> list[PluginCoverResult]:
         try:
             keyword = f"{artist} {title}" if artist else title
-            search_payload = self._api.search(
+            search_payload = self._provider.search(
                 keyword,
                 search_type="song",
-                limit=5,
+                page=1,
+                page_size=5,
             )
             songs = (
                 search_payload.get("tracks", [])
@@ -77,4 +78,4 @@ class QQMusicCoverPluginSource:
         album_mid: str = None,
         size: int = 500,
     ):
-        return self._api.get_cover_url(mid=mid, album_mid=album_mid, size=size)
+        return self._provider.get_cover_url(mid=mid, album_mid=album_mid, size=size)

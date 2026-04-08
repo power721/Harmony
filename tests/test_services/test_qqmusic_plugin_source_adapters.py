@@ -4,6 +4,7 @@ from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI
 from plugins.builtin.qqmusic.lib.artist_cover_source import QQMusicArtistCoverPluginSource
 from plugins.builtin.qqmusic.lib.cover_source import QQMusicCoverPluginSource
 from plugins.builtin.qqmusic.lib.lyrics_source import QQMusicLyricsPluginSource
+from plugins.builtin.qqmusic.lib.provider import QQMusicOnlineProvider
 
 
 def test_qqmusic_api_search_artist_uses_singer_search(monkeypatch):
@@ -34,19 +35,19 @@ def test_qqmusic_api_search_artist_uses_singer_search(monkeypatch):
 def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
     captured = {}
 
-    def fake_search(self, keyword, search_type="song", limit=20, page=1):
+    def fake_search(self, keyword, search_type="song", page=1, page_size=30):
         captured.update(
             keyword=keyword,
             search_type=search_type,
-            limit=limit,
             page=page,
+            page_size=page_size,
         )
         return {
             "tracks": [
                 {
                     "mid": "song-1",
                     "title": "Song 1",
-                    "singer": "Singer 1",
+                    "artist": "Singer 1",
                     "album": "Album 1",
                     "album_mid": "album-1",
                     "duration": 180,
@@ -54,9 +55,9 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
             ]
         }
 
-    monkeypatch.setattr(QQMusicPluginAPI, "search", fake_search)
+    monkeypatch.setattr(QQMusicOnlineProvider, "search", fake_search)
     monkeypatch.setattr(
-        QQMusicPluginAPI,
+        QQMusicOnlineProvider,
         "get_cover_url",
         lambda *_args, **_kwargs: "cover-1",
     )
@@ -68,8 +69,8 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
     assert captured == {
         "keyword": "Song 1 Singer 1",
         "search_type": "song",
-        "limit": 7,
         "page": 1,
+        "page_size": 7,
     }
     assert len(results) == 1
     assert results[0].song_id == "song-1"
@@ -81,16 +82,16 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
 
 
 def test_qqmusic_cover_source_search_reads_tracks_payload(monkeypatch):
-    def fake_search(self, keyword, search_type="song", limit=20, page=1):
+    def fake_search(self, keyword, search_type="song", page=1, page_size=30):
         assert keyword == "Singer 1 Song 1"
         assert search_type == "song"
-        assert limit == 5
         assert page == 1
+        assert page_size == 5
         return {
             "tracks": [
                 {
                     "mid": "song-1",
-                    "name": "Song 1",
+                    "title": "Song 1",
                     "artist": "Singer 1",
                     "album": "Album 1",
                     "album_mid": "album-1",
@@ -99,7 +100,7 @@ def test_qqmusic_cover_source_search_reads_tracks_payload(monkeypatch):
             ]
         }
 
-    monkeypatch.setattr(QQMusicPluginAPI, "search", fake_search)
+    monkeypatch.setattr(QQMusicOnlineProvider, "search", fake_search)
 
     source = QQMusicCoverPluginSource(SimpleNamespace())
 
@@ -112,6 +113,30 @@ def test_qqmusic_cover_source_search_reads_tracks_payload(monkeypatch):
     assert results[0].album == "Album 1"
     assert results[0].duration == 180
     assert results[0].extra_id == "album-1"
+
+
+def test_qqmusic_lyrics_source_get_lyrics_uses_provider(monkeypatch):
+    monkeypatch.setattr(
+        QQMusicOnlineProvider,
+        "get_lyrics",
+        lambda self, song_mid: f"lyrics:{song_mid}",
+    )
+
+    source = QQMusicLyricsPluginSource(SimpleNamespace())
+
+    assert source.get_lyrics_by_song_id("song-1") == "lyrics:song-1"
+
+
+def test_qqmusic_cover_source_get_cover_url_uses_provider(monkeypatch):
+    monkeypatch.setattr(
+        QQMusicOnlineProvider,
+        "get_cover_url",
+        lambda self, mid=None, album_mid=None, size=500: f"cover:{album_mid or mid}:{size}",
+    )
+
+    source = QQMusicCoverPluginSource(SimpleNamespace())
+
+    assert source.get_cover_url(mid="song-1", album_mid="album-1", size=700) == "cover:album-1:700"
 
 
 def test_qqmusic_artist_cover_source_search_reads_normalized_artist_payload(monkeypatch):
