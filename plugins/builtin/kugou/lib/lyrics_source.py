@@ -20,23 +20,27 @@ class KugouLyricsPluginSource:
     def search(self, title: str, artist: str, limit: int = 10) -> list[PluginLyricsResult]:
         keyword = f"{title} {artist}".strip()
         logger.debug(f"Kugou lyrics search: {keyword}")
-        response = self._http_client.get(
-            "https://lyrics.kugou.com/search",
-            params={"keyword": keyword, "page": 1, "pagesize": limit},
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=3,
-        )
-        payload = response.json()
-        return [
-            PluginLyricsResult(
-                song_id=str(item["id"]),
-                title=item.get("name", item.get("song", "")),
-                artist=item.get("singer", ""),
-                source="kugou",
-                accesskey=item.get("accesskey", ""),
+        try:
+            response = self._http_client.get(
+                "https://lyrics.kugou.com/search",
+                params={"keyword": keyword, "page": 1, "pagesize": limit},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=3,
             )
-            for item in payload.get("candidates", [])
-        ]
+            payload = response.json()
+            return [
+                PluginLyricsResult(
+                    song_id=str(item.get("id", "")),
+                    title=item.get("name", item.get("song", "")),
+                    artist=item.get("singer", ""),
+                    source="kugou",
+                    accesskey=item.get("accesskey", ""),
+                )
+                for item in payload.get("candidates", [])
+            ]
+        except Exception:
+            logger.exception("Error searching Kugou lyrics")
+            return []
 
     def get_lyrics(self, result: PluginLyricsResult) -> str | None:
         try:
