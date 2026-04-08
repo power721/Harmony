@@ -378,6 +378,30 @@ class TestSqliteTrackRepository:
         retrieved = track_repo.get_by_cloud_file_id("nonexistent")
         assert retrieved is None
 
+    def test_get_by_online_track_keys_keeps_provider_distinct(self, track_repo):
+        """Batch online lookups should distinguish tracks by provider id."""
+        track_repo.add(Track(
+            path="online://qqmusic/track/shared",
+            title="QQ Song",
+            source=TrackSource.ONLINE,
+            cloud_file_id="shared",
+            online_provider_id="qqmusic",
+        ))
+        track_repo.add(Track(
+            path="online://netease/track/shared",
+            title="Netease Song",
+            source=TrackSource.ONLINE,
+            cloud_file_id="shared",
+            online_provider_id="netease",
+        ))
+
+        tracks = track_repo.get_by_online_track_keys(
+            [("qqmusic", "shared"), ("netease", "shared")]
+        )
+
+        assert tracks[("qqmusic", "shared")].title == "QQ Song"
+        assert tracks[("netease", "shared")].title == "Netease Song"
+
     def test_search_tracks(self, track_repo, temp_db):
         """Test searching tracks."""
         # Add tracks with different titles

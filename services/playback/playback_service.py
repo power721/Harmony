@@ -776,7 +776,10 @@ class PlaybackService(QObject):
 
         # Batch-load all tracks by cloud file IDs
         cloud_file_ids = [cf.file_id for cf in cloud_files]
-        tracks_by_cloud_id = self._track_repo.get_by_cloud_file_ids(cloud_file_ids)
+        if hasattr(self._track_repo, "get_by_non_online_cloud_file_ids"):
+            tracks_by_cloud_id = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids)
+        else:
+            tracks_by_cloud_id = self._track_repo.get_by_cloud_file_ids(cloud_file_ids)
 
         # Build playlist items - fast path, no blocking operations
         items = []
@@ -1185,21 +1188,60 @@ class PlaybackService(QObject):
             return [self._enrich_queue_item_metadata(item) for item in items]
 
         track_ids = [item.track_id for item in items if item.track_id and item.is_local]
-        cloud_file_ids = [item.cloud_file_id for item in items if item.is_cloud and item.cloud_file_id]
+        cloud_file_ids = [
+            item.cloud_file_id
+            for item in items
+            if item.source in (TrackSource.QUARK, TrackSource.BAIDU) and item.cloud_file_id
+        ]
+        online_keys = [
+            (item.online_provider_id, item.cloud_file_id)
+            for item in items
+            if item.is_online and item.cloud_file_id
+        ]
         paths = [item.local_path for item in items if item.local_path and not item.cloud_file_id]
         track_ids = list(dict.fromkeys(track_ids))
         cloud_file_ids = list(dict.fromkeys(cloud_file_ids))
+        online_keys = list(dict.fromkeys(online_keys))
         paths = list(dict.fromkeys(paths))
 
         id_map = {track.id: track for track in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
 
         cloud_map = {}
         if cloud_file_ids:
-            cloud_tracks = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) or {}
+            if hasattr(self._track_repo, "get_by_non_online_cloud_file_ids"):
+                cloud_tracks = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids) or {}
+            else:
+                cloud_tracks = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) or {}
             if isinstance(cloud_tracks, dict):
                 cloud_map = cloud_tracks
             else:
-                cloud_map = {track.cloud_file_id: track for track in cloud_tracks if getattr(track, "cloud_file_id", None)}
+                cloud_map = {
+                    track.cloud_file_id: track
+                    for track in cloud_tracks
+                    if getattr(track, "cloud_file_id", None)
+                }
+
+        online_map = {}
+        if online_keys:
+            if hasattr(self._track_repo, "get_by_online_track_keys"):
+                online_tracks = self._track_repo.get_by_online_track_keys(online_keys) or {}
+                if isinstance(online_tracks, dict):
+                    online_map = online_tracks
+                else:
+                    online_map = {
+                        (getattr(track, "online_provider_id", None), track.cloud_file_id): track
+                        for track in online_tracks
+                        if getattr(track, "cloud_file_id", None)
+                    }
+            else:
+                legacy_online_tracks = self._track_repo.get_by_cloud_file_ids(
+                    [cloud_file_id for _provider_id, cloud_file_id in online_keys]
+                ) or {}
+                if isinstance(legacy_online_tracks, dict):
+                    online_map = {
+                        (getattr(track, "online_provider_id", None), cloud_file_id): track
+                        for cloud_file_id, track in legacy_online_tracks.items()
+                    }
 
         path_map = {}
         if paths:
@@ -1214,6 +1256,8 @@ class PlaybackService(QObject):
             track = None
             if item.track_id and item.is_local:
                 track = id_map.get(item.track_id)
+            elif item.is_online and item.cloud_file_id:
+                track = online_map.get((item.online_provider_id, item.cloud_file_id))
             elif item.is_cloud and item.cloud_file_id:
                 track = cloud_map.get(item.cloud_file_id)
             elif item.local_path and not item.cloud_file_id:
@@ -1229,6 +1273,8 @@ class PlaybackService(QObject):
             track = None
             if item.track_id and item.is_local:
                 track = id_map.get(item.track_id)
+            elif item.is_online and item.cloud_file_id:
+                track = online_map.get((item.online_provider_id, item.cloud_file_id))
             elif item.is_cloud and item.cloud_file_id:
                 track = cloud_map.get(item.cloud_file_id)
             elif item.local_path and not item.cloud_file_id:

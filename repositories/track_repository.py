@@ -142,6 +142,49 @@ class SqliteTrackRepository(BaseRepository):
         rows = cursor.fetchall()
         return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
 
+    def get_by_non_online_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
+        """Get non-online tracks by cloud file IDs, keyed by cloud_file_id."""
+        if not cloud_file_ids:
+            return {}
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(cloud_file_ids))
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM tracks
+            WHERE cloud_file_id IN ({placeholders})
+              AND UPPER(COALESCE(source, '')) NOT IN ('ONLINE', 'QQ')
+            """,
+            cloud_file_ids,
+        )
+        rows = cursor.fetchall()
+        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
+
+    def get_by_online_track_keys(
+        self,
+        online_keys: List[tuple[str | None, str]],
+    ) -> Dict[tuple[str | None, str], Track]:
+        """Get online tracks by (provider_id, cloud_file_id)."""
+        result: Dict[tuple[str | None, str], Track] = {}
+        if not online_keys:
+            return result
+
+        seen: set[tuple[str | None, str]] = set()
+        for provider_id, cloud_file_id in online_keys:
+            normalized_provider_id = self._normalize_online_provider_id(provider_id)
+            key = (normalized_provider_id, cloud_file_id)
+            if not cloud_file_id or key in seen:
+                continue
+            seen.add(key)
+            track = self.get_by_cloud_file_id(
+                cloud_file_id,
+                provider_id=normalized_provider_id,
+            )
+            if track is not None:
+                result[key] = track
+        return result
+
     @staticmethod
     def _normalize_source_value(source: Optional[TrackSource | str]) -> Optional[str]:
         """Normalize an optional source enum/string to the stored DB value."""
