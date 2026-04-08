@@ -27,7 +27,8 @@ class _FakeSource:
 
 
 class _FakeQAudioOutput:
-    def __init__(self):
+    def __init__(self, parent=None):
+        self.parent = parent
         self._volume = 0.0
 
     def setVolume(self, value: float):
@@ -47,7 +48,8 @@ class _FakeQMediaPlayer:
         LoadedMedia = 7
         EndOfMedia = 6
 
-    def __init__(self):
+    def __init__(self, parent=None):
+        self.parent = parent
         self.positionChanged = _FakeSignal()
         self.durationChanged = _FakeSignal()
         self.playbackStateChanged = _FakeSignal()
