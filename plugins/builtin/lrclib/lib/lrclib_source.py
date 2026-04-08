@@ -28,6 +28,8 @@ class LRCLIBPluginSource:
             timeout=3,
         )
         payload = response.json() if response.status_code == 200 else []
+        if not isinstance(payload, list):
+            return []
         return [
             PluginLyricsResult(
                 song_id=str(item.get("id", "")),
