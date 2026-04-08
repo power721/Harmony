@@ -684,6 +684,7 @@ class NowPlayingWindow(QWidget):
 
         queue_list.itemDoubleClicked.connect(_play_selected)
         dialog.exec()
+        dialog.deleteLater()
 
     def _load_cover_async(self, track_dict: dict):
         """Load current track cover in worker thread."""
