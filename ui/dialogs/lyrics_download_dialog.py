@@ -126,6 +126,13 @@ class LyricsDownloadDialog(QDialog):
         self._track_duration = track_duration
         self._selected_song: Optional[dict] = None
         self._search_thread: Optional[LyricsSearchThread] = None
+        self._search_track_info = TrackInfo(
+            title=track_title,
+            artist=track_artist,
+            album=track_album,
+            duration=track_duration,
+        )
+        self._search_results_by_key: dict[tuple[str, str], dict] = {}
         self._drag_pos = None
 
         # Make dialog frameless
@@ -275,7 +282,7 @@ class LyricsDownloadDialog(QDialog):
         if cleanup_signals:
             LyricsDownloadDialog._disconnect_search_thread_signals(self, thread)
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             thread.cancel()
             thread.requestInterruption()
             thread.quit()
@@ -297,74 +304,52 @@ class LyricsDownloadDialog(QDialog):
         # Update status to show which source completed
         self._status_label.setText(f"{t('searching')}... {source_name} ✓")
 
-        # Calculate match scores and sort by score descending
-        track_info = TrackInfo(
-            title=self._track_title,
-            artist=self._track_artist,
-            album=self._track_album,
-            duration=self._track_duration
+        for result in new_results:
+            cache_key = self._result_cache_key(result)
+            existing = self._search_results_by_key.get(cache_key)
+            if existing is not None:
+                existing.update(result)
+                continue
+            stored = dict(result)
+            stored['_score'] = self._calculate_result_score(stored)
+            self._search_results_by_key[cache_key] = stored
+
+        sorted_results = sorted(
+            self._search_results_by_key.values(),
+            key=lambda x: (-x.get('_score', 0), x.get('source', '')),
         )
 
-        scored_results = []
-        for result in new_results:
-            search_result = SearchResult(
-                title=result.get('title', ''),
-                artist=result.get('artist', ''),
-                album=result.get('album', ''),
-                duration=result.get('duration'),
-                source=result.get('source', ''),
-                id=result.get('id', ''),
-                cover_url=result.get('cover_url'),
-                lyrics=result.get('lyrics'),
-                accesskey=result.get('accesskey')
-            )
-            score = MatchScorer.calculate_score(track_info, search_result, mode='lyrics')
-            result['_score'] = score
-            scored_results.append(result)
-
-        # Sort by score descending, then by source name for deterministic ordering
-        scored_results.sort(key=lambda x: (
-            -x.get('_score', 0),  # Negative for descending score
-            x.get('source', '')
-        ))
-
-        # Add new results to the list (clear existing and rebuild to maintain sorting)
-        # Get all existing items
-        existing_results = []
-        for i in range(self._song_list.count()):
-            item = self._song_list.item(i)
-            existing_results.append(item.data(Qt.UserRole))
-
-        # Combine existing results with new results
-        all_results = existing_results + scored_results
-
-        # Remove duplicates (by source + id)
-        seen = set()
-        unique_results = []
-        for result in all_results:
-            key = (result.get('source', ''), result.get('id', ''))
-            if key not in seen:
-                seen.add(key)
-                unique_results.append(result)
-
-        # Sort all results by score, then by source name
-        unique_results.sort(key=lambda x: (
-            -x.get('_score', 0),
-            x.get('source', '')
-        ))
-
-        # Clear and repopulate the list
+        self._song_list.setUpdatesEnabled(False)
         self._song_list.clear()
-        for result in unique_results:
+        for result in sorted_results:
             item_text = self._format_result_text(result)
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, result)
             self._song_list.addItem(item)
+        self._song_list.setUpdatesEnabled(True)
 
         # Auto-select first result and enable download button
         if self._song_list.count() > 0 and self._song_list.currentRow() < 0:
             self._song_list.setCurrentRow(0)
             self._download_btn.setEnabled(True)
+
+    @staticmethod
+    def _result_cache_key(result: dict) -> tuple[str, str]:
+        return str(result.get('source', '')), str(result.get('id', ''))
+
+    def _calculate_result_score(self, result: dict) -> float:
+        search_result = SearchResult(
+            title=result.get('title', ''),
+            artist=result.get('artist', ''),
+            album=result.get('album', ''),
+            duration=result.get('duration'),
+            source=result.get('source', ''),
+            id=result.get('id', ''),
+            cover_url=result.get('cover_url'),
+            lyrics=result.get('lyrics'),
+            accesskey=result.get('accesskey')
+        )
+        return MatchScorer.calculate_score(self._search_track_info, search_result, mode='lyrics')
 
     def _on_search_completed(self, results: list):
         """Handle final search completion."""

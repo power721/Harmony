@@ -515,7 +515,7 @@ class LyricsController(QObject):
             self._lyrics_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             logger.debug("[LyricsController] Stopping lyrics thread")
             thread.requestInterruption()
             thread.quit()
@@ -538,7 +538,7 @@ class LyricsController(QObject):
             self._lyrics_download_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             logger.debug("[LyricsController] Stopping lyrics download thread")
             if hasattr(thread, "requestInterruption"):
                 thread.requestInterruption()

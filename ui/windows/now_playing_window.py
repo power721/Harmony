@@ -839,7 +839,7 @@ class NowPlayingWindow(QWidget):
             self._lyrics_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             thread.requestInterruption()
             thread.quit()
             if not thread.wait(wait_ms):
