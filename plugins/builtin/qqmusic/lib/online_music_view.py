@@ -611,6 +611,8 @@ class SearchInputWithHotkey(QLineEdit):
 class OnlineMusicView(QWidget):
     """View for searching and browsing online music."""
 
+    provider_id = "qqmusic"
+
     # Signals
     play_online_track = Signal(str, str, object)  # (song_mid, local_path, metadata_dict)
     insert_to_queue = Signal(str, object)  # (song_mid, metadata_dict)
@@ -3102,6 +3104,7 @@ class OnlineMusicView(QWidget):
         cover_url = self._get_cover_url(track)
 
         return current_bootstrap.library_service.add_online_track(
+            provider_id=self.provider_id,
             song_mid=track.mid,
             title=track.title,
             artist=track.singer_name,

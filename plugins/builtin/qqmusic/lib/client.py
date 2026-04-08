@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import socket
 from typing import Any
 
 from .api import QQMusicPluginAPI
 from .qqmusic_service import QQMusicService
+
+logger = logging.getLogger(__name__)
 
 
 class QQMusicPluginClient:
@@ -258,6 +261,7 @@ class QQMusicPluginClient:
             info = service.get_playback_url_info(track_id, quality)
             if info:
                 return info
+        logger.debug(f"Fallback to get playback url for track {track_id}")
         return self._api.get_playback_url_info(track_id, quality)
 
     def get_artist_detail(self, singer_mid: str) -> dict | None:

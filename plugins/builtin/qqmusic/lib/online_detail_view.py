@@ -405,6 +405,8 @@ class OnlineAlbumCard(QWidget):
 class OnlineDetailView(QWidget):
     """Detail view for artist, album, or playlist."""
 
+    provider_id = "qqmusic"
+
     back_requested = Signal()
     play_all = Signal(list, int)  # List of OnlineTrack (current page)
     insert_all_to_queue = Signal(list)  # List of OnlineTrack (current page)
@@ -2204,6 +2206,7 @@ class OnlineDetailView(QWidget):
         cover_url = self._get_cover_url(track)
 
         return current_bootstrap.library_service.add_online_track(
+            provider_id=self.provider_id,
             song_mid=track.mid,
             title=track.title,
             artist=track.singer_name,

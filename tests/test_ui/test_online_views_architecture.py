@@ -91,3 +91,63 @@ def test_online_detail_view_favorites_flow_uses_favorites_service():
 
     bootstrap.favorites_service.add_favorite.assert_called_once_with(track_id=456)
     bootstrap.favorites_service.remove_favorite.assert_called_once_with(track_id=654)
+
+
+def test_online_music_view_add_online_track_to_library_passes_provider_id():
+    """OnlineMusicView should persist QQMusic tracks with the provider id."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._get_cover_url = Mock(return_value="https://cover")
+    track = SimpleNamespace(
+        mid="m1",
+        title="Song 1",
+        singer_name="Artist 1",
+        album_name="Album 1",
+        duration=123,
+    )
+    bootstrap = SimpleNamespace(
+        library_service=SimpleNamespace(add_online_track=Mock(return_value=111)),
+    )
+
+    with patch("plugins.builtin.qqmusic.lib.online_music_view.bootstrap", return_value=bootstrap):
+        result = OnlineMusicView._add_online_track_to_library(view, track)
+
+    assert result == 111
+    bootstrap.library_service.add_online_track.assert_called_once_with(
+        provider_id="qqmusic",
+        song_mid="m1",
+        title="Song 1",
+        artist="Artist 1",
+        album="Album 1",
+        duration=123.0,
+        cover_url="https://cover",
+    )
+
+
+def test_online_detail_view_add_online_track_to_library_passes_provider_id():
+    """OnlineDetailView should persist QQMusic tracks with the provider id."""
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    view._get_cover_url = Mock(return_value="https://cover")
+    track = SimpleNamespace(
+        mid="m2",
+        title="Song 2",
+        singer_name="Artist 2",
+        album_name="Album 2",
+        duration=234,
+    )
+    bootstrap = SimpleNamespace(
+        library_service=SimpleNamespace(add_online_track=Mock(return_value=222)),
+    )
+
+    with patch("plugins.builtin.qqmusic.lib.online_detail_view.bootstrap", return_value=bootstrap):
+        result = OnlineDetailView._add_online_track_to_library(view, track)
+
+    assert result == 222
+    bootstrap.library_service.add_online_track.assert_called_once_with(
+        provider_id="qqmusic",
+        song_mid="m2",
+        title="Song 2",
+        artist="Artist 2",
+        album="Album 2",
+        duration=234.0,
+        cover_url="https://cover",
+    )

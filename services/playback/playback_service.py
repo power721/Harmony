@@ -1466,7 +1466,7 @@ class PlaybackService(QObject):
                 return
 
             # Create worker while holding lock to prevent race condition
-            logger.info(f"[PlaybackService] Downloading online track: {song_mid} {item.title} - {item.artist}")
+            logger.info(f"[PlaybackService] Downloading online track: {item.online_provider_id} {song_mid} {item.title} - {item.artist}")
 
             # Download in background thread
             from PySide6.QtCore import QThread

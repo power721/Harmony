@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from plugins.builtin.qqmusic.lib.common import parse_quality
+
 
 class QQMusicPluginAPI:
     REMOTE_BASE_URL = "https://api.ygking.top/api"
@@ -10,11 +12,11 @@ class QQMusicPluginAPI:
         self._context = context
 
     def search(
-        self,
-        keyword: str,
-        search_type: str = "song",
-        limit: int = 20,
-        page: int = 1,
+            self,
+            keyword: str,
+            search_type: str = "song",
+            limit: int = 20,
+            page: int = 1,
     ) -> dict[str, Any]:
         response = self._context.http.get(
             f"{self.REMOTE_BASE_URL}/search",
@@ -39,7 +41,7 @@ class QQMusicPluginAPI:
                         "mid": item.get("singerMID", item.get("mid", "")),
                         "name": item.get("singerName", item.get("name", "")),
                         "avatar_url": item.get("singerPic", item.get("avatar", item.get("cover_url", "")))
-                        or self.get_artist_cover_url(item.get("singerMID", item.get("mid", ""))),
+                                      or self.get_artist_cover_url(item.get("singerMID", item.get("mid", ""))),
                         "song_count": item.get("songNum", item.get("song_count", item.get("songnum", 0))),
                         "album_count": item.get("albumNum", item.get("album_count", item.get("albumnum", 0))),
                         "fan_count": item.get("fansNum", item.get("fan_count", item.get("FanNum", 0))),
@@ -56,7 +58,7 @@ class QQMusicPluginAPI:
                         "name": item.get("name", item.get("albumname", "")),
                         "singer_name": self._extract_singer_name(item),
                         "cover_url": item.get("pic", item.get("cover", item.get("cover_url", "")))
-                        or self.get_cover_url(album_mid=item.get("albummid", item.get("mid", ""))),
+                                     or self.get_cover_url(album_mid=item.get("albummid", item.get("mid", ""))),
                         "song_count": item.get("song_num", item.get("song_count", 0)),
                         "publish_date": item.get("publish_date", item.get("pubTime", "")),
                     }
@@ -125,10 +127,10 @@ class QQMusicPluginAPI:
         return len(items)
 
     def search_artist(
-        self,
-        keyword: str,
-        limit: int = 20,
-        page: int = 1,
+            self,
+            keyword: str,
+            limit: int = 20,
+            page: int = 1,
     ) -> list[dict]:
         return self.search(
             keyword,
@@ -173,10 +175,10 @@ class QQMusicPluginAPI:
         return data.get("data", {}).get("lyric")
 
     def get_cover_url(
-        self,
-        mid: str = None,
-        album_mid: str = None,
-        size: int = 500,
+            self,
+            mid: str = None,
+            album_mid: str = None,
+            size: int = 500,
     ) -> Optional[str]:
         if album_mid:
             return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{album_mid}.jpg"
@@ -197,6 +199,28 @@ class QQMusicPluginAPI:
         return f"https://y.gtimg.cn/music/photo_new/T001R{size}x{size}M000{singer_mid}.jpg"
 
     def get_playback_url_info(self, track_id: str, quality: str) -> dict[str, str] | None:
+        response = self._context.http.get(
+            f"{self.REMOTE_BASE_URL}/song/url",
+            params={"mid": track_id, "quality": quality},
+            timeout=15,
+        )
+        data = response.json()
+        print(data)
+        if data.get("code") != 0:
+            return None
+        result = data.get("data", {})
+        url = result.get(track_id, '')
+        quality = result.get(quality, '')
+        file_type = parse_quality(quality)
+
+        if url:
+            return {
+                'url': url,
+                'quality': quality,
+                'file_type': file_type,
+                'extension': file_type.get("e"),
+            }
+
         return None
 
     def get_artist_detail(self, singer_mid: str) -> dict | None:
