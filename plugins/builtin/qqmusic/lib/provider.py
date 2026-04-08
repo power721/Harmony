@@ -142,6 +142,52 @@ class QQMusicOnlineProvider:
         except Exception:
             return None
 
+    @staticmethod
+    def _build_album_cover_url(album_mid: str, size: int) -> str | None:
+        if not album_mid:
+            return None
+        return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{album_mid}.jpg"
+
+    @staticmethod
+    def _extract_album_mid_from_song_detail(detail: dict[str, Any] | None) -> str:
+        if not isinstance(detail, dict):
+            return ""
+        track = detail.get("track_info", detail.get("data", detail))
+        if not isinstance(track, dict):
+            return ""
+        album = track.get("album", {})
+        if isinstance(album, dict):
+            album_mid = album.get("mid") or album.get("albumMid") or album.get("albummid")
+            if album_mid:
+                return str(album_mid)
+        return str(track.get("album_mid") or track.get("albummid") or track.get("albumMid") or "")
+
+    def get_cover_url(
+        self,
+        mid: str | None = None,
+        album_mid: str | None = None,
+        size: int = 500,
+    ) -> str | None:
+        cover_url = self._build_album_cover_url(album_mid or "", size)
+        if cover_url:
+            return cover_url
+
+        service = self._client._get_service()
+        if service is not None and mid and self._client._can_use_legacy_network():
+            try:
+                detail = service.client.get_song_detail(mid)
+            except Exception:
+                detail = {}
+            local_album_mid = self._extract_album_mid_from_song_detail(detail)
+            cover_url = self._build_album_cover_url(local_album_mid, size)
+            if cover_url:
+                return cover_url
+
+        try:
+            return QQMusicPluginAPI(self._context).get_cover_url(mid=mid, album_mid=album_mid, size=size)
+        except Exception:
+            return None
+
     def download_track(
         self,
         track_id: str,

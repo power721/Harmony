@@ -191,6 +191,78 @@ def test_qqmusic_provider_get_lyrics_falls_back_to_public_api(monkeypatch):
     api.get_lyrics.assert_called_once_with("song-mid")
 
 
+def test_qqmusic_provider_get_cover_url_prefers_album_mid():
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: default
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    provider = QQMusicOnlineProvider(context)
+
+    assert provider.get_cover_url(album_mid="album-1", size=800) == (
+        "https://y.gtimg.cn/music/photo_new/T002R800x800M000album-1.jpg"
+    )
+
+
+def test_qqmusic_provider_get_cover_url_uses_local_song_detail_before_public_api(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    service = Mock()
+    service.client.get_song_detail.return_value = {
+        "track_info": {"album": {"mid": "album-from-detail"}}
+    }
+    api = Mock()
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicService",
+        Mock(return_value=service),
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.QQMusicPluginAPI",
+        Mock(return_value=api),
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    monkeypatch.setattr(provider._client, "_can_use_legacy_network", lambda: True)
+
+    assert provider.get_cover_url(mid="song-1", size=500) == (
+        "https://y.gtimg.cn/music/photo_new/T002R500x500M000album-from-detail.jpg"
+    )
+    api.get_cover_url.assert_not_called()
+
+
+def test_qqmusic_provider_get_cover_url_falls_back_to_public_api(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    service = Mock()
+    service.client.get_song_detail.return_value = {}
+    api = Mock()
+    api.get_cover_url.return_value = "https://remote/cover.jpg"
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicService",
+        Mock(return_value=service),
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.QQMusicPluginAPI",
+        Mock(return_value=api),
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    monkeypatch.setattr(provider._client, "_can_use_legacy_network", lambda: True)
+
+    assert provider.get_cover_url(mid="song-1", size=500) == "https://remote/cover.jpg"
+    api.get_cover_url.assert_called_once_with(mid="song-1", album_mid=None, size=500)
+
+
 def test_qqmusic_provider_download_track_delegates_to_plugin_service(monkeypatch):
     settings = Mock()
     settings.get.side_effect = lambda key, default=None: {
