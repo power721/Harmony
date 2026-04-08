@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 from pathlib import Path
 from threading import Lock
@@ -10,6 +11,8 @@ from threading import Lock
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import platformdirs
+
+logger = logging.getLogger(__name__)
 
 
 class SecretStore:
@@ -56,14 +59,18 @@ class SecretStore:
         if not self.is_encrypted(stored_value):
             return str(stored_value)
 
-        payload = base64.urlsafe_b64decode(str(stored_value)[len(self.PREFIX):].encode("ascii"))
-        nonce = payload[:self.NONCE_SIZE]
-        tag = payload[self.NONCE_SIZE:self.NONCE_SIZE + self.TAG_SIZE]
-        ciphertext = payload[self.NONCE_SIZE + self.TAG_SIZE:]
+        try:
+            payload = base64.urlsafe_b64decode(str(stored_value)[len(self.PREFIX):].encode("ascii"))
+            nonce = payload[:self.NONCE_SIZE]
+            tag = payload[self.NONCE_SIZE:self.NONCE_SIZE + self.TAG_SIZE]
+            ciphertext = payload[self.NONCE_SIZE + self.TAG_SIZE:]
 
-        cipher = AES.new(self._get_or_create_key(), AES.MODE_GCM, nonce=nonce)
-        plaintext = cipher.decrypt_and_verify(ciphertext, tag)
-        return plaintext.decode("utf-8")
+            cipher = AES.new(self._get_or_create_key(), AES.MODE_GCM, nonce=nonce)
+            plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+            return plaintext.decode("utf-8")
+        except (ValueError, IndexError, UnicodeDecodeError) as exc:
+            logger.warning("Failed to decrypt stored secret: %s", exc)
+            return ""
 
     def _get_or_create_key(self) -> bytes:
         with self._lock:
