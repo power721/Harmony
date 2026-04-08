@@ -350,6 +350,34 @@ class TestDownload:
         assert progress_calls[0] == (5, 20)
         assert progress_calls[1] == (10, 20)
 
+    @patch('infrastructure.network.http_client.time.monotonic', create=True)
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_download_throttles_progress_callback(self, mock_session_class, mock_monotonic, tmp_path):
+        """Test download throttles progress updates but still emits the final state."""
+        mock_monotonic.side_effect = [0.00, 0.01, 0.02, 0.20, 0.21]
+
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'content-length': '25'}
+        mock_response.raise_for_status = Mock()
+        mock_response.iter_content.return_value = [b'12345', b'67890', b'abcde', b'fghij', b'klmno']
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        dest = str(tmp_path / "file.bin")
+        progress_calls = []
+
+        def on_progress(current, total):
+            progress_calls.append((current, total))
+
+        client = HttpClient()
+        result = client.download("http://example.com/file", dest, progress_callback=on_progress)
+
+        assert result is True
+        assert progress_calls == [(5, 25), (20, 25), (25, 25)]
+
     @patch('infrastructure.network.http_client.requests.Session')
     def test_download_with_custom_chunk_size(self, mock_session_class, tmp_path):
         """Test download respects custom chunk size."""

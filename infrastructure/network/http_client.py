@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import logging
 from pathlib import Path
 import threading
+import time
 from typing import Dict, Any, Optional, Iterator
 
 import requests
@@ -22,6 +23,7 @@ class HttpClient:
     DEFAULT_TIMEOUT = 30
     DEFAULT_POOL_CONNECTIONS = 20
     DEFAULT_POOL_MAXSIZE = 20
+    DEFAULT_PROGRESS_CALLBACK_INTERVAL = 0.1
     DEFAULT_HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
@@ -284,6 +286,8 @@ class HttpClient:
                 except (ValueError, TypeError):
                     total_size = 0
                 downloaded = 0
+                last_progress_at: float | None = None
+                last_reported_downloaded = 0
 
                 with open(dest_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=chunk_size):
@@ -291,7 +295,19 @@ class HttpClient:
                             f.write(chunk)
                             downloaded += len(chunk)
                             if progress_callback:
-                                progress_callback(downloaded, total_size)
+                                now = time.monotonic()
+                                should_report = (
+                                    last_progress_at is None
+                                    or now - last_progress_at >= self.DEFAULT_PROGRESS_CALLBACK_INTERVAL
+                                    or (total_size > 0 and downloaded >= total_size)
+                                )
+                                if should_report:
+                                    progress_callback(downloaded, total_size)
+                                    last_progress_at = now
+                                    last_reported_downloaded = downloaded
+
+                if progress_callback and downloaded != last_reported_downloaded:
+                    progress_callback(downloaded, total_size)
 
                 return True
 
