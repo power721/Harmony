@@ -4,8 +4,25 @@ from unittest.mock import Mock
 from plugins.builtin.netease_cover.lib.artist_cover_source import (
     NetEaseArtistCoverPluginSource,
 )
+from plugins.builtin.netease_cover.lib.common import (
+    build_netease_image_url,
+    netease_headers,
+)
 from plugins.builtin.netease_cover.lib.cover_source import NetEaseCoverPluginSource
 from plugins.builtin.netease_cover.plugin_main import NetEaseCoverPlugin
+
+
+def test_netease_cover_helpers_normalize_headers_and_image_urls():
+    headers = netease_headers()
+
+    assert headers["Referer"] == "https://music.163.com/"
+    assert "Mozilla/5.0" in headers["User-Agent"]
+    assert build_netease_image_url("https://example.com/cover.jpg", "500y500") == (
+        "https://example.com/cover.jpg?param=500y500"
+    )
+    assert build_netease_image_url("https://example.com/cover.jpg?foo=1", "500y500") == (
+        "https://example.com/cover.jpg?foo=1"
+    )
 
 
 def test_netease_cover_plugin_registers_cover_and_artist_sources():

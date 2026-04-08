@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from harmony_plugin_api.lyrics import PluginLyricsResult
-from plugins.builtin.netease_shared.common import netease_headers
+from plugins.builtin.netease_lyrics.lib.common import netease_headers
 
 logger = logging.getLogger(__name__)
 

@@ -1,25 +1,16 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from plugins.builtin.netease_shared.common import (
-    build_netease_image_url,
-    netease_headers,
-)
+from plugins.builtin.netease_lyrics.lib.common import netease_headers
 from plugins.builtin.netease_lyrics.lib.lyrics_source import NetEaseLyricsPluginSource
 from plugins.builtin.netease_lyrics.plugin_main import NetEaseLyricsPlugin
 
 
-def test_netease_shared_helpers_normalize_headers_and_image_urls():
+def test_netease_lyrics_helpers_normalize_headers():
     headers = netease_headers()
 
     assert headers["Referer"] == "https://music.163.com/"
     assert "Mozilla/5.0" in headers["User-Agent"]
-    assert build_netease_image_url("https://example.com/cover.jpg", "500y500") == (
-        "https://example.com/cover.jpg?param=500y500"
-    )
-    assert build_netease_image_url("https://example.com/cover.jpg?foo=1", "500y500") == (
-        "https://example.com/cover.jpg?foo=1"
-    )
 
 
 def test_netease_lyrics_plugin_registers_lyrics_source():

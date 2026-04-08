@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from harmony_plugin_api.cover import PluginCoverResult
-from plugins.builtin.netease_shared.common import (
+from plugins.builtin.netease_cover.lib.common import (
     build_netease_image_url,
     netease_headers,
 )
