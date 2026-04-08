@@ -9,11 +9,10 @@ Features:
 - Text elision for long titles
 """
 import logging
-import threading
 from contextlib import suppress
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation
+from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation, QRunnable, QThreadPool
 from PySide6.QtGui import (
     QKeySequence, QShortcut, QPixmap, QColor,
     QPainterPath, QRegion, QFontMetrics
@@ -154,7 +153,7 @@ class MiniPlayer(QWidget):
         self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
         self._is_hidden = False  # Track auto-hide state
         self._opacity_anim: Optional[QPropertyAnimation] = None  # Opacity animation
-        self._cover_thread: Optional[threading.Thread] = None  # Cover loading thread
+        self._cover_thread = None  # Cover loading worker
         self._cover_load_version = 0
 
         self._setup_ui()
@@ -602,15 +601,20 @@ class MiniPlayer(QWidget):
 
             return self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
 
-        def worker():
-            cover_path = load_cover()
-            # Use signal for thread-safe UI update
-            self._cover_loaded.emit(cover_path or "", version)
+        class CoverLoadWorker(QRunnable):
+            def __init__(self, load_func, signal, worker_version):
+                super().__init__()
+                self._load_func = load_func
+                self._signal = signal
+                self._worker_version = worker_version
 
-        # Run in thread
-        thread = threading.Thread(target=worker, daemon=True)
-        self._cover_thread = thread
-        thread.start()
+            def run(self):
+                cover_path = self._load_func()
+                self._signal.emit(cover_path or "", self._worker_version)
+
+        worker = CoverLoadWorker(load_cover, self._cover_loaded, version)
+        self._cover_thread = worker
+        QThreadPool.globalInstance().start(worker)
 
     def _on_cover_loaded(self, cover_path: str, version: int):
         """Apply cover result only when the worker version is still current."""
