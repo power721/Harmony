@@ -151,6 +151,42 @@ class TestSqliteAlbumRepository:
         assert album.artist == "Artist B"
         assert album.song_count == 1
 
+    def test_get_by_name_fallback_uses_single_tracks_query(self, temp_db):
+        """Test fallback get_by_name fetches aggregate data and cover in one tracks query."""
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/song1.mp3", "Song 1", "Artist A", "Album 1", 180.0, None),
+                ("/music/song2.mp3", "Song 2", "Artist A", "Album 1", 200.0, "/covers/album1.jpg"),
+            ],
+        )
+        statements = []
+        conn.set_trace_callback(statements.append)
+
+        repo = SqliteAlbumRepository(temp_db)
+        repo._get_connection = lambda: conn
+        try:
+            album = repo.get_by_name("Album 1", artist="Artist A")
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        track_selects = [
+            statement for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "FROM TRACKS" in statement.upper()
+        ]
+
+        assert album is not None
+        assert album.cover_path == "/covers/album1.jpg"
+        assert len(track_selects) == 1
+
     def test_get_by_name_not_found(self, album_repo):
         """Test getting non-existent album."""
         album = album_repo.get_by_name("Nonexistent Album")

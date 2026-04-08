@@ -124,7 +124,8 @@ class SqliteAlbumRepository(BaseRepository):
                     album as name,
                     artist,
                     COUNT(*) as song_count,
-                    SUM(duration) as total_duration
+                    SUM(duration) as total_duration,
+                    MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
                 FROM tracks
                 WHERE album = ? AND artist = ?
                 GROUP BY album, artist
@@ -135,7 +136,8 @@ class SqliteAlbumRepository(BaseRepository):
                     album as name,
                     artist,
                     COUNT(*) as song_count,
-                    SUM(duration) as total_duration
+                    SUM(duration) as total_duration,
+                    MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
                 FROM tracks
                 WHERE album = ?
                 GROUP BY album, artist
@@ -144,26 +146,10 @@ class SqliteAlbumRepository(BaseRepository):
         if not row:
             return None
 
-        # Get cover from first track of album
-        if artist:
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE album = ? AND artist = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (album_name, artist))
-        else:
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE album = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (album_name,))
-        cover_row = cursor.fetchone()
-        cover_path = cover_row["cover_path"] if cover_row else None
-
         return Album(
             name=row["name"] or "",
             artist=row["artist"] or "",
-            cover_path=cover_path,
+            cover_path=row["cover_path"],
             song_count=row["song_count"] or 0,
             duration=row["total_duration"] or 0.0,
         )
