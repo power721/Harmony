@@ -2,6 +2,7 @@
 HTTP client wrapper for network requests.
 """
 
+import atexit
 from contextlib import contextmanager
 import logging
 from pathlib import Path
@@ -25,6 +26,7 @@ class HttpClient:
     }
     _shared_clients = {}
     _shared_lock = threading.Lock()
+    _atexit_registered = False
 
     def __init__(
         self,
@@ -89,6 +91,9 @@ class HttpClient:
             pool_block,
         )
         with cls._shared_lock:
+            if not cls._atexit_registered:
+                atexit.register(cls.close_shared_clients)
+                cls._atexit_registered = True
             client = cls._shared_clients.get(key)
             if client is None:
                 client = cls(
@@ -100,6 +105,13 @@ class HttpClient:
                 )
                 cls._shared_clients[key] = client
             return client
+
+    @classmethod
+    def close_shared_clients(cls) -> None:
+        with cls._shared_lock:
+            for client in cls._shared_clients.values():
+                client.close()
+            cls._shared_clients = {}
 
     def request(
         self,
@@ -116,6 +128,7 @@ class HttpClient:
         """Make an HTTP request using the configured shared session."""
         method = method.upper()
         request_timeout = timeout or self.timeout
+        verify = request_kwargs.pop("verify", True)
         if method == "GET":
             return self._session.get(
                 url,
@@ -123,6 +136,7 @@ class HttpClient:
                 headers=headers,
                 timeout=request_timeout,
                 stream=stream,
+                verify=verify,
                 **request_kwargs,
             )
         if method == "POST":
@@ -133,6 +147,7 @@ class HttpClient:
                 headers=headers,
                 timeout=request_timeout,
                 stream=stream,
+                verify=verify,
                 **request_kwargs,
             )
         return self._session.request(
@@ -144,6 +159,7 @@ class HttpClient:
             headers=headers,
             timeout=request_timeout,
             stream=stream,
+            verify=verify,
             **request_kwargs,
         )
 
