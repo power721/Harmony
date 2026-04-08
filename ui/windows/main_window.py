@@ -2387,8 +2387,11 @@ class MainWindow(QMainWindow):
                 app.quit()
             return
 
-        # Stop playback AFTER saving state
-        self._player.engine.stop()
+        # Stop playback AFTER saving state and explicitly shutdown backend resources.
+        try:
+            self._playback.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down playback backend: {e}")
 
         # Clean up scan controller
         if hasattr(self, '_scan_controller') and self._scan_controller:
@@ -2408,12 +2411,6 @@ class MainWindow(QMainWindow):
             DownloadManager.instance().cleanup()
         except Exception as e:
             logger.error(f"Error cleaning up DownloadManager: {e}")
-
-        # Clean up PlaybackService online download workers
-        try:
-            self._playback.cleanup_download_workers()
-        except Exception as e:
-            logger.error(f"Error cleaning up PlaybackService workers: {e}")
 
         # Clean up lyrics controller threads
         if hasattr(self, '_lyrics_controller') and self._lyrics_controller:

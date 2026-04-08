@@ -100,6 +100,7 @@ class PlayerEngine(QObject):
         self._cloud_file_id_to_index: dict = {}  # Dict for O(1) lookup by cloud_file_id
         self._prevent_auto_next: bool = False  # Flag to prevent auto-play next track
         self._media_loaded_flag: bool = False  # Track if media has been loaded for current source
+        self._shutdown_complete: bool = False
 
         # Connect signals
         self._backend.position_changed.connect(self._on_position_changed)
@@ -114,6 +115,14 @@ class PlayerEngine(QObject):
 
     def __del__(self):
         """Ensure cleanup on destruction."""
+        self.shutdown()
+
+    def shutdown(self):
+        """Explicitly cleanup backend and temp files once."""
+        if getattr(self, "_shutdown_complete", False):
+            return
+        self._shutdown_complete = True
+
         backend = getattr(self, "_backend", None)
         if backend is not None:
             try:

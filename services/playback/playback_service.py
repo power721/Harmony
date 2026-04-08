@@ -514,6 +514,13 @@ class PlaybackService(QObject):
         # Cleanup any ongoing download tasks
         self.cleanup_download_workers()
 
+    def shutdown(self):
+        """Explicitly shutdown playback backend resources and workers."""
+        try:
+            self._engine.shutdown()
+        finally:
+            self.cleanup_download_workers()
+
     def cleanup_download_workers(self):
         """Clean up all online download workers."""
         logger.info("[PlaybackService] Cleaning up online download workers")

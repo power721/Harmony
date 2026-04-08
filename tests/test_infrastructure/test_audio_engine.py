@@ -150,3 +150,27 @@ def test_del_logs_backend_cleanup_failure_and_still_cleans_temp_files(caplog):
 
     assert temp_cleanup_calls == ["cleaned"]
     assert "Error cleaning up backend" in caplog.text
+
+
+def test_explicit_shutdown_cleans_backend_once():
+    """Explicit shutdown should be idempotent and not rely on __del__ ordering."""
+
+    class _Backend:
+        def __init__(self):
+            self.cleanup_calls = 0
+
+        def cleanup(self):
+            self.cleanup_calls += 1
+
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._backend = _Backend()
+    engine._shutdown_complete = False
+    temp_cleanup_calls = []
+    engine.cleanup_temp_files = lambda: temp_cleanup_calls.append("cleaned")
+
+    PlayerEngine.shutdown(engine)
+    PlayerEngine.shutdown(engine)
+    PlayerEngine.__del__(engine)
+
+    assert engine._backend.cleanup_calls == 1
+    assert temp_cleanup_calls == ["cleaned"]

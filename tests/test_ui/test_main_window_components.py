@@ -3,9 +3,11 @@ Tests for MainWindow components.
 """
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QApplication
+from domain.playback import PlaybackState
 
 from ui.windows.main_window import MainWindow
 from ui.windows.components.sidebar import Sidebar
@@ -262,6 +264,84 @@ class TestMainWindowPlayerProxy:
         window._player.play_local_tracks([1, 2, 3], start_index=1)
 
         playback.play_local_tracks.assert_called_once_with([1, 2, 3], start_index=1)
+
+    def test_close_event_uses_playback_shutdown(self, qapp):
+        """MainWindow shutdown should explicitly close playback backend resources."""
+        cloud_download_service = SimpleNamespace(cleanup=Mock())
+        download_manager = SimpleNamespace(
+            cleanup=Mock(),
+            download_completed=SimpleNamespace(disconnect=Mock()),
+            download_failed=SimpleNamespace(disconnect=Mock()),
+        )
+        fake = SimpleNamespace(
+            _now_playing_window=None,
+            _config=SimpleNamespace(
+                set_start_in_now_playing=Mock(),
+                set_volume=Mock(),
+                set_playback_position=Mock(),
+                set_was_playing=Mock(),
+                get_playback_source=Mock(return_value="local"),
+                set_playback_source=Mock(),
+                set_current_track_id=Mock(),
+                clear_cloud_account_id=Mock(),
+            ),
+            _settings=SimpleNamespace(setValue=Mock()),
+            saveGeometry=Mock(return_value=b"geometry"),
+            _splitter=SimpleNamespace(saveState=Mock(return_value=b"splitter")),
+            _save_view_state=Mock(),
+            _player=SimpleNamespace(
+                current_source="local",
+                state=PlaybackState.PLAYING,
+                current_track=None,
+                volume=35,
+                engine=SimpleNamespace(
+                    position=Mock(return_value=1200),
+                    current_index=0,
+                    stop=Mock(),
+                ),
+            ),
+            _playback=SimpleNamespace(
+                begin_shutdown=Mock(),
+                save_queue=Mock(),
+                shutdown=Mock(),
+                cleanup_download_workers=Mock(),
+            ),
+            _force_quit_requested=False,
+            _scan_controller=None,
+            _lyrics_controller=None,
+            _event_bus=SimpleNamespace(
+                track_changed=SimpleNamespace(disconnect=Mock()),
+                position_changed=SimpleNamespace(disconnect=Mock()),
+                playback_state_changed=SimpleNamespace(disconnect=Mock()),
+                download_completed=SimpleNamespace(disconnect=Mock()),
+            ),
+            _on_track_changed=Mock(),
+            _on_position_changed=Mock(),
+            _on_playback_state_changed=Mock(),
+            _on_cloud_download_completed=Mock(),
+            _on_playlist_redownload_completed=Mock(),
+            _on_playlist_redownload_failed=Mock(),
+            _db=SimpleNamespace(close=Mock()),
+        )
+        event = SimpleNamespace(accept=Mock())
+
+        with patch(
+            "services.cloud.download_service.CloudDownloadService.instance",
+            return_value=cloud_download_service,
+        ), patch(
+            "services.download.download_manager.DownloadManager.instance",
+            return_value=download_manager,
+        ):
+            MainWindow.closeEvent(fake, event)
+
+        fake._playback.begin_shutdown.assert_called_once_with()
+        fake._playback.save_queue.assert_called_once_with(force=True)
+        fake._playback.shutdown.assert_called_once_with()
+        fake._player.engine.stop.assert_not_called()
+        cloud_download_service.cleanup.assert_called_once_with()
+        download_manager.cleanup.assert_called_once_with()
+        fake._db.close.assert_called_once_with()
+        event.accept.assert_called_once_with()
 
 
 class TestSidebarWithConfig:
