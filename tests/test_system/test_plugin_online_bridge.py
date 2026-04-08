@@ -12,6 +12,7 @@ from system.plugins.host_services import (
 )
 from system.plugins.media_bridge import PluginMediaBridge
 from system.plugins.registry import PluginRegistry
+import system.plugins.plugin_sdk_runtime as plugin_sdk_runtime
 
 
 def test_plugin_settings_bridge_namespaces_keys():
@@ -239,3 +240,19 @@ def test_media_bridge_can_add_and_insert_online_track_to_queue():
     inserted_item = playback_service.engine.insert_track.call_args[0][1]
     assert queued_item.online_provider_id == "qqmusic"
     assert inserted_item.online_provider_id == "qqmusic"
+
+
+def test_runtime_remove_library_favorite_by_mid_is_provider_aware(monkeypatch):
+    instance = Mock()
+    track = Mock(id=42)
+    instance.library_service.get_track_by_cloud_file_id.return_value = track
+    monkeypatch.setattr(plugin_sdk_runtime, "bootstrap", lambda: instance)
+
+    result = plugin_sdk_runtime.remove_library_favorite_by_mid("mid-1", provider_id="qqmusic")
+
+    assert result is True
+    instance.library_service.get_track_by_cloud_file_id.assert_called_once_with(
+        "mid-1",
+        provider_id="qqmusic",
+    )
+    instance.favorites_service.remove_favorite.assert_called_once_with(track_id=42)

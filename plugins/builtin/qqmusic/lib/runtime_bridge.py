@@ -157,8 +157,8 @@ def favorite_mids_from_library() -> set[str]:
     return _require_context().runtime.favorite_mids_from_library()
 
 
-def remove_library_favorite_by_mid(mid: str) -> bool:
-    return _require_context().runtime.remove_library_favorite_by_mid(mid)
+def remove_library_favorite_by_mid(mid: str, provider_id: str | None = None) -> bool:
+    return _require_context().runtime.remove_library_favorite_by_mid(mid, provider_id=provider_id)
 
 
 def add_requests_to_favorites(requests: list[Any]) -> list[int]:

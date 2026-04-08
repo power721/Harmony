@@ -35,7 +35,12 @@ class FavoritesService:
         self._favorite_repo = favorite_repo
         self._event_bus = event_bus or EventBus.instance()
 
-    def is_favorite(self, track_id: int = None, cloud_file_id: str = None) -> bool:
+    def is_favorite(
+        self,
+        track_id: int = None,
+        cloud_file_id: str = None,
+        online_provider_id: str | None = None,
+    ) -> bool:
         """
         Check if a track or cloud file is favorited.
 
@@ -46,7 +51,11 @@ class FavoritesService:
         Returns:
             True if favorited, False otherwise
         """
-        return self._favorite_repo.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        return self._favorite_repo.is_favorite(
+            track_id=track_id,
+            cloud_file_id=cloud_file_id,
+            online_provider_id=online_provider_id,
+        )
 
     def get_all_favorite_track_ids(self) -> set:
         """
@@ -61,7 +70,8 @@ class FavoritesService:
         self,
         track_id: int = None,
         cloud_file_id: str = None,
-        cloud_account_id: int = None
+        cloud_account_id: int = None,
+        online_provider_id: str | None = None,
     ) -> bool:
         """
         Add a track or cloud file to favorites.
@@ -77,7 +87,8 @@ class FavoritesService:
         result = self._favorite_repo.add_favorite(
             track_id=track_id,
             cloud_file_id=cloud_file_id,
-            cloud_account_id=cloud_account_id
+            cloud_account_id=cloud_account_id,
+            online_provider_id=online_provider_id,
         )
         if result:
             is_cloud = cloud_file_id is not None
@@ -85,7 +96,12 @@ class FavoritesService:
             self._event_bus.emit_favorite_change(item_id, True, is_cloud)
         return result
 
-    def remove_favorite(self, track_id: int = None, cloud_file_id: str = None) -> bool:
+    def remove_favorite(
+        self,
+        track_id: int = None,
+        cloud_file_id: str = None,
+        online_provider_id: str | None = None,
+    ) -> bool:
         """
         Remove a track or cloud file from favorites.
 
@@ -96,7 +112,11 @@ class FavoritesService:
         Returns:
             True if removed, False if not found
         """
-        result = self._favorite_repo.remove_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        result = self._favorite_repo.remove_favorite(
+            track_id=track_id,
+            cloud_file_id=cloud_file_id,
+            online_provider_id=online_provider_id,
+        )
         if result:
             is_cloud = cloud_file_id is not None
             item_id = cloud_file_id if is_cloud else track_id
@@ -107,7 +127,8 @@ class FavoritesService:
         self,
         track_id: int = None,
         cloud_file_id: str = None,
-        cloud_account_id: int = None
+        cloud_account_id: int = None,
+        online_provider_id: str | None = None,
     ) -> tuple[bool, bool]:
         """
         Toggle favorite status.
@@ -120,16 +141,25 @@ class FavoritesService:
         Returns:
             Tuple of (is_now_favorite, was_changed)
         """
-        is_fav = self.is_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+        is_fav = self.is_favorite(
+            track_id=track_id,
+            cloud_file_id=cloud_file_id,
+            online_provider_id=online_provider_id,
+        )
 
         if is_fav:
-            removed = self.remove_favorite(track_id=track_id, cloud_file_id=cloud_file_id)
+            removed = self.remove_favorite(
+                track_id=track_id,
+                cloud_file_id=cloud_file_id,
+                online_provider_id=online_provider_id,
+            )
             return False, removed
         else:
             added = self.add_favorite(
                 track_id=track_id,
                 cloud_file_id=cloud_file_id,
-                cloud_account_id=cloud_account_id
+                cloud_account_id=cloud_account_id,
+                online_provider_id=online_provider_id,
             )
             return True, added
 

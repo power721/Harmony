@@ -120,8 +120,8 @@ class PluginRuntimeBridgeImpl:
     def favorite_mids_from_library(self) -> set[str]:
         return plugin_sdk_runtime.favorite_mids_from_library()
 
-    def remove_library_favorite_by_mid(self, mid: str) -> bool:
-        return plugin_sdk_runtime.remove_library_favorite_by_mid(mid)
+    def remove_library_favorite_by_mid(self, mid: str, provider_id: str | None = None) -> bool:
+        return plugin_sdk_runtime.remove_library_favorite_by_mid(mid, provider_id=provider_id)
 
     def add_requests_to_favorites(self, requests):
         return plugin_sdk_runtime.add_requests_to_favorites(requests)

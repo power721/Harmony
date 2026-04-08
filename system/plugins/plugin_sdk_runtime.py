@@ -100,15 +100,18 @@ def favorite_mids_from_library() -> set[str]:
     return mids
 
 
-def remove_library_favorite_by_mid(mid: str) -> bool:
+def remove_library_favorite_by_mid(mid: str, provider_id: str | None = None) -> bool:
     instance = bootstrap()
     if not instance or not getattr(instance, "favorites_service", None) or not getattr(instance, "library_service", None):
         return False
-    library_track = instance.library_service.get_track_by_cloud_file_id(mid)
+    library_track = instance.library_service.get_track_by_cloud_file_id(mid, provider_id=provider_id)
     if library_track:
         instance.favorites_service.remove_favorite(track_id=library_track.id)
         return True
-    instance.favorites_service.remove_favorite(cloud_file_id=mid)
+    instance.favorites_service.remove_favorite(
+        cloud_file_id=mid,
+        online_provider_id=provider_id,
+    )
     return True
 
 

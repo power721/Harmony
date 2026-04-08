@@ -155,7 +155,7 @@ class PluginRuntimeBridge(Protocol):
     def favorite_mids_from_library(self) -> set[str]:
         ...
 
-    def remove_library_favorite_by_mid(self, mid: str) -> bool:
+    def remove_library_favorite_by_mid(self, mid: str, provider_id: str | None = None) -> bool:
         ...
 
     def add_requests_to_favorites(self, requests):

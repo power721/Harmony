@@ -259,6 +259,8 @@ class DatabaseManager:
                            INTEGER,
                            cloud_file_id
                            TEXT,
+                           online_provider_id
+                           TEXT,
                            cloud_account_id
                            INTEGER,
                            created_at
@@ -284,10 +286,6 @@ class DatabaseManager:
                            UNIQUE
                        (
                            track_id
-                       ),
-                           UNIQUE
-                       (
-                           cloud_file_id
                        )
                            )
                        """)
@@ -735,7 +733,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 11
+        CURRENT_SCHEMA_VERSION = 12
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -769,6 +767,8 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE favorites ADD COLUMN cloud_file_id TEXT")
         if 'cloud_account_id' not in columns:
             cursor.execute("ALTER TABLE favorites ADD COLUMN cloud_account_id INTEGER")
+        if 'online_provider_id' not in columns:
+            cursor.execute("ALTER TABLE favorites ADD COLUMN online_provider_id TEXT")
 
         # Check if track_id is NOT NULL (needs to be nullable for cloud files)
         cursor.execute("PRAGMA table_info(favorites)")
@@ -791,6 +791,8 @@ class DatabaseManager:
                                track_id
                                INTEGER,
                                cloud_file_id
+                               TEXT,
+                               online_provider_id
                                TEXT,
                                cloud_account_id
                                INTEGER,
@@ -817,16 +819,14 @@ class DatabaseManager:
                                UNIQUE
                            (
                                track_id
-                           ),
-                               UNIQUE
-                           (
-                               cloud_file_id
                            )
                                )
                            """)
             cursor.execute("""
-                           INSERT INTO favorites_new (id, track_id, cloud_file_id, cloud_account_id, created_at)
-                           SELECT id, track_id, cloud_file_id, cloud_account_id, created_at
+                           INSERT INTO favorites_new (
+                               id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
+                           )
+                           SELECT id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
                            FROM favorites
                            """)
             cursor.execute("DROP TABLE favorites")
@@ -1056,7 +1056,7 @@ class DatabaseManager:
             """)
             cursor.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
-                    ON favorites(cloud_file_id)
+                    ON favorites(cloud_file_id, COALESCE(online_provider_id, ''))
                     WHERE cloud_file_id IS NOT NULL
             """)
             logger.info("[Database] Added unique indexes for UPSERT support")
@@ -1102,6 +1102,50 @@ class DatabaseManager:
                 WHERE LOWER(COALESCE(online_provider_id, '')) = 'online'
             """)
             logger.info("[Database] Repaired legacy QQ online provider ids")
+
+        # Migration 11: Make online favorites provider-aware.
+        if stored_version < 12:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS favorites_new
+                (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    track_id INTEGER,
+                    cloud_file_id TEXT,
+                    online_provider_id TEXT,
+                    cloud_account_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+                    FOREIGN KEY(cloud_account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO favorites_new (
+                    id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
+                )
+                SELECT
+                    id,
+                    track_id,
+                    cloud_file_id,
+                    online_provider_id,
+                    cloud_account_id,
+                    created_at
+                FROM favorites
+            """)
+            cursor.execute("DROP TABLE favorites")
+            cursor.execute("ALTER TABLE favorites_new RENAME TO favorites")
+            cursor.execute("DROP INDEX IF EXISTS idx_favorites_track_unique")
+            cursor.execute("DROP INDEX IF EXISTS idx_favorites_cloud_file_unique")
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_track_unique
+                    ON favorites(track_id)
+                    WHERE track_id IS NOT NULL
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
+                    ON favorites(cloud_file_id, COALESCE(online_provider_id, ''))
+                    WHERE cloud_file_id IS NOT NULL
+            """)
+            logger.info("[Database] Made online favorites provider-aware")
 
         # Update schema version after all migrations complete
         if schema_changed:

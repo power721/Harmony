@@ -20,7 +20,19 @@ class SqliteFavoriteRepository(BaseRepository):
         from repositories.track_repository import SqliteTrackRepository
         self._track_repo = SqliteTrackRepository(db_path, db_manager)
 
-    def is_favorite(self, track_id: TrackId = None, cloud_file_id: str = None) -> bool:
+    @staticmethod
+    def _normalize_online_provider_id(value: str | None) -> str | None:
+        normalized = str(value or "").strip()
+        if not normalized or normalized.lower() == "online":
+            return None
+        return normalized
+
+    def is_favorite(
+        self,
+        track_id: TrackId = None,
+        cloud_file_id: str = None,
+        online_provider_id: str | None = None,
+    ) -> bool:
         """
         Check if a track or cloud file is favorited.
 
@@ -40,10 +52,17 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            cursor.execute(
-                "SELECT 1 FROM favorites WHERE cloud_file_id = ? LIMIT 1",
-                (cloud_file_id,)
-            )
+            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            if normalized_provider_id is None:
+                cursor.execute(
+                    "SELECT 1 FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL LIMIT 1",
+                    (cloud_file_id,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT 1 FROM favorites WHERE cloud_file_id = ? AND online_provider_id = ? LIMIT 1",
+                    (cloud_file_id, normalized_provider_id),
+                )
         else:
             return False
 
@@ -65,7 +84,8 @@ class SqliteFavoriteRepository(BaseRepository):
         self,
         track_id: TrackId = None,
         cloud_file_id: str = None,
-        cloud_account_id: int = None
+        cloud_account_id: int = None,
+        online_provider_id: str | None = None,
     ) -> bool:
         """
         Add a track or cloud file to favorites.
@@ -85,16 +105,26 @@ class SqliteFavoriteRepository(BaseRepository):
         if track_id is None and cloud_file_id is None:
             return False
 
+        normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
         cursor.execute(
-            "INSERT OR IGNORE INTO favorites (track_id, cloud_file_id, cloud_account_id) VALUES (?, ?, ?)",
-            (track_id, cloud_file_id, cloud_account_id)
+            """
+            INSERT OR IGNORE INTO favorites
+            (track_id, cloud_file_id, online_provider_id, cloud_account_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (track_id, cloud_file_id, normalized_provider_id, cloud_account_id)
         )
         if cursor.rowcount == 0:
             return False  # Already exists
         conn.commit()
         return True
 
-    def remove_favorite(self, track_id: TrackId = None, cloud_file_id: str = None) -> bool:
+    def remove_favorite(
+        self,
+        track_id: TrackId = None,
+        cloud_file_id: str = None,
+        online_provider_id: str | None = None,
+    ) -> bool:
         """
         Remove a track or cloud file from favorites.
 
@@ -114,10 +144,17 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            cursor.execute(
-                "DELETE FROM favorites WHERE cloud_file_id = ?",
-                (cloud_file_id,)
-            )
+            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            if normalized_provider_id is None:
+                cursor.execute(
+                    "DELETE FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL",
+                    (cloud_file_id,),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM favorites WHERE cloud_file_id = ? AND online_provider_id = ?",
+                    (cloud_file_id, normalized_provider_id),
+                )
         else:
             return False
 
@@ -156,6 +193,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 f.id as fav_id,
                 f.track_id,
                 f.cloud_file_id,
+                f.online_provider_id,
                 f.cloud_account_id,
                 t.id,
                 t.path,
