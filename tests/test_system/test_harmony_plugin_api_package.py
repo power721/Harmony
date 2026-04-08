@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 from pathlib import Path
+import subprocess
 
 
 PACKAGE_ROOT = Path("packages/harmony-plugin-api")
@@ -72,6 +73,8 @@ def test_harmony_plugin_api_package_has_no_host_imports():
 
 def test_harmony_plugin_api_package_can_be_built():
     dist_dir = PACKAGE_ROOT / "dist"
+    if not any(path.suffix == ".whl" for path in dist_dir.glob("*.whl")):
+        subprocess.run(["uv", "build"], cwd=PACKAGE_ROOT, check=True)
     assert any(path.suffix == ".whl" for path in dist_dir.glob("*.whl"))
 
 
