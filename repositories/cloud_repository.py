@@ -451,16 +451,29 @@ class SqliteCloudRepository(BaseRepository):
         conn.commit()
         return cursor.lastrowid
 
-    def cache_files(self, account_id: int, files: List[CloudFile]) -> bool:
+    def cache_files(
+        self,
+        account_id: int,
+        files: List[CloudFile],
+        parent_id: Optional[str] = None,
+    ) -> bool:
         """Cache cloud file metadata for current folder (preserve local_path and other folders)."""
-        if not files:
-            return True
-
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Get the parent_id from the first file (all files should be in the same folder)
-        parent_id = files[0].parent_id if files else ""
+        # Get the parent_id from the explicit argument or first file.
+        if parent_id is None:
+            if not files:
+                return True
+            parent_id = files[0].parent_id
+
+        if not files:
+            cursor.execute(
+                "DELETE FROM cloud_files WHERE account_id = ? AND parent_id = ?",
+                (account_id, parent_id),
+            )
+            conn.commit()
+            return True
 
         # First, get existing local_paths for files in this folder
         cursor.execute(

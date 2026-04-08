@@ -1135,9 +1135,14 @@ class CloudDriveView(QWidget):
 
         if files and len(files) > 0:
             self._current_parent_id = files[0].parent_id
-            can_go_back = self._current_parent_id != "0"
-            self._back_btn.setEnabled(can_go_back)
-            self._cloud_file_service.cache_files(self._current_account.id, files)
+
+        self._cloud_file_service.cache_files(
+            self._current_account.id,
+            files,
+            parent_id=dir_path,
+        )
+        can_go_back = self._current_parent_id != "0"
+        self._back_btn.setEnabled(can_go_back)
 
         files = self._cloud_file_service.get_files(
             self._current_account.id, self._current_parent_id

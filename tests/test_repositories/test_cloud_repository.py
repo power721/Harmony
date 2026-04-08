@@ -711,6 +711,24 @@ class TestCloudFileSpecializedQueries:
         result = cloud_repo.cache_files(1, [])
         assert result is True
 
+    def test_cache_files_empty_listing_clears_existing_folder(self, cloud_repo, sample_account):
+        """Explicit empty folder refresh should clear cached rows for that folder."""
+        account_id = cloud_repo.add_account(sample_account)
+        cloud_repo.add_file(
+            CloudFile(
+                account_id=account_id,
+                file_id="stale1",
+                parent_id="folder_A",
+                name="stale.mp3",
+                file_type="audio",
+            )
+        )
+
+        result = cloud_repo.cache_files(account_id, [], parent_id="folder_A")
+
+        assert result is True
+        assert cloud_repo.get_files_by_parent(account_id, "folder_A") == []
+
     def test_cache_files_deletes_old_folder(self, cloud_repo, sample_account):
         """Test that cache_files deletes old files for the same folder only."""
         account_id = cloud_repo.add_account(sample_account)

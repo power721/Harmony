@@ -83,7 +83,12 @@ class CloudFileService:
         """
         return self._cloud_repo.get_file_by_local_path(local_path)
 
-    def cache_files(self, account_id: int, files: List[CloudFile]) -> bool:
+    def cache_files(
+        self,
+        account_id: int,
+        files: List[CloudFile],
+        parent_id: str | None = None,
+    ) -> bool:
         """
         Cache cloud file metadata for current folder.
 
@@ -96,7 +101,11 @@ class CloudFileService:
         Returns:
             True if cached successfully
         """
-        return self._cloud_repo.cache_files(account_id=account_id, files=files)
+        return self._cloud_repo.cache_files(
+            account_id=account_id,
+            files=files,
+            parent_id=parent_id,
+        )
 
     def update_local_path(self, file_id: str, account_id: int, local_path: str) -> bool:
         """

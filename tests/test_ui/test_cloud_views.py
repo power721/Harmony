@@ -617,3 +617,34 @@ class TestCloudDriveView:
 
         mock_delete.assert_called_once_with("baidu_token", "/music/song.mp3")
         mock_load_files.assert_called_once()
+
+    def test_load_files_clears_cached_folder_when_remote_listing_empty(self, qapp, mock_config):
+        """Empty remote folder listings should still refresh cached folder state."""
+        ThemeManager.instance(mock_config)
+        cloud_file_service = Mock()
+        cloud_file_service.get_files.return_value = []
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=cloud_file_service,
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._current_parent_id = "folder_A"
+
+        with patch(
+            "ui.views.cloud.cloud_drive_view.QuarkDriveService.get_file_list",
+            return_value=([], None),
+        ):
+            view._load_files()
+
+        cloud_file_service.cache_files.assert_called_once_with(1, [], parent_id="folder_A")
+        cloud_file_service.get_files.assert_called_once_with(1, "folder_A")
+        assert view._file_table._table.rowCount() == 0
