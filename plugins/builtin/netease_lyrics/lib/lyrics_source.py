@@ -42,12 +42,14 @@ class NetEaseLyricsPluginSource:
             if not cover_url and album.get("pic"):
                 pic = str(album.get("pic"))
                 cover_url = f"https://p1.music.126.net/{pic}/{pic}.jpg"
+            artists = song.get("artists") or []
+            artist_name = artists[0].get("name", "") if artists else ""
 
             results.append(
                 PluginLyricsResult(
-                    song_id=str(song["id"]),
+                    song_id=str(song.get("id", "")),
                     title=song.get("name", ""),
-                    artist=song["artists"][0]["name"] if song.get("artists") else "",
+                    artist=artist_name,
                     album=album.get("name", ""),
                     duration=(song.get("duration") / 1000) if song.get("duration") else None,
                     source="netease",
