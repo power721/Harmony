@@ -3,18 +3,13 @@ Asynchronous lyrics loader to prevent UI blocking.
 """
 
 import logging
-from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QThread, Signal
 from shiboken6 import isValid
 
 from .lyrics_service import LyricsService
 
-# Configure logging
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from services.metadata import CoverService
 
 
 class LyricsLoader(QThread):
@@ -121,17 +116,14 @@ class LyricsDownloadWorker(QThread):
         lyrics_downloaded: Emitted when lyrics are downloaded and saved (path, lyrics)
         download_failed: Emitted when download fails (error_message)
         search_results_ready: Emitted when search results are ready (list of dicts)
-        cover_downloaded: Emitted when cover is downloaded (cover_path)
     """
 
     lyrics_downloaded = Signal(str, str)  # path, lyrics
     download_failed = Signal(str)  # error message
     search_results_ready = Signal(list)  # list of search results
-    cover_downloaded = Signal(str)  # cover path
 
     def __init__(self, track_path: str, title: str, artist: str, parent=None,
                  song_id: str = None, source: str = None, accesskey: str = None,
-                 download_cover: bool = True, cover_service: 'CoverService' = None,
                  lyrics_data: str = None):
         """
         Initialize the worker.
@@ -144,8 +136,6 @@ class LyricsDownloadWorker(QThread):
             song_id: If provided, download specific song's lyrics
             source: Source name ('lrclib', 'netease' or 'kugou')
             accesskey: Access key for Kugou
-            download_cover: Whether to download cover art (default: True)
-            cover_service: CoverService for downloading cover art
             lyrics_data: Pre-fetched lyrics (for LRCLIB)
         """
         super().__init__(parent)
@@ -155,8 +145,6 @@ class LyricsDownloadWorker(QThread):
         self._song_id = song_id
         self._source = source
         self._accesskey = accesskey
-        self._should_download_cover = download_cover
-        self._cover_service = cover_service
         self._lyrics_data = lyrics_data
 
     def run(self):
@@ -177,10 +165,6 @@ class LyricsDownloadWorker(QThread):
                     # Save to local file
                     LyricsService.save_lyrics(self._path, lyrics)
                     self.lyrics_downloaded.emit(self._path, lyrics)
-
-                    # Try to download cover for NetEase songs if enabled
-                    if self._should_download_cover and self._source == 'netease':
-                        self._download_cover(self._song_id, self._source)
                 else:
                     self.download_failed.emit("Failed to download lyrics for selected song")
             else:
@@ -200,36 +184,6 @@ class LyricsDownloadWorker(QThread):
         except Exception as e:
             logger.error(f"[LyricsDownloadWorker] Error: {e}")
             self.download_failed.emit(str(e))
-
-    def _download_cover(self, song_id: str, source: str):
-        """Download cover art for the song."""
-        try:
-            # Get cover URL
-            cover_url = LyricsService.get_song_cover_url(song_id, source)
-            if not cover_url:
-                return
-
-            # Download cover image
-            from infrastructure.network import HttpClient
-
-            cover_data = HttpClient.shared().get_content(
-                cover_url,
-                headers=LyricsService.HEADERS,
-                timeout=10,
-            )
-            if not cover_data:
-                return
-
-            # Save cover to cache directory
-            if self._cover_service:
-                cover_path = self._cover_service.save_cover_data_to_cache(
-                    cover_data, self._artist, self._title
-                )
-                if cover_path:
-                    self.cover_downloaded.emit(cover_path)
-
-        except Exception as e:
-            logger.error(f"[LyricsDownloadWorker] Error downloading cover: {e}", exc_info=True)
 
 
 class LyricsSearchWorker(QThread):

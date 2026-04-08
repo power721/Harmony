@@ -37,7 +37,6 @@ def test_stop_lyrics_download_thread_cleanup_disconnects_and_clears_reference(mo
         finished=SimpleNamespace(disconnect=MagicMock()),
         lyrics_downloaded=SimpleNamespace(disconnect=MagicMock()),
         download_failed=SimpleNamespace(disconnect=MagicMock()),
-        cover_downloaded=SimpleNamespace(disconnect=MagicMock()),
         deleteLater=MagicMock(),
     )
     fake = SimpleNamespace(_lyrics_download_thread=fake_thread)
@@ -48,6 +47,5 @@ def test_stop_lyrics_download_thread_cleanup_disconnects_and_clears_reference(mo
     fake_thread.finished.disconnect.assert_called_once()
     fake_thread.lyrics_downloaded.disconnect.assert_called_once()
     fake_thread.download_failed.disconnect.assert_called_once()
-    fake_thread.cover_downloaded.disconnect.assert_called_once()
     fake_thread.deleteLater.assert_called_once()
     assert fake._lyrics_download_thread is None

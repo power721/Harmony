@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QLabel,
-    QCheckBox,
     QProgressBar,
     QWidget,
     QGraphicsDropShadowEffect,
@@ -79,12 +78,9 @@ class LyricsDownloadDialog(QDialog):
     """Dialog for selecting and downloading lyrics from search results.
 
     This dialog displays search results from online lyrics sources and allows
-    the user to select a song to download lyrics (and optionally cover art).
+    the user to select a song to download lyrics.
     Results are sorted by match score (highest first).
     """
-
-    # Signals
-    download_requested = Signal(dict, bool)  # Emits (song_info, download_cover)
 
     _STYLE_TEMPLATE = """
         QListWidget {
@@ -129,7 +125,6 @@ class LyricsDownloadDialog(QDialog):
         self._track_album = track_album
         self._track_duration = track_duration
         self._selected_song: Optional[dict] = None
-        self._download_cover = False
         self._search_thread: Optional[LyricsSearchThread] = None
         self._drag_pos = None
 
@@ -196,12 +191,6 @@ class LyricsDownloadDialog(QDialog):
         self._song_list.setFocusPolicy(Qt.NoFocus)  # Prevent automatic focus
         self._song_list.itemDoubleClicked.connect(self.accept)
         layout.addWidget(self._song_list)
-
-        # Checkbox for downloading cover
-        self._download_cover_checkbox = QCheckBox(t("download_cover"))
-        self._download_cover_checkbox.setChecked(False)
-        self._download_cover_checkbox.setToolTip(t("download_cover_tooltip"))
-        layout.addWidget(self._download_cover_checkbox)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -446,20 +435,11 @@ class LyricsDownloadDialog(QDialog):
         """
         return self._selected_song
 
-    def get_download_cover(self) -> bool:
-        """Get whether to download cover art.
-
-        Returns:
-            True if cover should be downloaded
-        """
-        return self._download_cover
-
     def accept(self):
         """Handle dialog acceptance."""
         current_item = self._song_list.currentItem()
         if current_item:
             self._selected_song = current_item.data(Qt.UserRole)
-            self._download_cover = self._download_cover_checkbox.isChecked()
         LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
         super().accept()
 
@@ -481,7 +461,7 @@ class LyricsDownloadDialog(QDialog):
             track_album: str = "",
             track_duration: float = None,
             parent=None
-    ) -> Optional[tuple]:
+    ) -> Optional[dict]:
         """Static method to show the dialog and get the result.
 
         Args:
@@ -493,7 +473,7 @@ class LyricsDownloadDialog(QDialog):
             parent: Parent widget
 
         Returns:
-            Tuple of (selected_song, download_cover) or None if cancelled
+            Selected song dictionary or None if cancelled
         """
         dialog = LyricsDownloadDialog(
             track_title,
@@ -506,9 +486,8 @@ class LyricsDownloadDialog(QDialog):
 
         if dialog.exec() == QDialog.Accepted:
             selected_song = dialog.get_selected_song()
-            download_cover = dialog.get_download_cover()
             if selected_song:
-                return (selected_song, download_cover)
+                return selected_song
 
         return None
 

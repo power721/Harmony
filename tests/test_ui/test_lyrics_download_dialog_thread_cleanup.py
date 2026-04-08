@@ -3,8 +3,12 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from PySide6.QtWidgets import QCheckBox, QDialog
+
 import ui.dialogs.lyrics_download_dialog as dialog_module
 from ui.dialogs.lyrics_download_dialog import LyricsDownloadDialog
+from system.theme import ThemeManager
 
 
 def _make_fake_thread(**attrs):
@@ -15,6 +19,44 @@ def _make_fake_thread(**attrs):
     for name, value in attrs.items():
         setattr(thread, name, value)
     return thread
+
+
+@pytest.fixture(autouse=True)
+def _init_theme():
+    config = MagicMock()
+    config.get.return_value = "dark"
+    ThemeManager._instance = None
+    ThemeManager.instance(config)
+    yield
+    ThemeManager._instance = None
+
+
+def test_dialog_does_not_expose_download_cover_checkbox(qtbot, monkeypatch):
+    """Lyrics download dialog should no longer offer cover download UI."""
+    monkeypatch.setattr(LyricsDownloadDialog, "_start_search", lambda self: None)
+
+    dialog = LyricsDownloadDialog("Song", "Artist")
+    qtbot.addWidget(dialog)
+
+    assert not hasattr(dialog, "_download_cover_checkbox")
+    assert dialog.findChildren(QCheckBox) == []
+
+
+def test_show_dialog_returns_selected_song_only(monkeypatch):
+    """Dialog result should now be only the selected song payload."""
+    selected_song = {"id": "song-1", "source": "netease"}
+
+    monkeypatch.setattr(LyricsDownloadDialog, "_start_search", lambda self: None)
+    monkeypatch.setattr(LyricsDownloadDialog, "exec", lambda self: QDialog.Accepted)
+    monkeypatch.setattr(
+        LyricsDownloadDialog,
+        "get_selected_song",
+        lambda self: selected_song,
+    )
+
+    result = LyricsDownloadDialog.show_dialog("Song", "Artist")
+
+    assert result == selected_song
 
 
 def test_stop_search_thread_detaches_running_thread_from_dialog(monkeypatch):
