@@ -837,12 +837,15 @@ class PlayerEngine(QObject):
                 self.stop()
                 return
 
-        self._load_track(current_index)
-
         if self._item_needs_download(item):
-            item.needs_download = True
-            self.track_needs_download.emit(item)
+            validated_item = self._get_playlist_item_if_match(current_index, item)
+            if validated_item is None:
+                return
+            validated_item.needs_download = True
+            self.track_needs_download.emit(validated_item)
         elif self._item_has_local_file(item):
+            if not self._load_track_if_match(current_index, item):
+                return
             self._backend.play()
 
     def play_previous(self):
