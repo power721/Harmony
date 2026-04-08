@@ -115,6 +115,19 @@ class TestHttpClient:
         assert adapter._pool_maxsize == 20
         assert adapter._pool_block is True
 
+    def test_initialization_configures_retry_strategy(self):
+        """Test HttpClient mounts a retry-enabled adapter."""
+        client = HttpClient()
+
+        adapter = client._session.get_adapter("https://example.com")
+        retries = adapter.max_retries
+
+        assert retries.total == 3
+        assert retries.connect == 3
+        assert retries.read == 3
+        assert retries.backoff_factor == 1
+        assert set(retries.status_forcelist) == {429, 500, 502, 503, 504}
+
     def test_close_method(self):
         """Test close method releases resources."""
         client = HttpClient()

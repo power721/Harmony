@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, Iterator
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,9 @@ class HttpClient:
     _shared_clients = {}
     _shared_lock = threading.Lock()
     _atexit_registered = False
+    DEFAULT_RETRY_TOTAL = 3
+    DEFAULT_RETRY_BACKOFF_FACTOR = 1
+    DEFAULT_RETRY_STATUS_FORCELIST = (429, 500, 502, 503, 504)
 
     def __init__(
         self,
@@ -62,10 +66,19 @@ class HttpClient:
     ) -> requests.Session:
         """Create a requests session with a mounted pooled adapter."""
         session = requests.Session()
+        retry_strategy = Retry(
+            total=cls.DEFAULT_RETRY_TOTAL,
+            connect=cls.DEFAULT_RETRY_TOTAL,
+            read=cls.DEFAULT_RETRY_TOTAL,
+            backoff_factor=cls.DEFAULT_RETRY_BACKOFF_FACTOR,
+            status_forcelist=cls.DEFAULT_RETRY_STATUS_FORCELIST,
+            allowed_methods=frozenset({"DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"}),
+        )
         adapter = HTTPAdapter(
             pool_connections=pool_connections,
             pool_maxsize=pool_maxsize,
             pool_block=pool_block,
+            max_retries=retry_strategy,
         )
         session.mount("https://", adapter)
         session.mount("http://", adapter)
