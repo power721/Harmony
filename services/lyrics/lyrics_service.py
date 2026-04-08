@@ -2,10 +2,12 @@
 Lyrics service for fetching and parsing lyrics.
 """
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from charset_normalizer import from_bytes
 from harmony_plugin_api.lyrics import PluginLyricsResult
 from system.plugins.online_lyrics_helpers import download_online_lyrics
 from services._singleflight import SingleFlight
@@ -126,29 +128,58 @@ class LyricsService:
         """
         results = []
         sources = cls._get_sources()
+        if not sources:
+            return results
 
-        # Parallel search from multiple sources with progressive updates
-        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        # Parallel search from multiple sources with progressive updates.
+        executor = ThreadPoolExecutor(max_workers=len(sources))
+        pending = set()
+        futures = {}
+        try:
             futures = {
                 executor.submit(source.search, title, artist, limit): cls._get_source_name(source)
                 for source in sources
             }
+            pending = set(futures)
+            deadline = time.monotonic() + 15
 
-            # Wait for each source independently (no overall timeout)
-            for future in as_completed(futures, timeout=15):
-                source_name = futures[future]
-                try:
-                    search_results = future.result(timeout=6)
-                    results.extend(cls._result_to_dict(r) for r in search_results)
-                    logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
 
-                    # Call progress callback if provided
-                    if progress_callback and search_results:
-                        progress_callback(results, source_name)
+                completed, pending = wait(
+                    pending,
+                    timeout=remaining,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not completed:
+                    break
 
-                except Exception as e:
-                    # Log but don't fail - other sources may have results
-                    logger.debug(f"[LyricsService] {source_name} search failed: {e}")
+                for future in completed:
+                    source_name = futures[future]
+                    try:
+                        search_results = future.result(timeout=0)
+                        results.extend(cls._result_to_dict(r) for r in search_results)
+                        logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
+
+                        if progress_callback and search_results:
+                            progress_callback(results, source_name)
+
+                    except Exception as e:
+                        logger.debug(f"[LyricsService] {source_name} search failed: {e}")
+        finally:
+            if pending:
+                pending_sources = ", ".join(
+                    sorted(futures.get(future, "unknown") for future in pending)
+                )
+                logger.warning(
+                    "[LyricsService] Search timed out for sources: %s",
+                    pending_sources,
+                )
+                for future in pending:
+                    future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
 
         # Return all results (user can see all sources)
         return results
@@ -376,23 +407,48 @@ class LyricsService:
         """
         track_file = Path(track_path)
 
-        # Try multiple encodings to support different file sources
-        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
-
         # Try different lyrics file extensions in priority order: .yrc, .qrc, .lrc
         for ext in ['.yrc', '.qrc', '.lrc']:
             lyrics_path = track_file.with_suffix(ext)
             if lyrics_path.exists():
-                for encoding in encodings:
-                    try:
-                        with open(lyrics_path, 'r', encoding=encoding) as f:
-                            content = f.read()
-                        return content
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-                    except Exception as e:
-                        logger.error(f"Error loading local lyrics from {lyrics_path}: {e}", exc_info=True)
-                        break
+                try:
+                    raw_content = cls._read_local_lyrics_bytes(lyrics_path)
+                except Exception as e:
+                    logger.error(f"Error loading local lyrics from {lyrics_path}: {e}", exc_info=True)
+                    continue
+
+                decoded = cls._decode_local_lyrics(raw_content)
+                if decoded:
+                    return decoded
+
+        return ""
+
+    @staticmethod
+    def _read_local_lyrics_bytes(lyrics_path: Path) -> bytes:
+        """Read a local lyrics file once in binary mode."""
+        with open(lyrics_path, 'rb') as f:
+            return f.read()
+
+    @staticmethod
+    def _decode_local_lyrics(raw_content: bytes) -> str:
+        """Decode local lyrics content with UTF-8 first and charset detection fallback."""
+        if not raw_content:
+            return ""
+
+        try:
+            return raw_content.decode('utf-8')
+        except UnicodeDecodeError:
+            pass
+
+        detected = from_bytes(raw_content).best()
+        if detected is not None:
+            return str(detected)
+
+        for encoding in ['utf-16', 'gb18030', 'gbk', 'gb2312', 'big5']:
+            try:
+                return raw_content.decode(encoding)
+            except (UnicodeDecodeError, UnicodeError):
+                continue
 
         return ""
 
