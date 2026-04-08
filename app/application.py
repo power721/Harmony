@@ -105,7 +105,7 @@ class Application(QObject):
         """Set main window."""
         self._main_window = window
 
-    def _dispatch_to_ui(fn, *args, **kwargs):
+    def _dispatch_to_ui(self, fn, *args, **kwargs):
         QTimer.singleShot(0, lambda: fn(*args, **kwargs))
 
     def run(self) -> int:
