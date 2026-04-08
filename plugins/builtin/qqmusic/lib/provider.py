@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .api import QQMusicPluginAPI
 from harmony_plugin_api.media import PluginTrack
 
 from .client import QQMusicPluginClient
@@ -121,6 +122,25 @@ class QQMusicOnlineProvider:
 
     def get_playback_url_info(self, track_id: str, quality: str):
         return self._client.get_playback_url_info(track_id, quality)
+
+    def get_lyrics(self, song_mid: str) -> str | None:
+        service = self._client._get_service()
+        if service is not None and self._client._can_use_legacy_network():
+            try:
+                lyric_data = service.get_lyrics(song_mid) or {}
+            except Exception:
+                lyric_data = {}
+            qrc = lyric_data.get("qrc")
+            if qrc:
+                return qrc
+            lyric = lyric_data.get("lyric")
+            if lyric:
+                return lyric
+
+        try:
+            return QQMusicPluginAPI(self._context).get_lyrics(song_mid)
+        except Exception:
+            return None
 
     def download_track(
         self,

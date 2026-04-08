@@ -130,6 +130,67 @@ def test_qqmusic_provider_create_page_passes_adapter_with_download_dir(monkeypat
     assert captured["qqmusic_service"] is None
 
 
+def test_qqmusic_provider_get_lyrics_prefers_qrc_from_local_service(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    service = Mock()
+    service.get_lyrics.return_value = {
+        "qrc": "[0,100]word",
+        "lyric": "[00:00.00]plain",
+    }
+    api = Mock()
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicService",
+        Mock(return_value=service),
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.QQMusicPluginAPI",
+        Mock(return_value=api),
+        raising=False,
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    monkeypatch.setattr(provider._client, "_can_use_legacy_network", lambda: True)
+
+    assert provider.get_lyrics("song-mid") == "[0,100]word"
+    service.get_lyrics.assert_called_once_with("song-mid")
+    api.get_lyrics.assert_not_called()
+
+
+def test_qqmusic_provider_get_lyrics_falls_back_to_public_api(monkeypatch):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "credential": {"musicid": "1", "musickey": "secret"},
+    }.get(key, default)
+    context = Mock(settings=settings)
+    context.logger = Mock()
+
+    service = Mock()
+    service.get_lyrics.return_value = {"qrc": None, "lyric": None}
+    api = Mock()
+    api.get_lyrics.return_value = "[00:00.00]remote"
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.client.QQMusicService",
+        Mock(return_value=service),
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.provider.QQMusicPluginAPI",
+        Mock(return_value=api),
+        raising=False,
+    )
+
+    provider = QQMusicOnlineProvider(context)
+    monkeypatch.setattr(provider._client, "_can_use_legacy_network", lambda: True)
+
+    assert provider.get_lyrics("song-mid") == "[00:00.00]remote"
+    api.get_lyrics.assert_called_once_with("song-mid")
+
+
 def test_qqmusic_provider_download_track_delegates_to_plugin_service(monkeypatch):
     settings = Mock()
     settings.get.side_effect = lambda key, default=None: {
