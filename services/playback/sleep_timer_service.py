@@ -176,7 +176,7 @@ class SleepTimerService(QObject):
             return
 
         current = self._playback_service.volume
-        if self._original_volume:
+        if self._original_volume is not None:
             step_size = max(1, self._original_volume // 20)
             new_volume = max(0, current - step_size)
             self._playback_service.set_volume(new_volume)
