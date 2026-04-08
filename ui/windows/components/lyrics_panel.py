@@ -136,7 +136,7 @@ class LyricsPanel(QWidget):
         refresh_action = menu.addAction(t("refresh"))
         refresh_action.triggered.connect(self.refresh_requested)
 
-        menu.exec_(self._lyrics_view.mapToGlobal(pos))
+        menu.exec(self._lyrics_view.mapToGlobal(pos))
 
     def set_lyrics(self, lyrics: str):
         """Set the lyrics content."""
