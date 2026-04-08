@@ -43,6 +43,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _track_is_online(track) -> bool:
+    """Support both domain Track instances and lightweight track-like objects."""
+    explicit_value = getattr(track, "is_online", None)
+    if explicit_value is not None:
+        return bool(explicit_value)
+    return getattr(track, "source", TrackSource.LOCAL) == TrackSource.ONLINE
+
+
 def _resolve_audio_engine_backend(config_manager: ConfigManager = None) -> str:
     """Resolve configured backend, falling back to the other bundled backend if needed."""
     if config_manager and hasattr(config_manager, "get_audio_engine"):
@@ -439,7 +447,7 @@ class PlaybackService(QObject):
             # Online items stay in the queue even when they still need download, but
             # downloaded online files should be treated as ready local files.
             has_local_file = bool(track.path) and track.path in existing_paths
-            is_online = track.is_online and not has_local_file
+            is_online = _track_is_online(track) and not has_local_file
             if is_online or (track.path and track.path in existing_paths):
                 items.append(PlaylistItem.from_track(track))
 
@@ -556,7 +564,7 @@ class PlaybackService(QObject):
             return
 
         has_local_file = bool(track.path) and Path(track.path).exists()
-        is_online_track = track.is_online and not has_local_file
+        is_online_track = _track_is_online(track) and not has_local_file
 
         # For local tracks with path, verify file exists
         if not is_online_track and (not track.path or not Path(track.path).exists()):
