@@ -28,7 +28,9 @@ class Genre:
     @property
     def id(self) -> str:
         """Generate a unique ID for the genre based on name."""
-        return self.name.lower()
+        if self.name:
+            return self.name.lower()
+        return f"unknown:{id(self)}"
 
     def __hash__(self):
         """Make Genre hashable for use in sets."""
