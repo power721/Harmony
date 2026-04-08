@@ -140,6 +140,8 @@ class ConfigManager:
 
     def _get_secret(self, key: str, default: str = "") -> str:
         """Get a sensitive setting and transparently decrypt it."""
+        if self._secret_store is None:
+            return self.get(key, default)
         return self._secret_store.decrypt(self.get(key, default))
 
     def _set_secret(self, key: str, value: str):
