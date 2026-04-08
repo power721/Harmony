@@ -1,31 +1,46 @@
 from __future__ import annotations
 
 
+def _get_theme_manager():
+    from system.theme import ThemeManager
+
+    try:
+        return ThemeManager.instance()
+    except ValueError:
+        return None
+
+
 class PluginThemeBridgeImpl:
     def register_widget(self, widget) -> None:
-        from system.theme import ThemeManager
-
-        ThemeManager.instance().register_widget(widget)
+        manager = _get_theme_manager()
+        if manager is not None:
+            manager.register_widget(widget)
 
     def get_qss(self, template: str) -> str:
-        from system.theme import ThemeManager
-
-        return ThemeManager.instance().get_qss(template)
+        manager = _get_theme_manager()
+        if manager is None:
+            return template
+        return manager.get_qss(template)
 
     def current_theme(self):
-        from system.theme import ThemeManager
+        from system.theme import PRESET_THEMES
 
-        return ThemeManager.instance().current_theme
+        manager = _get_theme_manager()
+        if manager is None:
+            return PRESET_THEMES["dark"]
+        return manager.current_theme
 
     def get_popup_surface_style(self) -> str:
-        from system.theme import ThemeManager
-
-        return ThemeManager.instance().get_themed_popup_surface_style()
+        manager = _get_theme_manager()
+        if manager is None:
+            return ""
+        return manager.get_themed_popup_surface_style()
 
     def get_completer_popup_style(self) -> str:
-        from system.theme import ThemeManager
-
-        return ThemeManager.instance().get_themed_completer_popup_style()
+        manager = _get_theme_manager()
+        if manager is None:
+            return ""
+        return manager.get_themed_completer_popup_style()
 
 
 class PluginDialogBridgeImpl:
