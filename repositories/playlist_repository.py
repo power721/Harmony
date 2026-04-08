@@ -80,12 +80,16 @@ class SqlitePlaylistRepository(BaseRepository):
         """Delete a playlist by ID."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        # Delete playlist items first
-        cursor.execute("DELETE FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
-        # Delete playlist
-        cursor.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
-        conn.commit()
-        return cursor.rowcount > 0
+        try:
+            # Delete playlist items first
+            cursor.execute("DELETE FROM playlist_items WHERE playlist_id = ?", (playlist_id,))
+            # Delete playlist
+            cursor.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def add_track(self, playlist_id: int, track_id: TrackId) -> bool:
         """Add a track to a playlist.
