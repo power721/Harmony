@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from threading import Lock
 
 
 class PluginStateStore:
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._lock = Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     def _read(self) -> dict:
@@ -35,14 +37,16 @@ class PluginStateStore:
         version: str,
         load_error: str | None = None,
     ) -> None:
-        payload = self._read()
-        payload[plugin_id] = {
-            "enabled": enabled,
-            "source": source,
-            "version": version,
-            "load_error": load_error,
-        }
-        self._write(payload)
+        with self._lock:
+            payload = self._read()
+            payload[plugin_id] = {
+                "enabled": enabled,
+                "source": source,
+                "version": version,
+                "load_error": load_error,
+            }
+            self._write(payload)
 
     def get(self, plugin_id: str) -> dict | None:
-        return self._read().get(plugin_id)
+        with self._lock:
+            return self._read().get(plugin_id)
