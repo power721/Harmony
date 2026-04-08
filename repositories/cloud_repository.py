@@ -303,6 +303,9 @@ class SqliteCloudRepository(BaseRepository):
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM cloud_accounts WHERE id = ?", (account_id,))
+            if cursor.fetchone() is None:
+                return False
             # Delete associated files first
             cursor.execute("DELETE FROM cloud_files WHERE account_id = ?", (account_id,))
             # Delete account

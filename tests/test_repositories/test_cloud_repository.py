@@ -805,3 +805,24 @@ class TestCloudFileSpecializedQueries:
         """Test hard deleting non-existent account returns False."""
         result = cloud_repo.hard_delete_account(99999)
         assert result is False
+
+    def test_hard_delete_account_nonexistent_does_not_delete_orphan_files(self, temp_db):
+        """Hard delete should not remove orphan files when account row is absent."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO cloud_files (account_id, file_id, name, file_type)
+            VALUES (?, ?, ?, ?)
+            """,
+            (99999, "orphan-file", "orphan.mp3", "audio"),
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteCloudRepository(temp_db)
+
+        result = repo.hard_delete_account(99999)
+
+        assert result is False
+        assert repo.get_file_by_id("orphan-file") is not None
