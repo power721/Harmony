@@ -234,6 +234,9 @@ class OnlineMusicHandler(QObject):
         Args:
             tracks_data: List of (song_mid, metadata) tuples
         """
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+
         for song_mid, metadata in tracks_data:
             title = metadata.get("title", "Online Track")
             artist = metadata.get("artist", "")
@@ -243,8 +246,7 @@ class OnlineMusicHandler(QObject):
             resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
-            from app.bootstrap import Bootstrap
-            track_id = Bootstrap.instance().library_service.add_online_track(
+            track_id = bootstrap.library_service.add_online_track(
                 provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
@@ -292,6 +294,8 @@ class OnlineMusicHandler(QObject):
         """
         current_index = self._playback.engine.current_index
         insert_index = current_index + 1 if current_index >= 0 else 0
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
 
         for i, (song_mid, metadata) in enumerate(tracks_data):
             title = metadata.get("title", "Online Track")
@@ -302,8 +306,7 @@ class OnlineMusicHandler(QObject):
             resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
-            from app.bootstrap import Bootstrap
-            track_id = Bootstrap.instance().library_service.add_online_track(
+            track_id = bootstrap.library_service.add_online_track(
                 provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
@@ -353,6 +356,8 @@ class OnlineMusicHandler(QObject):
             start_index: Index to start playing from
             tracks_data: List of (song_mid, metadata) tuples
         """
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
         items = []
 
         for song_mid, metadata in tracks_data:
@@ -364,8 +369,7 @@ class OnlineMusicHandler(QObject):
             resolved_provider_id = self._resolve_provider_id(provider_id, metadata)
 
             # Create track record in database first
-            from app.bootstrap import Bootstrap
-            track_id = Bootstrap.instance().library_service.add_online_track(
+            track_id = bootstrap.library_service.add_online_track(
                 provider_id=resolved_provider_id,
                 song_mid=song_mid,
                 title=title,
