@@ -35,6 +35,8 @@ class DatabaseManager:
         """
         self.db_path = db_path
         self.local = threading.local()
+        self._connections: Dict[int, sqlite3.Connection] = {}
+        self._connections_lock = threading.Lock()
         self._write_worker = get_write_worker(db_path)
         atexit.register(self.close)
         self._init_database()
@@ -53,6 +55,8 @@ class DatabaseManager:
             self.local.conn.execute("PRAGMA cache_size=-10000")
             self.local.conn.execute("PRAGMA temp_store=MEMORY")
             self.local.conn.execute("PRAGMA foreign_keys=ON")
+            with self._connections_lock:
+                self._connections[threading.get_ident()] = self.local.conn
         return self.local.conn
 
     def _submit_write(self, func: Callable, *args, **kwargs) -> Future:
@@ -2009,15 +2013,18 @@ class DatabaseManager:
 
     def close(self):
         """Close database connections and stop the write worker."""
-        conn = getattr(self.local, "conn", None)
-        if conn is not None:
+        with self._connections_lock:
+            connections = list(self._connections.values())
+            self._connections.clear()
+
+        for conn in connections:
             try:
                 conn.close()
             except sqlite3.Error as exc:
                 logger.warning("[Database] Error closing thread-local connection: %s", exc)
-            finally:
-                if hasattr(self.local, "conn"):
-                    delattr(self.local, "conn")
+
+        if hasattr(self.local, "conn"):
+            delattr(self.local, "conn")
 
         if self._write_worker is not None:
             try:
