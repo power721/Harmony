@@ -2229,7 +2229,7 @@ class MainWindow(QMainWindow):
             account_id = self._config.get_cloud_account_id()
             logger.debug(f"Cloud account_id: {account_id}")
             if account_id:
-                account = self._db.get_cloud_account(account_id)
+                account = self._cloud_account_service.get_account(account_id)
                 if account:
                     was_playing = self._config.get_was_playing()
                     logger.debug(f"Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")

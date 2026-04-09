@@ -669,6 +669,42 @@ class TestMainWindowCloudServiceBridge:
         fake._player.play_track.assert_called_once_with(5)
         fake._player.engine.seek.assert_called_once_with(12_000)
 
+    def test_restore_playback_state_uses_cloud_account_service_for_cloud_track(self, qapp):
+        account = SimpleNamespace(
+            last_fid_path="/fid1/fid2",
+            last_playing_fid="fid2",
+            last_position=42.0,
+            last_playing_local_path="/tmp/cloud.mp3",
+        )
+        fake = SimpleNamespace(
+            _player=SimpleNamespace(
+                restore_queue=Mock(return_value=False),
+                engine=SimpleNamespace(set_prevent_auto_next=Mock()),
+            ),
+            _config=SimpleNamespace(
+                get_playback_source=Mock(return_value="cloud"),
+                get_cloud_account_id=Mock(return_value=7),
+                get_was_playing=Mock(return_value=True),
+            ),
+            _cloud_account_service=SimpleNamespace(get_account=Mock(return_value=account)),
+            _cloud_drive_view=SimpleNamespace(restore_playback_state=Mock()),
+            _db=SimpleNamespace(get_cloud_account=Mock()),
+        )
+
+        with patch("ui.windows.main_window.QTimer.singleShot", side_effect=lambda _delay, callback: callback()):
+            MainWindow._restore_playback_state(fake)
+
+        fake._cloud_account_service.get_account.assert_called_once_with(7)
+        fake._db.get_cloud_account.assert_not_called()
+        fake._cloud_drive_view.restore_playback_state.assert_called_once_with(
+            account_id=7,
+            file_path="fid2",
+            file_fid="fid2",
+            auto_play=True,
+            start_position=42.0,
+            local_path="/tmp/cloud.mp3",
+        )
+
 
 class TestSidebarWithConfig:
     """Tests for Sidebar with ConfigManager."""
