@@ -282,6 +282,74 @@ class SqliteGenreRepository(BaseRepository):
         conn.commit()
         return True
 
+    def refresh_genre(self, genre_name: str) -> bool:
+        """Refresh a single genre cache row from tracks."""
+        if not genre_name:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT cover_path FROM genres WHERE name = ?", (genre_name,))
+        existing = cursor.fetchone()
+        existing_cover = existing["cover_path"] if existing else None
+
+        cursor.execute(
+            """
+            SELECT
+                ? as name,
+                (
+                    SELECT t2.cover_path
+                    FROM tracks t2
+                    WHERE t2.genre = ?
+                      AND t2.cover_path IS NOT NULL
+                      AND t2.cover_path != ''
+                    ORDER BY t2.id
+                    LIMIT 1
+                ) as cover_path,
+                COUNT(*) as song_count,
+                COUNT(DISTINCT album) as album_count,
+                SUM(duration) as total_duration
+            FROM tracks
+            WHERE genre = ?
+            """,
+            (genre_name, genre_name, genre_name),
+        )
+        row = cursor.fetchone()
+        if not row or not row["song_count"]:
+            return False
+
+        cursor.execute("DELETE FROM genres WHERE name = ?", (genre_name,))
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                row["name"],
+                row["cover_path"] or existing_cover,
+                row["song_count"] or 0,
+                row["album_count"] or 0,
+                row["total_duration"] or 0.0,
+            ),
+        )
+        conn.commit()
+        return True
+
+    def delete_if_empty(self, genre_name: str) -> bool:
+        """Delete a cached genre row when no source tracks remain."""
+        if not genre_name:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM tracks WHERE genre = ? LIMIT 1", (genre_name,))
+        if cursor.fetchone() is not None:
+            return False
+
+        cursor.execute("DELETE FROM genres WHERE name = ?", (genre_name,))
+        conn.commit()
+        return cursor.rowcount > 0
+
     def fix_covers(self) -> int:
         """
         Fix genre covers by finding tracks with covers for genres without covers.

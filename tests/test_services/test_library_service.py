@@ -177,16 +177,23 @@ class TestLibraryService:
         mock_track_repo,
         mock_album_repo,
         mock_artist_repo,
+        mock_genre_repo,
     ):
-        """Test deleting a track immediately refreshes album/artist cache tables."""
-        mock_track_repo.get_by_id.return_value = Track(id=1, title="Song", album="Album", artist="Artist")
+        """Test deleting a track refreshes only affected aggregate cache entries."""
+        mock_track_repo.get_by_id.return_value = Track(
+            id=1, title="Song", album="Album", artist="Artist", genre="Genre"
+        )
         mock_track_repo.delete.return_value = True
 
         result = library_service.delete_track(1)
 
         assert result is True
-        mock_album_repo.refresh.assert_called_once()
-        mock_artist_repo.refresh.assert_called_once()
+        mock_album_repo.refresh_album.assert_called_once_with("Album", "Artist")
+        mock_album_repo.delete_if_empty.assert_called_once_with("Album", "Artist")
+        mock_artist_repo.refresh_artist.assert_called_once_with("Artist")
+        mock_artist_repo.delete_if_empty.assert_called_once_with("Artist")
+        mock_genre_repo.refresh_genre.assert_called_once_with("Genre")
+        mock_genre_repo.delete_if_empty.assert_called_once_with("Genre")
 
     # ===== Playlist Operations Tests =====
 
@@ -871,20 +878,28 @@ class TestLibraryService:
 
     # ===== Additional Track Operations Tests =====
 
-    def test_update_track_with_old_track_refreshes_on_change(self, library_service, mock_track_repo, mock_album_repo, mock_artist_repo):
-        """Test update_track triggers album/artist refresh when artist changes."""
-        old_track = Track(id=1, artist="Old Artist", album="Old Album")
-        new_track = Track(id=1, artist="New Artist", album="Old Album")
+    def test_update_track_with_old_track_refreshes_on_change(
+        self,
+        library_service,
+        mock_track_repo,
+        mock_album_repo,
+        mock_artist_repo,
+        mock_genre_repo,
+    ):
+        """Test update_track triggers scoped aggregate refresh when artist changes."""
+        old_track = Track(id=1, path="/old.mp3", artist="Old Artist", album="Old Album", genre="Genre")
+        new_track = Track(id=1, path="/old.mp3", artist="New Artist", album="Old Album", genre="Genre")
         mock_track_repo.get_by_id.return_value = old_track
         mock_track_repo.update.return_value = True
 
         result = library_service.update_track(new_track)
 
         assert result is True
-        # Trigger immediate refresh since debounced refresh won't fire in test
-        library_service.refresh_albums_artists(immediate=True)
-        mock_album_repo.refresh.assert_called()
-        mock_artist_repo.refresh.assert_called()
+        mock_track_repo.sync_track_artists.assert_called_once_with(1, "New Artist")
+        assert mock_album_repo.refresh_album.call_count == 2
+        mock_artist_repo.refresh_artist.assert_any_call("Old Artist")
+        mock_artist_repo.refresh_artist.assert_any_call("New Artist")
+        mock_genre_repo.refresh_genre.assert_called_once_with("Genre")
 
     def test_update_track_no_old_track(self, library_service, mock_track_repo):
         """Test update_track when old track is not found."""
@@ -905,11 +920,17 @@ class TestLibraryService:
 
     def test_delete_tracks_success(self, library_service, mock_track_repo, mock_event_bus):
         """Test delete_tracks deletes multiple tracks."""
+        mock_track_repo.get_by_ids.return_value = [
+            Track(id=1, path="/a.mp3", artist="Artist A", album="Album A", genre="Genre A"),
+            Track(id=2, path="/b.mp3", artist="Artist B", album="Album B", genre="Genre B"),
+            Track(id=3, path="/c.mp3", artist="Artist C", album="Album C", genre="Genre C"),
+        ]
         mock_track_repo.delete_batch.return_value = 3
 
         result = library_service.delete_tracks([1, 2, 3])
 
         assert result == 3
+        mock_track_repo.get_by_ids.assert_called_once_with([1, 2, 3])
         mock_track_repo.delete_batch.assert_called_once_with([1, 2, 3])
         mock_event_bus.tracks_deleted.emit.assert_called_once_with([1, 2, 3])
 
@@ -919,15 +940,24 @@ class TestLibraryService:
         mock_track_repo,
         mock_album_repo,
         mock_artist_repo,
+        mock_genre_repo,
     ):
-        """Test batch delete immediately refreshes album/artist cache tables."""
+        """Test batch delete refreshes only the affected aggregate cache entries."""
+        mock_track_repo.get_by_ids.return_value = [
+            Track(id=1, path="/a.mp3", artist="Artist A", album="Album A", genre="Genre A"),
+            Track(id=2, path="/b.mp3", artist="Artist B", album="Album B", genre="Genre B"),
+        ]
         mock_track_repo.delete_batch.return_value = 2
 
         result = library_service.delete_tracks([1, 2])
 
         assert result == 2
-        mock_album_repo.refresh.assert_called_once()
-        mock_artist_repo.refresh.assert_called_once()
+        assert mock_album_repo.refresh_album.call_count == 2
+        assert mock_album_repo.delete_if_empty.call_count == 2
+        mock_artist_repo.refresh_artist.assert_any_call("Artist A")
+        mock_artist_repo.refresh_artist.assert_any_call("Artist B")
+        mock_genre_repo.refresh_genre.assert_any_call("Genre A")
+        mock_genre_repo.refresh_genre.assert_any_call("Genre B")
 
     def test_delete_tracks_zero_deleted(self, library_service, mock_track_repo, mock_event_bus):
         """Test delete_tracks when no tracks are deleted."""
@@ -1020,9 +1050,11 @@ class TestLibraryService:
 
         assert result is True
         mock_track_repo.sync_track_artists.assert_called_once_with(1, "New Artist")
-        mock_album_repo.refresh.assert_called_once()
-        mock_artist_repo.refresh.assert_called_once()
-        mock_genre_repo.refresh.assert_called_once()
+        assert mock_album_repo.refresh_album.call_count == 2
+        mock_artist_repo.refresh_artist.assert_any_call("Old Artist")
+        mock_artist_repo.refresh_artist.assert_any_call("New Artist")
+        mock_genre_repo.refresh_genre.assert_any_call("Old Genre")
+        mock_genre_repo.refresh_genre.assert_any_call("New Genre")
 
     def test_update_track_metadata_skips_refresh_when_only_title_changes(
         self,
@@ -1048,9 +1080,9 @@ class TestLibraryService:
 
         assert result is True
         mock_track_repo.sync_track_artists.assert_not_called()
-        mock_album_repo.refresh.assert_not_called()
-        mock_artist_repo.refresh.assert_not_called()
-        mock_genre_repo.refresh.assert_not_called()
+        mock_album_repo.refresh_album.assert_not_called()
+        mock_artist_repo.refresh_artist.assert_not_called()
+        mock_genre_repo.refresh_genre.assert_not_called()
 
     def test_update_track_metadata_not_found(self, library_service, mock_track_repo):
         """Test updating metadata for non-existent track."""

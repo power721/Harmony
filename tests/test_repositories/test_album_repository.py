@@ -220,6 +220,31 @@ class TestSqliteAlbumRepository:
         albums = album_repo.get_all(use_cache=True)
         assert len(albums) == 3  # Album 1 + Album 2 (Artist A) + Album 2 (Artist B)
 
+    def test_refresh_album_updates_single_cached_album(self, populated_db):
+        """Targeted album refresh should upsert only the requested aggregate row."""
+        repo = SqliteAlbumRepository(populated_db)
+
+        assert repo.refresh_album("Album 1", "Artist A") is True
+
+        album = repo.get_by_name("Album 1", artist="Artist A")
+        assert album is not None
+        assert album.song_count == 2
+        assert album.duration == 380.0
+
+    def test_delete_if_empty_removes_album_without_tracks(self, populated_db):
+        """Targeted album cleanup should delete cache rows when source tracks disappear."""
+        repo = SqliteAlbumRepository(populated_db)
+        repo.refresh_album("Album 1", "Artist A")
+
+        conn = sqlite3.connect(populated_db)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM tracks WHERE album = ? AND artist = ?", ("Album 1", "Artist A"))
+        conn.commit()
+        conn.close()
+
+        assert repo.delete_if_empty("Album 1", "Artist A") is True
+        assert repo.get_by_name("Album 1", artist="Artist A") is None
+
     def test_refresh_preserves_cover_path(self, temp_db, populated_db):
         """Test that refresh preserves existing cover paths."""
         conn = sqlite3.connect(populated_db)

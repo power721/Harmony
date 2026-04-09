@@ -164,8 +164,7 @@ class LibraryService:
         track_id = self._track_repo.add(track)
         if track_id:
             self._event_bus.tracks_added.emit(1)
-            # Refresh albums and artists cache tables
-            self._refresh_albums_artist_async()
+            self._refresh_scoped_aggregates(new_tracks=[track])
         return track_id
 
     def add_tracks_bulk(self, tracks: List[Track]) -> tuple[int, int]:
@@ -177,7 +176,7 @@ class LibraryService:
         skipped = max(0, len(tracks) - added)
         if added:
             self._event_bus.tracks_added.emit(added)
-            self._refresh_albums_artist_async()
+            self._refresh_scoped_aggregates(new_tracks=tracks)
         return added, skipped
 
     def _refresh_albums_artist_async(self):
@@ -205,6 +204,37 @@ class LibraryService:
         self._artist_repo.refresh()
         if self._genre_repo:
             self._genre_repo.refresh()
+
+    def _refresh_scoped_aggregates(
+        self,
+        old_tracks: Optional[List[Track]] = None,
+        new_tracks: Optional[List[Track]] = None,
+    ) -> None:
+        """Refresh only the aggregate rows touched by a set of track changes."""
+        touched_tracks = [track for track in (old_tracks or []) + (new_tracks or []) if track]
+        if not touched_tracks:
+            return
+
+        album_keys = {
+            (track.album, track.artist)
+            for track in touched_tracks
+            if track.album and track.artist
+        }
+        artist_names = {track.artist for track in touched_tracks if track.artist}
+        genre_names = {track.genre for track in touched_tracks if track.genre}
+
+        for album_name, artist_name in album_keys:
+            self._album_repo.refresh_album(album_name, artist_name)
+            self._album_repo.delete_if_empty(album_name, artist_name)
+
+        for artist_name in artist_names:
+            self._artist_repo.refresh_artist(artist_name)
+            self._artist_repo.delete_if_empty(artist_name)
+
+        if self._genre_repo:
+            for genre_name in genre_names:
+                self._genre_repo.refresh_genre(genre_name)
+                self._genre_repo.delete_if_empty(genre_name)
 
     def _sync_track_artists_if_needed(self, track_id: int | None, old_artist: str | None, new_artist: str | None) -> bool:
         """Update the track_artists junction when the canonical artist string changes."""
@@ -264,9 +294,7 @@ class LibraryService:
 
         track_id = self._track_repo.add(track)
         if track_id:
-            # logger.info(f"[LibraryService] Added online track: {title} - {artist}")
-            # Refresh albums and artists cache tables
-            self._refresh_albums_artist_async()
+            self._refresh_scoped_aggregates(new_tracks=[track])
 
         return track_id
 
@@ -291,8 +319,7 @@ class LibraryService:
             genre_changed = old_track.genre != track.genre
             self._sync_track_artists_if_needed(track.id, old_track.artist, track.artist)
             if album_changed or artist_changed or genre_changed:
-                # Refresh albums and artists cache tables
-                self._refresh_albums_artist_async()
+                self._refresh_scoped_aggregates(old_tracks=[old_track], new_tracks=[track])
 
         return result
 
@@ -345,12 +372,25 @@ class LibraryService:
         if not updated:
             return False
 
+        old_track = Track(
+            id=track_id,
+            path=track.path,
+            title=track.title,
+            artist=old_artist or "",
+            album=old_album or "",
+            genre=old_genre,
+            duration=track.duration,
+            cover_path=track.cover_path,
+            cloud_file_id=track.cloud_file_id,
+            source=track.source,
+            online_provider_id=track.online_provider_id,
+        )
         artist_changed = self._sync_track_artists_if_needed(track_id, old_artist, track.artist)
         album_changed = old_album != track.album
         genre_changed = old_genre != track.genre
 
         if artist_changed or album_changed or genre_changed:
-            self.refresh_albums_artists(immediate=True)
+            self._refresh_scoped_aggregates(old_tracks=[old_track], new_tracks=[track])
 
         return True
 
@@ -369,10 +409,8 @@ class LibraryService:
 
         result = self._track_repo.delete(track_id)
 
-        if result:
-            # Deletions should update aggregate tables synchronously so the
-            # library reflects the new counts immediately and after restart.
-            self.refresh_albums_artists(immediate=True)
+        if result and track:
+            self._refresh_scoped_aggregates(old_tracks=[track])
         if result and track:
             # Emit event to notify other components (e.g., playback queue)
             self._event_bus.track_deleted.emit(track_id)
@@ -395,12 +433,12 @@ class LibraryService:
         if not track_ids:
             return 0
 
+        old_tracks = self._track_repo.get_by_ids(track_ids)
         # Batch delete from database
         deleted_count = self._track_repo.delete_batch(track_ids)
 
         if deleted_count > 0:
-            # Batch deletions also need immediate aggregate persistence.
-            self.refresh_albums_artists(immediate=True)
+            self._refresh_scoped_aggregates(old_tracks=old_tracks)
             # Emit batch event with all deleted track IDs
             self._event_bus.tracks_deleted.emit(track_ids)
 
