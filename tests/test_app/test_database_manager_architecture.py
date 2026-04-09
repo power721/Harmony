@@ -92,3 +92,17 @@ def test_database_manager_no_longer_exposes_track_or_playlist_crud_api():
 def test_file_organization_service_no_longer_accepts_db_manager():
     """Library-adjacent services should not keep deprecated db_manager constructor args."""
     assert "db_manager" not in inspect.signature(FileOrganizationService.__init__).parameters
+
+
+def test_production_layers_do_not_import_database_manager_directly():
+    """Only bootstrap/infrastructure should mention DatabaseManager or db_manager wiring."""
+    restricted_roots = ("ui", "services", "system", "plugins")
+    violations: list[str] = []
+
+    for root in restricted_roots:
+        for path in Path(root).rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            if "DatabaseManager" in source or "db_manager" in source:
+                violations.append(str(path))
+
+    assert violations == []

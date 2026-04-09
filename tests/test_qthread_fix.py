@@ -46,7 +46,7 @@ def test_main_window_close(tmp_path):
     app.processEvents()
     time.sleep(0.5)
 
-    bootstrap.db.close()
+    bootstrap.shutdown_database()
     Bootstrap._instance = None
 
     print("MainWindow closed without QThread errors")
