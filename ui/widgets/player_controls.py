@@ -976,6 +976,7 @@ class PlayerControls(QWidget):
 
         current_id = current_track.get("id")
         current_path = current_track.get("path")
+        resolved_track = None
 
         # Check if this is the current track by ID or by checking database
         should_reload = False
@@ -986,10 +987,10 @@ class PlayerControls(QWidget):
         elif current_path:
             # Try to find track by path and check if it matches
             try:
-                # Get database from player if available
-                if hasattr(self._player, 'db'):
-                    track = self._player.db.get_track_by_path(current_path)
-                    if track and track.id == track_id:
+                get_track_by_path = getattr(self._player, "get_track_by_path", None)
+                if callable(get_track_by_path):
+                    resolved_track = get_track_by_path(current_path)
+                    if resolved_track and resolved_track.id == track_id:
                         should_reload = True
                         logger.info(f"[PlayerControls] Found track by path: {track_id}, reloading cover")
             except Exception as e:
@@ -997,9 +998,10 @@ class PlayerControls(QWidget):
 
         if should_reload:
             # Reload from database to get latest metadata
-            if current_path and hasattr(self._player, 'db'):
+            get_track_by_path = getattr(self._player, "get_track_by_path", None)
+            if current_path and callable(get_track_by_path):
                 try:
-                    track = self._player.db.get_track_by_path(current_path)
+                    track = resolved_track or get_track_by_path(current_path)
                     if track:
                         # Create updated track dict
                         updated_track = {
@@ -1055,9 +1057,10 @@ class PlayerControls(QWidget):
         if should_reload:
             logger.info("[PlayerControls] Cover updated for current track, reloading")
             # For local tracks, reload from database to get updated cover_path
-            if not is_cloud and hasattr(self._player, 'db'):
+            get_track = getattr(self._player, "get_track", None)
+            if not is_cloud and callable(get_track):
                 try:
-                    track = self._player.db.get_track(item_id)
+                    track = get_track(item_id)
                     if track:
                         updated_track = {
                             "id": track.id,
@@ -1077,9 +1080,10 @@ class PlayerControls(QWidget):
 
             # For cloud files, reload from database to get correct metadata (artist/album/cover_path)
             # This is critical for cache key matching
-            if is_cloud and hasattr(self._player, 'db'):
+            get_track_by_cloud_file_id = getattr(self._player, "get_track_by_cloud_file_id", None)
+            if is_cloud and callable(get_track_by_cloud_file_id):
                 try:
-                    track = self._player.db.get_track_by_cloud_file_id(item_id)
+                    track = get_track_by_cloud_file_id(item_id)
                     if track:
                         updated_track = dict(current_track)
                         updated_track["title"] = track.title or updated_track.get("title", "")

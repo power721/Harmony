@@ -173,6 +173,7 @@ class MainWindow(QMainWindow):
         # Use closures to capture self for methods that need access to db
         db = self._db
         playback = self._playback
+        library_service = self._library_service
 
         class PlayerProxy:
             """Proxy class for backward compatibility with components expecting old PlayerController interface."""
@@ -281,6 +282,15 @@ class MainWindow(QMainWindow):
 
             def save_cover_from_metadata(self, track_path: str, cover_data: bytes):
                 return playback.save_cover_from_metadata(track_path, cover_data)
+
+            def get_track(self, track_id):
+                return library_service.get_track(track_id)
+
+            def get_track_by_path(self, path: str):
+                return library_service.get_track_by_path(path)
+
+            def get_track_by_cloud_file_id(self, cloud_file_id: str):
+                return library_service.get_track_by_cloud_file_id(cloud_file_id)
 
         self._player = PlayerProxy()
 

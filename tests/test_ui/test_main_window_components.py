@@ -265,6 +265,45 @@ class TestMainWindowPlayerProxy:
 
         playback.play_local_tracks.assert_called_once_with([1, 2, 3], start_index=1)
 
+    def test_player_proxy_exposes_track_lookup_helpers(self, qapp):
+        """PlayerProxy should expose explicit track lookup helpers for UI components."""
+        playback = Mock()
+        playback.engine = Mock()
+        library_service = Mock()
+        library_service.get_track.return_value = "track-by-id"
+        library_service.get_track_by_path.return_value = "track-by-path"
+        library_service.get_track_by_cloud_file_id.return_value = "track-by-cloud"
+
+        bootstrap = Mock()
+        bootstrap.db = Mock()
+        bootstrap.config = Mock()
+        bootstrap.playback_service = playback
+        bootstrap.library_service = library_service
+        bootstrap.favorites_service = Mock()
+        bootstrap.play_history_service = Mock()
+        bootstrap.cloud_account_service = Mock()
+        bootstrap.cloud_file_service = Mock()
+
+        theme_manager = Mock()
+        event_bus = Mock()
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), \
+                patch("ui.windows.main_window.EventBus.instance", return_value=event_bus), \
+                patch("ui.windows.main_window.ThemeManager.instance", return_value=theme_manager), \
+                patch.object(MainWindow, "_setup_ui"), \
+                patch.object(MainWindow, "_setup_connections"), \
+                patch.object(MainWindow, "_setup_system_tray"), \
+                patch.object(MainWindow, "_setup_hotkeys"), \
+                patch.object(MainWindow, "_restore_settings"):
+            window = MainWindow()
+
+        assert window._player.get_track(1) == "track-by-id"
+        assert window._player.get_track_by_path("/music/a.mp3") == "track-by-path"
+        assert window._player.get_track_by_cloud_file_id("abc") == "track-by-cloud"
+        library_service.get_track.assert_called_once_with(1)
+        library_service.get_track_by_path.assert_called_once_with("/music/a.mp3")
+        library_service.get_track_by_cloud_file_id.assert_called_once_with("abc")
+
     def test_close_event_uses_playback_shutdown(self, qapp):
         """MainWindow shutdown should explicitly close playback backend resources."""
         cloud_download_service = SimpleNamespace(cleanup=Mock())
