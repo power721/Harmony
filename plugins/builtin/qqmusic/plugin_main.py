@@ -14,7 +14,7 @@ from .lib.runtime_bridge import bind_context, clear_context
 from .lib.settings_tab import QQMusicSettingsTab
 
 logger = logging.getLogger(__name__)
-_SIDEBAR_ICON_PATH = str(Path(__file__).resolve().parent / "sidebar_icon.svg")
+_SIDEBAR_ICON_PATH = str(Path(__file__).resolve().parent / "qq_music_logo.svg")
 
 
 class QQMusicPlugin:
@@ -37,7 +37,7 @@ class QQMusicPlugin:
             events.language_changed.connect(self._on_language_changed)
 
         def _localized_title() -> str:
-            return t("qqmusic_page_title", "QQ 音乐")
+            return t("qqmusic_page_title", "QQ音乐")
 
         plugin_logger.info("[QQMusic] Registering plugin capabilities")
         context.ui.register_sidebar_entry(
