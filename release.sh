@@ -52,9 +52,50 @@ prune_qt_plugins() {
             done
             [ "$keep" = false ] && rm -rf "$dir"
         done
+
+        prune_qt_plugin_files "$PLUGIN_DIR"
     fi
 
     find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
+}
+
+prune_qt_plugin_files() {
+    local plugin_dir=$1
+
+    prune_plugin_subdir_files \
+        "$plugin_dir/imageformats" \
+        libqgif.so \
+        libqico.so \
+        libqjpeg.so \
+        libqsvg.so \
+        libqwebp.so
+
+    prune_plugin_subdir_files \
+        "$plugin_dir/platforminputcontexts" \
+        libcomposeplatforminputcontextplugin.so \
+        libfcitx5platforminputcontextplugin.so \
+        libibusplatforminputcontextplugin.so
+}
+
+prune_plugin_subdir_files() {
+    local subdir=$1
+    shift
+    [ -d "$subdir" ] || return 0
+
+    local file
+    local keep
+    local keep_name
+    for file in "$subdir"/*; do
+        [ -f "$file" ] || continue
+        keep=false
+        for keep_name in "$@"; do
+            if [ "$(basename "$file")" = "$keep_name" ]; then
+                keep=true
+                break
+            fi
+        done
+        [ "$keep" = true ] || rm -f "$file"
+    done
 }
 
 collect_qt_input_context_plugins() {
@@ -115,6 +156,11 @@ should_skip_dep() {
 
     # Avoid pulling an extra host ffmpeg codec stack transitively.
     [[ "$base" =~ ^lib(avcodec|avfilter|avformat|avutil|swresample|swscale|postproc|x26[45]|codec2|placebo|zimg)\.so(\..*)?$ ]] && return 0
+
+    # Prefer host hardware acceleration stacks instead of bloating the AppImage.
+    [[ "$base" =~ ^libva([-.].*)?\.so(\..*)?$ ]] && return 0
+    [[ "$base" =~ ^libvdpau\.so(\..*)?$ ]] && return 0
+    [[ "$base" =~ ^libvulkan\.so(\..*)?$ ]] && return 0
 
     return 1
 }
