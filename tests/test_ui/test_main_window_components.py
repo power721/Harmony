@@ -261,6 +261,7 @@ class TestMainWindowPlayerProxy:
                 patch.object(MainWindow, "_restore_settings"):
             window = MainWindow()
 
+        assert not hasattr(window, "_db")
         window._player.play_local_tracks([1, 2, 3], start_index=1)
 
         playback.play_local_tracks.assert_called_once_with([1, 2, 3], start_index=1)
@@ -315,6 +316,7 @@ class TestMainWindowPlayerProxy:
         )
         fake = SimpleNamespace(
             _now_playing_window=None,
+            _bootstrap=SimpleNamespace(db=SimpleNamespace(close=Mock())),
             _config=SimpleNamespace(
                 set_start_in_now_playing=Mock(),
                 set_volume=Mock(),
@@ -361,7 +363,6 @@ class TestMainWindowPlayerProxy:
             _on_cloud_download_completed=Mock(),
             _on_playlist_redownload_completed=Mock(),
             _on_playlist_redownload_failed=Mock(),
-            _db=SimpleNamespace(close=Mock()),
         )
         event = SimpleNamespace(accept=Mock())
 
@@ -380,7 +381,7 @@ class TestMainWindowPlayerProxy:
         fake._player.engine.stop.assert_not_called()
         cloud_download_service.cleanup.assert_called_once_with()
         download_manager.cleanup.assert_called_once_with()
-        fake._db.close.assert_called_once_with()
+        fake._bootstrap.db.close.assert_called_once_with()
         event.accept.assert_called_once_with()
 
 
@@ -570,6 +571,7 @@ class TestMainWindowCloudServiceBridge:
         )
         fake = SimpleNamespace(
             _now_playing_window=None,
+            _bootstrap=SimpleNamespace(db=SimpleNamespace(close=Mock())),
             _config=SimpleNamespace(
                 set_start_in_now_playing=Mock(),
                 set_volume=Mock(),
@@ -618,7 +620,6 @@ class TestMainWindowCloudServiceBridge:
             _on_cloud_download_completed=Mock(),
             _on_playlist_redownload_completed=Mock(),
             _on_playlist_redownload_failed=Mock(),
-            _db=SimpleNamespace(close=Mock(), update_cloud_account_playing_state=Mock()),
         )
         event = SimpleNamespace(accept=Mock())
 
@@ -637,7 +638,7 @@ class TestMainWindowCloudServiceBridge:
             position=3.2,
             local_path="/tmp/cloud.mp3",
         )
-        fake._db.update_cloud_account_playing_state.assert_not_called()
+        fake._bootstrap.db.close.assert_called_once_with()
 
     def test_restore_playback_state_uses_library_service_for_local_track(self, qapp):
         track = SimpleNamespace(duration=180.0)

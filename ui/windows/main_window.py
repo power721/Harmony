@@ -153,7 +153,7 @@ class MainWindow(QMainWindow):
 
         # Get all services from Bootstrap (singleton)
         bootstrap = Bootstrap.instance()
-        self._db = bootstrap.db  # Keep for backward compatibility with some components
+        self._bootstrap = bootstrap
         self._config = bootstrap.config
         self._playback = bootstrap.playback_service
         self._library_service = bootstrap.library_service
@@ -2434,6 +2434,6 @@ class MainWindow(QMainWindow):
             manager.download_failed.disconnect(self._on_playlist_redownload_failed)
 
         # Close database
-        self._db.close()
+        self._bootstrap.db.close()
 
         event.accept()
