@@ -39,7 +39,7 @@ class QQMusicClient:
         """
         self.credential = credential
         self._on_credential_updated = on_credential_updated
-        self._http_client = http_client
+        self._http_client = http_client or requests.Session()
 
         if credential:
             self._set_credential_headers()

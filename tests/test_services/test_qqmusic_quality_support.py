@@ -87,6 +87,35 @@ def test_qqmusic_client_uses_injected_http_client():
     assert client._http_client is fake_http
 
 
+def test_qqmusic_client_uses_shared_session_by_default(monkeypatch):
+    fake_session = type("FakeSession", (), {})()
+    fake_session.get_calls = []
+    fake_session.post_calls = []
+
+    def _get(url, **kwargs):
+        fake_session.get_calls.append((url, kwargs))
+        return "get-response"
+
+    def _post(url, **kwargs):
+        fake_session.post_calls.append((url, kwargs))
+        return "post-response"
+
+    fake_session.get = _get
+    fake_session.post = _post
+
+    monkeypatch.setattr("plugins.builtin.qqmusic.lib.qqmusic_client.requests.Session", lambda: fake_session)
+
+    client = QQMusicClient()
+    get_result = client._http_get("https://example.com", params={"q": 1}, timeout=5)
+    post_result = client._http_post("https://example.com", data=b"{}", timeout=6)
+
+    assert client._http_client is fake_session
+    assert get_result == "get-response"
+    assert post_result == "post-response"
+    assert fake_session.get_calls == [("https://example.com", {"params": {"q": 1}, "headers": None, "timeout": 5})]
+    assert fake_session.post_calls == [("https://example.com", {"data": b"{}", "headers": None, "timeout": 6})]
+
+
 def test_qqmusic_qr_login_uses_expanded_connection_pool():
     client = QQMusicQRLogin()
 
