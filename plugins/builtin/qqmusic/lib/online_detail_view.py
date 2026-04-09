@@ -2105,12 +2105,17 @@ class OnlineDetailView(QWidget):
 
     def _download_track(self, track: OnlineTrack):
         """Download a track."""
-        if self._download_service.is_cached(track.mid):
+        if self._download_service.is_cached(track.mid, provider_id=self.provider_id):
             logger.info(f"Track already cached: {track.title}")
             return
 
         # Start download
-        worker = DownloadWorker(self._download_service, track.mid, track.title)
+        worker = DownloadWorker(
+            self._download_service,
+            track.mid,
+            track.title,
+            provider_id=self.provider_id,
+        )
 
         # Handle download result
         worker.download_finished.connect(self._on_download_finished)
@@ -2278,16 +2283,27 @@ class DownloadWorker(QThread):
 
     download_finished = Signal(str, str)  # (song_mid, local_path)
 
-    def __init__(self, download_service: Any, song_mid: str, song_title: str):
+    def __init__(
+        self,
+        download_service: Any,
+        song_mid: str,
+        song_title: str,
+        provider_id: str = "",
+    ):
         super().__init__()
         self._download_service = download_service
         self._song_mid = song_mid
         self._song_title = song_title
+        self._provider_id = provider_id
 
     def run(self):
         """Run download."""
         try:
-            result = self._download_service.download(self._song_mid, self._song_title)
+            result = self._download_service.download(
+                self._song_mid,
+                self._song_title,
+                provider_id=self._provider_id,
+            )
             self.download_finished.emit(self._song_mid, result or "")
         except Exception as e:
             logger.error(f"Download worker error: {e}")

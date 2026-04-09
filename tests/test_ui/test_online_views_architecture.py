@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from plugins.builtin.qqmusic.lib.online_detail_view import OnlineDetailView
+from plugins.builtin.qqmusic.lib.online_detail_view import DownloadWorker as DetailDownloadWorker
 from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
 from services.playback.playback_service import PlaybackService
 
@@ -151,3 +152,64 @@ def test_online_detail_view_add_online_track_to_library_passes_provider_id():
         duration=234.0,
         cover_url="https://cover",
     )
+
+
+def test_online_detail_view_download_track_passes_provider_id_to_cache_and_worker():
+    """OnlineDetailView download path should propagate provider id to cache checks and worker."""
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    view._download_service = SimpleNamespace(is_cached=Mock(return_value=False))
+    track = SimpleNamespace(mid="m3", title="Song 3")
+    captured = {}
+
+    class _FakeSignal:
+        def connect(self, callback):
+            captured["callback"] = callback
+
+    class _FakeWorker:
+        def __init__(self, download_service, song_mid, song_title, provider_id=""):
+            captured["download_service"] = download_service
+            captured["song_mid"] = song_mid
+            captured["song_title"] = song_title
+            captured["provider_id"] = provider_id
+            self.download_finished = _FakeSignal()
+            self.finished = _FakeSignal()
+
+        def start(self):
+            captured["started"] = True
+
+        def deleteLater(self):
+            captured["deleted"] = True
+
+    with patch("plugins.builtin.qqmusic.lib.online_detail_view.DownloadWorker", _FakeWorker):
+        OnlineDetailView._download_track(view, track)
+
+    view._download_service.is_cached.assert_called_once_with("m3", provider_id="qqmusic")
+    assert captured["song_mid"] == "m3"
+    assert captured["song_title"] == "Song 3"
+    assert captured["provider_id"] == "qqmusic"
+    assert captured["started"] is True
+
+
+def test_online_detail_download_worker_passes_provider_id_to_service():
+    """Detail-view download worker should pass provider id to the download service."""
+    download_service = Mock()
+    download_service.download.return_value = "/tmp/song.mp3"
+    worker = DetailDownloadWorker(
+        download_service,
+        "song-mid",
+        "Song",
+        provider_id="qqmusic",
+    )
+    captured = []
+    worker.download_finished.connect(
+        lambda song_mid, local_path: captured.append((song_mid, local_path))
+    )
+
+    worker.run()
+
+    download_service.download.assert_called_once_with(
+        "song-mid",
+        "Song",
+        provider_id="qqmusic",
+    )
+    assert captured == [("song-mid", "/tmp/song.mp3")]
