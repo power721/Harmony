@@ -1,0 +1,1 @@
+"""LRCLIB built-in plugin."""

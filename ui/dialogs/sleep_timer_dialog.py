@@ -242,10 +242,13 @@ class SleepTimerDialog(QDialog):
         layout.setSpacing(12)
 
         self._start_btn = QPushButton(t("start"))
+        self._start_btn.setProperty("role", "primary")
         self._start_btn.setCursor(Qt.PointingHandCursor)
         self._cancel_btn = QPushButton(t("cancel_timer"))
+        self._cancel_btn.setProperty("role", "cancel")
         self._cancel_btn.setCursor(Qt.PointingHandCursor)
         self._close_btn = QPushButton(t("close"))
+        self._close_btn.setProperty("role", "cancel")
         self._close_btn.setCursor(Qt.PointingHandCursor)
 
         self._cancel_btn.setVisible(False)
@@ -270,10 +273,6 @@ class SleepTimerDialog(QDialog):
     # ----------------------- 样式 -----------------------
     def _apply_styles(self):
         style_template = """
-#dialogContainer { background-color: %background_alt%; border-radius: 12px; }
-#dialogTitle { font-size: 16px; font-weight: bold; color: %text%; }
-QLabel { color: %text%; }
-
 QRadioButton, QCheckBox { color: %text%; spacing: 8px; }
 QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 2px solid %border%; background-color: %background%; }
 QRadioButton::indicator { width: 18px; height: 18px; border-radius: 9px; border: 2px solid %border%; background-color: %background%; }
@@ -292,10 +291,6 @@ QSpinBox {
 QSpinBox::up-button, QSpinBox::down-button {
     width: 20px;
 }
-""" + ThemeManager.get_combobox_style() + """
-QPushButton { background-color: %highlight%; color: %background%; border: none; border-radius: 6px; padding: 8px 24px; font-size: 14px; min-width: 80px; }
-QPushButton:hover { background-color: %highlight_hover%; }
-QPushButton:pressed { background-color: %selection%; }
 QPushButton#presetBtn { background-color: %background%; color: %text%; border: 1px solid %border%; padding: 6px 12px; font-size: 12px; min-width: 60px; }
 QPushButton#presetBtn:hover { background-color: %background_hover%; border-color: %highlight%; }
 #statusLabel { color: %highlight%; font-size: 14px; font-weight: bold; padding: 8px; background-color: %background_hover%; border-radius: 6px; }

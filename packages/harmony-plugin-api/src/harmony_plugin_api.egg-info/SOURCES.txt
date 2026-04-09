@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/harmony_plugin_api/__init__.py
+src/harmony_plugin_api/context.py
+src/harmony_plugin_api/cover.py
+src/harmony_plugin_api/lyrics.py
+src/harmony_plugin_api/manifest.py
+src/harmony_plugin_api/media.py
+src/harmony_plugin_api/online.py
+src/harmony_plugin_api/plugin.py
+src/harmony_plugin_api/registry_types.py
+src/harmony_plugin_api.egg-info/PKG-INFO
+src/harmony_plugin_api.egg-info/SOURCES.txt
+src/harmony_plugin_api.egg-info/dependency_links.txt
+src/harmony_plugin_api.egg-info/top_level.txt

@@ -3,6 +3,7 @@ Genre domain model - Aggregated genre entity.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Optional
 
 
@@ -28,6 +29,13 @@ class Genre:
     @property
     def id(self) -> str:
         """Generate a unique ID for the genre based on name."""
+        if self.name:
+            return self._named_id
+        return f"unknown:{id(self)}"
+
+    @cached_property
+    def _named_id(self) -> str:
+        """Cache the normalized ID for named genres."""
         return self.name.lower()
 
     def __hash__(self):

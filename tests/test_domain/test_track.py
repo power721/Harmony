@@ -96,11 +96,19 @@ class TestTrack:
         track = Track(source=TrackSource.QUARK)
         assert track.source == TrackSource.QUARK
 
-        track = Track(source=TrackSource.QQ)
-        assert track.source == TrackSource.QQ
+        track = Track(source=TrackSource.ONLINE)
+        assert track.source == TrackSource.ONLINE
 
         track = Track(source=TrackSource.BAIDU)
         assert track.source == TrackSource.BAIDU
+
+    def test_online_provider_id_default_and_set(self):
+        """Test online_provider_id defaults to None and can be set."""
+        track = Track()
+        assert track.online_provider_id is None
+
+        track = Track(source=TrackSource.ONLINE, online_provider_id="qqmusic")
+        assert track.online_provider_id == "qqmusic"
 
     def test_cloud_file_id_default_and_set(self):
         """Test cloud_file_id default None and can be set."""
@@ -124,6 +132,6 @@ class TestTrack:
     def test_track_source_enum_string_values(self):
         """Test TrackSource enum string values."""
         assert TrackSource.LOCAL.value == "Local"
+        assert TrackSource.ONLINE.value == "ONLINE"
         assert TrackSource.QUARK.value == "QUARK"
         assert TrackSource.BAIDU.value == "BAIDU"
-        assert TrackSource.QQ.value == "QQ"

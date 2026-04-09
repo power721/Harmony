@@ -19,7 +19,6 @@ from shiboken6 import isValid
 
 from services.lyrics import LyricsLoader
 from services.lyrics.lyrics_loader import LyricsDownloadWorker
-from system.event_bus import EventBus
 from system.i18n import t
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.widgets.lyrics_widget_pro import LyricsWidget
@@ -136,7 +135,7 @@ class LyricsPanel(QWidget):
         refresh_action = menu.addAction(t("refresh"))
         refresh_action.triggered.connect(self.refresh_requested)
 
-        menu.exec_(self._lyrics_view.mapToGlobal(pos))
+        menu.exec(self._lyrics_view.mapToGlobal(pos))
 
     def set_lyrics(self, lyrics: str):
         """Set the lyrics content."""
@@ -173,13 +172,11 @@ class LyricsController(QObject):
     - Async lyrics loading with version control
     - Lyrics download from online sources
     - Lyrics editing and saving
-    - Cover art download
     """
 
     # Signals for UI updates
     lyrics_loaded = Signal(str)
     lyrics_load_failed = Signal()
-    cover_downloaded = Signal(str)
 
     def __init__(
             self,
@@ -203,14 +200,12 @@ class LyricsController(QObject):
         self._playback = playback_service
         self._library_service = library_service
 
-        self._event_bus = EventBus.instance()
-
         # Thread management
         self._lyrics_thread: Optional[LyricsLoader] = None
         self._lyrics_download_thread: Optional[LyricsDownloadWorker] = None
         self._lyrics_load_version = 0
 
-        # Store download info for cover update
+        # Store download info for lyric persistence
         self._lyrics_download_path: Optional[str] = None
         self._lyrics_download_title: Optional[str] = None
         self._lyrics_download_artist: Optional[str] = None
@@ -229,7 +224,8 @@ class LyricsController(QObject):
             title: str,
             artist: str,
             song_mid: str = None,
-            is_online: bool = False
+            is_online: bool = False,
+            provider_id: str | None = None,
     ):
         """
         Load lyrics asynchronously with version control.
@@ -238,8 +234,9 @@ class LyricsController(QObject):
             path: Path to the audio file
             title: Track title
             artist: Track artist
-            song_mid: QQ Music song MID (for online tracks)
-            is_online: Whether this is an online QQ Music track
+            song_mid: Provider-side song id (for online tracks)
+            is_online: Whether this is an online track
+            provider_id: Online provider id
         """
         # Increment version to invalidate pending results
         self._lyrics_load_version += 1
@@ -250,7 +247,12 @@ class LyricsController(QObject):
 
         # Create new loader
         self._lyrics_thread = LyricsLoader(
-            path, title, artist, song_mid=song_mid, is_online=is_online
+            path,
+            title,
+            artist,
+            song_mid=song_mid,
+            is_online=is_online,
+            provider_id=provider_id,
         )
         self._lyrics_thread._load_version = current_version
 
@@ -311,10 +313,9 @@ class LyricsController(QObject):
         )
 
         if result:
-            selected_song, download_cover = result
-            self._download_lyrics_for_song(selected_song, download_cover)
+            self._download_lyrics_for_song(result)
 
-    def _download_lyrics_for_song(self, song_info: dict, download_cover: bool = True):
+    def _download_lyrics_for_song(self, song_info: dict):
         """Download lyrics for a specific song."""
         self._stop_lyrics_download_thread(wait_ms=500, cleanup_signals=True)
 
@@ -325,16 +326,11 @@ class LyricsController(QObject):
             song_id=song_info['id'],
             source=song_info['source'],
             accesskey=song_info.get('accesskey'),
-            download_cover=download_cover,
-            cover_service=self._playback.cover_service,
             lyrics_data=song_info.get('lyrics')
         )
 
         self._lyrics_download_thread.lyrics_downloaded.connect(self._on_lyrics_downloaded)
         self._lyrics_download_thread.download_failed.connect(self._on_lyrics_download_failed)
-
-        if download_cover:
-            self._lyrics_download_thread.cover_downloaded.connect(self._on_cover_downloaded)
 
         self._lyrics_download_thread.finished.connect(
             self._lyrics_download_thread.deleteLater
@@ -344,31 +340,6 @@ class LyricsController(QObject):
     def _on_lyrics_downloaded(self, path: str, lyrics: str):
         """Handle lyrics download success."""
         self._panel.set_lyrics(lyrics)
-
-    def _on_cover_downloaded(self, cover_path: str):
-        """Handle cover download success."""
-        if not cover_path or not self._lyrics_download_path or not self._library_service:
-            return
-
-        track = self._library_service.get_track_by_path(self._lyrics_download_path)
-        if not track:
-            return
-
-        success = self._library_service.update_track_cover_path(track.id, cover_path)
-        if success:
-            current_item = self._playback.current_track
-            if current_item:
-                is_match = (
-                        current_item.track_id == track.id or
-                        current_item.local_path == self._lyrics_download_path
-                )
-                if is_match:
-                    current_item.cover_path = cover_path
-                    if not current_item.track_id:
-                        current_item.track_id = track.id
-
-            self._event_bus.metadata_updated.emit(track.id)
-            self.cover_downloaded.emit(cover_path)
 
     def _on_lyrics_download_failed(self, error: str):
         """Handle lyrics download failure."""
@@ -455,7 +426,7 @@ class LyricsController(QObject):
         source = current_track.get("source", "Local")
 
         # Check if this is a cloud/network track
-        is_cloud_track = source in ("QQ", "QUARK", "BAIDU")
+        is_cloud_track = source in ("ONLINE", "QUARK", "BAIDU")
 
         if not track_path:
             if is_cloud_track:
@@ -515,10 +486,11 @@ class LyricsController(QObject):
             title = track_item.title
             artist = track_item.artist
             song_mid = track_item.cloud_file_id
-            is_online = track_item.source == TrackSource.QQ
+            is_online = track_item.is_online
+            provider_id = track_item.online_provider_id
 
             if path:
-                self.load_lyrics_async(path, title, artist, song_mid, is_online)
+                self.load_lyrics_async(path, title, artist, song_mid, is_online, provider_id)
             else:
                 self._panel.set_no_lyrics()
         elif isinstance(track_item, dict):
@@ -543,7 +515,7 @@ class LyricsController(QObject):
             self._lyrics_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             logger.debug("[LyricsController] Stopping lyrics thread")
             thread.requestInterruption()
             thread.quit()
@@ -566,7 +538,7 @@ class LyricsController(QObject):
             self._lyrics_download_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             logger.debug("[LyricsController] Stopping lyrics download thread")
             if hasattr(thread, "requestInterruption"):
                 thread.requestInterruption()
@@ -579,7 +551,6 @@ class LyricsController(QObject):
                 thread.finished.disconnect()
                 thread.lyrics_downloaded.disconnect()
                 thread.download_failed.disconnect()
-                thread.cover_downloaded.disconnect()
             except RuntimeError:
                 pass
             thread.deleteLater()

@@ -711,6 +711,24 @@ class TestCloudFileSpecializedQueries:
         result = cloud_repo.cache_files(1, [])
         assert result is True
 
+    def test_cache_files_empty_listing_clears_existing_folder(self, cloud_repo, sample_account):
+        """Explicit empty folder refresh should clear cached rows for that folder."""
+        account_id = cloud_repo.add_account(sample_account)
+        cloud_repo.add_file(
+            CloudFile(
+                account_id=account_id,
+                file_id="stale1",
+                parent_id="folder_A",
+                name="stale.mp3",
+                file_type="audio",
+            )
+        )
+
+        result = cloud_repo.cache_files(account_id, [], parent_id="folder_A")
+
+        assert result is True
+        assert cloud_repo.get_files_by_parent(account_id, "folder_A") == []
+
     def test_cache_files_deletes_old_folder(self, cloud_repo, sample_account):
         """Test that cache_files deletes old files for the same folder only."""
         account_id = cloud_repo.add_account(sample_account)
@@ -805,3 +823,24 @@ class TestCloudFileSpecializedQueries:
         """Test hard deleting non-existent account returns False."""
         result = cloud_repo.hard_delete_account(99999)
         assert result is False
+
+    def test_hard_delete_account_nonexistent_does_not_delete_orphan_files(self, temp_db):
+        """Hard delete should not remove orphan files when account row is absent."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO cloud_files (account_id, file_id, name, file_type)
+            VALUES (?, ?, ?, ?)
+            """,
+            (99999, "orphan-file", "orphan.mp3", "audio"),
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteCloudRepository(temp_db)
+
+        result = repo.hard_delete_account(99999)
+
+        assert result is False
+        assert repo.get_file_by_id("orphan-file") is not None

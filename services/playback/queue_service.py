@@ -127,7 +127,10 @@ class QueueService:
             track = self._track_repo.get_by_id(item.track_id)
         # For online/cloud tracks, try to get by cloud_file_id
         elif item.is_cloud and item.cloud_file_id:
-            track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+            track = self._track_repo.get_by_cloud_file_id(
+                item.cloud_file_id,
+                provider_id=item.online_provider_id if item.is_online else None,
+            )
         # For local files without track_id, try to find by path
         elif item.local_path and not item.cloud_file_id:
             track = self._track_repo.get_by_path(item.local_path)
@@ -138,7 +141,7 @@ class QueueService:
             file_exists = local_path and Path(local_path).exists()
             needs_download = False
 
-            if item.source == TrackSource.QQ:
+            if item.is_online:
                 needs_download = not file_exists
                 if not file_exists:
                     local_path = ""
@@ -171,12 +174,40 @@ class QueueService:
 
         # Collect IDs by lookup type
         track_ids = [item.track_id for item in items if item.track_id and item.is_local]
-        cloud_file_ids = [item.cloud_file_id for item in items if item.is_cloud and item.cloud_file_id]
+        cloud_file_ids = [
+            item.cloud_file_id
+            for item in items
+            if item.source in (TrackSource.QUARK, TrackSource.BAIDU) and item.cloud_file_id
+        ]
+        online_keys = [
+            (item.online_provider_id, item.cloud_file_id)
+            for item in items
+            if item.is_online and item.cloud_file_id
+        ]
         paths = [item.local_path for item in items if item.local_path and not item.cloud_file_id]
 
         # Batch fetch
         id_map = {t.id: t for t in self._track_repo.get_by_ids(track_ids)} if track_ids else {}
-        cloud_map = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) if cloud_file_ids else {}
+        has_non_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_non_online_cloud_file_ids", None)
+        )
+        has_online_batch_lookup = callable(
+            getattr(type(self._track_repo), "get_by_online_track_keys", None)
+        )
+        if cloud_file_ids and has_non_online_batch_lookup:
+            cloud_map = self._track_repo.get_by_non_online_cloud_file_ids(cloud_file_ids)
+        else:
+            cloud_map = self._track_repo.get_by_cloud_file_ids(cloud_file_ids) if cloud_file_ids else {}
+        if online_keys and has_online_batch_lookup:
+            online_map = self._track_repo.get_by_online_track_keys(online_keys)
+        else:
+            legacy_online = self._track_repo.get_by_cloud_file_ids(
+                [cloud_file_id for _provider_id, cloud_file_id in online_keys]
+            ) if online_keys else {}
+            online_map = {
+                (getattr(track, "online_provider_id", None), cloud_file_id): track
+                for cloud_file_id, track in legacy_online.items()
+            }
         path_map = self._track_repo.get_by_paths(paths) if paths else {}
 
         # Enrich each item from the maps
@@ -186,6 +217,8 @@ class QueueService:
             track = None
             if item.track_id and item.is_local:
                 track = id_map.get(item.track_id)
+            elif item.is_online and item.cloud_file_id:
+                track = online_map.get((item.online_provider_id, item.cloud_file_id))
             elif item.is_cloud and item.cloud_file_id:
                 track = cloud_map.get(item.cloud_file_id)
             elif item.local_path and not item.cloud_file_id:
@@ -202,6 +235,8 @@ class QueueService:
 
             if item.track_id and item.is_local:
                 track = id_map.get(item.track_id)
+            elif item.is_online and item.cloud_file_id:
+                track = online_map.get((item.online_provider_id, item.cloud_file_id))
             elif item.is_cloud and item.cloud_file_id:
                 track = cloud_map.get(item.cloud_file_id)
             elif item.local_path and not item.cloud_file_id:
@@ -212,7 +247,7 @@ class QueueService:
                 file_exists = local_path and local_path in existing_paths
                 needs_download = False
 
-                if item.source == TrackSource.QQ:
+                if item.is_online:
                     needs_download = not file_exists
                     if not file_exists:
                         local_path = ""

@@ -461,7 +461,7 @@ class BaiduDriveService:
             _rate_limit()
             url = f"{cls.BASE_URL}/api/filemanager"
 
-            csrf_token = cls._get_bdstoken(access_token)
+            csrf_token = cls._extract_csrf_token(access_token) or cls._get_bdstoken(access_token)
             if csrf_token:
                 cls.bdstoken = csrf_token
             else:
@@ -513,6 +513,18 @@ class BaiduDriveService:
         except Exception as e:
             logger.error(f"Baidu delete files error: {e}", exc_info=True)
             return False, None
+
+    @staticmethod
+    def _extract_csrf_token(cookie: str) -> Optional[str]:
+        """Extract a delete-operation CSRF token directly from the cookie string when present."""
+        if not cookie:
+            return None
+
+        match = re.search(r"(?:^|;\s*)(?:csrfToken|bdstoken)=([^;]+)", cookie)
+        if not match:
+            return None
+        token = match.group(1).strip()
+        return token or None
 
     @classmethod
     def _get_bdstoken(cls, cookie):

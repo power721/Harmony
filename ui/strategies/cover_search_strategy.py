@@ -15,7 +15,7 @@ class CoverSearchStrategy(ABC):
     - How to display items in UI
     - How to search for covers
     - How to format results
-    - How to handle QQ Music lazy fetch
+    - How to handle provider lazy fetch
     - How to save covers to database
     """
 
@@ -86,7 +86,7 @@ class CoverSearchStrategy(ABC):
 
     @abstractmethod
     def needs_lazy_fetch(self, result: dict) -> bool:
-        """Check if result needs lazy fetch (QQ Music).
+        """Check if result needs lazy fetch.
 
         Args:
             result: Search result dictionary
@@ -98,7 +98,7 @@ class CoverSearchStrategy(ABC):
 
     @abstractmethod
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:
-        """Fetch cover with lazy loading (QQ Music).
+        """Fetch cover with lazy loading.
 
         Args:
             cover_service: CoverService instance

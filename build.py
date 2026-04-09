@@ -391,13 +391,6 @@ def collect_hidden_imports(audio_backend_bundle: str = AUDIO_BACKEND_ALL) -> lis
         except Exception as e:
             print(f"Warning: Could not collect mutagen submodules: {e}")
 
-        # QQ音乐 API
-        try:
-            hiddenimports += collect_submodules("qqmusic_api")
-            print("Collected submodules for: qqmusic_api")
-        except Exception as e:
-            print(f"Warning: Could not collect qqmusic_api submodules: {e}")
-
         # 其他依赖
         for package in ["PIL", "qrcode", "bs4", "lxml"]:
             try:

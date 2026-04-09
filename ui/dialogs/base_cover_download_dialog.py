@@ -55,42 +55,52 @@ class CoverDownloadThread(QThread):
             self.finished.emit()
 
 
-class QQMusicCoverFetchThread(QThread):
-    """Thread for fetching QQ Music cover URL and downloading."""
+class OnlineCoverFetchThread(QThread):
+    """Thread for fetching provider cover URL and downloading."""
     cover_fetched = Signal(bytes, str, float)  # Emits cover data, source, and score
     fetch_failed = Signal(str)  # Emits error message
     finished = Signal()
 
-    def __init__(self, album_mid: str = None, song_mid: str = None, score: float = 0):
+    def __init__(
+        self,
+        album_mid: str = None,
+        song_mid: str = None,
+        score: float = 0,
+        provider_id: str | None = None,
+    ):
         super().__init__()
         self.album_mid = album_mid
         self.song_mid = song_mid
         self.score = score
+        self.provider_id = provider_id
 
     def run(self):
-        """Fetch QQ Music cover URL and download."""
+        """Fetch provider cover URL and download."""
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+            from system.plugins.online_cover_helpers import get_online_cover_url
             from infrastructure.network import HttpClient
 
-            logger.info(f"QQMusicCoverFetchThread: album_mid={self.album_mid}, song_mid={self.song_mid}")
+            logger.info(
+                "OnlineCoverFetchThread: provider=%s album_mid=%s song_mid=%s",
+                self.provider_id,
+                self.album_mid,
+                self.song_mid,
+            )
 
             # Check if we have any ID to fetch
             if not self.album_mid and not self.song_mid:
-                logger.warning("QQMusicCoverFetchThread: No album_mid or song_mid provided")
+                logger.warning("OnlineCoverFetchThread: No album_mid or song_mid provided")
                 self.fetch_failed.emit(t("cover_load_failed"))
                 return
 
             # Get cover URL
-            cover_url = None
-            if self.album_mid:
-                logger.info(f"Fetching cover URL with album_mid={self.album_mid}")
-                cover_url = get_qqmusic_cover_url(album_mid=self.album_mid, size=500)
-                logger.info(f"Got cover_url={cover_url}")
-            elif self.song_mid:
-                logger.info(f"Fetching cover URL with song_mid={self.song_mid}")
-                cover_url = get_qqmusic_cover_url(mid=self.song_mid, size=500)
-                logger.info(f"Got cover_url={cover_url}")
+            cover_url = get_online_cover_url(
+                provider_id=self.provider_id,
+                track_id=self.song_mid,
+                album_id=self.album_mid,
+                size=500,
+            )
+            logger.info("Got cover_url=%s", cover_url)
 
             if cover_url:
                 # Download cover data
@@ -99,7 +109,7 @@ class QQMusicCoverFetchThread(QThread):
                 cover_data = http_client.get_content(cover_url, timeout=10)
                 if cover_data:
                     logger.info(f"Downloaded cover data: {len(cover_data)} bytes")
-                    self.cover_fetched.emit(cover_data, 'qqmusic', self.score)
+                    self.cover_fetched.emit(cover_data, self.provider_id, self.score)
                 else:
                     logger.warning("Failed to download cover data")
                     self.fetch_failed.emit(t("cover_download_failed"))
@@ -107,39 +117,48 @@ class QQMusicCoverFetchThread(QThread):
                 logger.warning("No cover URL obtained")
                 self.fetch_failed.emit(t("cover_load_failed"))
         except Exception as e:
-            logger.warning(f"Error fetching QQ Music cover: {e}")
-            logger.error(f"Error fetching QQ Music cover: {e}", exc_info=True)
+            logger.warning(f"Error fetching provider cover: {e}")
+            logger.error(f"Error fetching provider cover: {e}", exc_info=True)
             self.fetch_failed.emit(f"{t('error')}: {str(e)}")
         finally:
             self.finished.emit()
 
 
-class QQMusicArtistCoverFetchThread(QThread):
-    """Thread for fetching QQ Music artist cover URL and downloading."""
+class OnlineArtistCoverFetchThread(QThread):
+    """Thread for fetching provider artist cover URL and downloading."""
     cover_fetched = Signal(bytes, str, float)  # Emits cover data, source, and score
     fetch_failed = Signal(str)  # Emits error message
     finished = Signal()
 
-    def __init__(self, singer_mid: str, score: float = 0):
+    def __init__(self, singer_mid: str, score: float = 0, provider_id: str | None = None):
         super().__init__()
         self.singer_mid = singer_mid
         self.score = score
+        self.provider_id = provider_id
 
     def run(self):
-        """Fetch QQ Music artist cover URL and download."""
+        """Fetch provider artist cover URL and download."""
         try:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
+            from system.plugins.online_cover_helpers import get_online_artist_cover_url
             from infrastructure.network import HttpClient
 
-            logger.info(f"QQMusicArtistCoverFetchThread: singer_mid={self.singer_mid}")
+            logger.info(
+                "OnlineArtistCoverFetchThread: provider=%s singer_mid=%s",
+                self.provider_id,
+                self.singer_mid,
+            )
 
             if not self.singer_mid:
-                logger.warning("QQMusicArtistCoverFetchThread: No singer_mid provided")
+                logger.warning("OnlineArtistCoverFetchThread: No singer_mid provided")
                 self.fetch_failed.emit(t("cover_load_failed"))
                 return
 
-            # Get artist cover URL (direct construction)
-            cover_url = get_qqmusic_artist_cover_url(self.singer_mid, size=500)
+            # Get artist cover URL
+            cover_url = get_online_artist_cover_url(
+                provider_id=self.provider_id,
+                artist_id=self.singer_mid,
+                size=500,
+            )
             logger.info(f"Artist cover URL: {cover_url}")
 
             if cover_url:
@@ -148,7 +167,7 @@ class QQMusicArtistCoverFetchThread(QThread):
                 cover_data = http_client.get_content(cover_url, timeout=10)
                 if cover_data:
                     logger.info(f"Downloaded artist cover data: {len(cover_data)} bytes")
-                    self.cover_fetched.emit(cover_data, 'qqmusic', self.score)
+                    self.cover_fetched.emit(cover_data, self.provider_id, self.score)
                 else:
                     logger.warning("Failed to download artist cover data")
                     self.fetch_failed.emit(t("cover_download_failed"))
@@ -156,8 +175,8 @@ class QQMusicArtistCoverFetchThread(QThread):
                 logger.warning("No artist cover URL obtained")
                 self.fetch_failed.emit(t("cover_load_failed"))
         except Exception as e:
-            logger.warning(f"Error fetching QQ Music artist cover: {e}")
-            logger.error(f"Error fetching QQ Music artist cover: {e}", exc_info=True)
+            logger.warning(f"Error fetching provider artist cover: {e}")
+            logger.error(f"Error fetching provider artist cover: {e}", exc_info=True)
             self.fetch_failed.emit(f"{t('error')}: {str(e)}")
         finally:
             self.finished.emit()
@@ -174,16 +193,7 @@ class BaseCoverDownloadDialog(QDialog):
 
     # Common stylesheet template for all dialogs
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel {
-            color: %text%;
-        }
-        QPushButton {
+        QPushButton#coverSearchBtn {
             background-color: %border%;
             color: %text%;
             border: 1px solid %background_hover%;
@@ -191,13 +201,14 @@ class BaseCoverDownloadDialog(QDialog):
             padding: 8px 16px;
             min-width: 80px;
         }
-        QPushButton:hover {
+        QPushButton#coverSearchBtn:hover {
             background-color: %background_hover%;
         }
-        QPushButton:pressed {
+        QPushButton#coverSearchBtn:pressed {
             background-color: %background_alt%;
         }
-        QPushButton:disabled {
+        QPushButton#coverSearchBtn:disabled,
+        QPushButton[role="primary"]:disabled {
             background-color: %background_alt%;
             color: %border%;
             border-color: %border%;
@@ -341,40 +352,7 @@ class BaseCoverDownloadDialog(QDialog):
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText(t("search"))
         self._search_input.setClearButtonEnabled(True)
-        theme = ThemeManager.instance().current_theme
-        self._search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {theme.background_hover};
-                color: {theme.text};
-                border: 2px solid {theme.border};
-                border-radius: 20px;
-                padding: 10px 15px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {theme.highlight};
-                background-color: {theme.background_hover};
-            }}
-            QLineEdit::placeholder {{
-                color: {theme.text_secondary};
-            }}
-            QLineEdit::clear-button {{
-                subcontrol-origin: padding;
-                subcontrol-position: right;
-                width: 18px;
-                height: 18px;
-                margin-right: 8px;
-                border-radius: 9px;
-                background-color: {theme.border};
-            }}
-            QLineEdit::clear-button:hover {{
-                background-color: {theme.background_hover};
-                border: 1px solid {theme.border};
-            }}
-            QLineEdit::clear-button:pressed {{
-                background-color: {theme.background_alt};
-            }}
-        """)
+        self._search_input.setProperty("variant", "search")
         self._search_input.returnPressed.connect(self._search_covers)
         query_layout.addWidget(self._search_input)
         left_layout.addLayout(query_layout)
@@ -387,6 +365,7 @@ class BaseCoverDownloadDialog(QDialog):
 
         # Search button
         self._search_btn = QPushButton(t("search"))
+        self._search_btn.setObjectName("coverSearchBtn")
         self._search_btn.setCursor(Qt.PointingHandCursor)
         self._search_btn.clicked.connect(self._search_covers)
         left_layout.addWidget(self._search_btn)
@@ -467,12 +446,14 @@ class BaseCoverDownloadDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._save_btn = QPushButton(t("save"))
+        self._save_btn.setProperty("role", "primary")
         self._save_btn.setCursor(Qt.PointingHandCursor)
         self._save_btn.setEnabled(False)
         self._save_btn.clicked.connect(self._save_cover)
         button_layout.addWidget(self._save_btn)
 
         close_btn = QPushButton(t("cancel"))
+        close_btn.setProperty("role", "cancel")
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)
@@ -623,25 +604,30 @@ class BaseCoverDownloadDialog(QDialog):
         self._cover_label.setText(t("no_results"))
 
     # ========================================================================
-    # QQ Music Cover Fetch (Shared)
+    # Provider Cover Fetch (Shared)
     # ========================================================================
 
-    def _fetch_qqmusic_cover_base(self, album_mid: str = None, song_mid: str = None,
-                                  singer_mid: str = None, result: dict = None,
-                                  is_artist: bool = False):
-        """Fetch QQ Music cover URL lazily and download - shared implementation.
+    def _fetch_provider_cover_base(
+        self,
+        album_mid: str = None,
+        song_mid: str = None,
+        singer_mid: str = None,
+        result: dict = None,
+        is_artist: bool = False,
+    ):
+        """Fetch provider cover URL lazily and download - shared implementation.
 
         Args:
             album_mid: Album mid (for album/track covers)
             song_mid: Song mid (for track covers)
             singer_mid: Singer mid (for artist covers)
             result: Search result dict with score
-            is_artist: True for artist covers (uses QQMusicArtistCoverFetchThread)
+            is_artist: True for artist covers (uses OnlineArtistCoverFetchThread)
         """
         if result is None:
             result = {}
         score = result.get('score', 0)
-        logger.info(f"QQ Music lazy fetch: album_mid={album_mid}, song_mid={song_mid}, singer_mid={singer_mid}")
+        logger.info(f"Provider lazy fetch: album_mid={album_mid}, song_mid={song_mid}, singer_mid={singer_mid}")
 
         # Update score display
         self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
@@ -652,36 +638,39 @@ class BaseCoverDownloadDialog(QDialog):
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)
         self._status_label.setText(t("downloading"))
+        provider_id = result.get("source") if isinstance(result, dict) else None
 
         if is_artist and singer_mid:
-            # Use QQMusicArtistCoverFetchThread for artist covers
-            self._download_thread = QQMusicArtistCoverFetchThread(
+            # Use OnlineArtistCoverFetchThread for artist covers
+            self._download_thread = OnlineArtistCoverFetchThread(
                 singer_mid=singer_mid,
-                score=score
+                score=score,
+                provider_id=provider_id,
             )
         else:
-            # Use QQMusicCoverFetchThread for album/track covers
-            self._download_thread = QQMusicCoverFetchThread(
+            # Use OnlineCoverFetchThread for album/track covers
+            self._download_thread = OnlineCoverFetchThread(
                 album_mid=album_mid,
                 song_mid=song_mid,
-                score=score
+                score=score,
+                provider_id=provider_id,
             )
 
-        self._download_thread.cover_fetched.connect(self._on_qqmusic_cover_fetched)
-        self._download_thread.fetch_failed.connect(self._on_qqmusic_cover_failed)
+        self._download_thread.cover_fetched.connect(self._on_provider_cover_fetched)
+        self._download_thread.fetch_failed.connect(self._on_provider_cover_failed)
         self._download_thread.finished.connect(self._on_download_finished)
         self._download_thread.start()
 
-    def _on_qqmusic_cover_fetched(self, cover_data: bytes, source: str, score: float):
-        """Handle QQ Music cover fetch success - shared implementation."""
-        logger.info(f"QQ Music cover fetched: {len(cover_data)} bytes")
+    def _on_provider_cover_fetched(self, cover_data: bytes, source: str, score: float):
+        """Handle provider cover fetch success - shared implementation."""
+        logger.info("Provider cover fetched: %s bytes", len(cover_data))
         # Call subclass _on_cover_downloaded which calls _on_cover_downloaded_base
         self._on_cover_downloaded(cover_data, source)
         self._score_label.setText(f"{t('match_score')}: {score:.0f}%")
 
-    def _on_qqmusic_cover_failed(self, error_message: str):
-        """Handle QQ Music cover fetch failure - shared implementation."""
-        logger.warning(f"QQ Music cover fetch failed: {error_message}")
+    def _on_provider_cover_failed(self, error_message: str):
+        """Handle provider cover fetch failure - shared implementation."""
+        logger.warning(f"Provider cover fetch failed: {error_message}")
         self._progress.setVisible(False)
         self._status_label.setText(error_message)
         self._cover_label.setText(t("cover_load_failed"))

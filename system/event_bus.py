@@ -86,6 +86,9 @@ class EventBus(QObject):
     # Emitted when lyrics are loaded (lyrics_text)
     lyrics_loaded = Signal(str)
 
+    # Emitted when UI language changes (lang code)
+    language_changed = Signal(str)
+
     # Emitted when lyrics loading fails (error_message)
     lyrics_error = Signal(str)
 

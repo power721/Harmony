@@ -2,14 +2,17 @@
 HTTP client wrapper for network requests.
 """
 
+import atexit
 from contextlib import contextmanager
 import logging
 from pathlib import Path
 import threading
+import time
 from typing import Dict, Any, Optional, Iterator
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +23,16 @@ class HttpClient:
     DEFAULT_TIMEOUT = 30
     DEFAULT_POOL_CONNECTIONS = 20
     DEFAULT_POOL_MAXSIZE = 20
+    DEFAULT_PROGRESS_CALLBACK_INTERVAL = 0.1
     DEFAULT_HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     _shared_clients = {}
     _shared_lock = threading.Lock()
+    _atexit_registered = False
+    DEFAULT_RETRY_TOTAL = 3
+    DEFAULT_RETRY_BACKOFF_FACTOR = 1
+    DEFAULT_RETRY_STATUS_FORCELIST = (429, 500, 502, 503, 504)
 
     def __init__(
         self,
@@ -60,10 +68,19 @@ class HttpClient:
     ) -> requests.Session:
         """Create a requests session with a mounted pooled adapter."""
         session = requests.Session()
+        retry_strategy = Retry(
+            total=cls.DEFAULT_RETRY_TOTAL,
+            connect=cls.DEFAULT_RETRY_TOTAL,
+            read=cls.DEFAULT_RETRY_TOTAL,
+            backoff_factor=cls.DEFAULT_RETRY_BACKOFF_FACTOR,
+            status_forcelist=cls.DEFAULT_RETRY_STATUS_FORCELIST,
+            allowed_methods=frozenset({"DELETE", "GET", "HEAD", "OPTIONS", "POST", "PUT"}),
+        )
         adapter = HTTPAdapter(
             pool_connections=pool_connections,
             pool_maxsize=pool_maxsize,
             pool_block=pool_block,
+            max_retries=retry_strategy,
         )
         session.mount("https://", adapter)
         session.mount("http://", adapter)
@@ -89,6 +106,9 @@ class HttpClient:
             pool_block,
         )
         with cls._shared_lock:
+            if not cls._atexit_registered:
+                atexit.register(cls.close_shared_clients)
+                cls._atexit_registered = True
             client = cls._shared_clients.get(key)
             if client is None:
                 client = cls(
@@ -100,6 +120,13 @@ class HttpClient:
                 )
                 cls._shared_clients[key] = client
             return client
+
+    @classmethod
+    def close_shared_clients(cls) -> None:
+        with cls._shared_lock:
+            for client in cls._shared_clients.values():
+                client.close()
+            cls._shared_clients = {}
 
     def request(
         self,
@@ -116,6 +143,7 @@ class HttpClient:
         """Make an HTTP request using the configured shared session."""
         method = method.upper()
         request_timeout = timeout or self.timeout
+        verify = request_kwargs.pop("verify", True)
         if method == "GET":
             return self._session.get(
                 url,
@@ -123,6 +151,7 @@ class HttpClient:
                 headers=headers,
                 timeout=request_timeout,
                 stream=stream,
+                verify=verify,
                 **request_kwargs,
             )
         if method == "POST":
@@ -133,6 +162,7 @@ class HttpClient:
                 headers=headers,
                 timeout=request_timeout,
                 stream=stream,
+                verify=verify,
                 **request_kwargs,
             )
         return self._session.request(
@@ -144,6 +174,7 @@ class HttpClient:
             headers=headers,
             timeout=request_timeout,
             stream=stream,
+            verify=verify,
             **request_kwargs,
         )
 
@@ -255,6 +286,8 @@ class HttpClient:
                 except (ValueError, TypeError):
                     total_size = 0
                 downloaded = 0
+                last_progress_at: float | None = None
+                last_reported_downloaded = 0
 
                 with open(dest_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=chunk_size):
@@ -262,7 +295,19 @@ class HttpClient:
                             f.write(chunk)
                             downloaded += len(chunk)
                             if progress_callback:
-                                progress_callback(downloaded, total_size)
+                                now = time.monotonic()
+                                should_report = (
+                                    last_progress_at is None
+                                    or now - last_progress_at >= self.DEFAULT_PROGRESS_CALLBACK_INTERVAL
+                                    or (total_size > 0 and downloaded >= total_size)
+                                )
+                                if should_report:
+                                    progress_callback(downloaded, total_size)
+                                    last_progress_at = now
+                                    last_reported_downloaded = downloaded
+
+                if progress_callback and downloaded != last_reported_downloaded:
+                    progress_callback(downloaded, total_size)
 
                 return True
 

@@ -10,25 +10,25 @@ from services.lyrics.lyrics_service import LyricsService
 from services.metadata.cover_service import CoverService
 
 
-def test_get_lyrics_by_qqmusic_mid_deduplicates_concurrent_requests():
+def test_get_lyrics_by_song_id_deduplicates_concurrent_requests():
     started = threading.Event()
     release = threading.Event()
     call_count = 0
     count_lock = threading.Lock()
     results: list[str] = []
 
-    def fake_download(song_mid: str) -> str:
+    def fake_download(song_id: str = "", provider_id: str = "") -> str:
         nonlocal call_count
         with count_lock:
             call_count += 1
         started.set()
         release.wait(timeout=1)
-        return f"lyrics:{song_mid}"
+        return f"lyrics:{song_id}"
 
     def worker():
-        results.append(LyricsService.get_lyrics_by_qqmusic_mid("mid_123"))
+        results.append(LyricsService.get_lyrics_by_song_id("mid_123", "qqmusic"))
 
-    with patch("services.lyrics.lyrics_service.download_qqmusic_lyrics", side_effect=fake_download):
+    with patch("services.lyrics.lyrics_service.download_online_lyrics", side_effect=fake_download):
         threads = [threading.Thread(target=worker) for _ in range(2)]
         threads[0].start()
         assert started.wait(timeout=1)
@@ -70,7 +70,7 @@ def test_get_online_cover_deduplicates_concurrent_requests():
             )
         )
 
-    with patch("services.lyrics.qqmusic_lyrics.get_qqmusic_cover_url", return_value="https://example.com/cover.jpg"), \
+    with patch("system.plugins.online_cover_helpers.get_online_cover_url", return_value="https://example.com/cover.jpg"), \
             patch.object(service, "_get_cached_cover", return_value=None), \
             patch.object(service, "_save_cover_to_cache", return_value="/tmp/cover.jpg"):
         threads = [threading.Thread(target=worker) for _ in range(2)]
@@ -108,7 +108,11 @@ def test_get_online_track_lyrics_deduplicates_fetch_and_save():
         results.append(LyricsService.get_online_track_lyrics("mid_456", "/tmp/song.ogg"))
 
     with patch.object(LyricsService, "_get_local_lyrics", return_value=""), \
-            patch.object(LyricsService, "get_lyrics_by_qqmusic_mid", side_effect=fake_fetch), \
+            patch.object(
+                LyricsService,
+                "get_lyrics_by_song_id",
+                side_effect=lambda song_id, provider_id: fake_fetch(song_id),
+            ), \
             patch.object(LyricsService, "save_lyrics", side_effect=fake_save):
         threads = [threading.Thread(target=worker) for _ in range(2)]
         threads[0].start()

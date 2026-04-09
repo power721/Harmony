@@ -3,6 +3,7 @@ Album domain model - Aggregated album entity.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Optional
 
 
@@ -31,7 +32,7 @@ class Album:
         """Get display artist for the album."""
         return self.artist if self.artist else "Unknown Artist"
 
-    @property
+    @cached_property
     def id(self) -> str:
         """Generate a unique ID for the album based on name and artist."""
         # Use name + artist as unique identifier

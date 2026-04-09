@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from unittest.mock import patch, MagicMock
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 app = QApplication.instance() or QApplication(sys.argv)
@@ -118,6 +119,16 @@ def test_queue_view_signals():
         assert hasattr(view, 'queue_reordered')
 
 
+def test_queue_view_items_use_pointing_hand_cursor():
+    """Queue list items should show a pointing hand cursor on hover."""
+    with patch('system.theme.ThemeManager', MockThemeManager):
+        from ui.views.queue_view import QueueView
+
+        view = QueueView(make_mock_player(), MagicMock(), MagicMock(), MagicMock())
+
+        assert view._list_view.viewport().cursor().shape() == Qt.PointingHandCursor
+
+
 def test_get_tracks_by_ids_uses_batch_api_when_available():
     """QueueView should use batch track lookup when library service supports it."""
     from domain.track import Track, TrackSource
@@ -126,8 +137,8 @@ def test_get_tracks_by_ids_uses_batch_api_when_available():
     view = QueueView.__new__(QueueView)
     view._library_service = MagicMock()
     view._library_service.get_tracks_by_ids.return_value = [
-        Track(id=1, title="One", source=TrackSource.QQ),
-        Track(id=2, title="Two", source=TrackSource.QQ),
+        Track(id=1, title="One", source=TrackSource.ONLINE, online_provider_id="qqmusic"),
+        Track(id=2, title="Two", source=TrackSource.ONLINE, online_provider_id="qqmusic"),
     ]
     view._library_service.get_track.side_effect = AssertionError("Should not call per-item lookup")
 
@@ -148,7 +159,7 @@ def test_get_tracks_by_ids_falls_back_to_single_lookup():
 
         def get_track(self, track_id):
             self.calls.append(track_id)
-            return Track(id=track_id, title=str(track_id), source=TrackSource.QQ)
+            return Track(id=track_id, title=str(track_id), source=TrackSource.ONLINE, online_provider_id="qqmusic")
 
     view = QueueView.__new__(QueueView)
     view._library_service = LegacyLibraryService()

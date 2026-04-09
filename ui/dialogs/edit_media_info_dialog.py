@@ -36,80 +36,6 @@ class EditMediaInfoDialog(QDialog):
 
     tracks_updated = Signal(list)  # Emitted when tracks are updated with list of track IDs
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:read-only {
-            background-color: %background_hover%;
-            color: %text_secondary%;
-        }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-        }
-        QCheckBox::indicator:checked {
-            background-color: %highlight%;
-            border: 2px solid %highlight%;
-            border-radius: 3px;
-        }
-        QCheckBox::indicator:unchecked {
-            background-color: %background%;
-            border: 2px solid %border%;
-            border-radius: 3px;
-        }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-    """
-
     _PROGRESS_STYLE_TEMPLATE = """
         QProgressBar {
             border: 2px solid %border%;
@@ -141,6 +67,7 @@ class EditMediaInfoDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()
@@ -167,8 +94,8 @@ class EditMediaInfoDialog(QDialog):
         if not track.path:
             return False
 
-        # Check for online streaming URLs
-        if track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+        # Check for online/virtual streaming URLs
+        if track.path.startswith(('http://', 'https://', 'online://')):
             return False
 
         # Check if file exists locally
@@ -187,7 +114,6 @@ class EditMediaInfoDialog(QDialog):
             title_text = t("edit_media_info_title")
         self.setWindowTitle(title_text)
         self.setMinimumWidth(450)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -297,6 +223,7 @@ class EditMediaInfoDialog(QDialog):
         buttons = QDialogButtonBox()
         self._ok_button = QPushButton(t("save"))
         self._ok_button.setObjectName("saveBtn")
+        self._ok_button.setProperty("role", "primary")
         self._ok_button.setCursor(Qt.PointingHandCursor)
         self._ok_button.setEnabled(self._can_save)
         cancel_button = QPushButton(t("cancel"))
@@ -318,14 +245,12 @@ class EditMediaInfoDialog(QDialog):
         """Add file information to the form for single track edit."""
         try:
             # Check if this is a local file
-            if not track.path or track.path.startswith(('http://', 'https://', 'qqmusic:/')):
+            if not track.path or track.path.startswith(('http://', 'https://', 'online://')):
                 # Online track - show online info
                 from domain.track import TrackSource
                 source_text = t("online_track")
                 if hasattr(track, 'source'):
-                    if track.source == TrackSource.QQ:
-                        source_text = "QQ音乐"
-                    elif track.source == TrackSource.QUARK:
+                    if track.source == TrackSource.QUARK:
                         source_text = "夸克网盘"
                     elif track.source == TrackSource.BAIDU:
                         source_text = "百度网盘"
@@ -573,7 +498,6 @@ class EditMediaInfoDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
         if self._progress_bar:
             self._progress_bar.setStyleSheet(ThemeManager.instance().get_qss(self._PROGRESS_STYLE_TEMPLATE))

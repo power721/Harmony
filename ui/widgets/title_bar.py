@@ -29,44 +29,6 @@ logger = logging.getLogger(__name__)
 class TitleBar(QWidget):
     """Custom Spotify-style title bar widget."""
 
-    _STYLE_TEMPLATE = """
-        QWidget#titleBar {
-            background-color: %background%;
-        }
-        QPushButton#winBtn {
-            border: none;
-            color: %text%;
-            background: transparent;
-            width: 36px;
-            height: 28px;
-            border-radius: 6px;
-        }
-        QPushButton#winBtn:hover {
-            background-color: %background_hover%;
-        }
-        QPushButton#closeBtn {
-            border: none;
-            color: %text%;
-            background: transparent;
-            width: 36px;
-            height: 28px;
-            border-radius: 6px;
-        }
-        QPushButton#closeBtn:hover {
-            background-color: #e81123;
-            color: white;
-        }
-        QLabel#titleLabel {
-            color: %text%;
-            font-size: 14px;
-            font-weight: bold;
-        }
-        QLabel#trackLabel {
-            color: %text_secondary%;
-            font-size: 13px;
-        }
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("titleBar")
@@ -77,7 +39,6 @@ class TitleBar(QWidget):
         self._drag_pos = None
 
         self._setup_ui()
-        self._apply_style()
 
         # Register for theme changes
         ThemeManager.instance().register_widget(self)
@@ -152,18 +113,16 @@ class TitleBar(QWidget):
             else:
                 win.showMaximized()
 
-    def _apply_style(self):
-        """Apply themed stylesheet."""
-        theme = ThemeManager.instance()
-        style = theme.get_qss(self._STYLE_TEMPLATE)
-        self.setStyleSheet(style)
-
     def refresh_theme(self):
-        """Called by ThemeManager on theme change."""
-        self._apply_style()
+        """Refresh icons and re-polish global theme selectors."""
         self._btn_min.setIcon(get_icon(IconName.MINIMIZE, None, 14))
         self._btn_max.setIcon(get_icon(IconName.MAXIMIZE, None, 14))
         self._btn_close.setIcon(get_icon(IconName.TIMES, None, 14))
+        for widget in (self, self._title_label, self._btn_min, self._btn_max, self._btn_close):
+            style = widget.style()
+            if style is not None:
+                style.unpolish(widget)
+                style.polish(widget)
         self.update()
 
     # === Track title display ===

@@ -10,6 +10,7 @@ from unittest.mock import Mock
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.bootstrap import Bootstrap
 from system.theme import ThemeManager
 
 
@@ -21,12 +22,14 @@ def _init_theme():
     ThemeManager.instance(config)
 
 
-def test_main_window_close():
+def test_main_window_close(tmp_path):
     """Test that MainWindow closes without QThread errors."""
     from ui.windows.main_window import MainWindow
 
     app = QApplication.instance() or QApplication(sys.argv)
     _init_theme()
+    Bootstrap._instance = None
+    bootstrap = Bootstrap.instance(str(tmp_path / "qthread-main-window.db"))
 
     # Create main window
     window = MainWindow()
@@ -43,15 +46,20 @@ def test_main_window_close():
     app.processEvents()
     time.sleep(0.5)
 
+    bootstrap.shutdown_database()
+    Bootstrap._instance = None
+
     print("MainWindow closed without QThread errors")
 
 
-def test_lyrics_panel_cleanup():
+def test_lyrics_panel_cleanup(monkeypatch):
     """Test that LyricsController properly cleans up threads."""
     from ui.windows.components.lyrics_panel import LyricsPanel, LyricsController
+    from services.lyrics.lyrics_service import LyricsService
 
     app = QApplication.instance() or QApplication(sys.argv)
     _init_theme()
+    monkeypatch.setattr(LyricsService, "get_lyrics", classmethod(lambda cls, *_args, **_kwargs: ""))
 
     # Create panel and controller
     panel = LyricsPanel()
@@ -82,11 +90,17 @@ def test_lyrics_panel_cleanup():
     print("LyricsController cleanup works correctly")
 
 
-def test_lyrics_loader_interruption():
+def test_lyrics_loader_interruption(monkeypatch):
     """Test that LyricsLoader respects interruption requests."""
     from services.lyrics.lyrics_loader import LyricsLoader
+    from services.lyrics.lyrics_service import LyricsService
 
     QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(
+        LyricsService,
+        "get_lyrics",
+        classmethod(lambda cls, *_args, **_kwargs: ""),
+    )
 
     # Create a loader with a fake path (will take time to fail)
     loader = LyricsLoader("/fake/path.mp3", "Test", "Artist")

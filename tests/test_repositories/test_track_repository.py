@@ -33,6 +33,7 @@ def temp_db():
             duration REAL,
             cover_path TEXT,
             cloud_file_id TEXT,
+            online_provider_id TEXT,
             source TEXT DEFAULT 'Local',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -239,16 +240,35 @@ class TestSqliteTrackRepository:
         """Track listing should support filtering by source in SQL."""
         track_repo.add(Track(path="/music/local.mp3", title="Local", source=TrackSource.LOCAL))
         track_repo.add(Track(
-            path="qqmusic://song/abc",
+            path="online://qqmusic/track/abc",
             title="Online",
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="abc",
         ))
 
-        tracks = track_repo.get_all(source=TrackSource.QQ)
+        tracks = track_repo.get_all(source=TrackSource.ONLINE)
 
         assert len(tracks) == 1
         assert tracks[0].title == "Online"
+
+    def test_add_normalizes_placeholder_online_provider_id(self, track_repo, temp_db):
+        """Adding online tracks should not persist the legacy placeholder provider id."""
+        track_repo.add(Track(
+            path="online://online/track/abc",
+            title="Online",
+            source=TrackSource.ONLINE,
+            online_provider_id="online",
+            cloud_file_id="abc",
+        ))
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE cloud_file_id = ?", ("abc",))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
 
     def test_update_track(self, track_repo):
         """Test updating a track."""
@@ -266,10 +286,108 @@ class TestSqliteTrackRepository:
         result = track_repo.update(track)
         assert result is True
 
-        # Verify update
-        updated = track_repo.get_by_id(track_id)
-        assert updated.title == "Updated Title"
-        assert updated.artist == "Updated Artist"
+    def test_batch_add_avoids_per_artist_id_selects(self, track_repo):
+        """Batch import should resolve artist ids in bulk instead of per artist per track."""
+        tracks = [
+            Track(
+                path=f"/music/song_{i}.mp3",
+                title=f"Song {i}",
+                artist="Artist A, Artist B",
+                album="Album",
+            )
+            for i in range(3)
+        ]
+
+        statements = []
+        conn = track_repo._get_connection()
+        conn.set_trace_callback(statements.append)
+        try:
+            added = track_repo.batch_add(tracks)
+        finally:
+            conn.set_trace_callback(None)
+
+        artist_id_selects = [
+            sql for sql in statements
+            if "SELECT id FROM artists WHERE name =" in sql
+        ]
+
+        assert added == 3
+        assert artist_id_selects == []
+
+    def test_get_by_id_repairs_legacy_placeholder_online_provider_id(self, track_repo, temp_db):
+        """Reading old online tracks should normalize and repair placeholder provider ids."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks (path, title, cloud_file_id, online_provider_id, source)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("online://online/track/legacy", "Legacy", "legacy", "online", "ONLINE"))
+        track_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        track = track_repo.get_by_id(track_id)
+
+        assert track is not None
+        assert track.online_provider_id is None
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE id = ?", (track_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] is None
+
+    def test_get_by_id_does_not_write_back_for_normalized_online_rows(self, track_repo):
+        """Reading already-normalized online rows should remain a pure read."""
+        track_id = track_repo.add(Track(
+            path="online://qqmusic/track/abc",
+            title="Online",
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="abc",
+        ))
+
+        conn = track_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            track = track_repo.get_by_id(track_id)
+        finally:
+            conn.set_trace_callback(None)
+
+        writes = [sql for sql in statements if sql.strip().upper().startswith("UPDATE TRACKS")]
+
+        assert track is not None
+        assert track.online_provider_id == "qqmusic"
+        assert writes == []
+
+    def test_get_by_cloud_file_id_matches_legacy_qq_row_without_provider_id(self, track_repo, temp_db):
+        """QQ legacy rows without provider id should still resolve for qqmusic lookups."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO tracks (path, title, cloud_file_id, source, online_provider_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("/music/song.flac", "Legacy QQ", "qq_legacy_mid", "QQ", None))
+        track_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        track = track_repo.get_by_cloud_file_id("qq_legacy_mid", provider_id="qqmusic")
+
+        assert track is not None
+        assert track.id == track_id
+        assert track.online_provider_id == "qqmusic"
+
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT online_provider_id FROM tracks WHERE id = ?", (track_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row[0] == "qqmusic"
 
     def test_update_nonexistent_track(self, track_repo):
         """Test updating non-existent track."""
@@ -311,6 +429,30 @@ class TestSqliteTrackRepository:
         """Test getting track by non-existent cloud file ID."""
         retrieved = track_repo.get_by_cloud_file_id("nonexistent")
         assert retrieved is None
+
+    def test_get_by_online_track_keys_keeps_provider_distinct(self, track_repo):
+        """Batch online lookups should distinguish tracks by provider id."""
+        track_repo.add(Track(
+            path="online://qqmusic/track/shared",
+            title="QQ Song",
+            source=TrackSource.ONLINE,
+            cloud_file_id="shared",
+            online_provider_id="qqmusic",
+        ))
+        track_repo.add(Track(
+            path="online://netease/track/shared",
+            title="Netease Song",
+            source=TrackSource.ONLINE,
+            cloud_file_id="shared",
+            online_provider_id="netease",
+        ))
+
+        tracks = track_repo.get_by_online_track_keys(
+            [("qqmusic", "shared"), ("netease", "shared")]
+        )
+
+        assert tracks[("qqmusic", "shared")].title == "QQ Song"
+        assert tracks[("netease", "shared")].title == "Netease Song"
 
     def test_search_tracks(self, track_repo, temp_db):
         """Test searching tracks."""
@@ -364,17 +506,19 @@ class TestSqliteTrackRepository:
         tracks = [
             Track(path="/music/local-song.mp3", title="Song Alpha", artist="Local Artist", source=TrackSource.LOCAL),
             Track(
-                path="qqmusic://song/1",
+                path="online://qqmusic/track/1",
                 title="Song Beta",
                 artist="QQ Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song-1",
             ),
             Track(
-                path="qqmusic://song/2",
+                path="online://qqmusic/track/2",
                 title="Song Gamma",
                 artist="QQ Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song-2",
             ),
         ]
@@ -390,7 +534,7 @@ class TestSqliteTrackRepository:
         conn.commit()
         conn.close()
 
-        results = track_repo.search("Song", limit=1, offset=1, source=TrackSource.QQ)
+        results = track_repo.search("Song", limit=1, offset=1, source=TrackSource.ONLINE)
 
         assert len(results) == 1
         assert results[0].title == "Song Beta"
@@ -925,6 +1069,19 @@ class TestTrackRepositoryMultiArtist:
 
         names = track_repo.get_track_artist_names(tid)
         assert names == []
+
+    def test_update_then_sync_track_artists_rebuilds_junction_rows(self, track_repo):
+        """Updating artist text then syncing should rebuild ordered junction rows."""
+        tid = track_repo.add(Track(
+            path="/music/song.mp3", title="Song", artist="Artist A"
+        ))
+
+        track = track_repo.get_by_id(tid)
+        track.artist = "Artist A, Artist B"
+
+        assert track_repo.update(track) is True
+        assert track_repo.sync_track_artists(tid, "Artist A, Artist B") is True
+        assert track_repo.get_track_artist_names(tid) == ["Artist A", "Artist B"]
 
     def test_rebuild_track_artists(self, track_repo):
         """Test rebuilding the track_artists junction table for all tracks."""

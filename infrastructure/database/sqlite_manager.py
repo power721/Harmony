@@ -7,12 +7,8 @@ import re
 import sqlite3
 import threading
 from concurrent.futures import Future
-from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
-from domain.cloud import CloudAccount, CloudFile
-from domain.playlist import Playlist
-from domain.track import Track, TrackSource
 from infrastructure.database.db_write_worker import get_write_worker
 
 # Configure logging
@@ -35,6 +31,8 @@ class DatabaseManager:
         """
         self.db_path = db_path
         self.local = threading.local()
+        self._connections: Dict[int, sqlite3.Connection] = {}
+        self._connections_lock = threading.Lock()
         self._write_worker = get_write_worker(db_path)
         atexit.register(self.close)
         self._init_database()
@@ -53,6 +51,8 @@ class DatabaseManager:
             self.local.conn.execute("PRAGMA cache_size=-10000")
             self.local.conn.execute("PRAGMA temp_store=MEMORY")
             self.local.conn.execute("PRAGMA foreign_keys=ON")
+            with self._connections_lock:
+                self._connections[threading.get_ident()] = self.local.conn
         return self.local.conn
 
     def _submit_write(self, func: Callable, *args, **kwargs) -> Future:
@@ -131,6 +131,8 @@ class DatabaseManager:
                            TEXT
                            DEFAULT
                            'Local',
+                           online_provider_id
+                           TEXT,
                            created_at
                            TIMESTAMP
                            DEFAULT
@@ -253,6 +255,8 @@ class DatabaseManager:
                            INTEGER,
                            cloud_file_id
                            TEXT,
+                           online_provider_id
+                           TEXT,
                            cloud_account_id
                            INTEGER,
                            created_at
@@ -278,10 +282,6 @@ class DatabaseManager:
                            UNIQUE
                        (
                            track_id
-                       ),
-                           UNIQUE
-                       (
-                           cloud_file_id
                        )
                            )
                        """)
@@ -549,6 +549,8 @@ class DatabaseManager:
                            INTEGER,
                            cloud_file_id
                            TEXT,
+                           online_provider_id
+                           TEXT,
                            cloud_account_id
                            INTEGER,
                            local_path
@@ -714,24 +716,10 @@ class DatabaseManager:
 
         conn.commit()
 
-    def _get_track_source_from_row(self, row) -> TrackSource:
-        """
-        Helper to get TrackSource from database row.
-
-        Handles missing 'source' column for backward compatibility.
-        """
-        if "source" not in row.keys() or not row["source"]:
-            return TrackSource.LOCAL
-        try:
-            return TrackSource(row["source"])
-        except ValueError:
-            # Invalid source value, fallback to Local
-            return TrackSource.LOCAL
-
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 9
+        CURRENT_SCHEMA_VERSION = 12
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -765,6 +753,8 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE favorites ADD COLUMN cloud_file_id TEXT")
         if 'cloud_account_id' not in columns:
             cursor.execute("ALTER TABLE favorites ADD COLUMN cloud_account_id INTEGER")
+        if 'online_provider_id' not in columns:
+            cursor.execute("ALTER TABLE favorites ADD COLUMN online_provider_id TEXT")
 
         # Check if track_id is NOT NULL (needs to be nullable for cloud files)
         cursor.execute("PRAGMA table_info(favorites)")
@@ -787,6 +777,8 @@ class DatabaseManager:
                                track_id
                                INTEGER,
                                cloud_file_id
+                               TEXT,
+                               online_provider_id
                                TEXT,
                                cloud_account_id
                                INTEGER,
@@ -813,16 +805,14 @@ class DatabaseManager:
                                UNIQUE
                            (
                                track_id
-                           ),
-                               UNIQUE
-                           (
-                               cloud_file_id
                            )
                                )
                            """)
             cursor.execute("""
-                           INSERT INTO favorites_new (id, track_id, cloud_file_id, cloud_account_id, created_at)
-                           SELECT id, track_id, cloud_file_id, cloud_account_id, created_at
+                           INSERT INTO favorites_new (
+                               id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
+                           )
+                           SELECT id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
                            FROM favorites
                            """)
             cursor.execute("DROP TABLE favorites")
@@ -859,7 +849,7 @@ class DatabaseManager:
             # Copy and transform data
             # source_type + cloud_type -> source
             # 'local' + '' -> 'Local'
-            # 'online' + 'QQ' -> 'QQ'
+            # 'online' + any provider -> 'ONLINE'
             # 'cloud' + 'quark' -> 'QUARK'
             # 'cloud' + 'baidu' -> 'BAIDU'
             cursor.execute("""
@@ -870,7 +860,7 @@ class DatabaseManager:
                     id, position,
                     CASE
                         WHEN source_type = 'local' THEN 'Local'
-                        WHEN source_type = 'online' THEN 'QQ'
+                        WHEN source_type = 'online' THEN 'ONLINE'
                         WHEN source_type = 'cloud' THEN UPPER(cloud_type)
                         ELSE 'Local'
                     END,
@@ -896,6 +886,16 @@ class DatabaseManager:
         pq_columns = {row[1] for row in cursor.fetchall()}
         if "download_failed" not in pq_columns:
             cursor.execute("ALTER TABLE play_queue ADD COLUMN download_failed INTEGER DEFAULT 0")
+
+        cursor.execute("PRAGMA table_info(tracks)")
+        track_columns = {row[1] for row in cursor.fetchall()}
+        if "online_provider_id" not in track_columns:
+            cursor.execute("ALTER TABLE tracks ADD COLUMN online_provider_id TEXT")
+
+        cursor.execute("PRAGMA table_info(play_queue)")
+        pq_columns = {row[1] for row in cursor.fetchall()}
+        if "online_provider_id" not in pq_columns:
+            cursor.execute("ALTER TABLE play_queue ADD COLUMN online_provider_id TEXT")
 
         # Migration 2: Initialize FTS5 index for existing tracks
         # Only validate/rebuild FTS when schema has changed (not on every startup)
@@ -1042,10 +1042,96 @@ class DatabaseManager:
             """)
             cursor.execute("""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
-                    ON favorites(cloud_file_id)
+                    ON favorites(cloud_file_id, COALESCE(online_provider_id, ''))
                     WHERE cloud_file_id IS NOT NULL
             """)
             logger.info("[Database] Added unique indexes for UPSERT support")
+
+        # Migration 10: Repair legacy QQ online-provider rows.
+        if stored_version < 11:
+            cursor.execute("""
+                UPDATE tracks
+                SET source = 'ONLINE',
+                    online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'QQ'
+                  AND (
+                    online_provider_id IS NULL
+                    OR TRIM(online_provider_id) = ''
+                    OR LOWER(online_provider_id) = 'online'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE tracks
+                SET online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'ONLINE'
+                  AND LOWER(COALESCE(path, '')) LIKE 'online://qqmusic/%'
+                  AND (
+                    online_provider_id IS NULL
+                    OR TRIM(online_provider_id) = ''
+                    OR LOWER(online_provider_id) = 'online'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE play_queue
+                SET online_provider_id = 'qqmusic'
+                WHERE UPPER(COALESCE(source, '')) = 'ONLINE'
+                  AND LOWER(COALESCE(online_provider_id, '')) = 'online'
+                  AND cloud_file_id IN (
+                    SELECT cloud_file_id
+                    FROM tracks
+                    WHERE online_provider_id = 'qqmusic'
+                  )
+            """)
+            cursor.execute("""
+                UPDATE play_queue
+                SET online_provider_id = NULL
+                WHERE LOWER(COALESCE(online_provider_id, '')) = 'online'
+            """)
+            logger.info("[Database] Repaired legacy QQ online provider ids")
+
+        # Migration 11: Make online favorites provider-aware.
+        if stored_version < 12:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS favorites_new
+                (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    track_id INTEGER,
+                    cloud_file_id TEXT,
+                    online_provider_id TEXT,
+                    cloud_account_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE,
+                    FOREIGN KEY(cloud_account_id) REFERENCES cloud_accounts(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO favorites_new (
+                    id, track_id, cloud_file_id, online_provider_id, cloud_account_id, created_at
+                )
+                SELECT
+                    id,
+                    track_id,
+                    cloud_file_id,
+                    online_provider_id,
+                    cloud_account_id,
+                    created_at
+                FROM favorites
+            """)
+            cursor.execute("DROP TABLE favorites")
+            cursor.execute("ALTER TABLE favorites_new RENAME TO favorites")
+            cursor.execute("DROP INDEX IF EXISTS idx_favorites_track_unique")
+            cursor.execute("DROP INDEX IF EXISTS idx_favorites_cloud_file_unique")
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_track_unique
+                    ON favorites(track_id)
+                    WHERE track_id IS NOT NULL
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
+                    ON favorites(cloud_file_id, COALESCE(online_provider_id, ''))
+                    WHERE cloud_file_id IS NOT NULL
+            """)
+            logger.info("[Database] Made online favorites provider-aware")
 
         # Update schema version after all migrations complete
         if schema_changed:
@@ -1055,1108 +1141,27 @@ class DatabaseManager:
             )
             logger.info(f"[Database] Schema version updated to {CURRENT_SCHEMA_VERSION}")
 
-    # Track operations
-
-    def add_track(self, track: Track) -> int:
-        """Add a track to the database. Returns track ID."""
-        # Serialize track data for thread safety
-        track_data = {
-            'path': track.path,
-            'title': track.title,
-            'artist': track.artist,
-            'album': track.album,
-            'genre': getattr(track, 'genre', None),
-            'duration': track.duration,
-            'cover_path': track.cover_path,
-            'created_at': track.created_at or datetime.now(),
-            'cloud_file_id': track.cloud_file_id,
-            'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
-            'file_size': getattr(track, 'file_size', None),
-            'file_mtime': getattr(track, 'file_mtime', None),
-        }
-
-        # Check if we're in the write worker thread - execute directly
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_add_track(track_data, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_add_track, track_data)
-        return future.result(timeout=10.0)
-
-    def add_track_async(self, track: Track, callback: Callable[[int], None] = None) -> None:
-        """
-        Add a track asynchronously without blocking.
-
-        Args:
-            track: Track to add
-            callback: Optional callback called with track ID on completion
-        """
-        track_data = {
-            'path': track.path,
-            'title': track.title,
-            'artist': track.artist,
-            'album': track.album,
-            'genre': getattr(track, 'genre', None),
-            'duration': track.duration,
-            'cover_path': track.cover_path,
-            'created_at': track.created_at or datetime.now(),
-            'cloud_file_id': track.cloud_file_id,
-            'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
-            'file_size': getattr(track, 'file_size', None),
-            'file_mtime': getattr(track, 'file_mtime', None),
-        }
-
-        if callback:
-            future = self._submit_write(self._do_add_track, track_data)
-            future.add_done_callback(lambda f: callback(f.result()))
-        else:
-            self._submit_write_async(self._do_add_track, track_data)
-
-    def _do_add_track(self, track_data: dict, conn: sqlite3.Connection = None) -> int:
-        """Internal method to add a track (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO tracks
-            (path, title, artist, album, genre, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                track_data['path'],
-                track_data['title'],
-                track_data['artist'],
-                track_data['album'],
-                track_data['genre'],
-                track_data['duration'],
-                track_data['cover_path'],
-                track_data['created_at'],
-                track_data['cloud_file_id'],
-                track_data['source'],
-                track_data['file_size'],
-                track_data['file_mtime'],
-            ),
-        )
-
-        conn.commit()
-        return cursor.lastrowid
-
-    def _row_to_track(self, row) -> Track:
-        """Convert a database row to a Track domain model."""
-        return Track(
-            id=row["id"],
-            path=row["path"],
-            title=row["title"],
-            artist=row["artist"],
-            album=row["album"],
-            genre=row["genre"] if "genre" in row.keys() else None,
-            duration=row["duration"],
-            cover_path=row["cover_path"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            cloud_file_id=row["cloud_file_id"],
-            source=self._get_track_source_from_row(row),
-            file_size=row["file_size"] if "file_size" in row.keys() else None,
-            file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
-        )
-
-    def get_track(self, track_id: int) -> Optional[Track]:
-        """Get a track by ID."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM tracks WHERE id = ?", (track_id,))
-        row = cursor.fetchone()
-
-        if row:
-            return self._row_to_track(row)
-        return None
-
-    def get_tracks_by_ids(self, track_ids: List[int]) -> List[Track]:
-        """
-        Get multiple tracks by IDs in batch.
-
-        Args:
-            track_ids: List of track IDs
-
-        Returns:
-            List of Track objects (only existing tracks)
-        """
-        if not track_ids:
-            return []
-
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        placeholders = ",".join("?" * len(track_ids))
-        cursor.execute(f"SELECT * FROM tracks WHERE id IN ({placeholders})", track_ids)
-        rows = cursor.fetchall()
-
-        return [self._row_to_track(row) for row in rows]
-
-    def get_track_by_path(self, path: str) -> Optional[Track]:
-        """Get a track by file path."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM tracks WHERE path = ?", (path,))
-        row = cursor.fetchone()
-
-        if row:
-            return self._row_to_track(row)
-        return None
-
-    def get_track_by_cloud_file_id(self, cloud_file_id: str) -> Optional[Track]:
-        """Get a track by cloud file ID."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
-        row = cursor.fetchone()
-
-        if row:
-            return self._row_to_track(row)
-        return None
-
-    def get_tracks_by_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
-        """
-        Get multiple tracks by cloud file IDs in batch.
-
-        Args:
-            cloud_file_ids: List of cloud file IDs
-
-        Returns:
-            Dict mapping cloud_file_id -> Track
-        """
-        if not cloud_file_ids:
-            return {}
-
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        placeholders = ",".join("?" * len(cloud_file_ids))
-        cursor.execute(f"SELECT * FROM tracks WHERE cloud_file_id IN ({placeholders})", cloud_file_ids)
-        rows = cursor.fetchall()
-
-        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
-
-    def get_track_index_for_paths(self, paths: list[str]) -> dict[str, dict]:
-        """
-        Bulk lookup of track metadata by file paths for incremental scan.
-
-        Args:
-            paths: List of file paths to look up
-
-        Returns:
-            Dict mapping path -> {"size": int|None, "mtime": float|None}
-        """
-        if not paths:
-            return {}
-
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # SQLite has a limit on bind params; chunk if needed
-        chunk_size = 500
-        result = {}
-
-        for i in range(0, len(paths), chunk_size):
-            chunk = paths[i:i + chunk_size]
-            placeholders = ",".join("?" for _ in chunk)
-            cursor.execute(
-                f"SELECT path, file_size, file_mtime FROM tracks WHERE path IN ({placeholders})",
-                chunk,
-            )
-            for row in cursor.fetchall():
-                result[row[0]] = {
-                    "size": row[1],
-                    "mtime": row[2],
-                }
-
-        return result
-
-    def add_tracks_bulk(self, tracks: list[Track]) -> tuple[int, int]:
-        """
-        Bulk insert/update tracks in a single transaction.
-
-        Optimized to use batch operations instead of individual INSERTs.
-
-        Args:
-            tracks: List of Track objects to add
-
-        Returns:
-            (added_count, skipped_count)
-        """
-        def _bulk_insert(conn: sqlite3.Connection):
-            added = 0
-            skipped = 0
-            cursor = conn.cursor()
-
-            if not tracks:
-                return added, skipped
-
-            # Batch check for existing paths
-            paths = [track.path for track in tracks]
-            placeholders = ",".join("?" for _ in paths)
-            cursor.execute(f"SELECT id, path FROM tracks WHERE path IN ({placeholders})", paths)
-            existing_map = {row["path"]: row["id"] for row in cursor.fetchall()}
-
-            # Separate into new tracks and updates
-            new_tracks = []
-            update_tracks = []
-
-            for track in tracks:
-                track_data = {
-                    'path': track.path,
-                    'title': track.title,
-                    'artist': track.artist,
-                    'album': track.album,
-                    'genre': getattr(track, 'genre', None),
-                    'duration': track.duration,
-                    'cover_path': track.cover_path,
-                    'created_at': track.created_at or datetime.now(),
-                    'cloud_file_id': track.cloud_file_id,
-                    'source': track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                    'file_size': getattr(track, 'file_size', None),
-                    'file_mtime': getattr(track, 'file_mtime', None),
-                }
-
-                if track.path in existing_map:
-                    update_tracks.append(track_data)
-                else:
-                    new_tracks.append(track_data)
-
-            # Batch insert new tracks
-            if new_tracks:
-                cursor.executemany(
-                    """
-                    INSERT INTO tracks
-                    (path, title, artist, album, genre, duration, cover_path, created_at, cloud_file_id, source, file_size, file_mtime)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            t['path'], t['title'], t['artist'], t['album'],
-                            t['genre'], t['duration'], t['cover_path'], t['created_at'],
-                            t['cloud_file_id'], t['source'], t['file_size'], t['file_mtime']
-                        )
-                        for t in new_tracks
-                    ]
-                )
-                added = len(new_tracks)
-
-            # Batch update existing tracks
-            if update_tracks:
-                cursor.executemany(
-                    """
-                    UPDATE tracks
-                    SET title=?, artist=?, album=?, genre=?, duration=?, cover_path=?,
-                        file_size=?, file_mtime=?
-                    WHERE path=?
-                    """,
-                    [
-                        (
-                            t['title'], t['artist'], t['album'], t['genre'],
-                            t['duration'], t['cover_path'],
-                            t['file_size'], t['file_mtime'], t['path']
-                        )
-                        for t in update_tracks
-                    ]
-                )
-                skipped = len(update_tracks)
-
-            conn.commit()
-            return added, skipped
-
-        future = self._submit_write(_bulk_insert)
-        return future.result(timeout=60.0)
-
-    def get_all_tracks(self) -> List[Track]:
-        """Get all tracks from the database, including downloaded cloud files."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Get local tracks
-        cursor.execute("SELECT * FROM tracks ORDER BY artist, album, title")
-        rows = cursor.fetchall()
-
-        tracks = [
-            self._row_to_track(row)
-            for row in rows
-        ]
-
-        return tracks
-
-    def search_tracks(self, query: str) -> List[Track]:
-        """
-        Search tracks using FTS5 full-text search.
-
-        User input is normalized to literal terms before being passed to FTS.
-
-        Args:
-            query: Search query string
-
-        Returns:
-            List of matching Track objects sorted by relevance
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Check if FTS table has data
-        cursor.execute("SELECT COUNT(*) FROM tracks_fts")
-        if cursor.fetchone()[0] == 0:
-            # Fallback to LIKE search if FTS not populated
-            return self._search_tracks_like(query)
-
-        try:
-            fts_query = self._build_safe_fts_query(query)
-            if fts_query is None:
-                return []
-
-            cursor.execute(
-                """
-                SELECT t.*, bm25(tracks_fts) AS score
-                FROM tracks t
-                         JOIN tracks_fts f ON t.id = f.rowid
-                WHERE tracks_fts MATCH ?
-                ORDER BY score LIMIT 100
-                """,
-                (fts_query,),
-            )
-
-            rows = cursor.fetchall()
-
-            return [
-                self._row_to_track(row)
-                for row in rows
-            ]
-
-        except sqlite3.OperationalError:
-            # FTS query failed, fallback to LIKE search
-            return self._search_tracks_like(query)
-
-    def _search_tracks_like(self, query: str) -> List[Track]:
-        """
-        Fallback LIKE-based search when FTS is not available.
-
-        Args:
-            query: Search query string
-
-        Returns:
-            List of matching Track objects
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        search_pattern = f"%{query}%"
-        cursor.execute(
-            """
-            SELECT *
-            FROM tracks
-            WHERE title LIKE ?
-               OR artist LIKE ?
-               OR album LIKE ?
-            ORDER BY artist, album, title
-            """,
-            (search_pattern, search_pattern, search_pattern),
-        )
-
-        rows = cursor.fetchall()
-
-        return [
-            self._row_to_track(row)
-            for row in rows
-        ]
-
-    def delete_track(self, track_id: int) -> bool:
-        """Delete a track from the database."""
-        future = self._submit_write(self._do_delete_track, track_id)
-        return future.result(timeout=10.0)
-
-    def delete_track_async(self, track_id: int, callback: Callable[[bool], None] = None) -> None:
-        """
-        Delete a track asynchronously without blocking.
-
-        Args:
-            track_id: Track ID to delete
-            callback: Optional callback called with success boolean on completion
-        """
-        if callback:
-            future = self._submit_write(self._do_delete_track, track_id)
-            future.add_done_callback(lambda f: callback(f.result()))
-        else:
-            self._submit_write_async(self._do_delete_track, track_id)
-
-    def _do_delete_track(self, track_id: int, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to delete a track (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
-        conn.commit()
-
-        return cursor.rowcount > 0
-
-    def update_track(
-            self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            genre: str = None, cloud_file_id: str = None
-    ) -> bool:
-        """Update track metadata in the database."""
-        future = self._submit_write(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
-        return future.result(timeout=10.0)
-
-    def update_track_async(
-            self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            genre: str = None, cloud_file_id: str = None, callback: Callable[[bool], None] = None
-    ) -> None:
-        """
-        Update track metadata asynchronously without blocking.
-
-        Args:
-            track_id: Track ID to update
-            title: New title (optional)
-            artist: New artist (optional)
-            album: New album (optional)
-            genre: New genre (optional)
-            cloud_file_id: New cloud file ID (optional)
-            callback: Optional callback called with success boolean on completion
-        """
-        if callback:
-            future = self._submit_write(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
-            future.add_done_callback(lambda f: callback(f.result()))
-        else:
-            self._submit_write_async(self._do_update_track, track_id, title, artist, album, genre, cloud_file_id)
-
-    def _do_update_track(
-            self, track_id: int, title: str = None, artist: str = None, album: str = None,
-            genre: str = None, cloud_file_id: str = None, conn: sqlite3.Connection = None
-    ) -> bool:
-        """Internal method to update track metadata (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        updates = []
-        params = []
-
-        if title is not None:
-            updates.append("title = ?")
-            params.append(title)
-        if artist is not None:
-            updates.append("artist = ?")
-            params.append(artist)
-        if album is not None:
-            updates.append("album = ?")
-            params.append(album)
-        if genre is not None:
-            updates.append("genre = ?")
-            params.append(genre)
-        if cloud_file_id is not None:
-            updates.append("cloud_file_id = ?")
-            params.append(cloud_file_id)
-
-        if not updates:
-            return False
-
-        params.append(track_id)
-
-        cursor.execute(
-            f"""
-            UPDATE tracks
-            SET {", ".join(updates)}
-            WHERE id = ?
-        """,
-            params,
-        )
-
-        conn.commit()
-        return cursor.rowcount > 0
-
-    def update_track_cover_path(self, track_id: int, cover_path: str) -> bool:
-        """Update cover_path for a track."""
-        logger.info(f"[DatabaseManager] update_track_cover_path: track_id={track_id}, cover_path={cover_path}")
-
-        future = self._submit_write(self._do_update_track_cover_path, track_id, cover_path)
-        return future.result(timeout=10.0)
-
-    def _do_update_track_cover_path(self, track_id: int, cover_path: str, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to update track cover path (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE tracks
-            SET cover_path = ?
-            WHERE id = ?
-            """,
-            (cover_path, track_id),
-        )
-
-        conn.commit()
-        affected = cursor.rowcount
-        logger.info(f"[DatabaseManager] Updated {affected} row(s)")
-        return affected > 0
-
-    def update_track_path(self, track_id: int, path: str) -> bool:
-        """Update path for a track."""
-        logger.info(f"[DatabaseManager] update_track_path: track_id={track_id}, path={path}")
-
-        # Check if we're in the write worker thread - execute directly
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_update_track_path(track_id, path, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_update_track_path, track_id, path)
-        return future.result(timeout=10.0)
-
-    def _do_update_track_path(self, track_id: int, path: str, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to update track path (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE tracks
-            SET path = ?
-            WHERE id = ?
-            """,
-            (path, track_id),
-        )
-
-        conn.commit()
-        affected = cursor.rowcount
-        logger.info(f"[DatabaseManager] Updated {affected} row(s)")
-        return affected > 0
-
-    # Playlist operations
-
-    def create_playlist(self, name: str) -> int:
-        """Create a new playlist. Returns playlist ID."""
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_create_playlist(name, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_create_playlist, name)
-        return future.result(timeout=10.0)
-
-    def _do_create_playlist(self, name: str, conn: sqlite3.Connection = None) -> int:
-        """Internal method to create playlist (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO playlists (name)
-            VALUES (?)
-            """,
-            (name,),
-        )
-
-        conn.commit()
-        return cursor.lastrowid
-
-    def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
-        """Get a playlist by ID."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM playlists WHERE id = ?", (playlist_id,))
-        row = cursor.fetchone()
-
-        if row:
-            return Playlist(
-                id=row["id"],
-                name=row["name"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-            )
-        return None
-
-    def get_all_playlists(self) -> List[Playlist]:
-        """Get all playlists."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM playlists ORDER BY name")
-        rows = cursor.fetchall()
-
-        return [
-            Playlist(
-                id=row["id"],
-                name=row["name"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-            )
-            for row in rows
-        ]
-
-    def get_playlist_tracks(self, playlist_id: int) -> List[Track]:
-        """Get all tracks in a playlist."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT t.*
-            FROM tracks t
-                     INNER JOIN playlist_items pi ON t.id = pi.track_id
-            WHERE pi.playlist_id = ?
-            ORDER BY pi.position
-            """,
-            (playlist_id,),
-        )
-
-        rows = cursor.fetchall()
-
-        return [
-            Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"],
-                source=self._get_track_source_from_row(row),
-            )
-            for row in rows
-        ]
-
-    def add_track_to_playlist(self, playlist_id: int, track_id: int) -> bool:
-        """Add a track to a playlist."""
-        # Check if we're in the write worker thread - execute directly
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_add_track_to_playlist(playlist_id, track_id, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_add_track_to_playlist, playlist_id, track_id)
-        return future.result(timeout=10.0)
-
-    def _do_add_track_to_playlist(self, playlist_id: int, track_id: int, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to add track to playlist (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Check if already exists
-        cursor.execute(
-            "SELECT 1 FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
-            (playlist_id, track_id),
-        )
-        if cursor.fetchone():
-            return False
-
-        # Get the next position
-        cursor.execute(
-            "SELECT MAX(position) as max_pos FROM playlist_items WHERE playlist_id = ?",
-            (playlist_id,),
-        )
-
-        result = cursor.fetchone()
-        # Use is not None check because MAX can return 0 which is falsy
-        next_position = (result["max_pos"] if result["max_pos"] is not None else -1) + 1
-
-        try:
-            cursor.execute(
-                "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?, ?, ?)",
-                (playlist_id, track_id, next_position),
-            )
-            conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def remove_track_from_playlist(self, playlist_id: int, track_id: int) -> bool:
-        """Remove a track from a playlist."""
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_remove_track_from_playlist(playlist_id, track_id, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_remove_track_from_playlist, playlist_id, track_id)
-        return future.result(timeout=10.0)
-
-    def _do_remove_track_from_playlist(self, playlist_id: int, track_id: int, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to remove track from playlist (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Get position before deletion
-        cursor.execute(
-            "SELECT position FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
-            (playlist_id, track_id),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            return False
-
-        position = row["position"]
-
-        # Delete the track
-        cursor.execute(
-            "DELETE FROM playlist_items WHERE playlist_id = ? AND track_id = ?",
-            (playlist_id, track_id),
-        )
-
-        # Reorder remaining items using saved position
-        cursor.execute(
-            "UPDATE playlist_items SET position = position - 1 WHERE playlist_id = ? AND position > ?",
-            (playlist_id, position),
-        )
-
-        conn.commit()
-        return True
-
-    def delete_playlist(self, playlist_id: int) -> bool:
-        """Delete a playlist."""
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_delete_playlist(playlist_id, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_delete_playlist, playlist_id)
-        return future.result(timeout=10.0)
-
-    def _do_delete_playlist(self, playlist_id: int, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to delete playlist (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
-        conn.commit()
-
-        return cursor.rowcount > 0
-
-    def remove_track(self, track_id: int) -> bool:
-        """Remove a track from the library (does not delete the file)."""
-        current_thread = threading.current_thread()
-        if current_thread.name == "DBWriteWorker":
-            return self._do_remove_track(track_id, conn=self._write_worker._get_connection())
-
-        future = self._submit_write(self._do_remove_track, track_id)
-        return future.result(timeout=10.0)
-
-    def _do_remove_track(self, track_id: int, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to remove track (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
-        conn.commit()
-
-        return cursor.rowcount > 0
-
-    # Play history operations
-
-    # Favorites operations
-
-    def add_favorite(self, track_id: int = None, cloud_file_id: str = None, cloud_account_id: int = None) -> bool:
-        """Add a track or cloud file to favorites."""
-        future = self._submit_write(self._do_add_favorite, track_id, cloud_file_id, cloud_account_id)
-        return future.result(timeout=10.0)
-
-    def _do_add_favorite(self, track_id: int = None, cloud_file_id: str = None, cloud_account_id: int = None, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to add favorite (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # If cloud_file_id provided, check if there's already a track record
-        if cloud_file_id and not track_id:
-            cursor.execute("SELECT id FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
-            row = cursor.fetchone()
-            if row:
-                track_id = row["id"]
-                cloud_file_id = None  # Use track_id instead
-
-        try:
-            cursor.execute(
-                """
-                INSERT INTO favorites (track_id, cloud_file_id, cloud_account_id)
-                VALUES (?, ?, ?)
-                """,
-                (track_id, cloud_file_id, cloud_account_id),
-            )
-
-            conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    def remove_favorite(self, track_id: int = None, cloud_file_id: str = None) -> bool:
-        """Remove a track or cloud file from favorites."""
-        future = self._submit_write(self._do_remove_favorite, track_id, cloud_file_id)
-        return future.result(timeout=10.0)
-
-    def _do_remove_favorite(self, track_id: int = None, cloud_file_id: str = None, conn: sqlite3.Connection = None) -> bool:
-        """Internal method to remove favorite (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # If cloud_file_id provided, check if there's a track record
-        if cloud_file_id and not track_id:
-            cursor.execute("SELECT id FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
-            row = cursor.fetchone()
-            if row:
-                track_id = row["id"]
-                cloud_file_id = None
-
-        if track_id:
-            cursor.execute("DELETE FROM favorites WHERE track_id = ?", (track_id,))
-        else:
-            cursor.execute("DELETE FROM favorites WHERE cloud_file_id = ?", (cloud_file_id,))
-        conn.commit()
-
-        return cursor.rowcount > 0
-
-    def get_all_favorite_track_ids(self) -> set:
-        """Get all favorite local track IDs as a set for O(1) lookup."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT track_id FROM favorites WHERE track_id IS NOT NULL")
-        return {row["track_id"] for row in cursor.fetchall()}
-
-    def get_favorites(self) -> List[Track]:
-        """Get all favorite tracks (including downloaded cloud files with track_id)."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-                       SELECT t.*
-                       FROM tracks t
-                                INNER JOIN favorites f ON t.id = f.track_id
-                       WHERE f.track_id IS NOT NULL
-                       ORDER BY f.created_at DESC
-                       """)
-
-        rows = cursor.fetchall()
-
-        return [
-            Track(
-                id=row["id"],
-                path=row["path"],
-                title=row["title"],
-                artist=row["artist"],
-                album=row["album"],
-                duration=row["duration"],
-                cover_path=row["cover_path"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                cloud_file_id=row["cloud_file_id"] if "cloud_file_id" in row.keys() else None,
-                source=self._get_track_source_from_row(row),
-            )
-            for row in rows
-        ]
 
     def close(self):
         """Close database connections and stop the write worker."""
-        conn = getattr(self.local, "conn", None)
-        if conn is not None:
+        with self._connections_lock:
+            connections = list(self._connections.values())
+            self._connections.clear()
+
+        for conn in connections:
             try:
                 conn.close()
             except sqlite3.Error as exc:
                 logger.warning("[Database] Error closing thread-local connection: %s", exc)
-            finally:
-                if hasattr(self.local, "conn"):
-                    delattr(self.local, "conn")
+
+        if hasattr(self.local, "conn"):
+            delattr(self.local, "conn")
 
         if self._write_worker is not None:
             try:
                 self._write_worker.stop()
             except Exception as exc:
                 logger.warning("[Database] Error stopping write worker: %s", exc)
-
-    # Cloud account operations
-
-    def get_cloud_account(self, account_id: int) -> Optional[CloudAccount]:
-        """Get a cloud account by ID."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM cloud_accounts WHERE id = ?", (account_id,))
-        row = cursor.fetchone()
-
-        if row:
-            return CloudAccount(
-                id=row["id"],
-                provider=row["provider"],
-                account_name=row["account_name"],
-                account_email=row["account_email"],
-                access_token=row["access_token"],
-                refresh_token=row["refresh_token"],
-                token_expires_at=datetime.fromisoformat(row["token_expires_at"])
-                if row["token_expires_at"]
-                else None,
-                is_active=bool(row["is_active"]),
-                last_folder_path=row["last_folder_path"] or "/",
-                last_fid_path=row["last_fid_path"] if "last_fid_path" in row.keys() else "0",
-                last_playing_fid=row["last_playing_fid"] if "last_playing_fid" in row.keys() else "",
-                last_position=row["last_position"] if "last_position" in row.keys() else 0.0,
-                last_playing_local_path=row[
-                    "last_playing_local_path"] if "last_playing_local_path" in row.keys() else "",
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            )
-        return None
-
-    def update_cloud_account_playing_state(
-            self, account_id: int, playing_fid: str = None, position: float = None, local_path: str = None
-    ) -> bool:
-        """Update the last playing file and position for an account."""
-        future = self._submit_write(
-            self._do_update_cloud_account_playing_state, account_id, playing_fid, position, local_path
-        )
-        return future.result(timeout=10.0)
-
-    def _do_update_cloud_account_playing_state(
-            self, account_id: int, playing_fid: str, position: float, local_path: str,
-            conn: sqlite3.Connection = None,
-    ) -> bool:
-        """Internal: update playing state (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        # Build update query dynamically based on provided parameters
-        if playing_fid is not None and position is not None and local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid        = ?,
-                    last_position           = ?,
-                    last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, position, local_path, account_id),
-            )
-        elif playing_fid is not None and position is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid = ?,
-                    last_position    = ?,
-                    updated_at       = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, position, account_id),
-            )
-        elif playing_fid is not None and local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid        = ?,
-                    last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, local_path, account_id),
-            )
-        elif playing_fid is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid = ?,
-                    updated_at       = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, account_id),
-            )
-        elif position is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_position = ?,
-                    updated_at    = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (position, account_id),
-            )
-        elif local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (local_path, account_id),
-            )
-
-        conn.commit()
-        return cursor.rowcount > 0
-
-    def update_cloud_file_local_path(
-            self, file_id: str, account_id: int, local_path: str
-    ) -> bool:
-        """Update the local path for a downloaded cloud file."""
-        future = self._submit_write(self._do_update_cloud_file_local_path, file_id, account_id, local_path)
-        return future.result(timeout=10.0)
-
-    def _do_update_cloud_file_local_path(
-            self, file_id: str, account_id: int, local_path: str, conn: sqlite3.Connection = None
-    ) -> bool:
-        """Internal method to update cloud file local path (runs in write worker)."""
-        if conn is None:
-            conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE cloud_files
-            SET local_path = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE file_id = ?
-              AND account_id = ?
-            """,
-            (local_path, file_id, account_id),
-        )
-
-        conn.commit()
-        return cursor.rowcount > 0
-
-    # Cloud file operations
-
-    def get_cloud_file_by_file_id(self, file_id: str) -> Optional[CloudFile]:
-        """Get a cloud file by file_id only."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT *
-            FROM cloud_files
-            WHERE file_id = ?
-            """,
-            (file_id,),
-        )
-
-        row = cursor.fetchone()
-
-        if row:
-            return CloudFile(
-                id=row["id"],
-                account_id=row["account_id"],
-                file_id=row["file_id"],
-                parent_id=row["parent_id"],
-                name=row["name"],
-                file_type=row["file_type"],
-                size=row["size"],
-                mime_type=row["mime_type"],
-                duration=row["duration"],
-                metadata=row["metadata"],
-                local_path=row["local_path"] if "local_path" in row.keys() else None,
-                created_at=datetime.fromisoformat(row["created_at"]),
-                updated_at=datetime.fromisoformat(row["updated_at"]),
-            )
-        return None
 
     # Settings operations
 

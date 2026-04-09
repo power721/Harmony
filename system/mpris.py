@@ -44,10 +44,11 @@ def _make_track_object_path(track):
 
 
 class MPRISService(dbus.service.Object):
-    def __init__(self, bus, playback_service, main_window=None):
+    def __init__(self, bus, playback_service, main_window=None, ui_dispatcher=None):
         self.bus = bus
         self.playback_service = playback_service
         self._main_window = main_window
+        self._ui_dispatcher = ui_dispatcher
 
         self.bus_name = dbus.service.BusName(MPRIS_NAME, bus)
         super().__init__(self.bus_name, MPRIS_PATH)
@@ -175,6 +176,12 @@ class MPRISService(dbus.service.Object):
     def _shuffle(self) -> bool:
         return bool(getattr(self.playback_service, "shuffle", False))
 
+    def _dispatch_to_ui(self, fn, *args, **kwargs):
+        if callable(self._ui_dispatcher):
+            self._ui_dispatcher(fn, *args, **kwargs)
+            return
+        fn(*args, **kwargs)
+
     @dbus.service.method("org.mpris.MediaPlayer2.TrackList", out_signature="ao")
     def GetTracks(self):
         return dbus.Array(
@@ -202,20 +209,26 @@ class MPRISService(dbus.service.Object):
     @dbus.service.method("org.mpris.MediaPlayer2")
     def Raise(self):
         if self._main_window:
-            try:
-                self._main_window.showNormal()
-                self._main_window.raise_()
-                self._main_window.activateWindow()
-            except Exception:
-                pass
+            def _raise_window():
+                try:
+                    self._main_window.showNormal()
+                    self._main_window.raise_()
+                    self._main_window.activateWindow()
+                except Exception:
+                    pass
+
+            self._dispatch_to_ui(_raise_window)
 
     @dbus.service.method("org.mpris.MediaPlayer2")
     def Quit(self):
         if self._main_window:
-            try:
-                self._main_window.close()
-            except Exception:
-                pass
+            def _quit_window():
+                try:
+                    self._main_window.close()
+                except Exception:
+                    pass
+
+            self._dispatch_to_ui(_quit_window)
 
     # ------------------------
     # org.mpris.MediaPlayer2.Player
@@ -223,62 +236,87 @@ class MPRISService(dbus.service.Object):
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def Play(self):
-        self.playback_service.play()
-        self.emit_player_properties(["PlaybackStatus"])
+        def _play():
+            self.playback_service.play()
+            self.emit_player_properties(["PlaybackStatus"])
+
+        self._dispatch_to_ui(_play)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def Pause(self):
-        self.playback_service.pause()
-        self.emit_player_properties(["PlaybackStatus"])
+        def _pause():
+            self.playback_service.pause()
+            self.emit_player_properties(["PlaybackStatus"])
+
+        self._dispatch_to_ui(_pause)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def Stop(self):
-        self.playback_service.stop()
-        self.emit_player_properties(["PlaybackStatus"])
+        def _stop():
+            self.playback_service.stop()
+            self.emit_player_properties(["PlaybackStatus"])
+
+        self._dispatch_to_ui(_stop)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def PlayPause(self):
-        if self._playback_status() == "Playing":
-            self.Pause()
-        else:
-            self.Play()
+        def _play_pause():
+            if self._playback_status() == "Playing":
+                self.playback_service.pause()
+            else:
+                self.playback_service.play()
+            self.emit_player_properties(["PlaybackStatus"])
+
+        self._dispatch_to_ui(_play_pause)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def Next(self):
-        self.playback_service.play_next()
-        self.emit_player_properties(["PlaybackStatus", "Metadata"])
-        self.Seeked(dbus.Int64(self._position_us()))
+        def _next():
+            self.playback_service.play_next()
+            self.emit_player_properties(["PlaybackStatus", "Metadata"])
+            self.Seeked(dbus.Int64(self._position_us()))
+
+        self._dispatch_to_ui(_next)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player")
     def Previous(self):
-        self.playback_service.play_previous()
-        self.emit_player_properties(["PlaybackStatus", "Metadata"])
-        self.Seeked(dbus.Int64(self._position_us()))
+        def _previous():
+            self.playback_service.play_previous()
+            self.emit_player_properties(["PlaybackStatus", "Metadata"])
+            self.Seeked(dbus.Int64(self._position_us()))
+
+        self._dispatch_to_ui(_previous)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player", in_signature="x")
     def Seek(self, offset):
-        ms = int(offset) // 1000
-        self.playback_service.seek(ms)
-        self.Seeked(dbus.Int64(self._position_us()))
+        def _seek():
+            ms = int(offset) // 1000
+            self.playback_service.seek(ms)
+            self.Seeked(dbus.Int64(self._position_us()))
+
+        self._dispatch_to_ui(_seek)
 
     @dbus.service.method("org.mpris.MediaPlayer2.Player", in_signature="ox")
     def SetPosition(self, track_id, position):
-        track = self._current_track()
-        if not track:
-            return
+        def _set_position():
+            track = self._current_track()
+            if not track:
+                return
 
-        current_id = _make_track_object_path(track)
-        if track_id != current_id:
-            return
+            current_id = _make_track_object_path(track)
+            if track_id != current_id:
+                return
 
-        ms = int(position) // 1000
+            ms = int(position) // 1000
 
-        try:
-            self.playback_service.seek(ms)
-        except TypeError:
-            pass
+            try:
+                self.playback_service.seek(ms)
+            except TypeError:
+                pass
 
-        self.Seeked(dbus.Int64(self._position_us()))
+            self.Seeked(dbus.Int64(self._position_us()))
+
+        self._dispatch_to_ui(_set_position)
 
     # ------------------------
     # org.freedesktop.DBus.Properties
@@ -316,8 +354,11 @@ class MPRISService(dbus.service.Object):
             if property_name == "Volume":
                 setter = getattr(self.playback_service, "set_volume", None)
                 if callable(setter):
-                    setter(float(value))
-                    self.emit_player_properties(["Volume"])
+                    def _set_volume():
+                        setter(float(value))
+                        self.emit_player_properties(["Volume"])
+
+                    self._dispatch_to_ui(_set_volume)
                     return
 
         raise dbus.exceptions.DBusException(
@@ -380,11 +421,13 @@ class MPRISController:
     def __init__(self, playback_service, main_window=None):
         self.playback_service = playback_service
         self._main_window = main_window
+        self.ui_dispatcher = None
         self.loop = None
         self.loop_thread = None
         self.service = None
         self.bus = None
         self._started = False
+        self._service_lock = threading.Lock()
 
         event_bus = Bootstrap.instance().event_bus
         event_bus.track_changed.connect(self.on_track_changed)
@@ -400,11 +443,13 @@ class MPRISController:
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.bus = dbus.SessionBus()
 
-        self.service = MPRISService(
-            self.bus,
-            self.playback_service,
-            self._main_window
-        )
+        with self._service_lock:
+            self.service = MPRISService(
+                self.bus,
+                self.playback_service,
+                self._main_window,
+                ui_dispatcher=self.ui_dispatcher,
+            )
 
         self.loop = GLib.MainLoop()
         self.loop_thread = threading.Thread(
@@ -426,14 +471,16 @@ class MPRISController:
         except Exception:
             pass
 
-        self.service = None
+        with self._service_lock:
+            self.service = None
         self.bus = None
         self.loop = None
         self.loop_thread = None
         self._started = False
 
     def _emit_tracklist(self):
-        if not self.service:
+        service = self._get_service()
+        if not service:
             return
 
         tracks = [
@@ -448,34 +495,44 @@ class MPRISController:
             dbus.ObjectPath("/org/mpris/MediaPlayer2/track/none")
         )
 
-        self.service.TrackListReplaced(
+        service.TrackListReplaced(
             dbus.Array(tracks, signature="o"),
             current_id
         )
 
+    def _get_service(self):
+        with self._service_lock:
+            return self.service
+
     def on_playback_state_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["PlaybackStatus"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["PlaybackStatus"])
 
     def on_track_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata", "PlaybackStatus"])
-            self.service.Seeked(dbus.Int64(self.service._position_us()))
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata", "PlaybackStatus"])
+            service.Seeked(dbus.Int64(service._position_us()))
             self._emit_tracklist()
 
     def on_metadata_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata"])
 
     def on_duration_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Metadata"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Metadata"])
 
     def on_volume_changed(self, *args):
-        if self.service:
-            self.service.emit_player_properties(["Volume"])
+        service = self._get_service()
+        if service:
+            service.emit_player_properties(["Volume"])
 
     def on_cover_updated(self, *args):
-        if self.service:
+        service = self._get_service()
+        if service:
             # 封面在 Metadata 里
-            self.service.emit_player_properties(["Metadata"])
+            service.emit_player_properties(["Metadata"])

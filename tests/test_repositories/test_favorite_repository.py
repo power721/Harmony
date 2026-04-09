@@ -33,6 +33,7 @@ def temp_db():
             duration REAL,
             cover_path TEXT,
             cloud_file_id TEXT,
+            online_provider_id TEXT,
             source TEXT DEFAULT 'Local',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -44,6 +45,7 @@ def temp_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             track_id INTEGER,
             cloud_file_id TEXT,
+            online_provider_id TEXT,
             cloud_account_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (track_id) REFERENCES tracks(id)
@@ -58,7 +60,7 @@ def temp_db():
     """)
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_cloud_file_unique
-            ON favorites(cloud_file_id)
+            ON favorites(cloud_file_id, COALESCE(online_provider_id, ''))
             WHERE cloud_file_id IS NOT NULL
     """)
 
@@ -166,6 +168,30 @@ class TestSqliteFavoriteRepository:
         # Try to add again
         result = favorite_repo.add_favorite(track_id=1)
         assert result is False
+
+    def test_add_favorite_allows_same_cloud_id_for_different_providers(self, favorite_repo):
+        """Online favorites should be distinct per provider."""
+        first = favorite_repo.add_favorite(
+            cloud_file_id="cloud_123",
+            online_provider_id="qqmusic",
+            cloud_account_id=1,
+        )
+        second = favorite_repo.add_favorite(
+            cloud_file_id="cloud_123",
+            online_provider_id="netease",
+            cloud_account_id=2,
+        )
+
+        assert first is True
+        assert second is True
+        assert favorite_repo.is_favorite(
+            cloud_file_id="cloud_123",
+            online_provider_id="qqmusic",
+        ) is True
+        assert favorite_repo.is_favorite(
+            cloud_file_id="cloud_123",
+            online_provider_id="netease",
+        ) is True
 
     # ===== remove_favorite Tests =====
 

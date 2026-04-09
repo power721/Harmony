@@ -109,14 +109,16 @@ def test_play_after_download_reloads_when_current_index_already_advanced():
         Path(next_path).write_bytes(b"next")
 
         current_item = PlaylistItem(
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="song_1",
             local_path=previous_path,
             title="Previous",
             needs_download=False,
         )
         next_item = PlaylistItem(
-            source=TrackSource.QQ,
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
             cloud_file_id="song_2",
             local_path="",
             title="Next",

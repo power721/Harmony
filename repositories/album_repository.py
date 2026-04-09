@@ -124,7 +124,8 @@ class SqliteAlbumRepository(BaseRepository):
                     album as name,
                     artist,
                     COUNT(*) as song_count,
-                    SUM(duration) as total_duration
+                    SUM(duration) as total_duration,
+                    MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
                 FROM tracks
                 WHERE album = ? AND artist = ?
                 GROUP BY album, artist
@@ -135,7 +136,8 @@ class SqliteAlbumRepository(BaseRepository):
                     album as name,
                     artist,
                     COUNT(*) as song_count,
-                    SUM(duration) as total_duration
+                    SUM(duration) as total_duration,
+                    MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
                 FROM tracks
                 WHERE album = ?
                 GROUP BY album, artist
@@ -144,26 +146,10 @@ class SqliteAlbumRepository(BaseRepository):
         if not row:
             return None
 
-        # Get cover from first track of album
-        if artist:
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE album = ? AND artist = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (album_name, artist))
-        else:
-            cursor.execute("""
-                SELECT cover_path FROM tracks
-                WHERE album = ? AND cover_path IS NOT NULL
-                LIMIT 1
-            """, (album_name,))
-        cover_row = cursor.fetchone()
-        cover_path = cover_row["cover_path"] if cover_row else None
-
         return Album(
             name=row["name"] or "",
             artist=row["artist"] or "",
-            cover_path=cover_path,
+            cover_path=row["cover_path"],
             song_count=row["song_count"] or 0,
             duration=row["total_duration"] or 0.0,
         )
@@ -206,6 +192,72 @@ class SqliteAlbumRepository(BaseRepository):
 
         conn.commit()
         return True
+
+    def refresh_album(self, album_name: str, artist: str) -> bool:
+        """Refresh a single album cache row from tracks."""
+        if not album_name or not artist:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT cover_path FROM albums WHERE name = ? AND artist = ?",
+            (album_name, artist),
+        )
+        existing = cursor.fetchone()
+        existing_cover = existing["cover_path"] if existing else None
+
+        cursor.execute(
+            """
+            SELECT
+                ? as name,
+                ? as artist,
+                MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path,
+                COUNT(*) as song_count,
+                SUM(duration) as total_duration
+            FROM tracks
+            WHERE album = ? AND artist = ?
+            """,
+            (album_name, artist, album_name, artist),
+        )
+        row = cursor.fetchone()
+        if not row or not row["song_count"]:
+            return False
+
+        cursor.execute("DELETE FROM albums WHERE name = ? AND artist = ?", (album_name, artist))
+        cursor.execute(
+            """
+            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                row["name"],
+                row["artist"],
+                row["cover_path"] or existing_cover,
+                row["song_count"] or 0,
+                row["total_duration"] or 0.0,
+            ),
+        )
+        conn.commit()
+        return True
+
+    def delete_if_empty(self, album_name: str, artist: str) -> bool:
+        """Delete a cached album row when no source tracks remain."""
+        if not album_name or not artist:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM tracks WHERE album = ? AND artist = ? LIMIT 1",
+            (album_name, artist),
+        )
+        if cursor.fetchone() is not None:
+            return False
+
+        cursor.execute("DELETE FROM albums WHERE name = ? AND artist = ?", (album_name, artist))
+        conn.commit()
+        return cursor.rowcount > 0
 
     def update_cover_path(self, album_name: str, artist: str, cover_path: str) -> bool:
         """

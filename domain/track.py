@@ -15,9 +15,22 @@ TrackId = int
 class TrackSource(str, Enum):
     """Track source enumeration."""
     LOCAL = "Local"      # 本地歌曲
+    ONLINE = "ONLINE"    # 在线音乐（由插件提供）
     QUARK = "QUARK"      # 夸克网盘
     BAIDU = "BAIDU"      # 百度网盘
-    QQ = "QQ"            # QQ音乐（网络歌曲）
+
+    @classmethod
+    def from_value(cls, value: str | None) -> "TrackSource":
+        """Parse persisted source values with backward-compatible aliases."""
+        if not value:
+            return cls.LOCAL
+        normalized = str(value).strip()
+        if normalized in ("QQ", "online", "Online"):
+            return cls.ONLINE
+        try:
+            return cls(normalized)
+        except ValueError:
+            return cls.LOCAL
 
 
 @dataclass
@@ -37,7 +50,8 @@ class Track:
     cover_path: Optional[str] = None
     created_at: Optional[datetime] = None
     cloud_file_id: Optional[str] = None  # Cloud file ID if downloaded from cloud
-    source: TrackSource = TrackSource.LOCAL  # Track source: Local, QUARK, BAIDU, QQ
+    source: TrackSource = TrackSource.LOCAL  # Track source: Local, ONLINE, QUARK, BAIDU
+    online_provider_id: Optional[str] = None
     file_size: Optional[int] = None
     file_mtime: Optional[float] = None
 
@@ -61,3 +75,8 @@ class Track:
         if self.album and self.album != self.artist:
             parts.append(self.album)
         return " - ".join(parts) if parts else "Unknown"
+
+    @property
+    def is_online(self) -> bool:
+        """Check if this track comes from an online music provider."""
+        return self.source == TrackSource.ONLINE

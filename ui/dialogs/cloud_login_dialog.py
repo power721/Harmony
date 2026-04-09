@@ -27,39 +27,31 @@ class CloudLoginDialog(QDialog):
     login_success = Signal(dict)  # Emits account info on success
 
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-        }
-        QPushButton {
+        QPushButton#cloudLoginModeBtn,
+        QPushButton#cloudLoginActionBtn {
             background-color: %border%;
             color: %text%;
             border: 1px solid %background_hover%;
             border-radius: 4px;
             padding: 8px 16px;
         }
-        QPushButton:hover {
+        QPushButton#cloudLoginModeBtn:hover,
+        QPushButton#cloudLoginActionBtn:hover {
             background-color: %background_hover%;
         }
-        QPushButton:pressed {
+        QPushButton#cloudLoginModeBtn:pressed,
+        QPushButton#cloudLoginActionBtn:pressed {
             background-color: %background_alt%;
         }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
+        QPushButton#cloudLoginModeBtn:checked {
+            background-color: %highlight%;
+            border-color: %highlight%;
+            color: %background%;
         }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
+        QPushButton#cloudLoginActionBtn:disabled {
+            background-color: %background_alt%;
+            color: %text_secondary%;
+            border-color: %border%;
         }
         QProgressBar {
             background-color: %border%;
@@ -140,12 +132,14 @@ class CloudLoginDialog(QDialog):
         mode_layout.setSpacing(10)
 
         self._qr_mode_btn = QPushButton(t("scan_qr_code"))
+        self._qr_mode_btn.setObjectName("cloudLoginModeBtn")
         self._qr_mode_btn.setCursor(Qt.PointingHandCursor)
         self._qr_mode_btn.setCheckable(True)
         self._qr_mode_btn.setChecked(True)
         self._qr_mode_btn.clicked.connect(self._switch_to_qr_mode)
 
         self._cookie_mode_btn = QPushButton(t("input_cookie"))
+        self._cookie_mode_btn.setObjectName("cloudLoginModeBtn")
         self._cookie_mode_btn.setCursor(Qt.PointingHandCursor)
         self._cookie_mode_btn.setCheckable(True)
         self._cookie_mode_btn.clicked.connect(self._switch_to_cookie_mode)
@@ -171,6 +165,7 @@ class CloudLoginDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self._refresh_btn = QPushButton(t("refresh_qr"))
+        self._refresh_btn.setObjectName("cloudLoginActionBtn")
         self._refresh_btn.setCursor(Qt.PointingHandCursor)
         self._refresh_btn.clicked.connect(self._refresh_qr)
         button_layout.addWidget(self._refresh_btn)
@@ -243,6 +238,7 @@ class CloudLoginDialog(QDialog):
 
         # Validate button
         self._validate_btn = QPushButton(t("validate_cookie"))
+        self._validate_btn.setObjectName("cloudLoginActionBtn")
         self._validate_btn.setCursor(Qt.PointingHandCursor)
         self._validate_btn.clicked.connect(self._validate_cookie)
         layout.addWidget(self._validate_btn)

@@ -3,8 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import ui.views.online_detail_view as detail_module
-from ui.views.online_detail_view import OnlineDetailView
+import plugins.builtin.qqmusic.lib.online_detail_view as detail_module
+from plugins.builtin.qqmusic.lib.online_detail_view import OnlineDetailView
 
 
 def test_stop_full_cover_loader_uses_cooperative_shutdown(monkeypatch):

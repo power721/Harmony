@@ -2,8 +2,12 @@
 Bootstrap - Dependency injection container.
 """
 
+import importlib
 import logging
+import subprocess
+import sys
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from infrastructure import HttpClient
@@ -28,16 +32,93 @@ from services.metadata import CoverService
 from services.playback import PlaybackService, QueueService
 from system.config import ConfigManager
 from system.event_bus import EventBus
+from system.plugins.host_services import BootstrapPluginContextFactory
+from system.plugins.manager import PluginManager
+from system.plugins.state_store import PluginStateStore
 
 if TYPE_CHECKING:
-    from services.lyrics.qqmusic_lyrics import QQMusicClient
-    from services.online import OnlineDownloadService, OnlineMusicService
-    from services.online.cache_cleaner_service import CacheCleanerService
+    from services.download.online_download_gateway import OnlineDownloadGateway
+    from services.download.cache_cleaner_service import CacheCleanerService
     from services.playback.sleep_timer_service import SleepTimerService
     from system.mpris import MPRISController
     from system.theme import ThemeManager
 
 logger = logging.getLogger(__name__)
+
+
+def _can_import_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
+    try:
+        import dbus
+        import dbus.mainloop.glib
+        import dbus.service
+        from gi.repository import GLib
+
+        _ = (dbus.mainloop.glib, dbus.service, GLib)
+        return True, None
+    except ImportError as exc:
+        return False, str(exc)
+
+
+def _discover_linux_python_module_roots() -> list[str]:
+    python_bin = Path("/usr/bin/python3")
+    if not python_bin.exists():
+        return []
+
+    try:
+        result = subprocess.run(
+            [
+                str(python_bin),
+                "-c",
+                (
+                    "import importlib, os\n"
+                    "roots = []\n"
+                    "for name in ('dbus', 'gi'):\n"
+                    "    try:\n"
+                    "        module = importlib.import_module(name)\n"
+                    "    except Exception:\n"
+                    "        continue\n"
+                    "    path = getattr(module, '__file__', None)\n"
+                    "    if not path:\n"
+                    "        continue\n"
+                    "    root = os.path.dirname(os.path.dirname(path))\n"
+                    "    if root not in roots:\n"
+                    "        roots.append(root)\n"
+                    "print('\\n'.join(roots))\n"
+                ),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    roots = []
+    for line in result.stdout.splitlines():
+        root = line.strip()
+        if root and root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _ensure_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
+    if sys.platform != "linux":
+        return True, None
+
+    ready, reason = _can_import_linux_mpris_runtime()
+    if ready:
+        return True, None
+
+    added = False
+    for root in reversed(_discover_linux_python_module_roots()):
+        if root and root not in sys.path:
+            sys.path.insert(0, root)
+            added = True
+
+    if added:
+        importlib.invalidate_caches()
+
+    return _can_import_linux_mpris_runtime()
 
 
 class Bootstrap:
@@ -85,16 +166,15 @@ class Bootstrap:
         self._cloud_file_service: Optional[CloudFileService] = None
         self._cover_service: Optional[CoverService] = None
         self._file_org_service: Optional["FileOrganizationService"] = None
-        self._online_music_service: Optional["OnlineMusicService"] = None
-        self._online_download_service: Optional["OnlineDownloadService"] = None
-
-        # QQ Music client
-        self._qqmusic_client: Optional["QQMusicClient"] = None
+        self._online_download_service: Optional["OnlineDownloadGateway"] = None
 
         # Services
         self._cache_cleaner_service: Optional["CacheCleanerService"] = None
         self._sleep_timer_service: Optional["SleepTimerService"] = None
         self._mpris_controller: Optional["MPRISController"] = None
+        self._mpris_disabled_reason: Optional[str] = None
+        self._plugin_manager: Optional[PluginManager] = None
+        self._plugins_loaded = False
 
     @classmethod
     def instance(cls, db_path: str = "Harmony.db") -> "Bootstrap":
@@ -106,9 +186,8 @@ class Bootstrap:
 
     # ===== Infrastructure =====
 
-    @property
-    def db(self) -> DatabaseManager:
-        """Get database manager."""
+    def _get_db_manager(self) -> DatabaseManager:
+        """Get or create the internal database manager."""
         if self._db is None:
             self._db = DatabaseManager(self._db_path)
         return self._db
@@ -148,70 +227,70 @@ class Bootstrap:
     def track_repo(self) -> SqliteTrackRepository:
         """Get track repository."""
         if self._track_repo is None:
-            self._track_repo = SqliteTrackRepository(self._db_path, db_manager=self.db)
+            self._track_repo = SqliteTrackRepository(self._db_path, db_manager=self._get_db_manager())
         return self._track_repo
 
     @property
     def playlist_repo(self) -> SqlitePlaylistRepository:
         """Get playlist repository."""
         if self._playlist_repo is None:
-            self._playlist_repo = SqlitePlaylistRepository(self._db_path, db_manager=self.db)
+            self._playlist_repo = SqlitePlaylistRepository(self._db_path, db_manager=self._get_db_manager())
         return self._playlist_repo
 
     @property
     def cloud_repo(self) -> SqliteCloudRepository:
         """Get cloud repository."""
         if self._cloud_repo is None:
-            self._cloud_repo = SqliteCloudRepository(self._db_path, db_manager=self.db)
+            self._cloud_repo = SqliteCloudRepository(self._db_path, db_manager=self._get_db_manager())
         return self._cloud_repo
 
     @property
     def queue_repo(self) -> SqliteQueueRepository:
         """Get queue repository."""
         if self._queue_repo is None:
-            self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self.db)
+            self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self._get_db_manager())
         return self._queue_repo
 
     @property
     def favorite_repo(self) -> SqliteFavoriteRepository:
         """Get favorite repository."""
         if self._favorite_repo is None:
-            self._favorite_repo = SqliteFavoriteRepository(self._db_path, db_manager=self.db)
+            self._favorite_repo = SqliteFavoriteRepository(self._db_path, db_manager=self._get_db_manager())
         return self._favorite_repo
 
     @property
     def history_repo(self) -> SqliteHistoryRepository:
         """Get history repository."""
         if self._history_repo is None:
-            self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self.db)
+            self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self._get_db_manager())
         return self._history_repo
 
     @property
     def album_repo(self) -> SqliteAlbumRepository:
         """Get album repository."""
         if self._album_repo is None:
-            self._album_repo = SqliteAlbumRepository(self._db_path, db_manager=self.db)
+            self._album_repo = SqliteAlbumRepository(self._db_path, db_manager=self._get_db_manager())
         return self._album_repo
 
     @property
     def artist_repo(self) -> SqliteArtistRepository:
         """Get artist repository."""
         if self._artist_repo is None:
-            self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self.db)
+            self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self._get_db_manager())
         return self._artist_repo
 
     @property
     def genre_repo(self) -> SqliteGenreRepository:
         """Get genre repository."""
         if self._genre_repo is None:
-            self._genre_repo = SqliteGenreRepository(self._db_path, db_manager=self.db)
+            self._genre_repo = SqliteGenreRepository(self._db_path, db_manager=self._get_db_manager())
         return self._genre_repo
 
     @property
     def settings_repo(self) -> SqliteSettingsRepository:
         """Get settings repository."""
         if self._settings_repo is None:
-            self._settings_repo = SqliteSettingsRepository(self._db_path, db_manager=self.db)
+            self._settings_repo = SqliteSettingsRepository(self._db_path, db_manager=self._get_db_manager())
         return self._settings_repo
 
     # ===== Services =====
@@ -336,80 +415,47 @@ class Bootstrap:
                 track_repo=self.track_repo,
                 cloud_repo=self.cloud_repo,
                 event_bus=self.event_bus,
-                db_manager=self.db,
                 queue_repo=self.queue_repo,
             )
         return self._file_org_service
 
-    # ===== QQ Music =====
-
     @property
-    def qqmusic_client(self) -> "QQMusicClient":
-        """Get QQ Music client."""
-        if self._qqmusic_client is None:
-            from services.lyrics.qqmusic_lyrics import QQMusicClient
-            self._qqmusic_client = QQMusicClient()
-        return self._qqmusic_client
+    def plugin_manager(self) -> PluginManager:
+        """Get plugin manager."""
+        if self._plugin_manager is None:
+            logger.info("[Bootstrap] Initializing plugin manager")
+            self._plugin_manager = PluginManager(
+                builtin_root=Path("plugins/builtin"),
+                external_root=Path("data/plugins/external"),
+                state_store=PluginStateStore(Path("data/plugins/state.json")),
+                context_factory=BootstrapPluginContextFactory(
+                    self,
+                    storage_root=Path("data/plugins/storage"),
+                ),
+            )
+        if not self._plugins_loaded:
+            logger.info("[Bootstrap] Loading enabled plugins")
+            self._plugin_manager.load_enabled_plugins()
+            self._plugins_loaded = True
+            logger.info("[Bootstrap] Plugin loading finished")
+        return self._plugin_manager
 
-    def refresh_qqmusic_client(self):
-        """Refresh QQ Music client and online music services (call after login)."""
-        from services.lyrics.qqmusic_lyrics import QQMusicClient
-
-        # Refresh lyrics client
-        self._qqmusic_client = QQMusicClient()
-
-        # Reset online music service to pick up new credentials
-        self._online_music_service = None
+    def refresh_online_download_service(self) -> "OnlineDownloadGateway":
+        """Force refresh of host online download gateway."""
         self._online_download_service = None
-
-        logger.info("QQ Music client and online music services refreshed")
-        return self._qqmusic_client
-
-    def refresh_online_music_service(self) -> "OnlineMusicService":
-        """Force refresh of online music service with current credentials."""
-        self._online_music_service = None
-        self._online_download_service = None
-        return self.online_music_service
+        return self.online_download_service
 
     # ===== Online Music =====
 
     @property
-    def online_music_service(self) -> "OnlineMusicService":
-        """Get online music service."""
-        if self._online_music_service is None:
-            from services.online import OnlineMusicService
-            from services.cloud.qqmusic.qqmusic_service import QQMusicService
-
-            # Try to create QQMusicService if credential is available
-            qqmusic = None
-            if self.config:
-                # Use get_qqmusic_credential() to get full credential including refresh_token
-                credential = self.config.get_qqmusic_credential()
-                if credential and credential.get('musicid') and credential.get('musickey'):
-                    try:
-                        qqmusic = QQMusicService(credential)
-                        logger.info(f"QQMusicService initialized for OnlineMusicService, "
-                                    f"musicid={credential.get('musicid')}, "
-                                    f"has_refresh_key={bool(credential.get('refresh_key'))}, "
-                                    f"has_refresh_token={bool(credential.get('refresh_token'))}")
-                    except Exception as e:
-                        logger.debug(f"Failed to initialize QQMusicService: {e}")
-
-            self._online_music_service = OnlineMusicService(
-                config_manager=self.config,
-                qqmusic_service=qqmusic
-            )
-        return self._online_music_service
-
-    @property
-    def online_download_service(self) -> "OnlineDownloadService":
-        """Get online download service."""
+    def online_download_service(self) -> "OnlineDownloadGateway":
+        """Get host online download gateway."""
         if self._online_download_service is None:
-            from services.online import OnlineDownloadService
-            self._online_download_service = OnlineDownloadService(
+            from services.download.online_download_gateway import OnlineDownloadGateway
+            self._online_download_service = OnlineDownloadGateway(
                 config_manager=self.config,
-                qqmusic_service=None,
-                online_music_service=self.online_music_service
+                plugin_manager=lambda: self._plugin_manager,
+                event_bus=self.event_bus,
             )
         return self._online_download_service
 
@@ -417,7 +463,7 @@ class Bootstrap:
     def cache_cleaner_service(self) -> "CacheCleanerService":
         """Get cache cleaner service."""
         if self._cache_cleaner_service is None:
-            from services.online.cache_cleaner_service import CacheCleanerService
+            from services.download.cache_cleaner_service import CacheCleanerService
             self._cache_cleaner_service = CacheCleanerService(
                 config_manager=self.config,
                 download_service=self.online_download_service,
@@ -441,18 +487,18 @@ class Bootstrap:
     def mpris_controller(self) -> "MPRISController":
         """Get MPRIS D-Bus controller (Linux only)."""
         if self._mpris_controller is None:
-            import sys
             if sys.platform == "linux":
-                ready = False
-                try:
-                    import dbus
-                    import dbus.mainloop.glib
-                    import dbus.service
-                    from gi.repository import GLib
-                    _ = (dbus.mainloop.glib, dbus.service, GLib)
-                    ready = True
-                except ImportError:
-                    pass
+                if self._mpris_disabled_reason is not None:
+                    return None
+                ready, reason = _ensure_linux_mpris_runtime()
+                if not ready:
+                    self._mpris_disabled_reason = reason or "unknown import error"
+                    logger.warning(
+                        "MPRIS disabled: missing Linux D-Bus runtime (%s). "
+                        "Install the optional 'linux' dependencies and ensure system "
+                        "PyGObject bindings are available to the application.",
+                        self._mpris_disabled_reason,
+                    )
 
                 if ready:
                     from system.mpris import MPRISController
@@ -480,3 +526,21 @@ class Bootstrap:
         """Stop MPRIS D-Bus service."""
         if self._mpris_controller is not None:
             self._mpris_controller.stop()
+
+    def shutdown_database(self):
+        """Flush and close the shared database manager if it has been initialized."""
+        db = self._db
+        if db is None:
+            return
+
+        write_worker = getattr(db, "_write_worker", None)
+        if write_worker is not None:
+            try:
+                write_worker.wait_idle()
+            except Exception:
+                logger.exception("[Bootstrap] Failed waiting for DB write worker to go idle")
+
+        try:
+            db.close()
+        except Exception:
+            logger.exception("[Bootstrap] Failed closing database manager")

@@ -94,8 +94,6 @@ class EqualizerWidget(QWidget):
 
     _PRESET_LABEL_STYLE = "color: %text_secondary%;"
 
-    _COMBO_STYLE = ThemeManager.get_combobox_style()
-
     _BUTTON_STYLE = """
         QPushButton {
             background-color: %background_alt%;
@@ -192,7 +190,6 @@ class EqualizerWidget(QWidget):
         for preset in self.PRESETS:
             self._preset_combo.addItem(t(preset.label_key), preset.key)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
-        self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
         preset_layout.addWidget(self._preset_combo)
 
         preset_layout.addStretch()
@@ -234,7 +231,6 @@ class EqualizerWidget(QWidget):
         self._effects_preset_combo.addItem(t("effects_preset_theater"), "effects_theater")
         self._effects_preset_combo.addItem(t("effects_preset_wide"), "effects_wide")
         self._effects_preset_combo.currentIndexChanged.connect(self._on_effects_preset_changed)
-        self._effects_preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
         top_row.addWidget(self._effects_preset_combo)
         top_row.addStretch()
         effects_layout.addLayout(top_row)
@@ -483,11 +479,9 @@ class EqualizerWidget(QWidget):
                 child.setStyleSheet(ThemeManager.instance().get_qss(self._VALUE_LABEL_STYLE))
 
         # Update combo box
-        self._preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
         self._effects_enabled_checkbox.setStyleSheet(
             ThemeManager.instance().get_qss(self._EFFECTS_ENABLED_CHECKBOX_STYLE)
         )
-        self._effects_preset_combo.setStyleSheet(ThemeManager.instance().get_qss(self._COMBO_STYLE))
 
         # Update sliders
         for slider in self.findChildren(QSlider):
@@ -546,36 +540,6 @@ class EqualizerWidget(QWidget):
 
 class EqualizerDialog:
     """Standalone themed equalizer dialog with custom title bar."""
-
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QWidget#dialogTitleBar {
-            background-color: %background_alt%;
-            border-top-left-radius: 12px;
-            border-top-right-radius: 12px;
-            border-bottom: 1px solid %border%;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 14px;
-            font-weight: bold;
-        }
-        QPushButton#dialogCloseBtn {
-            background: transparent;
-            border: none;
-            color: %text_secondary%;
-            border-radius: 4px;
-        }
-        QPushButton#dialogCloseBtn:hover {
-            background-color: %selection%;
-            color: %text%;
-        }
-    """
 
     def __init__(self, backend=None, parent=None, config_manager=None):
         self._dialog = QDialog(parent)
@@ -658,7 +622,6 @@ class EqualizerDialog:
         self._eq_widget.apply_to_backend(backend)
 
     def refresh_theme(self):
-        self._dialog.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._eq_widget.refresh_theme()
 
     def _resize_event(self, event):

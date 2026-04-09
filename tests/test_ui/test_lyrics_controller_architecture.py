@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import ui.dialogs.lyrics_edit_dialog as lyrics_edit_dialog_module
 from ui.windows.components.lyrics_panel import LyricsController
+from services.lyrics.lyrics_loader import LyricsDownloadWorker
 
 
 def test_lyrics_controller_constructor_does_not_require_db_manager():
@@ -14,26 +15,17 @@ def test_lyrics_controller_constructor_does_not_require_db_manager():
     assert "db_manager" not in params
 
 
-def test_on_cover_downloaded_uses_library_service_instead_of_db():
-    """Cover update should query and update tracks through LibraryService."""
-    track = SimpleNamespace(id=123)
-    library_service = SimpleNamespace(
-        get_track_by_path=MagicMock(return_value=track),
-        update_track_cover_path=MagicMock(return_value=True),
-    )
-    current_item = SimpleNamespace(track_id=None, local_path="/tmp/a.mp3", cover_path=None)
-    fake_controller = SimpleNamespace(
-        _lyrics_download_path="/tmp/a.mp3",
-        _library_service=library_service,
-        _playback=SimpleNamespace(current_track=current_item),
-        _event_bus=SimpleNamespace(metadata_updated=SimpleNamespace(emit=MagicMock())),
-        cover_downloaded=SimpleNamespace(emit=MagicMock()),
-    )
+def test_lyrics_controller_download_does_not_accept_cover_flag():
+    """Lyrics download flow should no longer expose a cover-download parameter."""
+    params = inspect.signature(LyricsController._download_lyrics_for_song).parameters
+    assert "download_cover" not in params
 
-    LyricsController._on_cover_downloaded(fake_controller, "/tmp/cover.jpg")
 
-    library_service.get_track_by_path.assert_called_once_with("/tmp/a.mp3")
-    library_service.update_track_cover_path.assert_called_once_with(123, "/tmp/cover.jpg")
+def test_lyrics_download_worker_constructor_does_not_accept_cover_dependencies():
+    """Lyrics download worker should no longer receive cover-download inputs."""
+    params = inspect.signature(LyricsDownloadWorker.__init__).parameters
+    assert "download_cover" not in params
+    assert "cover_service" not in params
 
 
 def test_edit_lyrics_reads_local_track_from_library_service(monkeypatch):

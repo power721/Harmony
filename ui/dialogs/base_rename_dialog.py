@@ -40,69 +40,6 @@ class BaseRenameWorker(QThread):
 class BaseRenameDialog(QDialog):
     """Base class for rename dialogs."""
 
-    # Common stylesheet template for all rename dialogs
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 10px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:read-only {
-            background-color: %background%;
-            color: %text_secondary%;
-        }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QProgressBar {
-            background-color: %background%;
-            border: none;
-            border-radius: 4px;
-            height: 6px;
-            text-align: center;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 4px;
-        }
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker = None
@@ -116,6 +53,7 @@ class BaseRenameDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         ThemeManager.instance().register_widget(self)
@@ -137,7 +75,6 @@ class BaseRenameDialog(QDialog):
         """
         self.setWindowTitle(title)
         self.setMinimumWidth(min_width)
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -214,6 +151,7 @@ class BaseRenameDialog(QDialog):
         button_layout.addWidget(self._cancel_btn)
 
         self._rename_btn = QPushButton(t("rename"))
+        self._rename_btn.setProperty("role", "primary")
         self._rename_btn.setCursor(Qt.PointingHandCursor)
         self._rename_btn.clicked.connect(self._on_rename_clicked)
         button_layout.addWidget(self._rename_btn)
@@ -363,7 +301,6 @@ class BaseRenameDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
         # Update inline styles that use theme colors
         if self._warning_label:

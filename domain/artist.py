@@ -3,6 +3,7 @@ Artist domain model - Aggregated artist entity.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Optional
 
 
@@ -24,7 +25,7 @@ class Artist:
         """Get display name for the artist."""
         return self.name if self.name else "Unknown Artist"
 
-    @property
+    @cached_property
     def id(self) -> str:
         """Generate a unique ID for the artist based on name."""
         return self.name.lower() if self.name else "unknown"

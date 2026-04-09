@@ -5,10 +5,11 @@ Sidebar navigation widget for MainWindow.
 from typing import List, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 
 from system.i18n import t, get_language
-from ui.icons import IconName, IconButton
+from ui.icons import IconName, IconButton, PathIconButton
 
 if TYPE_CHECKING:
     from system.config import ConfigManager
@@ -34,16 +35,15 @@ class Sidebar(QWidget):
     # Page indices - must match stacked widget order in MainWindow
     # Stacked widget order:
     # 0: library_view, 1: cloud_drive_view, 2: playlist_view, 3: queue_view
-    # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: online_music_view
-    # 9: genres_view, 10: genre_view
+    # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view
+    # 8: genres_view, 9: genre_view
     PAGE_LIBRARY = 0
     PAGE_CLOUD = 1
     PAGE_PLAYLISTS = 2
     PAGE_QUEUE = 3
     PAGE_ALBUMS = 4
     PAGE_ARTISTS = 5
-    PAGE_GENRES = 9
-    PAGE_ONLINE = 8
+    PAGE_GENRES = 8
     # Special pages (not in stacked widget, handled specially)
     PAGE_FAVORITES = 100
     PAGE_HISTORY = 101
@@ -130,7 +130,6 @@ class Sidebar(QWidget):
             (self.PAGE_ARTISTS, IconName.MICROPHONE, t("artists")),
             (self.PAGE_GENRES, IconName.COMPACT_DISC, t("genres")),
             (self.PAGE_CLOUD, IconName.CLOUD, t("cloud_drive")),
-            (self.PAGE_ONLINE, IconName.GLOBE, t("online_music")),
             (self.PAGE_PLAYLISTS, IconName.LIST, t("playlists")),
             (self.PAGE_QUEUE, IconName.QUEUE, t("queue")),
             (self.PAGE_FAVORITES, IconName.STAR, t("favorites")),
@@ -186,12 +185,40 @@ class Sidebar(QWidget):
         nav_style = tm.get_qss(self._NAV_STYLE)
         for _, btn in self._nav_buttons:
             btn.setStyleSheet(nav_style)
+            if hasattr(btn, 'refresh_theme'):
+                btn.refresh_theme()
 
         language_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "languageBtn")
         self._language_btn.setStyleSheet(language_style)
 
         settings_style = tm.get_qss(self._ACTION_BTN_STYLE).replace("{btn_id}", "settingsBtn")
         self._settings_btn.setStyleSheet(settings_style)
+
+    def add_plugin_entry(
+        self,
+        page_index: int,
+        title: str,
+        icon_name: str | None = None,
+        icon_path: str | None = None,
+        title_provider=None,
+    ) -> None:
+        """Add a plugin-provided navigation button before the footer actions."""
+        from system.theme import ThemeManager
+
+        if icon_path:
+            btn = PathIconButton(icon_path, title, size=18)
+        else:
+            resolved_icon = getattr(IconName, icon_name, IconName.GLOBE) if icon_name else IconName.GLOBE
+            btn = IconButton(resolved_icon, title, size=18)
+        btn.setCheckable(True)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setProperty("plugin_title_provider", title_provider)
+        btn.setProperty("plugin_icon_path", icon_path)
+        btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
+        btn.setStyleSheet(ThemeManager.instance().get_qss(self._NAV_STYLE))
+        insert_index = max(self.layout().count() - 4, 0)
+        self.layout().insertWidget(insert_index, btn)
+        self._nav_buttons.append((page_index, btn))
 
     def _on_nav_clicked(self, page_index: int):
         """Handle navigation button click."""
@@ -236,7 +263,6 @@ class Sidebar(QWidget):
             t("artists"),
             t("genres"),
             t("cloud_drive"),
-            t("online_music"),
             t("playlists"),
             t("queue"),
             t("favorites"),
@@ -246,6 +272,10 @@ class Sidebar(QWidget):
         for i, (idx, btn) in enumerate(self._nav_buttons):
             if i < len(nav_texts):
                 btn.setText(nav_texts[i])
+            else:
+                title_provider = btn.property("plugin_title_provider")
+                if callable(title_provider):
+                    btn.setText(title_provider())
 
         self._add_music_btn.setText(t("add_music"))
         self.update_language_button()

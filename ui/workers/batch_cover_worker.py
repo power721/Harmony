@@ -73,10 +73,10 @@ class BatchArtistCoverWorker(QThread):
         source = best.get('source', '')
         singer_mid = best.get('singer_mid')
 
-        # QQ Music: cover_url may be empty, construct from singer_mid
-        if not cover_url and source == 'qqmusic' and singer_mid:
-            from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
-            cover_url = get_qqmusic_artist_cover_url(singer_mid, size=500)
+        # Provider may omit cover_url; fall back to provider-specific artist id fetch.
+        if not cover_url and source and singer_mid:
+            from system.plugins.online_cover_helpers import get_online_artist_cover_url
+            cover_url = get_online_artist_cover_url(provider_id=source, artist_id=singer_mid, size=500)
 
         if not cover_url:
             return None

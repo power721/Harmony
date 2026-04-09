@@ -72,11 +72,6 @@ class Application(QObject):
         return self._bootstrap
 
     @property
-    def db(self):
-        """Get database manager."""
-        return self._bootstrap.db
-
-    @property
     def config(self):
         """Get config manager."""
         return self._bootstrap.config
@@ -105,7 +100,7 @@ class Application(QObject):
         """Set main window."""
         self._main_window = window
 
-    def _dispatch_to_ui(fn, *args, **kwargs):
+    def _dispatch_to_ui(self, fn, *args, **kwargs):
         QTimer.singleShot(0, lambda: fn(*args, **kwargs))
 
     def run(self) -> int:
@@ -136,15 +131,14 @@ class Application(QObject):
         # Stop MPRIS D-Bus service
         self._bootstrap.stop_mpris()
 
+        from system import hotkeys
+        hotkeys.cleanup()
+
         # Stop cache cleaner service
         cache_cleaner = self._bootstrap.cache_cleaner_service
         if cache_cleaner:
             cache_cleaner.stop()
 
-        # Stop database write worker and wait for pending writes
-        db = self._bootstrap.db
-        if db and hasattr(db, '_write_worker') and db._write_worker:
-            db._write_worker.wait_idle()
-            db._write_worker.stop()
+        self._bootstrap.shutdown_database()
 
         self._qt_app.quit()

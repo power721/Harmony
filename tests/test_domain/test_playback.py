@@ -91,17 +91,18 @@ class TestPlayQueueItem:
         assert item.cloud_account_id == 1
 
     def test_online_track_initialization(self):
-        """Test queue item for online track (QQ Music)."""
+        """Test queue item for online track."""
         item = PlayQueueItem(
             position=1,
-            source="QQ",
+            source="ONLINE",
             cloud_file_id="song_mid_123",
+            online_provider_id="qqmusic",
             local_path="/cache/online/song.mp3",
             title="Online Song",
             artist="Online Artist",
             duration=200.0,
         )
-        assert item.source == "QQ"
+        assert item.source == "ONLINE"
         assert item.cloud_file_id == "song_mid_123"
 
     def test_baidu_cloud_initialization(self):

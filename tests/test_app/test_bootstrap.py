@@ -44,3 +44,25 @@ def test_playback_service_wires_download_manager_dependencies(monkeypatch):
         playback_service=fake_playback,
         cloud_repo=bootstrap._cloud_repo,
     )
+
+
+def test_file_organization_service_is_constructed_without_db_manager(monkeypatch):
+    """Bootstrap should wire FileOrganizationService with repositories/services only."""
+    fake_service = object()
+    ctor = MagicMock(return_value=fake_service)
+    monkeypatch.setattr(bootstrap_module, "FileOrganizationService", ctor)
+
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    bootstrap._track_repo = object()
+    bootstrap._cloud_repo = object()
+    bootstrap._event_bus = object()
+    bootstrap._queue_repo = object()
+
+    assert bootstrap.file_org_service is fake_service
+    _, kwargs = ctor.call_args
+    assert "db_manager" not in kwargs
+
+
+def test_bootstrap_no_longer_exposes_public_db_property():
+    """Database manager should remain an internal bootstrap detail."""
+    assert not hasattr(bootstrap_module.Bootstrap, "db")

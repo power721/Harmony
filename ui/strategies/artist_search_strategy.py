@@ -5,8 +5,8 @@ import logging
 from typing import List, Optional
 
 from infrastructure.network import HttpClient
-from services.lyrics.qqmusic_lyrics import get_qqmusic_artist_cover_url
 from services.metadata import CoverService
+from system.plugins.online_cover_helpers import get_online_artist_cover_url
 from ui.strategies.cover_search_strategy import CoverSearchStrategy
 
 logger = logging.getLogger(__name__)
@@ -17,9 +17,9 @@ class ArtistSearchStrategy(CoverSearchStrategy):
 
     Handles:
     - Single artist
-    - search_artist_covers() API (QQ Music type=100)
+    - search_artist_covers() API
     - Circular cover display
-    - QQ Music lazy fetch with singer_mid
+    - Provider lazy fetch with singer_mid
     - Save via library_service.update_artist_cover()
     """
 
@@ -70,22 +70,25 @@ class ArtistSearchStrategy(CoverSearchStrategy):
         return result.get('cover_url')
 
     def needs_lazy_fetch(self, result: dict) -> bool:
-        """Check if result needs QQ Music lazy fetch."""
+        """Check if result needs provider lazy fetch."""
         return (
-                result.get('source') == 'qqmusic' and
+                bool(result.get('source')) and
                 not result.get('cover_url') and
                 bool(result.get('singer_mid'))
         )
 
     def lazy_fetch(self, cover_service: CoverService, result: dict) -> bytes:
-        """Fetch QQ Music artist cover with lazy loading."""
+        """Fetch provider artist cover with lazy loading."""
         singer_mid = result.get('singer_mid')
+        provider_id = result.get('source')
 
         if not singer_mid:
             raise ValueError("No singer_mid for lazy fetch")
 
         # Get artist cover URL
-        cover_url = get_qqmusic_artist_cover_url(singer_mid, size=500)
+        cover_url = get_online_artist_cover_url(provider_id=provider_id, artist_id=singer_mid, size=500)
+        if not cover_url:
+            raise ValueError("No cover URL returned by provider")
 
         # Download cover
         http_client = HttpClient()

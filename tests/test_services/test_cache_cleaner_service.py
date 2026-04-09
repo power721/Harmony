@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from services.online.cache_cleaner_service import CacheCleanerService
+from services.download.cache_cleaner_service import CacheCleanerService
 
 
 def test_cache_cleaner_supports_extended_audio_extensions(tmp_path):

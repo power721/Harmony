@@ -2,14 +2,17 @@
 Lyrics service for fetching and parsing lyrics.
 """
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
+from charset_normalizer import from_bytes
+from harmony_plugin_api.lyrics import PluginLyricsResult
+from system.plugins.online_lyrics_helpers import download_online_lyrics
 from services._singleflight import SingleFlight
 from utils.lrc_parser import LyricLine
 from utils.match_scorer import MatchScorer, TrackInfo
-from .qqmusic_lyrics import download_qqmusic_lyrics
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -30,7 +33,7 @@ except ImportError:
 
 # Shared HTTP client instance
 _shared_http_client = None
-_qqmusic_lyrics_singleflight: SingleFlight[str] = SingleFlight()
+_online_provider_lyrics_singleflight: SingleFlight[str] = SingleFlight()
 _online_track_lyrics_singleflight: SingleFlight[str] = SingleFlight()
 
 
@@ -55,21 +58,36 @@ class LyricsService:
     ENABLE_ONLINE = True  # Changed to True for better UX
 
     @classmethod
+    def _get_builtin_sources(cls) -> List["LyricsSource"]:
+        """Get built-in host lyrics sources."""
+        return []
+
+    @classmethod
     def _get_sources(cls) -> List["LyricsSource"]:
-        """Get lyrics sources."""
-        from services.sources import (
-            NetEaseLyricsSource,
-            QQMusicLyricsSource,
-            KugouLyricsSource,
-            LRCLIBLyricsSource,
-        )
-        http_client = _get_http_client()
-        return [
-            LRCLIBLyricsSource(http_client),
-            NetEaseLyricsSource(http_client),
-            KugouLyricsSource(http_client),
-            QQMusicLyricsSource(),
-        ]
+        """Get host and plugin-provided lyrics sources."""
+        from app.bootstrap import Bootstrap
+
+        plugin_sources = Bootstrap.instance().plugin_manager.registry.lyrics_sources()
+        return cls._get_builtin_sources() + plugin_sources
+
+    @staticmethod
+    def _get_source_name(source) -> str:
+        return getattr(source, "name", getattr(source, "display_name", source.__class__.__name__))
+
+    @staticmethod
+    def _result_to_dict(result) -> dict:
+        return {
+            "id": getattr(result, "id", getattr(result, "song_id", "")),
+            "title": getattr(result, "title", ""),
+            "artist": getattr(result, "artist", ""),
+            "album": getattr(result, "album", ""),
+            "duration": getattr(result, "duration", None),
+            "cover_url": getattr(result, "cover_url", None),
+            "source": getattr(result, "source", ""),
+            "lyrics": getattr(result, "lyrics", None),
+            "accesskey": getattr(result, "accesskey", None),
+            "supports_yrc": getattr(result, "supports_yrc", False),
+        }
 
     @classmethod
     def _convert_to_simplified_chinese(cls, text: str) -> str:
@@ -110,41 +128,58 @@ class LyricsService:
         """
         results = []
         sources = cls._get_sources()
+        if not sources:
+            return results
 
-        # Parallel search from multiple sources with progressive updates
-        with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        # Parallel search from multiple sources with progressive updates.
+        executor = ThreadPoolExecutor(max_workers=len(sources))
+        pending = set()
+        futures = {}
+        try:
             futures = {
-                executor.submit(source.search, title, artist, limit): source.name
+                executor.submit(source.search, title, artist, limit): cls._get_source_name(source)
                 for source in sources
             }
+            pending = set(futures)
+            deadline = time.monotonic() + 15
 
-            # Wait for each source independently (no overall timeout)
-            for future in as_completed(futures, timeout=15):
-                source_name = futures[future]
-                try:
-                    search_results = future.result(timeout=6)
-                    # Convert LyricsSearchResult to dict for compatibility
-                    results.extend({
-                            'id': r.id,
-                            'title': r.title,
-                            'artist': r.artist,
-                            'album': r.album,
-                            'duration': r.duration,
-                            'cover_url': r.cover_url,
-                            'source': r.source,
-                            'lyrics': r.lyrics,
-                            'accesskey': r.accesskey,
-                            'supports_yrc': r.supports_yrc,
-                        } for r in search_results)
-                    logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
 
-                    # Call progress callback if provided
-                    if progress_callback and search_results:
-                        progress_callback(results, source_name)
+                completed, pending = wait(
+                    pending,
+                    timeout=remaining,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not completed:
+                    break
 
-                except Exception as e:
-                    # Log but don't fail - other sources may have results
-                    logger.debug(f"[LyricsService] {source_name} search failed: {e}")
+                for future in completed:
+                    source_name = futures[future]
+                    try:
+                        search_results = future.result(timeout=0)
+                        results.extend(cls._result_to_dict(r) for r in search_results)
+                        logger.debug(f"[LyricsService] {source_name}: found {len(search_results)} results")
+
+                        if progress_callback and search_results:
+                            progress_callback(results, source_name)
+
+                    except Exception as e:
+                        logger.debug(f"[LyricsService] {source_name} search failed: {e}")
+        finally:
+            if pending:
+                pending_sources = ", ".join(
+                    sorted(futures.get(future, "unknown") for future in pending)
+                )
+                logger.warning(
+                    "[LyricsService] Search timed out for sources: %s",
+                    pending_sources,
+                )
+                for future in pending:
+                    future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
 
         # Return all results (user can see all sources)
         return results
@@ -156,7 +191,7 @@ class LyricsService:
 
         Args:
             song_id: Song ID
-            source: Source name ('lrclib', 'netease', 'kugou', or 'qqmusic')
+            source: Source name ('lrclib', 'netease', 'kugou', or provider id)
             accesskey: Access key for Kugou
 
         Returns:
@@ -164,21 +199,29 @@ class LyricsService:
         """
         # Find the appropriate source and download lyrics
         sources = cls._get_sources()
-        source_map = {s.name.lower(): s for s in sources}
+        source_map = {cls._get_source_name(s).lower(): s for s in sources}
 
         lyrics_source = source_map.get(source.lower())
         if not lyrics_source:
             return ""
 
-        # Create a result object for get_lyrics
-        from services.sources.base import LyricsSearchResult
-        result = LyricsSearchResult(
-            id=song_id,
-            title="",
-            artist="",
-            source=source,
-            accesskey=accesskey,
-        )
+        if hasattr(lyrics_source, "display_name"):
+            result = PluginLyricsResult(
+                song_id=song_id,
+                title="",
+                artist="",
+                source=source,
+            )
+        else:
+            from services.sources.base import LyricsSearchResult
+
+            result = LyricsSearchResult(
+                id=song_id,
+                title="",
+                artist="",
+                source=source,
+                accesskey=accesskey,
+            )
 
         lyrics = lyrics_source.get_lyrics(result)
         if lyrics:
@@ -226,49 +269,63 @@ class LyricsService:
         return None
 
     @classmethod
-    def get_lyrics_by_qqmusic_mid(cls, song_mid: str) -> str:
+    def get_lyrics_by_song_id(cls, song_id: str, provider_id: str) -> str:
         """
-        Get lyrics directly from QQ Music by song mid.
+        Get lyrics directly from an online provider by provider-side song id.
 
-        This is used for online QQ Music tracks where we already have the song_mid.
+        This is used for online tracks where provider id and song id are known.
 
         Args:
-            song_mid: QQ Music song MID
+            song_id: Provider-side song id
+            provider_id: Provider id (e.g. 'netease', 'kugou', plugin id)
 
         Returns:
             Lyrics content (QRC or LRC format) or empty string
         """
         try:
-            return _qqmusic_lyrics_singleflight.do(
-                ("qqmusic_lyrics", song_mid),
-                lambda: download_qqmusic_lyrics(song_mid),
+            normalized_provider = (provider_id or "").strip().lower()
+            if not normalized_provider:
+                return ""
+            return _online_provider_lyrics_singleflight.do(
+                ("online_provider_lyrics", normalized_provider, song_id),
+                lambda: download_online_lyrics(song_id=song_id, provider_id=normalized_provider),
             )
         except Exception as e:
-            logger.error(f"Error downloading QQ Music lyrics: {e}", exc_info=True)
+            logger.error(f"Error downloading online lyrics: {e}", exc_info=True)
             return ""
 
     @classmethod
-    def get_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
+    def get_online_track_lyrics(
+        cls,
+        song_mid: str,
+        track_path: str = "",
+        provider_id: str | None = None,
+    ) -> str:
         """
-        Load or download lyrics for an online QQ Music track once per song/path.
+        Load or download lyrics for an online track once per song/path.
 
         This wraps the local-file check, online fetch, and local save in a shared
         single-flight call so multiple windows do not repeat the same work.
         """
         return _online_track_lyrics_singleflight.do(
-            ("online_track_lyrics", song_mid, track_path or ""),
-            lambda: cls._load_or_download_online_track_lyrics(song_mid, track_path),
+            ("online_track_lyrics", provider_id or "", song_mid, track_path or ""),
+            lambda: cls._load_or_download_online_track_lyrics(song_mid, track_path, provider_id=provider_id),
         )
 
     @classmethod
-    def _load_or_download_online_track_lyrics(cls, song_mid: str, track_path: str = "") -> str:
-        """Internal helper for online QQ Music lyrics retrieval."""
+    def _load_or_download_online_track_lyrics(
+        cls,
+        song_mid: str,
+        track_path: str = "",
+        provider_id: str | None = None,
+    ) -> str:
+        """Internal helper for online lyrics retrieval."""
         if track_path and track_path not in (".", "", "/"):
             local_lyrics = cls._get_local_lyrics(track_path)
             if local_lyrics:
                 return local_lyrics
 
-        lyrics = cls.get_lyrics_by_qqmusic_mid(song_mid)
+        lyrics = cls.get_lyrics_by_song_id(song_mid, provider_id=provider_id)
         if lyrics and track_path and track_path not in (".", "", "/"):
             cls.save_lyrics(track_path, lyrics)
         return lyrics
@@ -350,23 +407,48 @@ class LyricsService:
         """
         track_file = Path(track_path)
 
-        # Try multiple encodings to support different file sources
-        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'big5', 'utf-16']
-
         # Try different lyrics file extensions in priority order: .yrc, .qrc, .lrc
         for ext in ['.yrc', '.qrc', '.lrc']:
             lyrics_path = track_file.with_suffix(ext)
             if lyrics_path.exists():
-                for encoding in encodings:
-                    try:
-                        with open(lyrics_path, 'r', encoding=encoding) as f:
-                            content = f.read()
-                        return content
-                    except (UnicodeDecodeError, UnicodeError):
-                        continue
-                    except Exception as e:
-                        logger.error(f"Error loading local lyrics from {lyrics_path}: {e}", exc_info=True)
-                        break
+                try:
+                    raw_content = cls._read_local_lyrics_bytes(lyrics_path)
+                except Exception as e:
+                    logger.error(f"Error loading local lyrics from {lyrics_path}: {e}", exc_info=True)
+                    continue
+
+                decoded = cls._decode_local_lyrics(raw_content)
+                if decoded:
+                    return decoded
+
+        return ""
+
+    @staticmethod
+    def _read_local_lyrics_bytes(lyrics_path: Path) -> bytes:
+        """Read a local lyrics file once in binary mode."""
+        with open(lyrics_path, 'rb') as f:
+            return f.read()
+
+    @staticmethod
+    def _decode_local_lyrics(raw_content: bytes) -> str:
+        """Decode local lyrics content with UTF-8 first and charset detection fallback."""
+        if not raw_content:
+            return ""
+
+        try:
+            return raw_content.decode('utf-8')
+        except UnicodeDecodeError:
+            pass
+
+        detected = from_bytes(raw_content).best()
+        if detected is not None:
+            return str(detected)
+
+        for encoding in ['utf-16', 'gb18030', 'gbk', 'gb2312', 'big5']:
+            try:
+                return raw_content.decode(encoding)
+            except (UnicodeDecodeError, UnicodeError):
+                continue
 
         return ""
 

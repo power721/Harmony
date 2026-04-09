@@ -71,14 +71,6 @@ class SettingKey:
     ACOUSTID_ENABLED = "acoustid.enabled"
     ACOUSTID_API_KEY = "acoustid.api_key"
 
-    # QQ Music settings
-    QQMUSIC_MUSICID = "qqmusic.musicid"
-    QQMUSIC_MUSICKEY = "qqmusic.musickey"
-    QQMUSIC_LOGIN_TYPE = "qqmusic.login_type"
-    QQMUSIC_CREDENTIAL = "qqmusic.credential"  # Full credential JSON
-    QQMUSIC_NICK = "qqmusic.nick"  # User nickname
-    QQMUSIC_QUALITY = "qqmusic.quality"  # Audio quality setting
-
     # Cache cleanup settings
     CACHE_CLEANUP_STRATEGY = "cache.cleanup_strategy"  # "time", "size", "count", "manual", "disabled"
     CACHE_CLEANUP_TIME_DAYS = "cache.cleanup_time_days"  # int: days
@@ -148,6 +140,8 @@ class ConfigManager:
 
     def _get_secret(self, key: str, default: str = "") -> str:
         """Get a sensitive setting and transparently decrypt it."""
+        if self._secret_store is None:
+            return self.get(key, default)
         return self._secret_store.decrypt(self.get(key, default))
 
     def _set_secret(self, key: str, value: str):
@@ -408,6 +402,22 @@ class ConfigManager:
             dir_path: Path to online music download directory
         """
         self.set(SettingKey.ONLINE_MUSIC_DOWNLOAD_DIR, dir_path)
+
+    def get_plugin_setting(self, plugin_id: str, key: str, default: Any = None) -> Any:
+        """Get a plugin-scoped setting value."""
+        return self.get(f"plugins.{plugin_id}.{key}", default)
+
+    def set_plugin_setting(self, plugin_id: str, key: str, value: Any):
+        """Set a plugin-scoped setting value."""
+        self.set(f"plugins.{plugin_id}.{key}", value)
+
+    def get_plugin_secret(self, plugin_id: str, key: str, default: str = "") -> str:
+        """Get a plugin-scoped secret value and decrypt it."""
+        return self._get_secret(f"plugins.{plugin_id}.{key}", default)
+
+    def set_plugin_secret(self, plugin_id: str, key: str, value: str):
+        """Encrypt and persist a plugin-scoped secret value."""
+        self._set_secret(f"plugins.{plugin_id}.{key}", value)
 
     # ===== UI settings =====
 
@@ -705,119 +715,6 @@ class ConfigManager:
             api_key: AcoustID API key string
         """
         self._set_secret(SettingKey.ACOUSTID_API_KEY, api_key)
-
-    # ===== QQ Music settings =====
-
-    def get_qqmusic_credential(self) -> Optional[dict]:
-        """
-        Get QQ Music credentials.
-
-        Returns:
-            Dict with credential data or None if not configured
-        """
-        # Try to get full credential JSON first
-        credential_data = self.get(SettingKey.QQMUSIC_CREDENTIAL)
-        if credential_data:
-            credential_data = self._secret_store.decrypt(credential_data)
-            # Handle both dict (already parsed) and string (JSON)
-            if isinstance(credential_data, dict):
-                cred = credential_data
-            else:
-                try:
-                    cred = json.loads(credential_data)
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning(f"Failed to parse QQ Music credential JSON: {e}")
-                    cred = None
-
-            if cred and cred.get('musicid') and cred.get('musickey'):
-                return cred
-
-        # Fallback to individual fields
-        musicid = self.get(SettingKey.QQMUSIC_MUSICID)
-        musickey = self._secret_store.decrypt(self.get(SettingKey.QQMUSIC_MUSICKEY))
-        login_type = self.get(SettingKey.QQMUSIC_LOGIN_TYPE, 2)
-
-        if musicid and musickey:
-            return {
-                'musicid': musicid,
-                'musickey': musickey,
-                'login_type': login_type
-            }
-        return None
-
-    def set_qqmusic_credential(self, credential: dict):
-        """
-        Set QQ Music credentials.
-
-        Args:
-            credential: Dict with credential data (can be full credential or just musicid/musickey)
-        """
-
-        # Handle both full credential dict and simple credential
-        musicid = credential.get('musicid') or credential.get('str_musicid', '')
-        musickey = credential.get('musickey', '')
-        # Support both snake_case (login_type) and camelCase (loginType)
-        login_type = credential.get('login_type') or credential.get('loginType', 2)
-
-        # Save individual fields for backward compatibility
-        self.set(SettingKey.QQMUSIC_MUSICID, str(musicid) if musicid else '')
-        self._set_secret(SettingKey.QQMUSIC_MUSICKEY, musickey)
-        self.set(SettingKey.QQMUSIC_LOGIN_TYPE, login_type)
-
-        # Save full credential JSON
-        try:
-            self._set_secret(
-                SettingKey.QQMUSIC_CREDENTIAL,
-                json.dumps(credential, ensure_ascii=False),
-            )
-        except (TypeError, ValueError) as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to save QQ Music credential: {e}")
-
-    def clear_qqmusic_credential(self):
-        """Clear QQ Music credentials."""
-        self.delete(SettingKey.QQMUSIC_MUSICID)
-        self.delete(SettingKey.QQMUSIC_MUSICKEY)
-        self.delete(SettingKey.QQMUSIC_LOGIN_TYPE)
-        self.delete(SettingKey.QQMUSIC_CREDENTIAL)
-        self.delete(SettingKey.QQMUSIC_NICK)
-
-    def get_qqmusic_nick(self) -> str:
-        """
-        Get QQ Music user nickname.
-
-        Returns:
-            User nickname or empty string
-        """
-        return self.get(SettingKey.QQMUSIC_NICK, "")
-
-    def set_qqmusic_nick(self, nick: str):
-        """
-        Set QQ Music user nickname.
-
-        Args:
-            nick: User nickname
-        """
-        self.set(SettingKey.QQMUSIC_NICK, nick)
-
-    def get_qqmusic_quality(self) -> str:
-        """
-        Get QQ Music audio quality setting.
-
-        Returns:
-            Quality string (master/atmos/flac/320/128), default "320"
-        """
-        return self.get(SettingKey.QQMUSIC_QUALITY, "320")
-
-    def set_qqmusic_quality(self, quality: str):
-        """
-        Set QQ Music audio quality.
-
-        Args:
-            quality: Quality string (master/atmos/flac/320/128)
-        """
-        self.set(SettingKey.QQMUSIC_QUALITY, quality)
 
     # ===== Cache cleanup settings =====
 

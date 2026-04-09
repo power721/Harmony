@@ -10,25 +10,6 @@ from domain.track import TrackSource
 from system.i18n import t
 
 
-_CONTEXT_MENU_STYLE = """
-    QMenu {
-        background-color: %background_alt%;
-        color: %text%;
-        border: 1px solid %border%;
-    }
-    QMenu::item {
-        padding: 8px 20px;
-    }
-    QMenu::item:selected {
-        background-color: %highlight%;
-        color: %background%;
-    }
-    QMenu::item:disabled {
-        color: %text_secondary%;
-    }
-"""
-
-
 class LocalTrackContextMenu(QObject):
     """Context menu for local tracks. Emits signals for each action."""
 
@@ -39,20 +20,33 @@ class LocalTrackContextMenu(QObject):
     favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
     edit_info = Signal(object)
     download_cover = Signal(object)
+    organize_files = Signal(list)
     open_file_location = Signal(object)
     remove_from_library = Signal(list)
     delete_file = Signal(list)
-    redownload = Signal(object)  # Track (QQ Music re-download)
+    redownload = Signal(object)  # Track (online re-download)
+
+    @staticmethod
+    def _is_online_track(track) -> bool:
+        if track is None:
+            return False
+        source = getattr(track, "source", None)
+        if isinstance(source, TrackSource):
+            is_online = source == TrackSource.ONLINE
+        else:
+            is_online = TrackSource.from_value(str(source or "")) == TrackSource.ONLINE
+        return (
+            is_online
+            and bool(getattr(track, "cloud_file_id", None))
+            and bool(getattr(track, "online_provider_id", None))
+        )
 
     def build_menu(self, tracks: list, favorite_ids: set, parent_widget=None):
         """Build and return the context menu (without showing)."""
-        from system.theme import ThemeManager
-
         if not tracks:
             return None
 
         menu = QMenu(parent_widget)
-        menu.setStyleSheet(ThemeManager.instance().get_qss(_CONTEXT_MENU_STYLE))
 
         all_favorited = all(
             getattr(track, 'id', None) and track.id in favorite_ids
@@ -88,10 +82,12 @@ class LocalTrackContextMenu(QObject):
             a = menu.addAction(t("download_cover_manual"))
             a.triggered.connect(lambda: self.download_cover.emit(tracks[0]))
 
-            # Re-download for QQ Music
-            if tracks[0].source == TrackSource.QQ:
+            if self._is_online_track(tracks[0]):
                 a = menu.addAction(t("redownload"))
                 a.triggered.connect(lambda: self.redownload.emit(tracks[0]))
+
+        a = menu.addAction(t("organize_files"))
+        a.triggered.connect(lambda: self.organize_files.emit(tracks))
 
         if len(tracks) == 1 and tracks[0].path:
             a = menu.addAction(t("open_file_location"))
@@ -113,67 +109,6 @@ class LocalTrackContextMenu(QObject):
         menu = self.build_menu(tracks, favorite_ids, parent_widget)
         if menu:
             menu.exec_(QCursor.pos())
-
-
-class OnlineTrackContextMenu(QObject):
-    """Context menu for online tracks. Emits signals for each action."""
-
-    play = Signal(list)
-    insert_to_queue = Signal(list)
-    add_to_queue = Signal(list)
-    add_to_playlist = Signal(list)
-    favorite_toggled = Signal(list, bool)  # (tracks, all_favorited)
-    qq_fav_toggled = Signal(list, bool)  # (tracks, all_favorited) - QQ Music remote favorite
-    download = Signal(list)
-
-    def show_menu(self, tracks: list, favorite_mids: set = None, parent_widget=None):
-        from system.theme import ThemeManager
-
-        if not tracks:
-            return
-
-        menu = QMenu(parent_widget)
-        menu.setStyleSheet(ThemeManager.instance().get_qss(_CONTEXT_MENU_STYLE))
-
-        a = menu.addAction(t("play"))
-        a.triggered.connect(lambda: self.play.emit(tracks))
-
-        a = menu.addAction(t("insert_to_queue"))
-        a.triggered.connect(lambda: self.insert_to_queue.emit(tracks))
-
-        a = menu.addAction(t("add_to_queue"))
-        a.triggered.connect(lambda: self.add_to_queue.emit(tracks))
-
-        menu.addSeparator()
-
-        all_favorited = False
-        if favorite_mids:
-            all_favorited = all(
-                getattr(track, 'mid', None) and track.mid in favorite_mids
-                for track in tracks
-            )
-
-        if all_favorited:
-            a = menu.addAction(t("remove_from_favorites"))
-        else:
-            a = menu.addAction(t("add_to_favorites"))
-        a.triggered.connect(lambda: self.favorite_toggled.emit(tracks, all_favorited))
-
-        if all_favorited:
-            a = menu.addAction(t("remove_from_qq_favorites"))
-        else:
-            a = menu.addAction(t("add_to_qq_favorites"))
-        a.triggered.connect(lambda: self.qq_fav_toggled.emit(tracks, all_favorited))
-
-        a = menu.addAction(t("add_to_playlist"))
-        a.triggered.connect(lambda: self.add_to_playlist.emit(tracks))
-
-        menu.addSeparator()
-
-        a = menu.addAction(t("download"))
-        a.triggered.connect(lambda: self.download.emit(tracks))
-
-        menu.exec_(QCursor.pos())
 
 
 class PlaylistTrackContextMenu(LocalTrackContextMenu):

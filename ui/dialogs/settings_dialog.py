@@ -1,12 +1,11 @@
-"""
-General Settings Dialog for configuring AI, AcoustID, and QQ Music.
-"""
-import importlib.util
+"""General Settings Dialog for configuring host and plugin settings."""
+import importlib
 import logging
 import os
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal
+from app.bootstrap import Bootstrap
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -20,12 +19,8 @@ from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
+from ui.dialogs.plugin_management_tab import PluginManagementTab
 from ui.dialogs.progress_dialog import ProgressDialog
-from services.cloud.qqmusic.common import (
-    get_selectable_qualities,
-    get_quality_label_key,
-    normalize_quality,
-)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -41,119 +36,8 @@ def _get_audio_engine_options() -> list[tuple[str, str]]:
     return options
 
 
-class VerifyLoginThread(QThread):
-    """Background thread for verifying QQ Music login status."""
-
-    verified = Signal(bool, str, int)  # valid, nick, uin
-
-    def __init__(self, credential: dict, parent=None):
-        super().__init__(parent)
-        self._credential = credential
-
-    def run(self):
-        """Verify login status."""
-        try:
-            from services.cloud.qqmusic import QQMusicClient
-
-            client = QQMusicClient(self._credential)
-            result = client.verify_login()
-            self.verified.emit(result['valid'], result['nick'], result['uin'])
-        except Exception as e:
-            logger.error(f"Verify login error: {e}")
-            self.verified.emit(False, '', 0)
-
-
 class GeneralSettingsDialog(QDialog):
-    """Dialog for configuring AI, AcoustID, and QQ Music settings."""
-
-    _STYLE_TEMPLATE = """
-        QWidget#settingsContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
-        QLineEdit {
-            background-color: %background%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px;
-            font-size: 13px;
-        }
-        QLineEdit:focus {
-            border: 1px solid %highlight%;
-        }
-        QLineEdit:disabled {
-            background-color: %background_hover%;
-            color: %text_secondary%;
-        }
-        QPushButton {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-        }
-        QPushButton:hover {
-            background-color: %selection%;
-        }
-        QPushButton:pressed {
-            background-color: %background%;
-        }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-        }
-        QGroupBox {
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 6px;
-            margin-top: 10px;
-            padding-top: 10px;
-            font-size: 13px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            subcontrol-position: top left;
-            padding: 0 8px;
-            color: %text%;
-        }
-        QTabWidget::pane {
-            border: 1px solid %border%;
-            background-color: %background_alt%;
-        }
-        QTabBar::tab {
-            background-color: %background%;
-            color: %text_secondary%;
-            padding: 8px 16px;
-            border: 1px solid %border%;
-            font-size: 13px;
-        }
-        QTabBar::tab:selected {
-            background-color: %background_hover%;
-            color: %text%;
-            border-bottom-color: %background_hover%;
-        }
-        QTabBar::tab:hover:!selected {
-            background-color: %selection%;
-        }
-        """ + ThemeManager.get_combobox_style() + """
-    """
+    """Dialog for configuring host and plugin settings."""
 
     def __init__(self, config_manager, parent=None):
         """
@@ -165,13 +49,14 @@ class GeneralSettingsDialog(QDialog):
         """
         super().__init__(parent)
         self._config = config_manager
-        self._verify_thread: Optional[VerifyLoginThread] = None
         self._batch_worker = None
         self._drag_pos = None
+        self._plugin_settings_tabs = []
 
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()
@@ -191,7 +76,6 @@ class GeneralSettingsDialog(QDialog):
         self.setWindowTitle(t("settings"))
         self.setMinimumWidth(550)
         theme = ThemeManager.instance().current_theme
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
 
         # Outer layout with 0 margins — container fills the dialog
         outer = QVBoxLayout(self)
@@ -213,6 +97,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Tab widget for AI and AcoustID settings
         tab_widget = QTabWidget()
+        tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
 
         # AI Settings Tab
         ai_tab = QWidget()
@@ -321,82 +206,6 @@ class GeneralSettingsDialog(QDialog):
         acoustid_layout.addWidget(acoustid_test_btn)
 
         acoustid_layout.addStretch()
-
-        # QQ Music Settings Tab
-        qqmusic_tab = QWidget()
-        qqmusic_layout = QVBoxLayout(qqmusic_tab)
-        qqmusic_layout.setSpacing(10)
-
-        # Quality settings
-        quality_group = QGroupBox(t("qqmusic_quality"))
-        quality_layout = QHBoxLayout()
-        quality_label = QLabel(t("qqmusic_quality"))
-        self._quality_combo = QComboBox()
-        self._quality_combo.setFixedWidth(300)
-        for quality in get_selectable_qualities():
-            label_key = get_quality_label_key(quality)
-            label = t(label_key) if label_key else quality
-            self._quality_combo.addItem(label)
-            self._quality_combo.setItemData(self._quality_combo.count() - 1, quality, Qt.UserRole)
-        quality_layout.addWidget(quality_label)
-        quality_layout.addWidget(self._quality_combo)
-        quality_layout.addStretch()
-        quality_group.setLayout(quality_layout)
-        qqmusic_layout.addWidget(quality_group)
-
-        # Download directory settings
-        download_dir_group = QGroupBox(t("online_music_download_dir"))
-        download_dir_layout = QHBoxLayout()
-        download_dir_label = QLabel(t("online_music_download_dir"))
-        self._download_dir_input = QLineEdit()
-        self._download_dir_input.setPlaceholderText("data/online_cache")
-        browse_btn = QPushButton(t("online_music_browse"))
-        browse_btn.setCursor(Qt.PointingHandCursor)
-        browse_btn.clicked.connect(self._browse_download_dir)
-        download_dir_layout.addWidget(download_dir_label)
-        download_dir_layout.addWidget(self._download_dir_input)
-        download_dir_layout.addWidget(browse_btn)
-        download_dir_group.setLayout(download_dir_layout)
-        qqmusic_layout.addWidget(download_dir_group)
-
-        # Hint label for download directory
-        download_dir_hint = QLabel(t("online_music_download_dir_hint"))
-        download_dir_hint.setStyleSheet("font-size: 11px;")
-        download_dir_hint.setWordWrap(True)
-        qqmusic_layout.addWidget(download_dir_hint)
-
-        # QQ Music instructions
-        qqmusic_instructions = QLabel(
-            f"<b>{t('qqmusic_login')}</b><br><br>"
-            f"{t('qqmusic_faster_api_hint')}"
-        )
-        qqmusic_instructions.setWordWrap(True)
-        qqmusic_layout.addWidget(qqmusic_instructions)
-
-        # QQ Music credential status
-        self._qqmusic_status_label = QLabel()
-        self._qqmusic_status_label.setWordWrap(True)
-        qqmusic_layout.addWidget(self._qqmusic_status_label)
-
-        # QQ Music buttons
-        qqmusic_button_layout = QHBoxLayout()
-
-        self._qqmusic_qr_btn = QPushButton(t("qqmusic_qr_login"))
-        self._qqmusic_qr_btn.setCursor(Qt.PointingHandCursor)
-        self._qqmusic_qr_btn.clicked.connect(self._open_qqmusic_qr_login)
-        qqmusic_button_layout.addWidget(self._qqmusic_qr_btn)
-
-        self._qqmusic_logout_btn = QPushButton(t("qqmusic_clear"))
-        self._qqmusic_logout_btn.setCursor(Qt.PointingHandCursor)
-        self._qqmusic_logout_btn.clicked.connect(self._qqmusic_logout)
-        qqmusic_button_layout.addWidget(self._qqmusic_logout_btn)
-
-        qqmusic_layout.addLayout(qqmusic_button_layout)
-
-        # Update status after buttons are created
-        self._update_qqmusic_status()
-
-        qqmusic_layout.addStretch()
 
         # Cache Cleanup Settings Tab
         cache_tab = QWidget()
@@ -850,12 +659,23 @@ class GeneralSettingsDialog(QDialog):
 
         tab_widget.addTab(playback_tab, t("playback_tab"))
         tab_widget.addTab(appearance_tab, t("theme_tab"))
-        tab_widget.addTab(qqmusic_tab, t("qqmusic_tab"))
         tab_widget.addTab(cache_tab, t("cache_tab"))
         tab_widget.addTab(covers_tab, t("covers_tab"))
         tab_widget.addTab(repair_tab, t("repair_tab"))
         tab_widget.addTab(ai_tab, t("ai_tab"))
         tab_widget.addTab(acoustid_tab, t("acoustid_tab"))
+        bootstrap = Bootstrap.instance()
+        tab_widget.addTab(
+            PluginManagementTab(bootstrap.plugin_manager, self),
+            t("plugins_tab"),
+        )
+        for spec in bootstrap.plugin_manager.registry.settings_tabs():
+            plugin_tab = spec.widget_factory(bootstrap.plugin_manager, self)
+            self._plugin_settings_tabs.append(plugin_tab)
+            tab_widget.addTab(
+                plugin_tab,
+                spec.title_provider() if callable(getattr(spec, "title_provider", None)) else spec.title,
+            )
 
         layout.addWidget(tab_widget)
 
@@ -864,11 +684,13 @@ class GeneralSettingsDialog(QDialog):
         button_layout.addStretch()
 
         save_btn = QPushButton(t("save"))
+        save_btn.setProperty("role", "primary")
         save_btn.setCursor(Qt.PointingHandCursor)
         save_btn.clicked.connect(self._save_settings)
         button_layout.addWidget(save_btn)
 
         cancel_btn = QPushButton(t("cancel"))
+        cancel_btn.setProperty("role", "cancel")
         cancel_btn.setCursor(Qt.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
@@ -947,13 +769,6 @@ class GeneralSettingsDialog(QDialog):
         self._acoustid_api_key_input.setText(acoustid_api_key)
         self._acoustid_api_key_input.setEnabled(acoustid_enabled)
 
-        # QQ Music quality setting
-        qqmusic_quality = normalize_quality(str(self._config.get_qqmusic_quality()))
-        for i in range(self._quality_combo.count()):
-            if self._quality_combo.itemData(i) == qqmusic_quality:
-                self._quality_combo.setCurrentIndex(i)
-                break
-
         # Audio engine setting
         configured_engine = str(self._config.get_audio_engine()) if hasattr(self._config, "get_audio_engine") else "mpv"
         for i in range(self._audio_engine_combo.count()):
@@ -964,10 +779,6 @@ class GeneralSettingsDialog(QDialog):
         self._audio_engine_status_label.setText(
             t("audio_engine_status").format(runtime=runtime_engine, configured=configured_engine)
         )
-
-        # QQ Music download directory setting
-        download_dir = self._config.get_online_music_download_dir()
-        self._download_dir_input.setText(download_dir)
 
         # Cache cleanup settings
         strategy = str(self._config.get_cache_cleanup_strategy())
@@ -1029,6 +840,9 @@ class GeneralSettingsDialog(QDialog):
             MessageDialog.warning(self, t("warning"), t("acoustid_api_key_required"))
             return
 
+        if not self._save_plugin_settings_tabs():
+            return
+
         # Save AI settings
         self._config.set_ai_enabled(enabled)
         self._config.set_ai_base_url(base_url)
@@ -1039,20 +853,10 @@ class GeneralSettingsDialog(QDialog):
         self._config.set_acoustid_enabled(acoustid_enabled)
         self._config.set_acoustid_api_key(acoustid_api_key)
 
-        # Save QQ Music quality setting
-        qqmusic_quality = self._quality_combo.currentData()
-        self._config.set_qqmusic_quality(qqmusic_quality)
-
         # Save audio engine setting
         selected_engine = self._audio_engine_combo.currentData()
         if hasattr(self._config, "set_audio_engine"):
             self._config.set_audio_engine(selected_engine)
-
-        # Save QQ Music download directory setting
-        download_dir = self._download_dir_input.text().strip()
-        if not download_dir:
-            download_dir = "data/online_cache"
-        self._config.set_online_music_download_dir(download_dir)
 
         # Save cache cleanup settings
         strategy = self._strategy_combo.currentData()
@@ -1101,6 +905,22 @@ class GeneralSettingsDialog(QDialog):
 
         MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
+
+    def _save_plugin_settings_tabs(self) -> bool:
+        """Persist mounted plugin settings tabs before closing the dialog."""
+        for plugin_tab in self._plugin_settings_tabs:
+            save_hook = getattr(plugin_tab, "_save", None)
+            if not callable(save_hook):
+                save_hook = getattr(plugin_tab, "_save_settings", None)
+            if not callable(save_hook):
+                continue
+            try:
+                save_hook()
+            except Exception as exc:
+                logger.warning("Failed to save plugin settings tab %r: %s", plugin_tab, exc, exc_info=True)
+                MessageDialog.warning(self, t("warning"), f"Failed to save plugin settings: {exc}")
+                return False
+        return True
 
     def _get_runtime_audio_engine(self) -> str:
         """Get currently running engine name from parent window playback service."""
@@ -1174,110 +994,6 @@ class GeneralSettingsDialog(QDialog):
                 self, t("warning"),
                 t("acoustid_not_installed")
             )
-
-    def _update_qqmusic_status(self):
-        """Update QQ Music credential status display."""
-        credential = self._config.get_qqmusic_credential()
-        if credential:
-            musicid = credential.get('musicid', '')
-            login_type = credential.get('loginType', 2)
-            login_method = t("qqmusic_wx_login") if login_type == 1 else t("qqmusic_qq_login")
-
-            if musicid:
-                # Show verifying status
-                self._qqmusic_status_label.setText(
-                    f"<span style='color: #a0a0a0;'>⏳ {t('qqmusic_verifying')}</span> ({login_method}: {musicid})"
-                )
-                self._qqmusic_logout_btn.setVisible(True)
-
-                # Start verification in background
-                if self._verify_thread:
-                    self._verify_thread.quit()
-                    self._verify_thread.wait()
-
-                self._verify_thread = VerifyLoginThread(credential, parent=self)
-                self._verify_thread.verified.connect(
-                    lambda valid, nick, uin: self._on_login_verified(valid, nick, uin, musicid, login_type)
-                )
-                self._verify_thread.start()
-            else:
-                self._qqmusic_status_label.setText(
-                    f"<span style='color: #ffa500;'>⚠️ {t('qqmusic_incomplete_config')}</span>"
-                )
-                self._qqmusic_logout_btn.setVisible(False)
-        else:
-            self._qqmusic_status_label.setText(
-                f"<span style='color: #c0c0c0;'>❌ {t('qqmusic_not_configured_status')}</span>"
-            )
-            self._qqmusic_logout_btn.setVisible(False)
-
-    def _on_login_verified(self, valid: bool, nick: str, uin: int, musicid: str, login_type: int = 2):
-        """Handle login verification result."""
-        login_method = t("qqmusic_wx_login") if login_type == 1 else t("qqmusic_qq_login")
-
-        if valid:
-            # Save nickname to config
-            if nick:
-                self._config.set_qqmusic_nick(nick)
-            self._qqmusic_status_label.setText(
-                f"<span style='color: #1db954;'>✅ {t('qqmusic_logged_in_status')}</span> ({nick}, {login_method}: {musicid})"
-            )
-        else:
-            self._qqmusic_status_label.setText(
-                f"<span style='color: #ff6b6b;'>❌ {t('qqmusic_login_expired')}</span> ({login_method}: {musicid})"
-            )
-
-    def _qqmusic_logout(self):
-        """Clear QQ Music credentials (logout)."""
-        from app.bootstrap import Bootstrap
-
-        reply = MessageDialog.question(
-            self,
-            t("qqmusic_clear"),
-            t("qqmusic_clear_confirm"),
-            Yes | No,
-            No
-        )
-
-        if reply == Yes:
-            self._config.clear_qqmusic_credential()
-            Bootstrap.instance().refresh_qqmusic_client()
-            self._update_qqmusic_status()
-            MessageDialog.information(self, t("success"), t("qqmusic_cleared"))
-
-    def _open_qqmusic_qr_login(self):
-        """Open QQ Music QR code login dialog."""
-        from ui.dialogs import QQMusicQRLoginDialog
-
-        dialog = QQMusicQRLoginDialog(self)
-        dialog.credentials_obtained.connect(self._update_qqmusic_status)
-        dialog.exec()
-
-    def _browse_download_dir(self):
-        """Browse for download directory."""
-        current_dir = self._download_dir_input.text().strip()
-        if not current_dir or not os.path.exists(current_dir):
-            current_dir = os.path.expanduser("~")
-
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            t("online_music_select_dir"),
-            current_dir
-        )
-
-        if directory:
-            # Store relative path if possible
-            cwd = os.getcwd()
-            try:
-                rel_path = os.path.relpath(directory, cwd)
-                # Use relative path if it's not too deep
-                if not rel_path.startswith("..") or len(rel_path.split(os.sep)) <= 3:
-                    self._download_dir_input.setText(rel_path)
-                else:
-                    self._download_dir_input.setText(directory)
-            except ValueError:
-                # On Windows, can't get relative path between different drives
-                self._download_dir_input.setText(directory)
 
     def _open_cache_directory(self):
         """Open the cache directory in file explorer."""
@@ -1711,9 +1427,6 @@ class GeneralSettingsDialog(QDialog):
 
     def closeEvent(self, event):
         """Handle dialog close event."""
-        if self._verify_thread:
-            self._verify_thread.quit()
-            self._verify_thread.wait()
         if self._batch_worker:
             self._batch_worker.cancel()
             self._batch_worker.quit()
@@ -1907,7 +1620,6 @@ class GeneralSettingsDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):

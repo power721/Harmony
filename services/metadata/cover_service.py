@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # Configure logging
 logger = logging.getLogger(__name__)
 
-_qqmusic_cover_singleflight: SingleFlight[Optional[str]] = SingleFlight()
+_online_cover_singleflight: SingleFlight[Optional[str]] = SingleFlight()
 
 
 class CoverService:
@@ -43,35 +43,29 @@ class CoverService:
         self.http_client = http_client
         self._sources = sources
 
+    def _get_builtin_sources(self) -> List["CoverSource"]:
+        """Get built-in host cover sources."""
+        return []
+
     def _get_sources(self) -> List["CoverSource"]:
-        """Get cover sources, creating default ones if needed."""
-        if self._sources is None:
-            from services.sources import (
-                NetEaseCoverSource,
-                QQMusicCoverSource,
-                ITunesCoverSource,
-                LastFmCoverSource,
-            )
-            self._sources = [
-                NetEaseCoverSource(self.http_client),
-                QQMusicCoverSource(),
-                ITunesCoverSource(self.http_client),
-                LastFmCoverSource(self.http_client),
-            ]
-        return [s for s in self._sources if s.is_available()]
+        """Get cover sources, including plugin-provided sources."""
+        from app.bootstrap import Bootstrap
+
+        sources = list(self._sources) if self._sources is not None else self._get_builtin_sources()
+        sources.extend(Bootstrap.instance().plugin_manager.registry.cover_sources())
+        return [s for s in sources if getattr(s, "is_available", lambda: True)()]
+
+    def _get_builtin_artist_sources(self) -> List["ArtistCoverSource"]:
+        """Get built-in host artist cover sources."""
+        return []
 
     def _get_artist_sources(self) -> List["ArtistCoverSource"]:
-        """Get artist cover sources."""
-        from services.sources import (
-            NetEaseArtistCoverSource,
-            QQMusicArtistCoverSource,
-            ITunesArtistCoverSource,
-        )
-        return [
-            NetEaseArtistCoverSource(self.http_client),
-            QQMusicArtistCoverSource(),
-            ITunesArtistCoverSource(self.http_client),
-        ]
+        """Get artist cover sources, including plugin-provided sources."""
+        from app.bootstrap import Bootstrap
+
+        sources = self._get_builtin_artist_sources()
+        sources.extend(Bootstrap.instance().plugin_manager.registry.artist_cover_sources())
+        return sources
 
     def get_cover(self, track_path: str, title: str, artist: str, album: str = "", duration: float = None,
                   skip_online: bool = False) -> Optional[str]:
@@ -221,6 +215,19 @@ class CoverService:
                 return cover_path
         return None
 
+    def _to_search_result(self, result) -> SearchResult:
+        """Normalize host and plugin cover results to SearchResult."""
+        return SearchResult(
+            title=result.title,
+            artist=result.artist,
+            album=result.album,
+            duration=result.duration,
+            source=result.source,
+            id=getattr(result, "id", None) or getattr(result, "item_id", ""),
+            cover_url=result.cover_url,
+            album_mid=getattr(result, "album_mid", None) or getattr(result, "extra_id", None),
+        )
+
     def fetch_online_cover(self, title: str, artist: str, album: str = "", duration: float = None) -> Optional[str]:
         """
         Fetch cover art from online sources (public method).
@@ -241,18 +248,25 @@ class CoverService:
         print(f"Fetching cover from online sources: {artist} {album} {title}")
         return self._fetch_online_cover(title, artist, album, cache_key, duration)
 
-    def get_online_cover(self, song_mid: str, album_mid: str = None,
-                         artist: str = "", title: str = "") -> Optional[str]:
+    def get_online_cover(
+        self,
+        song_mid: str,
+        album_mid: str = None,
+        artist: str = "",
+        title: str = "",
+        provider_id: str | None = None,
+    ) -> Optional[str]:
         """
-        Get cover for online QQ Music track by song_mid or album_mid.
+        Get cover for online track by provider-side track id.
 
-        This directly fetches cover from QQ Music without searching.
+        This directly fetches cover from a plugin provider without searching.
 
         Args:
-            song_mid: QQ Music song MID
-            album_mid: QQ Music album MID (preferred, if available)
+            song_mid: Provider-side song id
+            album_mid: Provider-side album id (preferred, if available)
             artist: Artist name (for cache key)
             title: Track title (for cache key)
+            provider_id: Online provider id
 
         Returns:
             Path to cached cover, or None
@@ -267,10 +281,17 @@ class CoverService:
             return str(cached_cover)
 
         try:
-            request_key = ("qqmusic_cover", song_mid or "", album_mid or "", artist or "", title or "")
-            return _qqmusic_cover_singleflight.do(
+            request_key = (
+                "online_cover",
+                provider_id or "",
+                song_mid or "",
+                album_mid or "",
+                artist or "",
+                title or "",
+            )
+            return _online_cover_singleflight.do(
                 request_key,
-                lambda: self._fetch_online_cover_by_mid(song_mid, album_mid),
+                lambda: self._fetch_online_cover_by_mid(song_mid, album_mid, provider_id=provider_id),
             )
 
         except Exception as e:
@@ -278,11 +299,21 @@ class CoverService:
 
         return None
 
-    def _fetch_online_cover_by_mid(self, song_mid: str, album_mid: str | None) -> Optional[str]:
-        """Fetch QQ Music cover bytes by song/album mid and cache the result."""
-        from services.lyrics.qqmusic_lyrics import get_qqmusic_cover_url
+    def _fetch_online_cover_by_mid(
+        self,
+        song_mid: str,
+        album_mid: str | None,
+        provider_id: str | None = None,
+    ) -> Optional[str]:
+        """Fetch online cover bytes by song/album id and cache the result."""
+        from system.plugins.online_cover_helpers import get_online_cover_url
 
-        cover_url = get_qqmusic_cover_url(mid=song_mid, album_mid=album_mid, size=500)
+        cover_url = get_online_cover_url(
+            provider_id=provider_id,
+            track_id=song_mid,
+            album_id=album_mid,
+            size=500,
+        )
         if not cover_url:
             logger.debug(f"[CoverService] No cover URL for song_mid={song_mid}, album_mid={album_mid}")
             return None
@@ -330,16 +361,10 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    all_results.extend(SearchResult(
-                            title=r.title,
-                            artist=r.artist,
-                            album=r.album,
-                            duration=r.duration,
-                            source=r.source,
-                            id=r.id,
-                            cover_url=r.cover_url,
-                            album_mid=getattr(r, 'album_mid', None),
-                        ) for r in search_results)
+                    all_results.extend(
+                        self._to_search_result(result)
+                        for result in search_results
+                    )
                     logger.debug(f"{source_name} found {len(search_results)} results")
                 except Exception as e:
                     logger.warning(f"Error searching cover from {source_name}: {e}")
@@ -396,16 +421,10 @@ class CoverService:
                 try:
                     search_results = future.result()
                     # Convert CoverSearchResult to SearchResult for compatibility
-                    all_search_results.extend(SearchResult(
-                            title=r.title,
-                            artist=r.artist,
-                            album=r.album,
-                            duration=r.duration,
-                            source=r.source,
-                            id=r.id,
-                            cover_url=r.cover_url,
-                            album_mid=getattr(r, 'album_mid', None),
-                        ) for r in search_results)
+                    all_search_results.extend(
+                        self._to_search_result(result)
+                        for result in search_results
+                    )
                 except Exception as e:
                     logger.error(f"Error searching {source_name} covers: {e}", exc_info=True)
 
@@ -429,7 +448,7 @@ class CoverService:
                     'source': result.source,
                     'id': result.id,
                     'score': score,
-                    'album_mid': result.album_mid,  # For QQ Music lazy cover fetch
+                    'album_mid': result.album_mid,  # For provider-side lazy cover fetch
                 })
 
             # Sort by score descending
@@ -553,13 +572,17 @@ class CoverService:
                     # Convert ArtistCoverSearchResult to dict for compatibility
                     for r in search_results:
                         score = self._calculate_artist_name_score(artist_name, r.name)
+                        artist_id = getattr(r, "id", None) or getattr(r, "artist_id", "")
+                        singer_mid = getattr(r, "singer_mid", None)
+                        if singer_mid is None:
+                            singer_mid = getattr(r, "artist_id", None)
                         results.append({
                             'name': r.name,
-                            'id': r.id,
+                            'id': artist_id,
                             'cover_url': r.cover_url,
                             'album_count': r.album_count,
                             'source': r.source,
-                            'singer_mid': r.singer_mid,
+                            'singer_mid': singer_mid,
                             'score': score,
                         })
                 except Exception as e:

@@ -18,8 +18,20 @@ def test_update_playlist_item_updates_all_duplicate_cloud_ids():
     engine = PlayerEngine.__new__(PlayerEngine)
     engine._playlist_lock = threading.RLock()
     engine._playlist = [
-        PlaylistItem(source=TrackSource.QQ, cloud_file_id="song_mid_123", title="A", needs_download=True),
-        PlaylistItem(source=TrackSource.QQ, cloud_file_id="song_mid_123", title="B", needs_download=True),
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="A",
+            needs_download=True,
+        ),
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="B",
+            needs_download=True,
+        ),
     ]
     engine._cloud_file_id_to_index = {"song_mid_123": 0}
 
@@ -103,7 +115,8 @@ def test_play_next_skips_missing_local_track_and_plays_following_track():
 
 def test_play_at_emits_pending_signal_for_online_track_needing_download():
     item = PlaylistItem(
-        source=TrackSource.QQ,
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
         cloud_file_id="song_mid_456",
         local_path="",
         title="Pending Song",
@@ -137,3 +150,27 @@ def test_del_logs_backend_cleanup_failure_and_still_cleans_temp_files(caplog):
 
     assert temp_cleanup_calls == ["cleaned"]
     assert "Error cleaning up backend" in caplog.text
+
+
+def test_explicit_shutdown_cleans_backend_once():
+    """Explicit shutdown should be idempotent and not rely on __del__ ordering."""
+
+    class _Backend:
+        def __init__(self):
+            self.cleanup_calls = 0
+
+        def cleanup(self):
+            self.cleanup_calls += 1
+
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._backend = _Backend()
+    engine._shutdown_complete = False
+    temp_cleanup_calls = []
+    engine.cleanup_temp_files = lambda: temp_cleanup_calls.append("cleaned")
+
+    PlayerEngine.shutdown(engine)
+    PlayerEngine.shutdown(engine)
+    PlayerEngine.__del__(engine)
+
+    assert engine._backend.cleanup_calls == 1
+    assert temp_cleanup_calls == ["cleaned"]

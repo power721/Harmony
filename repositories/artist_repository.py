@@ -110,7 +110,8 @@ class SqliteArtistRepository(BaseRepository):
             SELECT
                 artist as name,
                 COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count
+                COUNT(DISTINCT album) as album_count,
+                MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path
             FROM tracks
             WHERE artist = ?
             GROUP BY artist
@@ -119,18 +120,9 @@ class SqliteArtistRepository(BaseRepository):
         if not row:
             return None
 
-        # Get cover from first track of artist
-        cursor.execute("""
-            SELECT cover_path FROM tracks
-            WHERE artist = ? AND cover_path IS NOT NULL
-            LIMIT 1
-        """, (artist_name,))
-        cover_row = cursor.fetchone()
-        cover_path = cover_row["cover_path"] if cover_row else None
-
         return Artist(
             name=row["name"] or "",
-            cover_path=cover_path,
+            cover_path=row["cover_path"],
             song_count=row["song_count"] or 0,
             album_count=row["album_count"] or 0,
         )
@@ -228,6 +220,81 @@ class SqliteArtistRepository(BaseRepository):
 
         conn.commit()
         return True
+
+    def refresh_artist(self, artist_name: str) -> bool:
+        """Refresh a single artist cache row from junction/table state."""
+        if not artist_name:
+            return False
+
+        from services.metadata.artist_parser import normalize_artist_name
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                a.name,
+                a.cover_path AS existing_cover,
+                COUNT(DISTINCT ta.track_id) AS song_count,
+                COUNT(DISTINCT CASE WHEN t.album IS NOT NULL AND t.album != '' THEN t.album END) AS album_count,
+                MAX(CASE WHEN t.cover_path IS NOT NULL AND t.cover_path != '' THEN t.cover_path END) AS track_cover
+            FROM artists a
+            LEFT JOIN track_artists ta ON ta.artist_id = a.id
+            LEFT JOIN tracks t ON t.id = ta.track_id
+            WHERE a.name = ?
+            GROUP BY a.id, a.name, a.cover_path
+            """,
+            (artist_name,),
+        )
+        row = cursor.fetchone()
+        if not row or not row["song_count"]:
+            return False
+
+        cursor.execute(
+            """
+            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                cover_path = excluded.cover_path,
+                song_count = excluded.song_count,
+                album_count = excluded.album_count,
+                normalized_name = excluded.normalized_name,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                row["name"],
+                row["existing_cover"] or row["track_cover"],
+                row["song_count"] or 0,
+                row["album_count"] or 0,
+                normalize_artist_name(row["name"]),
+            ),
+        )
+        conn.commit()
+        return True
+
+    def delete_if_empty(self, artist_name: str) -> bool:
+        """Delete a cached artist row when it no longer has linked tracks."""
+        if not artist_name:
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT 1
+            FROM track_artists ta
+            JOIN artists a ON a.id = ta.artist_id
+            WHERE a.name = ?
+            LIMIT 1
+            """,
+            (artist_name,),
+        )
+        if cursor.fetchone() is not None:
+            return False
+
+        cursor.execute("DELETE FROM artists WHERE name = ?", (artist_name,))
+        conn.commit()
+        return cursor.rowcount > 0
 
     def update_cover_path(self, artist_name: str, cover_path: str) -> bool:
         """

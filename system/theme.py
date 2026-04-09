@@ -323,52 +323,50 @@ class ThemeManager(QObject):
         return result
 
     @staticmethod
-    def get_combobox_style() -> str:
-        """
-        Get unified QComboBox style template.
-
-        Returns:
-            QSS string with theme tokens for QComboBox styling
-        """
+    def get_completer_popup_style() -> str:
+        """Get themed QListView popup style for completers."""
         return """
-            QComboBox {
-                background-color: %background%;
-                border: 1px solid %border%;
-                border-radius: 6px;
-                padding: 0px 12px;
-                min-height: 32px;
-                color: %text%;
-                min-width: 80px;
-            }
-            QComboBox:hover {
-                background-color: %background_hover%;
-                border: 1px solid %highlight%;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 30px;
-            }
-            QComboBox QAbstractItemView {
+            QListView {
                 background-color: %background_alt%;
                 border: 1px solid %border%;
+                border-radius: 8px;
                 color: %text%;
                 selection-background-color: %highlight%;
                 selection-color: %background%;
                 outline: none;
             }
-            QComboBox QAbstractItemView::item {
-                padding: 6px 10px;
-                min-height: 20px;
+            QListView::item {
+                padding: 8px 12px;
+                border-bottom: 1px solid %border%;
             }
-            QComboBox QAbstractItemView::item:hover {
+            QListView::item:selected {
                 background-color: %highlight%;
                 color: %background%;
             }
-            QComboBox QAbstractItemView::item:selected {
-                background-color: %highlight%;
-                color: %background%;
+            QListView::item:hover {
+                background-color: %border%;
             }
         """
+
+    @staticmethod
+    def get_popup_surface_style() -> str:
+        """Get themed popup surface style for custom popup widgets."""
+        return """
+            QWidget[popupSurface="true"] {
+                background-color: %background_alt%;
+                border: 1px solid %border%;
+                border-radius: 10px;
+                color: %text%;
+            }
+        """
+
+    def get_themed_completer_popup_style(self) -> str:
+        """Return popup completer style with current theme tokens resolved."""
+        return self.get_qss(self.get_completer_popup_style())
+
+    def get_themed_popup_surface_style(self) -> str:
+        """Return popup surface style with current theme tokens resolved."""
+        return self.get_qss(self.get_popup_surface_style())
 
     def apply_global_stylesheet(self):
         """Load and apply themed global stylesheet to QApplication."""

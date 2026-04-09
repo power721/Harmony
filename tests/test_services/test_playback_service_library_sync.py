@@ -61,3 +61,83 @@ def test_save_cloud_track_to_library_refreshes_repositories(monkeypatch):
     service._artist_repo.refresh.assert_called_once()
     service._db.update_albums_on_track_added.assert_not_called()
     service._db.update_artists_on_track_added.assert_not_called()
+
+
+def test_play_cloud_playlist_uses_non_online_track_lookup_for_cached_cloud_files():
+    """Cloud playlists should not hydrate metadata from unrelated online tracks sharing the same file id."""
+    class _Engine:
+        def __init__(self):
+            self.items = None
+            self.play_at_index = None
+
+        def load_playlist_items(self, items):
+            self.items = list(items)
+
+        def is_shuffle_mode(self):
+            return False
+
+        def play_at(self, index):
+            self.play_at_index = index
+
+    cached_cloud_track = SimpleNamespace(
+        id=7,
+        path="/tmp/cloud-song.mp3",
+        title="Cloud Song",
+        artist="Cloud Artist",
+        album="Cloud Album",
+        duration=123.0,
+        cover_path="/tmp/cloud.jpg",
+    )
+    class _TrackRepo:
+        def get_by_cloud_file_ids(self, cloud_file_ids):
+            return {
+                "shared-id": SimpleNamespace(
+                    id=99,
+                    path="online://qqmusic/track/shared-id",
+                    title="Wrong Online Song",
+                    artist="Wrong Artist",
+                    album="Wrong Album",
+                    duration=300.0,
+                    cover_path="wrong.jpg",
+                    cloud_file_id="shared-id",
+                    online_provider_id="qqmusic",
+                )
+            }
+
+        def get_by_non_online_cloud_file_ids(self, cloud_file_ids):
+            return {"shared-id": cached_cloud_track}
+
+    track_repo = _TrackRepo()
+
+    service = PlaybackService.__new__(PlaybackService)
+    service._track_repo = track_repo
+    service._engine = _Engine()
+    service._downloaded_files = {}
+    service._config = Mock()
+    service._process_metadata_async = Mock()
+    service._set_source = Mock()
+    service.save_queue = Mock()
+    service._get_cached_path = Mock(return_value="/tmp/cloud-song.mp3")
+
+    account = SimpleNamespace(id=1, provider="quark")
+    cloud_file = SimpleNamespace(
+        file_id="shared-id",
+        name="song.mp3",
+        file_type="audio",
+        size=1,
+        duration=0.0,
+        parent_id="0",
+        mime_type="audio/mpeg",
+        metadata=None,
+    )
+
+    PlaybackService.play_cloud_playlist(
+        service,
+        cloud_files=[cloud_file],
+        start_index=0,
+        account=account,
+    )
+
+    assert service._engine.items is not None
+    assert service._engine.items[0].title == "Cloud Song"
+    assert service._engine.items[0].track_id == 7

@@ -244,6 +244,76 @@ class TestSqliteArtistRepository:
         assert artist.song_count == 3
         assert artist.album_count == 2  # Album 1 and Album 2
 
+    def test_refresh_artist_updates_single_cached_artist(self, populated_db):
+        """Targeted artist refresh should update stats for the requested artist only."""
+        repo = SqliteArtistRepository(populated_db)
+
+        assert repo.refresh_artist("Artist A") is True
+
+        artist = repo.get_by_name("Artist A")
+        assert artist is not None
+        assert artist.song_count == 3
+        assert artist.album_count == 2
+
+    def test_delete_if_empty_removes_artist_without_tracks(self, populated_db):
+        """Targeted artist cleanup should delete cache rows when the artist has no linked tracks."""
+        repo = SqliteArtistRepository(populated_db)
+        assert repo.refresh_artist("Artist B") is True
+
+        conn = sqlite3.connect(populated_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            DELETE FROM track_artists
+            WHERE artist_id = (SELECT id FROM artists WHERE name = ?)
+            """,
+            ("Artist B",),
+        )
+        cursor.execute("DELETE FROM tracks WHERE artist = ?", ("Artist B",))
+        conn.commit()
+        conn.close()
+
+        assert repo.delete_if_empty("Artist B") is True
+        assert repo.get_by_name("Artist B") is None
+
+    def test_get_by_name_fallback_uses_single_tracks_query(self, temp_db):
+        """Test fallback get_by_name fetches aggregate data and cover in one tracks query."""
+        conn = sqlite3.connect(temp_db)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/song1.mp3", "Song 1", "Artist A", "Album 1", 180.0, None),
+                ("/music/song2.mp3", "Song 2", "Artist A", "Album 2", 200.0, "/covers/artist_a.jpg"),
+            ],
+        )
+        statements = []
+        conn.set_trace_callback(statements.append)
+
+        repo = SqliteArtistRepository(temp_db)
+        repo._get_connection = lambda: conn
+        try:
+            artist = repo.get_by_name("Artist A")
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        track_selects = [
+            statement for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "FROM TRACKS" in statement.upper()
+        ]
+
+        assert artist is not None
+        assert artist.cover_path == "/covers/artist_a.jpg"
+        assert artist.song_count == 2
+        assert artist.album_count == 2
+        assert len(track_selects) == 1
+
     def test_get_by_name_not_found(self, artist_repo):
         """Test getting non-existent artist."""
         artist = artist_repo.get_by_name("Nonexistent Artist")

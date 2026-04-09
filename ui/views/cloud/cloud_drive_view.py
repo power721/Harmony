@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
 )
+from shiboken6 import isValid
 
 from domain.cloud import CloudAccount, CloudFile
 from services.cloud.cache_paths import build_cloud_cache_path
@@ -231,40 +232,6 @@ class CloudDriveView(QWidget):
         }
     """
 
-    _SEARCH_INPUT_STYLE_TEMPLATE = """
-        QLineEdit {
-            background-color: %background_hover%;
-            color: %text%;
-            border: 2px solid %border%;
-            border-radius: 20px;
-            padding: 10px 15px;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid %highlight%;
-            background-color: %background_hover%;
-        }
-        QLineEdit::placeholder {
-            color: %text_secondary%;
-        }
-        QLineEdit::clear-button {
-            subcontrol-origin: padding;
-            subcontrol-position: right;
-            width: 18px;
-            height: 18px;
-            margin-right: 8px;
-            border-radius: 9px;
-            background-color: %border%;
-        }
-        QLineEdit::clear-button:hover {
-            background-color: %background_hover%;
-            border: 1px solid %border%;
-        }
-        QLineEdit::clear-button:pressed {
-            background-color: %background_alt%;
-        }
-    """
-
     _SEARCH_BUTTON_STYLE_TEMPLATE = """
         QPushButton {
             background: %background_alt%;
@@ -342,6 +309,8 @@ class CloudDriveView(QWidget):
         self._download_queue: List[CloudFile] = []
         self._is_downloading = False
         self._current_download_thread = None
+        self._active_batch_download_threads: dict[str, QThread] = {}
+        self._max_parallel_batch_downloads = 3
         self._batch_total = 0
         self._batch_completed = 0
 
@@ -441,6 +410,7 @@ class CloudDriveView(QWidget):
         self._share_search_input = QLineEdit()
         self._share_search_input.setPlaceholderText(t("cloud_share_search_placeholder"))
         self._share_search_input.setClearButtonEnabled(True)
+        self._share_search_input.setProperty("variant", "search")
         self._share_search_input.returnPressed.connect(self._search_shares)
         self._share_search_input.textChanged.connect(self._on_share_search_text_changed)
         search_layout.addWidget(self._share_search_input)
@@ -1167,9 +1137,14 @@ class CloudDriveView(QWidget):
 
         if files and len(files) > 0:
             self._current_parent_id = files[0].parent_id
-            can_go_back = self._current_parent_id != "0"
-            self._back_btn.setEnabled(can_go_back)
-            self._cloud_file_service.cache_files(self._current_account.id, files)
+
+        self._cloud_file_service.cache_files(
+            self._current_account.id,
+            files,
+            parent_id=dir_path,
+        )
+        can_go_back = self._current_parent_id != "0"
+        self._back_btn.setEnabled(can_go_back)
 
         files = self._cloud_file_service.get_files(
             self._current_account.id, self._current_parent_id
@@ -1752,7 +1727,7 @@ class CloudDriveView(QWidget):
     # === Batch Download ===
 
     def _download_selected_files(self):
-        """Download selected audio files sequentially."""
+        """Download selected audio files with a bounded concurrency window."""
         if not self._current_account:
             return
 
@@ -1782,6 +1757,7 @@ class CloudDriveView(QWidget):
         self._batch_total = len(self._download_queue)
         self._batch_completed = 0
         self._is_downloading = True
+        self._active_batch_download_threads = {}
 
         # Update UI
         self._batch_download_btn.setEnabled(False)
@@ -1791,16 +1767,27 @@ class CloudDriveView(QWidget):
             t("download_progress").format(current=0, total=self._batch_total)
         )
 
-        self._process_next_download()
+        self._fill_batch_download_slots()
 
     def _process_next_download(self):
         """Process the next file in the download queue."""
-        if not self._download_queue:
-            self._on_batch_complete()
-            return
+        self._fill_batch_download_slots()
 
-        file = self._download_queue.pop(0)
-        current_num = self._batch_completed + 1
+    def _fill_batch_download_slots(self):
+        """Start queued batch downloads until the concurrency window is full."""
+        while (
+            self._is_downloading
+            and self._download_queue
+            and len(self._active_batch_download_threads) < self._max_parallel_batch_downloads
+        ):
+            self._start_batch_download(self._download_queue.pop(0))
+
+        if not self._download_queue and not self._active_batch_download_threads and self._is_downloading:
+            self._on_batch_complete()
+
+    def _start_batch_download(self, file: CloudFile):
+        """Start a single file download as part of the batch queue."""
+        current_num = self._batch_completed + len(self._active_batch_download_threads) + 1
 
         size_info = ""
         if file.size:
@@ -1841,6 +1828,7 @@ class CloudDriveView(QWidget):
 
         # Store reference for cancellation
         self._current_download_thread = download_thread
+        self._active_batch_download_threads[file.file_id] = download_thread
 
         download_thread.finished.connect(
             lambda path, f=file: self._on_batch_download_finished(path, f)
@@ -1854,7 +1842,8 @@ class CloudDriveView(QWidget):
 
     def _on_batch_download_finished(self, local_path: str, file: CloudFile):
         """Handle completion of a single batch download."""
-        self._current_download_thread = None
+        self._active_batch_download_threads.pop(file.file_id, None)
+        self._current_download_thread = next(iter(self._active_batch_download_threads.values()), None)
         self._batch_completed += 1
 
         if local_path:
@@ -1880,12 +1869,13 @@ class CloudDriveView(QWidget):
             logger.warning(f"[BatchDownload] Download failed: {file.name}")
 
         # Process next download
-        self._process_next_download()
+        self._fill_batch_download_slots()
 
     def _on_batch_complete(self):
         """Handle completion of all batch downloads."""
         self._is_downloading = False
         self._current_download_thread = None
+        self._active_batch_download_threads = {}
         self._update_batch_download_button_state()
         self._cancel_downloads_btn.setVisible(False)
 
@@ -1897,7 +1887,7 @@ class CloudDriveView(QWidget):
     def _cancel_downloads(self):
         """Cancel all pending downloads."""
         self._download_queue.clear()
-        self._stop_current_download_thread(wait_ms=2000)
+        self._stop_active_batch_download_threads(wait_ms=2000)
 
         self._is_downloading = False
         self._update_batch_download_button_state()
@@ -1905,20 +1895,39 @@ class CloudDriveView(QWidget):
 
         self._status_label.setText("")
 
+    def _stop_active_batch_download_threads(self, wait_ms: int = 2000):
+        """Stop all currently active batch download threads cooperatively."""
+        for thread in list(self._active_batch_download_threads.values()):
+            self._stop_download_thread(thread, wait_ms=wait_ms)
+        self._active_batch_download_threads = {}
+        self._current_download_thread = None
+
     def _stop_current_download_thread(self, wait_ms: int = 2000):
         """Stop current download thread cooperatively."""
         thread = self._current_download_thread
         if not thread:
             return
 
-        if thread.isRunning():
+        self._stop_download_thread(thread, wait_ms=wait_ms)
+        self._active_batch_download_threads = {
+            fid: active_thread
+            for fid, active_thread in self._active_batch_download_threads.items()
+            if active_thread is not thread
+        }
+        self._current_download_thread = next(iter(self._active_batch_download_threads.values()), None)
+
+    def _stop_download_thread(self, thread, wait_ms: int = 2000):
+        """Stop a download thread cooperatively."""
+        if not thread:
+            return
+
+        if isValid(thread) and thread.isRunning():
             thread.requestInterruption()
             thread.quit()
             if not thread.wait(wait_ms):
                 logger.warning(
                     "[CloudDriveView] Download thread did not stop in time via cooperative shutdown"
                 )
-        self._current_download_thread = None
 
     def _edit_media_info(self, file: CloudFile):
         """Edit media info for a cloud file."""
@@ -2327,7 +2336,10 @@ class CloudDriveView(QWidget):
         from system.theme import ThemeManager
         tm = ThemeManager.instance()
         self.setStyleSheet(tm.get_qss(self._STYLE_TEMPLATE))
-        self._share_search_input.setStyleSheet(tm.get_qss(self._SEARCH_INPUT_STYLE_TEMPLATE))
+        style = self._share_search_input.style()
+        if style is not None:
+            style.unpolish(self._share_search_input)
+            style.polish(self._share_search_input)
         self._share_search_btn.setStyleSheet(tm.get_qss(self._SEARCH_BUTTON_STYLE_TEMPLATE))
         self._path_label.set_breadcrumb_color(tm.current_theme.text)
 

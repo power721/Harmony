@@ -9,8 +9,9 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog
 
+from app.application import Application
 from domain.history import PlayHistory
 from domain.playlist_item import PlaylistItem
 from domain.track import Track, TrackSource
@@ -47,7 +48,15 @@ def mock_theme_config():
 def sample_tracks():
     return [
         Track(id=1, path="/music/one.mp3", title="One", artist="Artist 1", source=TrackSource.LOCAL),
-        Track(id=2, path="/music/two.mp3", title="Two", artist="Artist 2", source=TrackSource.QQ),
+        Track(
+            id=2,
+            path="online://qqmusic/track/two",
+            title="Two",
+            artist="Artist 2",
+            source=TrackSource.ONLINE,
+            cloud_file_id="two",
+            online_provider_id="qqmusic",
+        ),
     ]
 
 
@@ -254,3 +263,44 @@ def test_library_view_close_event_disconnects_external_signals(
     assert view._on_player_state_changed not in engine.state_changed.connected
     assert view._on_tracks_organized not in fake_bus.tracks_organized.connected
     assert view._on_favorite_changed not in fake_bus.favorite_changed.connected
+
+
+def test_library_view_opens_organize_dialog_when_list_view_requests_it(
+    qapp, mock_theme_config, sample_tracks, monkeypatch
+):
+    view, _, _, _ = _build_library_view(mock_theme_config, sample_tracks)
+
+    fake_file_org_service = MagicMock()
+    fake_app = SimpleNamespace(
+        bootstrap=SimpleNamespace(file_org_service=fake_file_org_service)
+    )
+    monkeypatch.setattr(
+        Application,
+        "instance",
+        classmethod(lambda cls: fake_app),
+    )
+
+    import ui.dialogs.organize_files_dialog as organize_dialog_module
+
+    created = {}
+
+    class FakeDialog:
+        def __init__(self, tracks, file_org_service, config_manager, parent=None):
+            created["tracks"] = tracks
+            created["file_org_service"] = file_org_service
+            created["config_manager"] = config_manager
+            created["parent"] = parent
+
+        def exec(self):
+            return QDialog.Accepted
+
+    monkeypatch.setattr(organize_dialog_module, "OrganizeFilesDialog", FakeDialog)
+    view.refresh = MagicMock()
+
+    view._all_tracks_list_view.organize_files_requested.emit([sample_tracks[0]])
+
+    assert created["tracks"] == [sample_tracks[0]]
+    assert created["file_org_service"] is fake_file_org_service
+    assert created["config_manager"] is view._config
+    assert created["parent"] is view
+    view.refresh.assert_called_once()

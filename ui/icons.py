@@ -19,6 +19,7 @@ ICONS_DIR = Path(__file__).parent.parent / "icons"
 
 # Icon cache: key = f"{icon_name}_{color}_{size}", value = QIcon
 _ICON_CACHE: dict = {}
+_PATH_ICON_CACHE: dict = {}
 
 
 # Icon colors for different states
@@ -187,6 +188,36 @@ def get_icon(icon_name: str, color: str | None = IconColor.DEFAULT, size: int = 
         return QIcon()
 
 
+def get_icon_from_path(icon_path: str, color: str | None = IconColor.DEFAULT, size: int = 24) -> QIcon:
+    cache_key = f"{icon_path}_{color}_{size}"
+    if cache_key in _PATH_ICON_CACHE:
+        return _PATH_ICON_CACHE[cache_key]
+
+    path = Path(icon_path)
+    if not path.exists():
+        logger.warning(f"Icon file not found: {icon_path}")
+        return QIcon()
+
+    try:
+        if path.suffix.lower() == ".svg":
+            svg_content = path.read_bytes()
+            colored_svg = _colorize_svg(svg_content, color) if color else svg_content
+            renderer = QSvgRenderer(colored_svg)
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon = QIcon(pixmap)
+        else:
+            icon = QIcon(str(path))
+        _PATH_ICON_CACHE[cache_key] = icon
+        return icon
+    except Exception as e:
+        logger.error(f"Error loading icon from path {icon_path}: {e}")
+        return QIcon()
+
+
 def get_pixmap(icon_name: str, color: str = IconColor.DEFAULT, size: int = 24) -> QPixmap:
     """
     Get QPixmap from SVG file with specified color.
@@ -287,6 +318,73 @@ class IconButton(QPushButton):
         """Override to update icon on enabled change."""
         super().setEnabled(enabled)
         self._update_icon()
+
+
+class PathIconButton(QPushButton):
+    """QPushButton with a custom SVG icon path that changes color by state."""
+
+    def __init__(self, icon_path: str, text: str = "", parent=None, size: int = 24):
+        super().__init__(text, parent)
+        self._icon_path = icon_path
+        self._icon_size = size
+
+        try:
+            from system.theme import ThemeManager
+            tm = ThemeManager.instance()
+            colors = IconColor.get_colors_from_theme(tm.current_theme)
+            self._default_color = colors['default']
+            self._hover_color = colors['hover']
+            self._active_color = colors['active']
+            self._disabled_color = colors['disabled']
+        except Exception:
+            self._default_color = IconColor.DEFAULT
+            self._hover_color = IconColor.HOVER
+            self._active_color = IconColor.ACTIVE
+            self._disabled_color = IconColor.DISABLED
+
+        self._update_icon()
+        self.setIconSize(QSize(size, size))
+        self.toggled.connect(self._on_toggled)
+
+    def _on_toggled(self, checked: bool):
+        self._update_icon(self._active_color if checked else self._default_color)
+
+    def _update_icon(self, color: str = None):
+        if color is None:
+            if not self.isEnabled():
+                color = self._disabled_color
+            elif self.isChecked():
+                color = self._active_color
+            else:
+                color = self._default_color
+        self.setIcon(get_icon_from_path(self._icon_path, color, self._icon_size))
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if not self.isChecked():
+            self._update_icon(self._hover_color)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if not self.isChecked():
+            self._update_icon(self._default_color)
+
+    def setEnabled(self, enabled: bool):
+        super().setEnabled(enabled)
+        self._update_icon()
+
+    def refresh_theme(self):
+        try:
+            from system.theme import ThemeManager
+            tm = ThemeManager.instance()
+            colors = IconColor.get_colors_from_theme(tm.current_theme)
+            self._default_color = colors['default']
+            self._hover_color = colors['hover']
+            self._active_color = colors['active']
+            self._disabled_color = colors['disabled']
+            self._update_icon()
+        except Exception:
+            pass
 
 
 def icon_button(icon_name: str, text: str = "", size: int = 24, parent=None) -> IconButton:

@@ -100,6 +100,7 @@ class PlayerEngine(QObject):
         self._cloud_file_id_to_index: dict = {}  # Dict for O(1) lookup by cloud_file_id
         self._prevent_auto_next: bool = False  # Flag to prevent auto-play next track
         self._media_loaded_flag: bool = False  # Track if media has been loaded for current source
+        self._shutdown_complete: bool = False
 
         # Connect signals
         self._backend.position_changed.connect(self._on_position_changed)
@@ -114,6 +115,14 @@ class PlayerEngine(QObject):
 
     def __del__(self):
         """Ensure cleanup on destruction."""
+        self.shutdown()
+
+    def shutdown(self):
+        """Explicitly cleanup backend and temp files once."""
+        if getattr(self, "_shutdown_complete", False):
+            return
+        self._shutdown_complete = True
+
         backend = getattr(self, "_backend", None)
         if backend is not None:
             try:
@@ -652,7 +661,8 @@ class PlayerEngine(QObject):
         # Load track if not already loaded (outside lock)
         current_source = self._backend.get_source_path()
         if current_source != local_path:
-            self._load_track(current_index)
+            if not self._load_track_if_match(current_index, item, require_current=True):
+                return
 
         self._backend.play()
 
@@ -746,27 +756,37 @@ class PlayerEngine(QObject):
             local_path: Downloaded local path
         """
         self.update_track_path(index, local_path)
+        metadata = None
         with self._playlist_lock:
             if not (0 <= index < len(self._playlist)):
                 return
             item = self._playlist[index]
+            expected_item = item
+            should_extract_metadata = item.needs_metadata and bool(local_path)
 
-            # Extract metadata if needed (for cloud files)
-            if item.needs_metadata and local_path:
-                from services.metadata.metadata_service import MetadataService
-                metadata = MetadataService.extract_metadata(local_path)
-                if metadata:
-                    if metadata.get("title"):
-                        item.title = metadata["title"]
-                    if metadata.get("artist"):
-                        item.artist = metadata["artist"]
-                    if metadata.get("album"):
-                        item.album = metadata["album"]
-                    item.needs_metadata = False
+        if should_extract_metadata:
+            from services.metadata.metadata_service import MetadataService
+            metadata = MetadataService.extract_metadata(local_path)
+
+        with self._playlist_lock:
+            if not (0 <= index < len(self._playlist)):
+                return
+            item = self._playlist[index]
+            if item is not expected_item:
+                return
+
+            if metadata:
+                if metadata.get("title"):
+                    item.title = metadata["title"]
+                if metadata.get("artist"):
+                    item.artist = metadata["artist"]
+                if metadata.get("album"):
+                    item.album = metadata["album"]
+                item.needs_metadata = False
 
             # Only play if this is the current track
             is_current = index == self._current_index
-            item_copy = item
+            item_copy = item.to_dict()
 
         if is_current:
             # Check if we're already playing this file to avoid interrupting playback
@@ -776,7 +796,7 @@ class PlayerEngine(QObject):
             if current_source == local_path:
                 # Same file - just emit track change to update UI metadata
                 logger.debug(f"[PlayerEngine] Same file {local_path}, just updating metadata")
-                self.current_track_changed.emit(item_copy.to_dict())
+                self.current_track_changed.emit(item_copy)
                 return
 
             # Current index still points at this item, so loading the downloaded file is safe
@@ -794,7 +814,7 @@ class PlayerEngine(QObject):
                 self._backend.play()
                 logger.debug(f"[PlayerEngine] Media already loaded, playing directly for index {index}")
 
-            self.current_track_changed.emit(item_copy.to_dict())
+            self.current_track_changed.emit(item_copy)
 
     def play_next(self):
         """Play the next track. Manual skip ignores single track loop mode."""
@@ -836,12 +856,15 @@ class PlayerEngine(QObject):
                 self.stop()
                 return
 
-        self._load_track(current_index)
-
         if self._item_needs_download(item):
-            item.needs_download = True
-            self.track_needs_download.emit(item)
+            validated_item = self._get_playlist_item_if_match(current_index, item)
+            if validated_item is None:
+                return
+            validated_item.needs_download = True
+            self.track_needs_download.emit(validated_item)
         elif self._item_has_local_file(item):
+            if not self._load_track_if_match(current_index, item):
+                return
             self._backend.play()
 
     def play_previous(self):
@@ -1194,6 +1217,47 @@ class PlayerEngine(QObject):
         self._media_loaded_flag = False  # Reset flag for new source
         self._backend.set_source(local_path)
         self.current_track_changed.emit(item_dict)
+
+    def _get_playlist_item_if_match(
+        self,
+        index: int,
+        expected_item: PlaylistItem,
+        *,
+        require_current: bool = False,
+    ) -> Optional[PlaylistItem]:
+        with self._playlist_lock:
+            if not (0 <= index < len(self._playlist)):
+                return None
+            if require_current and self._current_index != index:
+                return None
+
+            item = self._playlist[index]
+            if item is not expected_item:
+                return None
+            return item
+
+    def _load_track_if_match(
+        self,
+        index: int,
+        expected_item: PlaylistItem,
+        *,
+        require_current: bool = False,
+    ) -> bool:
+        item = self._get_playlist_item_if_match(
+            index,
+            expected_item,
+            require_current=require_current,
+        )
+        if item is None:
+            return False
+
+        item_dict = item.to_dict()
+        local_path = item.local_path
+
+        self._media_loaded_flag = False
+        self._backend.set_source(local_path)
+        self.current_track_changed.emit(item_dict)
+        return True
 
     def _on_position_changed(self, position_ms: int):
         """Handle position change."""

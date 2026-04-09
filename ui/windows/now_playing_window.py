@@ -684,6 +684,7 @@ class NowPlayingWindow(QWidget):
 
         queue_list.itemDoubleClicked.connect(_play_selected)
         dialog.exec()
+        dialog.deleteLater()
 
     def _load_cover_async(self, track_dict: dict):
         """Load current track cover in worker thread."""
@@ -697,7 +698,8 @@ class NowPlayingWindow(QWidget):
 
             source = track_dict.get("source", "") or track_dict.get("source_type", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_online = source in ("QQ", "online")
+            provider_id = track_dict.get("online_provider_id")
+            is_online = source in ("online", "ONLINE")
             if is_online and cloud_file_id and self._playback.cover_service:
                 try:
                     online_cover = self._playback.cover_service.get_online_cover(
@@ -705,6 +707,7 @@ class NowPlayingWindow(QWidget):
                         album_mid=None,
                         artist=track_dict.get("artist", ""),
                         title=track_dict.get("title", ""),
+                        provider_id=provider_id,
                     )
                     if online_cover:
                         return online_cover
@@ -836,7 +839,7 @@ class NowPlayingWindow(QWidget):
             self._lyrics_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             thread.requestInterruption()
             thread.quit()
             if not thread.wait(wait_ms):
@@ -860,7 +863,8 @@ class NowPlayingWindow(QWidget):
         artist = track_dict.get("artist", "")
         source = track_dict.get("source", "") or track_dict.get("source_type", "")
         cloud_file_id = track_dict.get("cloud_file_id", "")
-        is_online = source in ("QQ", "online")
+        provider_id = track_dict.get("online_provider_id")
+        is_online = source in ("online", "ONLINE")
 
         self._lyrics_thread = LyricsLoader(
             path,
@@ -868,6 +872,7 @@ class NowPlayingWindow(QWidget):
             artist,
             song_mid=cloud_file_id,
             is_online=is_online,
+            provider_id=provider_id,
         )
         self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
         self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)

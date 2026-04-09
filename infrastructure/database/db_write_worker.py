@@ -32,6 +32,8 @@ class DBWriteWorker:
         worker.submit_async(db_method, arg1, arg2)
     """
 
+    MAX_QUEUE_SIZE = 1000
+
     def __init__(self, db_path: str):
         """
         Initialize the write worker.
@@ -40,7 +42,7 @@ class DBWriteWorker:
             db_path: Path to SQLite database
         """
         self._db_path = db_path
-        self._queue: queue.Queue = queue.Queue()
+        self._queue: queue.Queue = queue.Queue(maxsize=self.MAX_QUEUE_SIZE)
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._conn: Optional[sqlite3.Connection] = None

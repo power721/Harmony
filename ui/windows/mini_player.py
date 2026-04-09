@@ -9,11 +9,10 @@ Features:
 - Text elision for long titles
 """
 import logging
-import threading
 from contextlib import suppress
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation
+from PySide6.QtCore import Qt, Signal, QSize, QThread, QPropertyAnimation, QRunnable, QThreadPool
 from PySide6.QtGui import (
     QKeySequence, QShortcut, QPixmap, QColor,
     QPainterPath, QRegion, QFontMetrics
@@ -154,7 +153,7 @@ class MiniPlayer(QWidget):
         self._lyrics_thread: Optional[QThread] = None  # Lyrics loading thread
         self._is_hidden = False  # Track auto-hide state
         self._opacity_anim: Optional[QPropertyAnimation] = None  # Opacity animation
-        self._cover_thread: Optional[threading.Thread] = None  # Cover loading thread
+        self._cover_thread = None  # Cover loading worker
         self._cover_load_version = 0
 
         self._setup_ui()
@@ -569,14 +568,15 @@ class MiniPlayer(QWidget):
             artist = track_dict.get("artist", "")
             album = track_dict.get("album", "")
 
-            # Check if this is an online QQ Music track
+            # Check if this is an online track
             source = track_dict.get("source", "")
             cloud_file_id = track_dict.get("cloud_file_id", "")
-            is_qq_music = source == "QQ"
+            provider_id = track_dict.get("online_provider_id")
+            is_online_track = source in ("online", "ONLINE")
 
-            if is_qq_music and cloud_file_id:
-                # For online QQ Music tracks, get cover directly by song_mid
-                logger.debug(f"[MiniPlayer] Getting cover for QQ Music track: song_mid={cloud_file_id}")
+            if is_online_track and cloud_file_id:
+                # For online tracks, resolve cover by provider track id
+                logger.debug(f"[MiniPlayer] Getting cover for online track: song_mid={cloud_file_id}")
                 try:
                     cover_service = self._player.cover_service
                     if cover_service:
@@ -584,7 +584,8 @@ class MiniPlayer(QWidget):
                             song_mid=cloud_file_id,
                             album_mid=None,  # We don't have album_mid in track_dict yet
                             artist=track_dict.get("artist", ""),
-                            title=track_dict.get("title", "")
+                            title=track_dict.get("title", ""),
+                            provider_id=provider_id,
                         )
                         if cover_path:
                             logger.debug(f"[MiniPlayer] Got online cover: {cover_path}")
@@ -600,15 +601,20 @@ class MiniPlayer(QWidget):
 
             return self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
 
-        def worker():
-            cover_path = load_cover()
-            # Use signal for thread-safe UI update
-            self._cover_loaded.emit(cover_path or "", version)
+        class CoverLoadWorker(QRunnable):
+            def __init__(self, load_func, signal, worker_version):
+                super().__init__()
+                self._load_func = load_func
+                self._signal = signal
+                self._worker_version = worker_version
 
-        # Run in thread
-        thread = threading.Thread(target=worker, daemon=True)
-        self._cover_thread = thread
-        thread.start()
+            def run(self):
+                cover_path = self._load_func()
+                self._signal.emit(cover_path or "", self._worker_version)
+
+        worker = CoverLoadWorker(load_cover, self._cover_loaded, version)
+        self._cover_thread = worker
+        QThreadPool.globalInstance().start(worker)
 
     def _on_cover_loaded(self, cover_path: str, version: int):
         """Apply cover result only when the worker version is still current."""
@@ -649,7 +655,7 @@ class MiniPlayer(QWidget):
             self._lyrics_thread = None
             return
 
-        if thread.isRunning():
+        if isValid(thread) and thread.isRunning():
             thread.requestInterruption()
             thread.quit()
             if not thread.wait(wait_ms):
@@ -673,16 +679,18 @@ class MiniPlayer(QWidget):
         title = track_dict.get("title", "")
         artist = track_dict.get("artist", "")
 
-        # Check if this is an online QQ Music track with song_mid
+        # Check if this is an online track with provider-side track id
         source = track_dict.get("source", "")
         cloud_file_id = track_dict.get("cloud_file_id", "")
-        is_online = source == "QQ"
+        provider_id = track_dict.get("online_provider_id")
+        is_online = source in ("online", "ONLINE")
 
         # Create lyrics loader
         self._lyrics_thread = LyricsLoader(
             path, title, artist,
             song_mid=cloud_file_id,
-            is_online=is_online
+            is_online=is_online,
+            provider_id=provider_id,
         )
         self._lyrics_thread.lyrics_ready.connect(self._on_lyrics_ready)
         self._lyrics_thread.finished.connect(self._on_lyrics_thread_finished)

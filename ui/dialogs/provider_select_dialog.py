@@ -14,47 +14,6 @@ from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 class ProviderSelectDialog(QDialog):
     """Dialog for selecting cloud provider"""
 
-    _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-        }
-        QPushButton {
-            background-color: %border%;
-            color: %text%;
-            border: 1px solid %background_hover%;
-            border-radius: 8px;
-            padding: 16px 24px;
-            font-size: 16px;
-        }
-        QPushButton:hover {
-            background-color: %background_hover%;
-            border: 1px solid %highlight%;
-        }
-        QPushButton:pressed {
-            background-color: %background_alt%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-            padding: 8px 24px;
-            font-size: 14px;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-    """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self._selected_provider = None
@@ -63,11 +22,11 @@ class ProviderSelectDialog(QDialog):
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
-        ThemeManager.instance().register_widget(self)
         self._setup_ui()
+        ThemeManager.instance().register_widget(self)
 
     def _setup_shadow(self):
         """Setup drop shadow effect."""
@@ -105,12 +64,16 @@ class ProviderSelectDialog(QDialog):
 
         # Quark button
         self._quark_btn = QPushButton(t("quark_drive"))
+        self._quark_btn.setProperty("role", "primary")
+        self._quark_btn.setMinimumHeight(56)
         self._quark_btn.setCursor(Qt.PointingHandCursor)
         self._quark_btn.clicked.connect(lambda: self._select_provider("quark"))
         provider_layout.addWidget(self._quark_btn)
 
         # Baidu button
         self._baidu_btn = QPushButton(t("baidu_drive"))
+        self._baidu_btn.setProperty("role", "primary")
+        self._baidu_btn.setMinimumHeight(56)
         self._baidu_btn.setCursor(Qt.PointingHandCursor)
         self._baidu_btn.clicked.connect(lambda: self._select_provider("baidu"))
         provider_layout.addWidget(self._baidu_btn)
@@ -141,7 +104,6 @@ class ProviderSelectDialog(QDialog):
 
     def refresh_theme(self):
         """Refresh theme when changed."""
-        self.setStyleSheet(ThemeManager.instance().get_qss(self._STYLE_TEMPLATE))
         self._title_bar_controller.refresh_theme()
 
     def resizeEvent(self, event):

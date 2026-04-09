@@ -49,3 +49,12 @@ def test_worker_stops_after_too_many_consecutive_failures(tmp_path):
         assert worker._thread.is_alive() is False
     finally:
         worker.stop()
+
+
+def test_write_queue_is_bounded(tmp_path):
+    worker = DBWriteWorker(str(tmp_path / "bounded.db"))
+
+    try:
+        assert worker._queue.maxsize == 1000
+    finally:
+        worker.stop()

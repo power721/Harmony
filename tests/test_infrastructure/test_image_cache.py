@@ -19,11 +19,14 @@ class TestImageCache:
         # Use a temporary directory for tests
         self.temp_dir = tempfile.mkdtemp()
         self.original_cache_dir = ImageCache.CACHE_DIR
+        self.original_max_cache_size = getattr(ImageCache, "MAX_CACHE_SIZE", None)
         ImageCache.CACHE_DIR = Path(self.temp_dir)
 
     def teardown_method(self):
         """Clean up test fixtures."""
         ImageCache.CACHE_DIR = self.original_cache_dir
+        if self.original_max_cache_size is not None:
+            ImageCache.MAX_CACHE_SIZE = self.original_max_cache_size
         # Clean up temp directory
         import shutil
         if os.path.exists(self.temp_dir):
@@ -118,3 +121,45 @@ class TestImageCache:
         """Test cleanup on empty directory."""
         deleted = ImageCache.cleanup(days=7)
         assert deleted == 0
+
+    def test_set_writes_via_temp_file_then_replaces(self, monkeypatch):
+        """Test cache writes use a temp file before atomically replacing the target."""
+        url = "https://example.com/atomic.jpg"
+        data = b'\xff\xd8\xff' + b'data'
+        cache_key = ImageCache._get_cache_key(url)
+
+        writes = []
+        replaces = []
+        real_write_bytes = Path.write_bytes
+        real_replace = Path.replace
+
+        def tracking_write_bytes(path_obj, payload):
+            writes.append(path_obj.name)
+            return real_write_bytes(path_obj, payload)
+
+        def tracking_replace(path_obj, target):
+            replaces.append((path_obj.name, target.name))
+            return real_replace(path_obj, target)
+
+        monkeypatch.setattr(Path, "write_bytes", tracking_write_bytes)
+        monkeypatch.setattr(Path, "replace", tracking_replace)
+
+        ImageCache.set(url, data)
+
+        assert writes == [f"{cache_key}.jpg.tmp"]
+        assert replaces == [(f"{cache_key}.jpg.tmp", f"{cache_key}.jpg")]
+
+    def test_set_enforces_cache_size_limit(self):
+        """Test cache eviction removes the oldest files when size exceeds the limit."""
+        old_url = "https://example.com/old.jpg"
+        new_url = "https://example.com/new.jpg"
+        data = b'\xff\xd8\xff' + b'12345678'
+
+        ImageCache.MAX_CACHE_SIZE = len(data)
+
+        ImageCache.set(old_url, data)
+        time.sleep(0.01)
+        ImageCache.set(new_url, data)
+
+        assert not ImageCache.exists(old_url)
+        assert ImageCache.exists(new_url)

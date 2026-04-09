@@ -3,9 +3,11 @@ Tests for MainWindow components.
 """
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMainWindow
+from domain.playback import PlaybackState
 
 from ui.windows.main_window import MainWindow
 from ui.windows.components.sidebar import Sidebar
@@ -53,14 +55,15 @@ class TestSidebar:
         ThemeManager.instance(mock_config)
         # Stacked widget order:
         # 0: library_view, 1: cloud_drive_view, 2: playlist_view, 3: queue_view
-        # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: online_music_view
+        # 4: albums_view, 5: artists_view, 6: artist_view, 7: album_view, 8: genres_view
         assert Sidebar.PAGE_LIBRARY == 0
         assert Sidebar.PAGE_CLOUD == 1
         assert Sidebar.PAGE_PLAYLISTS == 2
         assert Sidebar.PAGE_QUEUE == 3
         assert Sidebar.PAGE_ALBUMS == 4
         assert Sidebar.PAGE_ARTISTS == 5
-        assert Sidebar.PAGE_ONLINE == 8
+        assert Sidebar.PAGE_GENRES == 8
+        assert not hasattr(Sidebar, "PAGE_ONLINE")
         # Special pages (not in stacked widget)
         assert Sidebar.PAGE_FAVORITES == 100
         assert Sidebar.PAGE_HISTORY == 101
@@ -187,6 +190,18 @@ class TestOnlineMusicHandler:
         mock_playback.engine.add_track.assert_called_once()
         mock_playback._schedule_save_queue.assert_called_once()
 
+    def test_resolve_provider_id_does_not_fallback_to_placeholder(self, qapp):
+        """Missing provider metadata should not invent a non-existent provider id."""
+        assert OnlineMusicHandler._resolve_provider_id(None, {}) == ""
+
+    def test_resolve_provider_id_ignores_placeholder_source(self, qapp):
+        """Legacy placeholder source should not override a real provider id."""
+        assert OnlineMusicHandler._resolve_provider_id(None, {"source": "online"}) == ""
+        assert OnlineMusicHandler._resolve_provider_id(
+            None,
+            {"source": "online", "provider_id": "qqmusic"},
+        ) == "qqmusic"
+
     def test_play_online_tracks_respects_shuffle_mode(self, qapp):
         """Batch online playback should preserve shuffle semantics."""
         mock_playback = Mock()
@@ -246,9 +261,505 @@ class TestMainWindowPlayerProxy:
                 patch.object(MainWindow, "_restore_settings"):
             window = MainWindow()
 
+        assert not hasattr(window, "_db")
         window._player.play_local_tracks([1, 2, 3], start_index=1)
 
         playback.play_local_tracks.assert_called_once_with([1, 2, 3], start_index=1)
+
+    def test_player_proxy_exposes_track_lookup_helpers(self, qapp):
+        """PlayerProxy should expose explicit track lookup helpers for UI components."""
+        playback = Mock()
+        playback.engine = Mock()
+        library_service = Mock()
+        library_service.get_track.return_value = "track-by-id"
+        library_service.get_track_by_path.return_value = "track-by-path"
+        library_service.get_track_by_cloud_file_id.return_value = "track-by-cloud"
+
+        bootstrap = Mock()
+        bootstrap.db = Mock()
+        bootstrap.config = Mock()
+        bootstrap.playback_service = playback
+        bootstrap.library_service = library_service
+        bootstrap.favorites_service = Mock()
+        bootstrap.play_history_service = Mock()
+        bootstrap.cloud_account_service = Mock()
+        bootstrap.cloud_file_service = Mock()
+
+        theme_manager = Mock()
+        event_bus = Mock()
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), \
+                patch("ui.windows.main_window.EventBus.instance", return_value=event_bus), \
+                patch("ui.windows.main_window.ThemeManager.instance", return_value=theme_manager), \
+                patch.object(MainWindow, "_setup_ui"), \
+                patch.object(MainWindow, "_setup_connections"), \
+                patch.object(MainWindow, "_setup_system_tray"), \
+                patch.object(MainWindow, "_setup_hotkeys"), \
+                patch.object(MainWindow, "_restore_settings"):
+            window = MainWindow()
+
+        assert window._player.get_track(1) == "track-by-id"
+        assert window._player.get_track_by_path("/music/a.mp3") == "track-by-path"
+        assert window._player.get_track_by_cloud_file_id("abc") == "track-by-cloud"
+        library_service.get_track.assert_called_once_with(1)
+        library_service.get_track_by_path.assert_called_once_with("/music/a.mp3")
+        library_service.get_track_by_cloud_file_id.assert_called_once_with("abc")
+        assert not hasattr(window._player, "db")
+
+    def test_close_event_uses_playback_shutdown(self, qapp):
+        """MainWindow shutdown should explicitly close playback backend resources."""
+        cloud_download_service = SimpleNamespace(cleanup=Mock())
+        download_manager = SimpleNamespace(
+            cleanup=Mock(),
+            download_completed=SimpleNamespace(disconnect=Mock()),
+            download_failed=SimpleNamespace(disconnect=Mock()),
+        )
+        fake = SimpleNamespace(
+            _now_playing_window=None,
+            _bootstrap=SimpleNamespace(
+                db=SimpleNamespace(close=Mock()),
+                shutdown_database=Mock(),
+            ),
+            _config=SimpleNamespace(
+                set_start_in_now_playing=Mock(),
+                set_volume=Mock(),
+                set_playback_position=Mock(),
+                set_was_playing=Mock(),
+                get_playback_source=Mock(return_value="local"),
+                set_playback_source=Mock(),
+                set_current_track_id=Mock(),
+                clear_cloud_account_id=Mock(),
+            ),
+            _settings=SimpleNamespace(setValue=Mock()),
+            saveGeometry=Mock(return_value=b"geometry"),
+            _splitter=SimpleNamespace(saveState=Mock(return_value=b"splitter")),
+            _save_view_state=Mock(),
+            _player=SimpleNamespace(
+                current_source="local",
+                state=PlaybackState.PLAYING,
+                current_track=None,
+                volume=35,
+                engine=SimpleNamespace(
+                    position=Mock(return_value=1200),
+                    current_index=0,
+                    stop=Mock(),
+                ),
+            ),
+            _playback=SimpleNamespace(
+                begin_shutdown=Mock(),
+                save_queue=Mock(),
+                shutdown=Mock(),
+                cleanup_download_workers=Mock(),
+            ),
+            _force_quit_requested=False,
+            _scan_controller=None,
+            _lyrics_controller=None,
+            _event_bus=SimpleNamespace(
+                track_changed=SimpleNamespace(disconnect=Mock()),
+                position_changed=SimpleNamespace(disconnect=Mock()),
+                playback_state_changed=SimpleNamespace(disconnect=Mock()),
+                download_completed=SimpleNamespace(disconnect=Mock()),
+            ),
+            _on_track_changed=Mock(),
+            _on_position_changed=Mock(),
+            _on_playback_state_changed=Mock(),
+            _on_cloud_download_completed=Mock(),
+            _on_playlist_redownload_completed=Mock(),
+            _on_playlist_redownload_failed=Mock(),
+        )
+        event = SimpleNamespace(accept=Mock())
+
+        with patch(
+            "services.cloud.download_service.CloudDownloadService.instance",
+            return_value=cloud_download_service,
+        ), patch(
+            "services.download.download_manager.DownloadManager.instance",
+            return_value=download_manager,
+        ):
+            MainWindow.closeEvent(fake, event)
+
+        fake._playback.begin_shutdown.assert_called_once_with()
+        fake._playback.save_queue.assert_called_once_with(force=True)
+        fake._playback.shutdown.assert_called_once_with()
+        fake._player.engine.stop.assert_not_called()
+        cloud_download_service.cleanup.assert_called_once_with()
+        download_manager.cleanup.assert_called_once_with()
+        fake._bootstrap.shutdown_database.assert_called_once_with()
+        event.accept.assert_called_once_with()
+
+
+class TestMainWindowRestoreState:
+    """Tests for targeted restore lookups."""
+
+    def _make_restore_window(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        MainWindow.__mro__[1].__init__(window)
+        window._nav_stack = []
+        window._stacked_widget = Mock()
+        window._stacked_widget.currentIndex.return_value = 0
+        window._album_view = Mock()
+        window._artist_view = Mock()
+        window._genre_view = Mock()
+        window._update_nav_buttons_for_detail_view = Mock()
+        window._show_page = Mock()
+        window._show_favorites = Mock()
+        window._show_history = Mock()
+        window._plugin_page_keys = {}
+        return window
+
+    def test_restore_view_state_uses_targeted_album_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "album"
+        window._config.get_view_data.return_value = '{"name": "Album", "artist": "Artist"}'
+
+        album = SimpleNamespace(name="Album", artist="Artist")
+        library_service = Mock()
+        library_service.get_album_by_name.return_value = album
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_album_by_name.assert_called_once_with("Album", "Artist")
+        library_service.get_albums.assert_not_called()
+        window._album_view.set_album.assert_called_once_with(album)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(7)
+
+    def test_restore_view_state_uses_targeted_artist_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "artist"
+        window._config.get_view_data.return_value = '{"name": "Artist"}'
+
+        artist = SimpleNamespace(name="Artist")
+        library_service = Mock()
+        library_service.get_artist_by_name.return_value = artist
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_artist_by_name.assert_called_once_with("Artist")
+        library_service.get_artists.assert_not_called()
+        window._artist_view.set_artist.assert_called_once_with(artist)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(6)
+
+    def test_restore_view_state_uses_targeted_genre_lookup(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "genre"
+        window._config.get_view_data.return_value = '{"name": "Genre"}'
+
+        genre = SimpleNamespace(name="Genre")
+        library_service = Mock()
+        library_service.get_genre_by_name.return_value = genre
+        bootstrap = Mock(library_service=library_service)
+
+        with patch("ui.windows.main_window.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        library_service.get_genre_by_name.assert_called_once_with("Genre")
+        library_service.get_genres.assert_not_called()
+        window._genre_view.set_genre.assert_called_once_with(genre)
+        window._stacked_widget.setCurrentIndex.assert_called_once_with(9)
+
+    def test_restore_view_state_reopens_specific_plugin_page(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "plugin:qqmusic"
+        window._config.get_view_data.return_value = "{}"
+        window._plugin_page_keys = {10: "qqmusic", 11: "netease"}
+
+        with patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        window._show_page.assert_called_once_with(10)
+
+
+class TestMainWindowSaveViewState:
+    """Tests for persisted navigation state."""
+
+    def _make_save_window(self, current_index: int):
+        return SimpleNamespace(
+            _stacked_widget=SimpleNamespace(currentIndex=Mock(return_value=current_index)),
+            _library_view=SimpleNamespace(get_current_view=Mock(return_value="all")),
+            _album_view=SimpleNamespace(get_album=Mock(return_value=None)),
+            _artist_view=SimpleNamespace(get_artist=Mock(return_value=None)),
+            _genre_view=SimpleNamespace(get_genre=Mock(return_value=None)),
+            _plugin_page_keys={},
+            _config=SimpleNamespace(
+                set_view_type=Mock(),
+                set_view_data=Mock(),
+            ),
+        )
+
+    def test_save_view_state_persists_genres_page(self):
+        fake = self._make_save_window(current_index=8)
+
+        MainWindow._save_view_state(fake)
+
+        fake._config.set_view_type.assert_called_once_with("genres")
+
+    def test_save_view_state_persists_plugin_page_by_plugin_id(self):
+        fake = self._make_save_window(current_index=10)
+        fake._plugin_page_keys = {10: "qqmusic"}
+
+        MainWindow._save_view_state(fake)
+
+        fake._config.set_view_type.assert_called_once_with("plugin:qqmusic")
+
+
+class TestMainWindowPlaylistOps:
+    """Tests for playlist mutations routed through MainWindow."""
+
+    def test_add_tracks_to_playlist_uses_library_service_in_single_playlist_mode(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        QMainWindow.__init__(window)
+        window._library_service = Mock()
+        window._library_service.add_track_to_playlist.side_effect = [True, True]
+        window._db = Mock()
+        tracks = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+
+        playlist = SimpleNamespace(id=7, name="My Playlist")
+
+        class _FakeDialog:
+            def __init__(self, library_service, parent):
+                self.library_service = library_service
+                self.parent = parent
+
+            def has_playlists(self):
+                return True
+
+            def has_single_playlist(self):
+                return True
+
+            def get_single_playlist(self):
+                return playlist
+
+            def deleteLater(self):
+                return None
+
+        bootstrap = Mock(library_service=window._library_service)
+
+        def _translate(key, **kwargs):
+            translations = {
+                "success": "success",
+                "added_tracks_to_playlist": "{count}:{name}",
+            }
+            return translations.get(key, key)
+
+        with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.dialogs.add_to_playlist_dialog.AddToPlaylistDialog",
+            _FakeDialog,
+        ), patch(
+            "ui.windows.main_window.MessageDialog.information",
+        ) as info_mock, patch(
+            "ui.windows.main_window.t",
+            side_effect=_translate,
+        ):
+            window._add_tracks_to_playlist(tracks)
+
+        assert window._library_service.add_track_to_playlist.call_count == 2
+        window._library_service.add_track_to_playlist.assert_any_call(7, 1)
+        window._library_service.add_track_to_playlist.assert_any_call(7, 2)
+        window._db.add_track_to_playlist.assert_not_called()
+        info_mock.assert_called_once()
+
+
+class TestMainWindowCloudServiceBridge:
+    """Tests for service-based cloud interactions in MainWindow."""
+
+    def test_play_cloud_favorite_uses_cloud_services(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        QMainWindow.__init__(window)
+        account = SimpleNamespace(id=7, provider="quark")
+        cloud_file = SimpleNamespace(
+            file_id="fid_1",
+            name="Cloud Song",
+            size=0,
+            local_path="",
+            duration=0.0,
+        )
+        window._cloud_account_service = Mock()
+        window._cloud_account_service.get_account.return_value = account
+        window._cloud_file_service = Mock()
+        window._cloud_file_service.get_file_by_file_id.return_value = cloud_file
+        window._playback = SimpleNamespace(
+            engine=SimpleNamespace(load_playlist_items=Mock(), play=Mock())
+        )
+
+        window._play_cloud_favorite("fid_1", 7)
+
+        window._cloud_account_service.get_account.assert_called_once_with(7)
+        window._cloud_file_service.get_file_by_file_id.assert_called_once_with("fid_1")
+        window._playback.engine.load_playlist_items.assert_called_once()
+        window._playback.engine.play.assert_called_once_with()
+
+    def test_close_event_saves_cloud_state_via_cloud_account_service(self, qapp):
+        cloud_download_service = SimpleNamespace(cleanup=Mock())
+        download_manager = SimpleNamespace(
+            cleanup=Mock(),
+            download_completed=SimpleNamespace(disconnect=Mock()),
+            download_failed=SimpleNamespace(disconnect=Mock()),
+        )
+        current_item = SimpleNamespace(
+            cloud_file_id="fid_1",
+            local_path="/tmp/cloud.mp3",
+            is_local=False,
+        )
+        fake = SimpleNamespace(
+            _now_playing_window=None,
+            _bootstrap=SimpleNamespace(
+                db=SimpleNamespace(close=Mock()),
+                shutdown_database=Mock(),
+            ),
+            _config=SimpleNamespace(
+                set_start_in_now_playing=Mock(),
+                set_volume=Mock(),
+                set_playback_position=Mock(),
+                set_was_playing=Mock(),
+                get_playback_source=Mock(return_value="cloud"),
+                get_cloud_account_id=Mock(return_value=7),
+                set_playback_source=Mock(),
+                set_current_track_id=Mock(),
+                clear_cloud_account_id=Mock(),
+            ),
+            _settings=SimpleNamespace(setValue=Mock()),
+            saveGeometry=Mock(return_value=b"geometry"),
+            _splitter=SimpleNamespace(saveState=Mock(return_value=b"splitter")),
+            _save_view_state=Mock(),
+            _player=SimpleNamespace(
+                current_source="cloud",
+                state=PlaybackState.PLAYING,
+                current_track=current_item,
+                volume=35,
+                engine=SimpleNamespace(
+                    position=Mock(return_value=3200),
+                    current_index=0,
+                    stop=Mock(),
+                ),
+            ),
+            _playback=SimpleNamespace(
+                begin_shutdown=Mock(),
+                save_queue=Mock(),
+                shutdown=Mock(),
+                cleanup_download_workers=Mock(),
+            ),
+            _cloud_account_service=SimpleNamespace(update_playing_state=Mock()),
+            _force_quit_requested=False,
+            _scan_controller=None,
+            _lyrics_controller=None,
+            _event_bus=SimpleNamespace(
+                track_changed=SimpleNamespace(disconnect=Mock()),
+                position_changed=SimpleNamespace(disconnect=Mock()),
+                playback_state_changed=SimpleNamespace(disconnect=Mock()),
+                download_completed=SimpleNamespace(disconnect=Mock()),
+            ),
+            _on_track_changed=Mock(),
+            _on_position_changed=Mock(),
+            _on_playback_state_changed=Mock(),
+            _on_cloud_download_completed=Mock(),
+            _on_playlist_redownload_completed=Mock(),
+            _on_playlist_redownload_failed=Mock(),
+        )
+        event = SimpleNamespace(accept=Mock())
+
+        with patch(
+            "services.cloud.download_service.CloudDownloadService.instance",
+            return_value=cloud_download_service,
+        ), patch(
+            "services.download.download_manager.DownloadManager.instance",
+            return_value=download_manager,
+        ):
+            MainWindow.closeEvent(fake, event)
+
+        fake._cloud_account_service.update_playing_state.assert_called_once_with(
+            account_id=7,
+            playing_fid="fid_1",
+            position=3.2,
+            local_path="/tmp/cloud.mp3",
+        )
+        fake._bootstrap.shutdown_database.assert_called_once_with()
+
+    def test_restore_playback_state_uses_library_service_for_local_track(self, qapp):
+        track = SimpleNamespace(duration=180.0)
+        fake = SimpleNamespace(
+            _player=SimpleNamespace(
+                restore_queue=Mock(return_value=False),
+                engine=SimpleNamespace(
+                    set_prevent_auto_next=Mock(),
+                    seek=Mock(),
+                    play=Mock(),
+                ),
+                play_track=Mock(),
+            ),
+            _config=SimpleNamespace(
+                get_playback_source=Mock(return_value="local"),
+                get_current_track_id=Mock(return_value=5),
+                get_playback_position=Mock(return_value=12_000),
+                get_was_playing=Mock(return_value=False),
+            ),
+            _library_service=SimpleNamespace(get_track=Mock(return_value=track)),
+            _db=SimpleNamespace(get_track=Mock()),
+            _normalize_restore_position=Mock(return_value=12_000),
+        )
+
+        with patch("ui.windows.main_window.QTimer.singleShot", side_effect=lambda _delay, callback: callback()):
+            MainWindow._restore_playback_state(fake)
+
+        fake._library_service.get_track.assert_called_once_with(5)
+        fake._db.get_track.assert_not_called()
+        fake._player.play_track.assert_called_once_with(5)
+        fake._player.engine.seek.assert_called_once_with(12_000)
+
+    def test_restore_playback_state_uses_cloud_account_service_for_cloud_track(self, qapp):
+        account = SimpleNamespace(
+            last_fid_path="/fid1/fid2",
+            last_playing_fid="fid2",
+            last_position=42.0,
+            last_playing_local_path="/tmp/cloud.mp3",
+        )
+        fake = SimpleNamespace(
+            _player=SimpleNamespace(
+                restore_queue=Mock(return_value=False),
+                engine=SimpleNamespace(set_prevent_auto_next=Mock()),
+            ),
+            _config=SimpleNamespace(
+                get_playback_source=Mock(return_value="cloud"),
+                get_cloud_account_id=Mock(return_value=7),
+                get_was_playing=Mock(return_value=True),
+            ),
+            _cloud_account_service=SimpleNamespace(get_account=Mock(return_value=account)),
+            _cloud_drive_view=SimpleNamespace(restore_playback_state=Mock()),
+            _db=SimpleNamespace(get_cloud_account=Mock()),
+        )
+
+        with patch("ui.windows.main_window.QTimer.singleShot", side_effect=lambda _delay, callback: callback()):
+            MainWindow._restore_playback_state(fake)
+
+        fake._cloud_account_service.get_account.assert_called_once_with(7)
+        fake._db.get_cloud_account.assert_not_called()
+        fake._cloud_drive_view.restore_playback_state.assert_called_once_with(
+            account_id=7,
+            file_path="fid2",
+            file_fid="fid2",
+            auto_play=True,
+            start_position=42.0,
+            local_path="/tmp/cloud.mp3",
+        )
 
 
 class TestSidebarWithConfig:

@@ -86,3 +86,13 @@ class TestArtist:
         assert artist != "Artist"
         assert artist != 123
         assert artist is not None
+
+    def test_id_property_is_stable_across_accesses(self):
+        """Test repeated access returns the same computed ID."""
+        artist = Artist(name="Artist")
+
+        first = artist.id
+        second = artist.id
+
+        assert first == "artist"
+        assert second == "artist"

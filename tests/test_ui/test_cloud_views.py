@@ -3,6 +3,7 @@ Tests for cloud view components.
 """
 
 import pytest
+import tempfile
 from unittest.mock import Mock, patch
 
 from PySide6.QtCore import Qt
@@ -321,6 +322,104 @@ class TestCloudAccount:
 class TestCloudDriveView:
     """Tests for CloudDriveView share-search state handling."""
 
+    def test_batch_download_starts_up_to_parallel_limit(self, qapp, mock_config):
+        """Batch download should immediately fill the parallel worker window."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView.__new__(CloudDriveView)
+        files = [
+            CloudFile(id=i, account_id=1, file_id=f"file{i}", parent_id="0", name=f"Song {i}.mp3", file_type="audio")
+            for i in range(4)
+        ]
+        view._current_account = CloudAccount(id=1, provider="quark", account_name="acc", access_token="token")
+        view._file_table = Mock()
+        view._file_table.get_selected_audio_files.return_value = files
+        view._batch_download_btn = Mock()
+        view._cancel_downloads_btn = Mock()
+        view._status_label = Mock()
+        view._cloud_file_service = Mock()
+        view._current_audio_files = files
+        view._config_manager = mock_config
+        view._attach_download_thread_cleanup = Mock()
+        view._on_token_updated = Mock()
+        view._active_batch_download_threads = {}
+        view._max_parallel_batch_downloads = 3
+        started = []
+
+        class _Signal:
+            def connect(self, _callback):
+                return None
+
+        class _FakeThread:
+            def __init__(self, _token, file, *_args):
+                self.file = file
+                self.finished = _Signal()
+                self.file_exists = _Signal()
+                self.token_updated = _Signal()
+
+            def start(self):
+                started.append(self.file.file_id)
+
+        with patch("ui.views.cloud.cloud_drive_view.CloudFileDownloadThread", _FakeThread):
+            CloudDriveView._download_selected_files(view)
+
+        assert started == ["file0", "file1", "file2"]
+        assert set(view._active_batch_download_threads.keys()) == {"file0", "file1", "file2"}
+        assert len(view._download_queue) == 1
+
+    def test_batch_download_completion_starts_next_waiting_file(self, qapp, mock_config):
+        """When one batch worker finishes, the next queued file should start immediately."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView.__new__(CloudDriveView)
+        files = [
+            CloudFile(id=i, account_id=1, file_id=f"file{i}", parent_id="0", name=f"Song {i}.mp3", file_type="audio")
+            for i in range(4)
+        ]
+        view._current_account = CloudAccount(id=1, provider="quark", account_name="acc", access_token="token")
+        view._file_table = Mock()
+        view._status_label = Mock()
+        view._cloud_file_service = Mock()
+        view._current_audio_files = files
+        view._config_manager = mock_config
+        view._attach_download_thread_cleanup = Mock()
+        view._on_token_updated = Mock()
+        view._batch_total = 4
+        view._batch_completed = 0
+        view._download_queue = [files[3]]
+        view._is_downloading = True
+        view._active_batch_download_threads = {
+            "file0": object(),
+            "file1": object(),
+            "file2": object(),
+        }
+        view._max_parallel_batch_downloads = 3
+        view._current_download_thread = object()
+        started = []
+
+        class _Signal:
+            def connect(self, _callback):
+                return None
+
+        class _FakeThread:
+            def __init__(self, _token, file, *_args):
+                self.file = file
+                self.finished = _Signal()
+                self.file_exists = _Signal()
+                self.token_updated = _Signal()
+
+            def start(self):
+                started.append(self.file.file_id)
+
+        with tempfile.NamedTemporaryFile() as tmp_file, \
+                patch("ui.views.cloud.cloud_drive_view.CloudFileDownloadThread", _FakeThread), \
+                patch("ui.views.cloud.cloud_drive_view.EventBus.instance", return_value=Mock(download_completed=Mock())), \
+                patch("os.path.exists", return_value=True):
+            CloudDriveView._on_batch_download_finished(view, tmp_file.name, files[0])
+
+        assert started == ["file3"]
+        assert "file0" not in view._active_batch_download_threads
+        assert "file3" in view._active_batch_download_threads
+        assert view._batch_completed == 1
+
     def test_batch_download_button_disabled_without_selection(self, qapp, mock_config):
         """Batch download button should be disabled when no file is selected."""
         ThemeManager.instance(mock_config)
@@ -617,3 +716,34 @@ class TestCloudDriveView:
 
         mock_delete.assert_called_once_with("baidu_token", "/music/song.mp3")
         mock_load_files.assert_called_once()
+
+    def test_load_files_clears_cached_folder_when_remote_listing_empty(self, qapp, mock_config):
+        """Empty remote folder listings should still refresh cached folder state."""
+        ThemeManager.instance(mock_config)
+        cloud_file_service = Mock()
+        cloud_file_service.get_files.return_value = []
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=cloud_file_service,
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._current_parent_id = "folder_A"
+
+        with patch(
+            "ui.views.cloud.cloud_drive_view.QuarkDriveService.get_file_list",
+            return_value=([], None),
+        ):
+            view._load_files()
+
+        cloud_file_service.cache_files.assert_called_once_with(1, [], parent_id="folder_A")
+        cloud_file_service.get_files.assert_called_once_with(1, "folder_A")
+        assert view._file_table._table.rowCount() == 0

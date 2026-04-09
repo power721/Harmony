@@ -155,8 +155,8 @@ class FakePagedTrackRepo(FakeTrackRepo):
         return merged[offset:offset + limit]
 
 
-def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
-    """QQ items with an existing cached file should remain ready after enrichment."""
+def test_enrich_metadata_batch_preserves_cached_online_file(temp_dir):
+    """Online items with an existing cached file should remain ready after enrichment."""
     cached_path = temp_dir / "downloaded.mp3"
     cached_path.write_text("cached")
 
@@ -167,7 +167,8 @@ def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
                 path=str(cached_path),
                 title="Downloaded Song",
                 artist="Online Artist",
-                source=TrackSource.QQ,
+                source=TrackSource.ONLINE,
+                online_provider_id="qqmusic",
                 cloud_file_id="song_mid_123",
             )
         }
@@ -179,7 +180,8 @@ def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
         track_repo=track_repo,
     )
     item = PlaylistItem(
-        source=TrackSource.QQ,
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
         track_id=9,
         cloud_file_id="song_mid_123",
         local_path=str(cached_path),
@@ -191,6 +193,49 @@ def test_enrich_metadata_batch_preserves_cached_qq_file(temp_dir):
 
     assert restored.local_path == str(cached_path)
     assert restored.needs_download is False
+
+
+def test_enrich_metadata_batch_uses_provider_aware_online_lookup(temp_dir):
+    """Online enrichment should resolve same cloud id separately per provider."""
+    cached_path = temp_dir / "downloaded.mp3"
+    cached_path.write_text("cached")
+
+    class _ProviderAwareTrackRepo(FakeTrackRepo):
+        def get_by_cloud_file_ids(self, cloud_file_ids):
+            return {}
+
+        def get_by_online_track_keys(self, keys):
+            return {
+                ("qqmusic", "shared-mid"): Track(
+                    id=9,
+                    path=str(cached_path),
+                    title="QQ Track",
+                    artist="QQ Artist",
+                    source=TrackSource.ONLINE,
+                    online_provider_id="qqmusic",
+                    cloud_file_id="shared-mid",
+                )
+            }
+
+    service = QueueService(
+        queue_repo=FakeQueueRepo(),
+        config_manager=FakeConfig(),
+        engine=FakeEngine(),
+        track_repo=_ProviderAwareTrackRepo(),
+    )
+    item = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="shared-mid",
+        local_path=str(cached_path),
+        title="Placeholder",
+        needs_download=False,
+    )
+
+    restored = service._enrich_metadata_batch([item])[0]
+
+    assert restored.title == "QQ Track"
+    assert restored.track_id == 9
 
 
 def test_save_clears_persisted_queue_when_engine_playlist_is_empty():

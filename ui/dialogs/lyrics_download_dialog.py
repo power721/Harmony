@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QLabel,
-    QCheckBox,
     QProgressBar,
     QWidget,
     QGraphicsDropShadowEffect,
@@ -28,6 +27,8 @@ from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from utils.match_scorer import MatchScorer, TrackInfo, SearchResult
 
 logger = logging.getLogger(__name__)
+
+_ACTIVE_LYRICS_SEARCH_THREADS: set[QThread] = set()
 
 
 class LyricsSearchThread(QThread):
@@ -77,29 +78,11 @@ class LyricsDownloadDialog(QDialog):
     """Dialog for selecting and downloading lyrics from search results.
 
     This dialog displays search results from online lyrics sources and allows
-    the user to select a song to download lyrics (and optionally cover art).
+    the user to select a song to download lyrics.
     Results are sorted by match score (highest first).
     """
 
-    # Signals
-    download_requested = Signal(dict, bool)  # Emits (song_info, download_cover)
-
     _STYLE_TEMPLATE = """
-        QWidget#dialogContainer {
-            background-color: %background_alt%;
-            color: %text%;
-            border: 1px solid %border%;
-            border-radius: 12px;
-        }
-        QLabel#dialogTitle {
-            color: %text%;
-            font-size: 15px;
-            font-weight: bold;
-        }
-        QLabel {
-            color: %text%;
-            font-size: 13px;
-        }
         QListWidget {
             background-color: %background%;
             color: %text%;
@@ -113,55 +96,6 @@ class LyricsDownloadDialog(QDialog):
         QListWidget::item:selected {
             background-color: %highlight%;
             color: %background%;
-        }
-        QPushButton {
-            background-color: %highlight%;
-            color: %background%;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: %highlight_hover%;
-        }
-        QPushButton:disabled {
-            background-color: %border%;
-            color: %text_secondary%;
-        }
-        QPushButton[role="cancel"] {
-            background-color: %border%;
-            color: %text%;
-        }
-        QPushButton[role="cancel"]:hover {
-            background-color: %background_hover%;
-        }
-        QCheckBox {
-            color: %text%;
-            font-size: 13px;
-            spacing: 8px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border-radius: 3px;
-            border: 2px solid %border%;
-            background-color: %background%;
-        }
-        QCheckBox::indicator:checked {
-            background-color: %highlight%;
-            border-color: %highlight%;
-        }
-        QProgressBar {
-            background-color: %border%;
-            border: 1px solid %background_hover%;
-            border-radius: 4px;
-            text-align: center;
-            color: %text%;
-        }
-        QProgressBar::chunk {
-            background-color: %highlight%;
-            border-radius: 3px;
         }
     """
 
@@ -191,13 +125,20 @@ class LyricsDownloadDialog(QDialog):
         self._track_album = track_album
         self._track_duration = track_duration
         self._selected_song: Optional[dict] = None
-        self._download_cover = False
         self._search_thread: Optional[LyricsSearchThread] = None
+        self._search_track_info = TrackInfo(
+            title=track_title,
+            artist=track_artist,
+            album=track_album,
+            duration=track_duration,
+        )
+        self._search_results_by_key: dict[tuple[str, str], dict] = {}
         self._drag_pos = None
 
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setProperty("shell", True)
 
         self._setup_shadow()
         self._setup_ui()
@@ -258,12 +199,6 @@ class LyricsDownloadDialog(QDialog):
         self._song_list.itemDoubleClicked.connect(self.accept)
         layout.addWidget(self._song_list)
 
-        # Checkbox for downloading cover
-        self._download_cover_checkbox = QCheckBox(t("download_cover"))
-        self._download_cover_checkbox.setChecked(False)
-        self._download_cover_checkbox.setToolTip(t("download_cover_tooltip"))
-        layout.addWidget(self._download_cover_checkbox)
-
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -274,6 +209,7 @@ class LyricsDownloadDialog(QDialog):
         cancel_btn.clicked.connect(self._on_cancel_clicked)
 
         self._download_btn = QPushButton(t("download"))
+        self._download_btn.setProperty("role", "primary")
         self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
         self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self._download_btn.clicked.connect(self.accept)
@@ -284,102 +220,136 @@ class LyricsDownloadDialog(QDialog):
 
     def _on_cancel_clicked(self):
         """Handle cancel button click."""
-        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.cancel()
-            # Give the thread a moment to clean up
-            self._search_thread.wait(100)  # Wait up to 100ms
         self.reject()
 
     def _start_search(self):
         """Start the search thread with progressive updates."""
-        self._search_thread = LyricsSearchThread(self._track_title, self._track_artist)
-        self._search_thread.search_completed.connect(self._on_search_completed)
-        self._search_thread.search_failed.connect(self._on_search_failed)
-        self._search_thread.search_progress.connect(self._on_search_progress)
-        self._search_thread.finished.connect(self._search_thread.deleteLater)
-        self._search_thread.start()
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
+
+        thread = LyricsSearchThread(self._track_title, self._track_artist)
+        self._search_thread = thread
+        _ACTIVE_LYRICS_SEARCH_THREADS.add(thread)
+
+        thread.search_completed.connect(self._on_search_completed)
+        thread.search_failed.connect(self._on_search_failed)
+        thread.search_progress.connect(self._on_search_progress)
+        thread.finished.connect(self._on_search_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda thread=thread: _ACTIVE_LYRICS_SEARCH_THREADS.discard(thread))
+        thread.start()
+
+    @staticmethod
+    def _disconnect_signal(signal, slot):
+        """Disconnect a specific slot, ignoring already-disconnected signals."""
+        if signal is None or slot is None:
+            return
+        try:
+            signal.disconnect(slot)
+        except (RuntimeError, TypeError):
+            pass
+
+    def _disconnect_search_thread_signals(self, thread: LyricsSearchThread):
+        """Disconnect dialog-owned slots from a search thread."""
+        on_search_completed = getattr(self, "_on_search_completed", None)
+        on_search_failed = getattr(self, "_on_search_failed", None)
+        on_search_progress = getattr(self, "_on_search_progress", None)
+        on_search_thread_finished = getattr(self, "_on_search_thread_finished", None)
+
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_completed", None),
+            on_search_completed,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_failed", None),
+            on_search_failed,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "search_progress", None),
+            on_search_progress,
+        )
+        LyricsDownloadDialog._disconnect_signal(
+            getattr(thread, "finished", None),
+            on_search_thread_finished,
+        )
+
+    def _stop_search_thread(self, wait_ms: int = 1000, cleanup_signals: bool = False):
+        """Stop the search thread and detach it from the dialog if needed."""
+        thread = getattr(self, "_search_thread", None)
+        if not thread or not isValid(thread):
+            self._search_thread = None
+            return
+
+        if cleanup_signals:
+            LyricsDownloadDialog._disconnect_search_thread_signals(self, thread)
+
+        if isValid(thread) and thread.isRunning():
+            thread.cancel()
+            thread.requestInterruption()
+            thread.quit()
+            if not thread.wait(wait_ms):
+                logger.warning(
+                    "[LyricsDownloadDialog] Search thread still running after close request; "
+                    "detaching cleanup from dialog lifecycle"
+                )
+                _ACTIVE_LYRICS_SEARCH_THREADS.add(thread)
+                self._search_thread = None
+                return
+
+        _ACTIVE_LYRICS_SEARCH_THREADS.discard(thread)
+        thread.deleteLater()
+        self._search_thread = None
 
     def _on_search_progress(self, new_results: list, source_name: str):
         """Handle progressive search updates from each source."""
         # Update status to show which source completed
         self._status_label.setText(f"{t('searching')}... {source_name} ✓")
 
-        # Calculate match scores and sort by score descending
-        track_info = TrackInfo(
-            title=self._track_title,
-            artist=self._track_artist,
-            album=self._track_album,
-            duration=self._track_duration
+        for result in new_results:
+            cache_key = self._result_cache_key(result)
+            existing = self._search_results_by_key.get(cache_key)
+            if existing is not None:
+                existing.update(result)
+                continue
+            stored = dict(result)
+            stored['_score'] = self._calculate_result_score(stored)
+            self._search_results_by_key[cache_key] = stored
+
+        sorted_results = sorted(
+            self._search_results_by_key.values(),
+            key=lambda x: (-x.get('_score', 0), x.get('source', '')),
         )
 
-        scored_results = []
-        for result in new_results:
-            search_result = SearchResult(
-                title=result.get('title', ''),
-                artist=result.get('artist', ''),
-                album=result.get('album', ''),
-                duration=result.get('duration'),
-                source=result.get('source', ''),
-                id=result.get('id', ''),
-                cover_url=result.get('cover_url'),
-                lyrics=result.get('lyrics'),
-                accesskey=result.get('accesskey')
-            )
-            score = MatchScorer.calculate_score(track_info, search_result, mode='lyrics')
-            result['_score'] = score
-            scored_results.append(result)
-
-        # Define source priority (lower number = higher priority)
-        source_priority = {
-            'qqmusic': 0,  # QQ Music first
-            'netease': 1,
-            'kugou': 2,
-            'lrclib': 3,
-        }
-
-        # Sort by score descending, then by source priority (QQ Music first for same score)
-        scored_results.sort(key=lambda x: (
-            -x.get('_score', 0),  # Negative for descending score
-            source_priority.get(x.get('source', ''), 99)  # Lower priority number first
-        ))
-
-        # Add new results to the list (clear existing and rebuild to maintain sorting)
-        # Get all existing items
-        existing_results = []
-        for i in range(self._song_list.count()):
-            item = self._song_list.item(i)
-            existing_results.append(item.data(Qt.UserRole))
-
-        # Combine existing results with new results
-        all_results = existing_results + scored_results
-
-        # Remove duplicates (by source + id)
-        seen = set()
-        unique_results = []
-        for result in all_results:
-            key = (result.get('source', ''), result.get('id', ''))
-            if key not in seen:
-                seen.add(key)
-                unique_results.append(result)
-
-        # Sort all results by score, then by source priority
-        unique_results.sort(key=lambda x: (
-            -x.get('_score', 0),
-            source_priority.get(x.get('source', ''), 99)
-        ))
-
-        # Clear and repopulate the list
+        self._song_list.setUpdatesEnabled(False)
         self._song_list.clear()
-        for result in unique_results:
+        for result in sorted_results:
             item_text = self._format_result_text(result)
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, result)
             self._song_list.addItem(item)
+        self._song_list.setUpdatesEnabled(True)
 
         # Auto-select first result and enable download button
         if self._song_list.count() > 0 and self._song_list.currentRow() < 0:
             self._song_list.setCurrentRow(0)
             self._download_btn.setEnabled(True)
+
+    @staticmethod
+    def _result_cache_key(result: dict) -> tuple[str, str]:
+        return str(result.get('source', '')), str(result.get('id', ''))
+
+    def _calculate_result_score(self, result: dict) -> float:
+        search_result = SearchResult(
+            title=result.get('title', ''),
+            artist=result.get('artist', ''),
+            album=result.get('album', ''),
+            duration=result.get('duration'),
+            source=result.get('source', ''),
+            id=result.get('id', ''),
+            cover_url=result.get('cover_url'),
+            lyrics=result.get('lyrics'),
+            accesskey=result.get('accesskey')
+        )
+        return MatchScorer.calculate_score(self._search_track_info, search_result, mode='lyrics')
 
     def _on_search_completed(self, results: list):
         """Handle final search completion."""
@@ -395,6 +365,12 @@ class LyricsDownloadDialog(QDialog):
         """Handle search failure."""
         self._progress_bar.setVisible(False)
         self._status_label.setText(error_message)
+
+    def _on_search_thread_finished(self):
+        """Clear the dialog reference once the current search thread fully stops."""
+        sender = self.sender()
+        if sender and sender == self._search_thread:
+            self._search_thread = None
 
     def _format_result_text(self, result: dict) -> str:
         """Format a search result for display in the list.
@@ -427,7 +403,7 @@ class LyricsDownloadDialog(QDialog):
         if result.get('supports_yrc'):
             source = f"{source} YRC"  # Indicate YRC (word-by-word) support
         elif result.get('supports_qrc'):
-            source = f"{source} QRC"  # Indicate QRC (word-by-word) support for QQ Music
+            source = f"{source} QRC"  # Indicate QRC (word-by-word) support
         item_text += f" [{source}]"
 
         # Score at the end
@@ -444,33 +420,22 @@ class LyricsDownloadDialog(QDialog):
         """
         return self._selected_song
 
-    def get_download_cover(self) -> bool:
-        """Get whether to download cover art.
-
-        Returns:
-            True if cover should be downloaded
-        """
-        return self._download_cover
-
     def accept(self):
         """Handle dialog acceptance."""
         current_item = self._song_list.currentItem()
         if current_item:
             self._selected_song = current_item.data(Qt.UserRole)
-            self._download_cover = self._download_cover_checkbox.isChecked()
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
         super().accept()
+
+    def reject(self):
+        """Handle dialog rejection."""
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
+        super().reject()
 
     def closeEvent(self, event):
         """Clean up on close."""
-        if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-            self._search_thread.cancel()
-            self._search_thread.wait(500)  # Wait up to 500ms for clean shutdown
-            # Force terminate if still running (shouldn't happen normally)
-            if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-                self._search_thread.requestInterruption()
-                self._search_thread.wait(3000)  # Wait up to 3 seconds
-                if self._search_thread and isValid(self._search_thread) and self._search_thread.isRunning():
-                    logger.warning("[LyricsDownloadDialog] Thread did not stop gracefully")
+        LyricsDownloadDialog._stop_search_thread(self, wait_ms=100, cleanup_signals=True)
         super().closeEvent(event)
 
     @staticmethod
@@ -481,7 +446,7 @@ class LyricsDownloadDialog(QDialog):
             track_album: str = "",
             track_duration: float = None,
             parent=None
-    ) -> Optional[tuple]:
+    ) -> Optional[dict]:
         """Static method to show the dialog and get the result.
 
         Args:
@@ -493,7 +458,7 @@ class LyricsDownloadDialog(QDialog):
             parent: Parent widget
 
         Returns:
-            Tuple of (selected_song, download_cover) or None if cancelled
+            Selected song dictionary or None if cancelled
         """
         dialog = LyricsDownloadDialog(
             track_title,
@@ -506,9 +471,8 @@ class LyricsDownloadDialog(QDialog):
 
         if dialog.exec() == QDialog.Accepted:
             selected_song = dialog.get_selected_song()
-            download_cover = dialog.get_download_cover()
             if selected_song:
-                return (selected_song, download_cover)
+                return selected_song
 
         return None
 

@@ -17,8 +17,8 @@ class QtAudioBackend(AudioBackend):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._player = QMediaPlayer()
-        self._audio_output = QAudioOutput()
+        self._player = QMediaPlayer(self)
+        self._audio_output = QAudioOutput(self)
         self._player.setAudioOutput(self._audio_output)
         self._source_path = ""
 

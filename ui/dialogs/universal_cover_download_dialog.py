@@ -485,14 +485,14 @@ class UniversalCoverDownloadDialog(BaseCoverDownloadDialog):
 
         # Check if needs lazy fetch
         if self._strategy.needs_lazy_fetch(result):
-            logger.info("Performing lazy fetch for QQ Music cover")
+            logger.info("Performing lazy fetch for provider cover")
             self._current_result = result
             self._progress.setVisible(True)
             self._status_label.setText(t("downloading"))
 
             def task():
                 data = self._strategy.lazy_fetch(self._cover_service, result)
-                return (data, 'qqmusic') if data else None
+                return (data, result.get("source", "")) if data else None
 
             # Generate key for download
             key = f"lazy-{result.get('album_mid', result.get('song_mid', ''))}"

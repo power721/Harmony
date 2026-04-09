@@ -87,8 +87,8 @@ def test_stop_worker_cleans_up_stale_registry_entries(monkeypatch):
     fake_worker.deleteLater.assert_called_once()
 
 
-def test_redownload_replaces_stale_worker_and_disconnects_old_signals(monkeypatch):
-    """Replacing stale worker should disconnect old signals before deleteLater."""
+def test_online_download_replaces_stale_worker_and_disconnects_old_signals(monkeypatch):
+    """Replacing stale online worker should disconnect old signals before deleteLater."""
     manager = DownloadManager()
     monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
     monkeypatch.setattr(DownloadManager, "_OnlineDownloadWorker", _FakeWorker)
@@ -97,14 +97,20 @@ def test_redownload_replaces_stale_worker_and_disconnects_old_signals(monkeypatc
         "instance",
         classmethod(lambda cls: SimpleNamespace(online_download_service=object())),
     )
+    item = SimpleNamespace(
+        source=TrackSource.ONLINE,
+        cloud_file_id="song-mid",
+        title="Song A",
+        online_provider_id="qqmusic",
+    )
 
-    assert manager.redownload_online_track("song-mid", "Song A")
+    assert manager._download_online_track(item)
     first_worker = manager._download_workers["song-mid"]
 
     # Simulate stale worker that is no longer running.
     first_worker._running = False
 
-    assert manager.redownload_online_track("song-mid", "Song A")
+    assert manager._download_online_track(item)
     second_worker = manager._download_workers["song-mid"]
 
     assert second_worker is not first_worker
@@ -204,7 +210,7 @@ def test_download_cloud_track_uses_cloud_repository_dependency(monkeypatch):
     fake_service.download_file.assert_called_once_with(cloud_file, cloud_account)
 
 
-def test_redownload_online_track_registers_worker_atomically(monkeypatch):
+def test_online_download_registers_worker_atomically(monkeypatch):
     """Concurrent requests for the same song should only create one worker."""
     manager = DownloadManager()
     monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
@@ -212,6 +218,12 @@ def test_redownload_online_track_registers_worker_atomically(monkeypatch):
         bootstrap_module.Bootstrap,
         "instance",
         classmethod(lambda cls: SimpleNamespace(online_download_service=object())),
+    )
+    item = SimpleNamespace(
+        source=TrackSource.ONLINE,
+        cloud_file_id="song-mid",
+        title="Song A",
+        online_provider_id="qqmusic",
     )
 
     created_count = 0
@@ -232,7 +244,7 @@ def test_redownload_online_track_registers_worker_atomically(monkeypatch):
     results = []
 
     def start_download():
-        results.append(manager.redownload_online_track("song-mid", "Song A"))
+        results.append(manager._download_online_track(item))
 
     first = threading.Thread(target=start_download)
     second = threading.Thread(target=start_download)
@@ -243,3 +255,42 @@ def test_redownload_online_track_registers_worker_atomically(monkeypatch):
 
     assert results == [True, True]
     assert created_count == 1
+
+
+def test_download_track_routes_generic_online_source(monkeypatch):
+    manager = DownloadManager()
+    item = SimpleNamespace(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="song-mid",
+        title="Song A",
+    )
+    called = []
+    monkeypatch.setattr(
+        DownloadManager,
+        "_download_online_track",
+        lambda self, playlist_item: called.append(playlist_item) or True,
+    )
+
+    assert manager.download_track(item) is True
+    assert called == [item]
+
+
+def test_redownload_online_track_routes_provider_and_quality(monkeypatch):
+    manager = DownloadManager()
+    monkeypatch.setattr(download_manager_module, "isValid", lambda _obj: True)
+    monkeypatch.setattr(DownloadManager, "_OnlineDownloadWorker", _FakeWorker)
+    monkeypatch.setattr(
+        bootstrap_module.Bootstrap,
+        "instance",
+        classmethod(lambda cls: SimpleNamespace(online_download_service=object())),
+    )
+
+    assert manager.redownload_online_track(
+        "song-mid",
+        "Song A",
+        provider_id="qqmusic",
+        quality="flac",
+    )
+    worker = manager._download_workers["song-mid"]
+    assert worker.started is True

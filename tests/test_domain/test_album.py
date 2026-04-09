@@ -95,3 +95,13 @@ class TestAlbum:
 
         assert album1.id == album2.id
         assert album1 == album2
+
+    def test_id_property_is_stable_across_accesses(self):
+        """Test repeated access returns the same computed ID."""
+        album = Album(name="Album", artist="Artist")
+
+        first = album.id
+        second = album.id
+
+        assert first == "artist:album"
+        assert second == "artist:album"

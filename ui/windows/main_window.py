@@ -8,6 +8,7 @@ Refactored to use modular components:
 - ScanDialog: Music folder scanning
 """
 import logging
+import time
 from contextlib import suppress
 from typing import Optional
 
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMenu,
     QSizeGrip,
@@ -47,7 +49,6 @@ from ui.views.cloud import CloudDriveView
 from ui.views.genre_view import GenreView
 from ui.views.genres_view import GenresView
 from ui.views.library_view import LibraryView
-from ui.views.online_music_view import OnlineMusicView
 from ui.views.playlist_view import PlaylistView
 from ui.views.queue_view import QueueView
 from ui.widgets.player_controls import PlayerControls
@@ -152,7 +153,7 @@ class MainWindow(QMainWindow):
 
         # Get all services from Bootstrap (singleton)
         bootstrap = Bootstrap.instance()
-        self._db = bootstrap.db  # Keep for backward compatibility with some components
+        self._bootstrap = bootstrap
         self._config = bootstrap.config
         self._playback = bootstrap.playback_service
         self._library_service = bootstrap.library_service
@@ -168,10 +169,9 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Keep reference to engine for backward compatibility
-        # Use closures to capture self for methods that need access to db
-        db = self._db
+        # Keep reference to core services for backward compatibility wrappers
         playback = self._playback
+        library_service = self._library_service
 
         class PlayerProxy:
             """Proxy class for backward compatibility with components expecting old PlayerController interface."""
@@ -179,10 +179,6 @@ class MainWindow(QMainWindow):
             @property
             def engine(self):
                 return playback.engine
-
-            @property
-            def db(self):
-                return db
 
             @property
             def current_source(self):
@@ -267,13 +263,28 @@ class MainWindow(QMainWindow):
 
             def get_track_cover(self, track_path: str, title: str, artist: str, album: str = "",
                                 source: str = "", cloud_file_id: str = "",
+                                online_provider_id: str = "",
                                 skip_online: bool = False):
-                if source == TrackSource.QQ.name and cloud_file_id:
-                    return playback.get_online_track_cover(source, cloud_file_id, artist, title)
+                if source == TrackSource.ONLINE.name and cloud_file_id:
+                    return playback.get_online_track_cover(
+                        provider_id=online_provider_id,
+                        cloud_file_id=cloud_file_id,
+                        artist=artist,
+                        title=title,
+                    )
                 return playback.get_track_cover(track_path, title, artist, album, skip_online=skip_online)
 
             def save_cover_from_metadata(self, track_path: str, cover_data: bytes):
                 return playback.save_cover_from_metadata(track_path, cover_data)
+
+            def get_track(self, track_id):
+                return library_service.get_track(track_id)
+
+            def get_track_by_path(self, path: str):
+                return library_service.get_track_by_path(path)
+
+            def get_track_by_cloud_file_id(self, cloud_file_id: str):
+                return library_service.get_track_by_cloud_file_id(cloud_file_id)
 
         self._player = PlayerProxy()
 
@@ -291,6 +302,7 @@ class MainWindow(QMainWindow):
 
         # Online music handler (will be initialized in _setup_ui)
         self._online_music_handler: Optional[OnlineMusicHandler] = None
+        self._pending_redownload_mids: set[str] = set()
 
         # Scan controller reference (prevent GC)
         self._scan_controller = None
@@ -391,17 +403,6 @@ class MainWindow(QMainWindow):
         self._genres_view = GenresView(bootstrap.library_service, bootstrap.cover_service)
         self._genre_view = GenreView(bootstrap.library_service, self._playback, bootstrap.cover_service)
 
-        # Online music view with QQ Music service
-        from services.cloud.qqmusic.qqmusic_service import QQMusicService
-        qqmusic_credential = self._config.get_qqmusic_credential()
-        qqmusic_service = None
-        if qqmusic_credential:
-            try:
-                qqmusic_service = QQMusicService(qqmusic_credential)
-            except Exception as e:
-                logger.error(f"QQMusicService init error: {e}")
-        self._online_music_view = OnlineMusicView(self._config, qqmusic_service)
-
         self._stacked_widget.addWidget(self._library_view)  # 0
         self._stacked_widget.addWidget(self._cloud_drive_view)  # 1
         self._stacked_widget.addWidget(self._playlist_view)  # 2
@@ -410,9 +411,9 @@ class MainWindow(QMainWindow):
         self._stacked_widget.addWidget(self._artists_view)  # 5
         self._stacked_widget.addWidget(self._artist_view)  # 6
         self._stacked_widget.addWidget(self._album_view)  # 7
-        self._stacked_widget.addWidget(self._online_music_view)  # 8
-        self._stacked_widget.addWidget(self._genres_view)  # 9
-        self._stacked_widget.addWidget(self._genre_view)  # 10
+        self._stacked_widget.addWidget(self._genres_view)  # 8
+        self._stacked_widget.addWidget(self._genre_view)  # 9
+        self._mount_plugin_pages()
 
         self._stacked_widget.setMinimumWidth(200)
         self._splitter.addWidget(self._stacked_widget)
@@ -460,6 +461,121 @@ class MainWindow(QMainWindow):
 
         return sidebar
 
+    def _mount_plugin_pages(self) -> None:
+        """Mount plugin-provided pages into the stacked widget and sidebar."""
+        self._plugin_page_keys = {}
+        self._plugin_pages = {}
+        self._plugin_page_specs = {}
+        self._plugin_page_loading = set()
+        self._plugin_prewarm_scheduled = False
+        self._plugin_prewarm_timer = None
+        bootstrap = Bootstrap.instance()
+        for spec in bootstrap.plugin_manager.registry.sidebar_entries():
+            page_index = self._stacked_widget.count()
+            host = QWidget(self)
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(0, 0, 0, 0)
+            loading_label = QLabel(t("loading", "Loading..."), host)
+            loading_label.setAlignment(Qt.AlignCenter)
+            host_layout.addWidget(loading_label)
+            self._stacked_widget.addWidget(host)
+            self._sidebar.add_plugin_entry(
+                page_index=page_index,
+                title=spec.title_provider() if callable(getattr(spec, "title_provider", None)) else spec.title,
+                icon_name=spec.icon_name,
+                icon_path=getattr(spec, "icon_path", None),
+                title_provider=getattr(spec, "title_provider", None),
+            )
+            self._plugin_page_keys[page_index] = spec.plugin_id
+            self._plugin_page_specs[page_index] = spec
+            logger.info(
+                "[PluginUI] Mounted placeholder for plugin page %s at index %s",
+                spec.plugin_id,
+                page_index,
+            )
+        self._prewarm_plugin_page()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._schedule_plugin_page_prewarm()
+
+    def _schedule_plugin_page_prewarm(self) -> None:
+        if getattr(self, "_plugin_prewarm_scheduled", False):
+            return
+        if not getattr(self, "_plugin_page_specs", None):
+            return
+        self._plugin_prewarm_scheduled = True
+        if self._plugin_prewarm_timer is None:
+            self._plugin_prewarm_timer = QTimer(self)
+            self._plugin_prewarm_timer.setSingleShot(True)
+            self._plugin_prewarm_timer.timeout.connect(self._prewarm_plugin_page)
+        self._plugin_prewarm_timer.start(0)
+
+    def _prewarm_plugin_page(self) -> None:
+        for index in sorted(self._plugin_page_specs):
+            if index not in self._plugin_pages:
+                logger.info("[PluginUI] Prewarming plugin page at index %s", index)
+                self._ensure_plugin_page_loaded(index)
+                break
+
+    def _ensure_plugin_page_loaded(self, index: int) -> None:
+        spec = getattr(self, "_plugin_page_specs", {}).get(index)
+        if spec is None or index in self._plugin_pages:
+            return
+        if index in self._plugin_page_loading:
+            return
+
+        self._plugin_page_loading.add(index)
+        started_at = time.perf_counter()
+        try:
+            bootstrap = Bootstrap.instance()
+            logger.info(
+                "[PluginUI] Materializing plugin page %s at index %s",
+                spec.plugin_id,
+                index,
+            )
+            host = self._stacked_widget.widget(index)
+            widget = spec.page_factory(bootstrap.plugin_manager, host)
+            layout = host.layout() if isinstance(host, QWidget) else None
+            if layout is not None:
+                while layout.count():
+                    item = layout.takeAt(0)
+                    child = item.widget()
+                    if child is not None:
+                        child.deleteLater()
+                layout.addWidget(widget)
+            self._connect_plugin_page_signals(widget)
+            self._plugin_pages[index] = widget
+            logger.info(
+                "[PluginUI] Plugin page %s ready at index %s in %.1fms",
+                spec.plugin_id,
+                index,
+                (time.perf_counter() - started_at) * 1000,
+            )
+        except Exception:
+            logger.exception(
+                "[PluginUI] Failed to materialize plugin page %s at index %s",
+                getattr(spec, "plugin_id", "<unknown>"),
+                index,
+            )
+        finally:
+            self._plugin_page_loading.discard(index)
+
+    def _connect_plugin_page_signals(self, widget: QWidget) -> None:
+        signal_map = (
+            ("play_online_track", self._play_online_track),
+            ("add_to_queue", self._add_online_track_to_queue),
+            ("insert_to_queue", self._insert_online_track_to_queue),
+            ("add_multiple_to_queue", self._add_multiple_online_tracks_to_queue),
+            ("insert_multiple_to_queue", self._insert_multiple_online_tracks_to_queue),
+            ("play_online_tracks", self._play_online_tracks),
+        )
+        for signal_name, handler in signal_map:
+            signal = getattr(widget, signal_name, None)
+            if signal is None or not hasattr(signal, "connect"):
+                continue
+            signal.connect(handler)
+
     def _on_sidebar_page_requested(self, page_index: int):
         """Handle sidebar page request."""
         self._nav_stack.clear()
@@ -497,6 +613,10 @@ class MainWindow(QMainWindow):
         self._event_bus.position_changed.connect(self._on_position_changed)
         self._event_bus.playback_state_changed.connect(self._on_playback_state_changed)
         self._playback.engine.current_track_pending.connect(self._on_pending_track_changed)
+        from services.download.download_manager import DownloadManager
+        manager = DownloadManager.instance()
+        manager.download_completed.connect(self._on_playlist_redownload_completed)
+        manager.download_failed.connect(self._on_playlist_redownload_failed)
 
         # Cloud download events
         self._event_bus.download_completed.connect(self._on_cloud_download_completed)
@@ -516,22 +636,11 @@ class MainWindow(QMainWindow):
         self._cloud_drive_view.track_double_clicked.connect(self._play_cloud_track)
         self._cloud_drive_view.play_cloud_files.connect(self._play_cloud_playlist)
 
-        # Online music view connections
-        self._online_music_view.play_online_track.connect(self._play_online_track)
-        self._online_music_view.insert_to_queue.connect(self._insert_online_track_to_queue)
-        self._online_music_view.add_to_queue.connect(self._add_online_track_to_queue)
-        self._online_music_view.add_multiple_to_queue.connect(self._add_multiple_online_tracks_to_queue)
-        self._online_music_view.insert_multiple_to_queue.connect(self._insert_multiple_online_tracks_to_queue)
-        self._online_music_view.play_online_tracks.connect(self._play_online_tracks)
-
         # Initialize online music handler with download service
         self._online_music_handler = OnlineMusicHandler(
             playback_service=self._playback,
             status_callback=self._show_status_message
         )
-        # Set download service from online music view
-        if hasattr(self._online_music_view, '_download_service'):
-            self._online_music_handler.set_download_service(self._online_music_view._download_service)
 
         # Albums view connections
         self._albums_view.album_clicked.connect(self._on_album_clicked)
@@ -654,6 +763,7 @@ class MainWindow(QMainWindow):
 
         # Switch view
         self._stacked_widget.setCurrentIndex(index)
+        self._ensure_plugin_page_loaded(index)
 
         # Auto-select first playlist when showing playlists
         if index == 2:  # Playlists is now at index 2
@@ -900,7 +1010,7 @@ class MainWindow(QMainWindow):
         latest = bootstrap.library_service.get_genre_by_name(current_genre.name)
         if latest:
             self._genre_view.set_genre(latest)
-        elif self._stacked_widget.currentIndex() == 10:
+        elif self._stacked_widget.currentIndex() == 9:
             self._on_back()
 
     def _on_artist_clicked(self, artist):
@@ -920,7 +1030,7 @@ class MainWindow(QMainWindow):
         self._nav_stack.append(self._stacked_widget.currentIndex())
         # Show genre detail view
         self._genre_view.set_genre(genre)
-        self._stacked_widget.setCurrentIndex(10)
+        self._stacked_widget.setCurrentIndex(9)
 
         # Update nav button states - no active nav for detail views
         self._sidebar.set_current_page(-1)
@@ -1098,7 +1208,7 @@ class MainWindow(QMainWindow):
             for track in tracks:
                 if track.id and track.id > 0:
                     # Include online tracks (empty path) and existing local files
-                    is_online = not track.path or not track.path.strip() or track.source == TrackSource.QQ
+                    is_online = not track.path or not track.path.strip() or track.is_online
                     if is_online or Path(track.path).exists():
                         items.append(PlaylistItem.from_track(track))
 
@@ -1172,6 +1282,8 @@ class MainWindow(QMainWindow):
         # Save language preference
         self._config.set_language(new_lang)
 
+        EventBus.instance().language_changed.emit(new_lang)
+
         # Update language button in sidebar
         self._sidebar.update_language_button()
 
@@ -1204,7 +1316,18 @@ class MainWindow(QMainWindow):
         self._album_view.refresh_ui()
         self._genres_view.refresh_ui()
         self._genre_view.refresh_ui()
-        self._online_music_view.refresh_ui()  # Refresh online music view
+        for widget in getattr(self, "_plugin_pages", {}).values():
+            refresh_ui = getattr(widget, "refresh_ui", None)
+            if callable(refresh_ui):
+                refresh_ui()
+        for page_index, spec in getattr(self, "_plugin_page_specs", {}).items():
+            title_provider = getattr(spec, "title_provider", None)
+            if not callable(title_provider):
+                continue
+            for idx, btn in getattr(self._sidebar, "_nav_buttons", []):
+                if idx == page_index:
+                    btn.setText(title_provider())
+                    break
 
         # Update settings button status in sidebar
         self._sidebar.update_settings_status(self._config.get_ai_enabled())
@@ -1246,91 +1369,61 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _on_playlist_redownload(self, track):
-        """Re-download a QQ Music track from playlist."""
-        from ui.dialogs.redownload_dialog import RedownloadDialog
-        from app.bootstrap import Bootstrap
-        from services.download.download_manager import DownloadManager
-
-        bootstrap = Bootstrap.instance()
-        song_mid = track.cloud_file_id
-        default_quality = bootstrap.config.get_qqmusic_quality() if bootstrap and bootstrap.config else "320"
-        quality = RedownloadDialog.show_dialog(
-            track.title,
-            current_quality=default_quality,
-            parent=self,
-        )
-        if quality is None:
+        """Request plugin-driven re-download for playlist/genre online track."""
+        if not track or not getattr(track, "is_online", False):
+            self._status_label.setText(t("not_supported_yet"))
             return
 
-        online_download_service = bootstrap.online_download_service
-        online_download_service.delete_cached_file(song_mid)
+        song_mid = str(getattr(track, "cloud_file_id", "") or "").strip()
+        provider_id = str(getattr(track, "online_provider_id", "") or "").strip()
+        if not song_mid or not provider_id:
+            self._status_label.setText(t("not_supported_yet"))
+            return
 
-        import os
-        if track.path and os.path.exists(track.path):
-            with suppress(OSError):
-                os.remove(track.path)
+        from app.bootstrap import Bootstrap
+        bootstrap = Bootstrap.instance()
+        service = getattr(bootstrap, "online_download_service", None)
+        if not service:
+            self._status_label.setText(t("not_supported_yet"))
+            return
 
-        dm = DownloadManager.instance()
-        dm.download_completed.connect(self._on_playlist_redownload_completed)
-        dm.download_failed.connect(self._on_playlist_redownload_failed)
-        dm.redownload_online_track(
+        from ui.dialogs.redownload_dialog import RedownloadDialog
+        quality_options = service.get_download_qualities(song_mid, provider_id=provider_id)
+        selected_quality = RedownloadDialog.show_dialog(
+            getattr(track, "title", "") or song_mid,
+            quality_options=quality_options,
+            parent=self,
+        )
+        if not selected_quality:
+            return
+
+        from services.download.download_manager import DownloadManager
+        started = DownloadManager.instance().redownload_online_track(
             song_mid=song_mid,
-            title=track.title,
-            quality=quality,
-            force=True,
+            title=getattr(track, "title", "") or "",
+            provider_id=provider_id,
+            quality=selected_quality,
         )
-        self._status_label.setText(
-            f"{t('downloading')}... {track.title} ({self._format_quality_label(quality)})"
-        )
+        if started:
+            self._pending_redownload_mids.add(song_mid)
+            self._status_label.setText(t("redownload"))
+        else:
+            self._status_label.setText(t("download_failed"))
 
     def _on_playlist_redownload_completed(self, song_mid: str, local_path: str):
         """Handle playlist re-download completion."""
-        from app.bootstrap import Bootstrap
-        from services.download.download_manager import DownloadManager
-
-        try:
-            dm = DownloadManager.instance()
-            dm.download_completed.disconnect(self._on_playlist_redownload_completed)
-            dm.download_failed.disconnect(self._on_playlist_redownload_failed)
-        except RuntimeError:
+        if song_mid not in self._pending_redownload_mids:
             return
-
-        if not local_path:
-            return
-
-        bootstrap = Bootstrap.instance()
-        actual_quality = None
-        if bootstrap and bootstrap.online_download_service:
-            actual_quality = bootstrap.online_download_service.pop_last_download_quality(song_mid)
-
-        if actual_quality:
-            self._status_label.setText(
-                f"{t('download_complete')} ({self._format_quality_label(actual_quality)})"
-            )
-        else:
-            self._status_label.setText(t("download_complete"))
+        self._pending_redownload_mids.discard(song_mid)
+        del local_path
+        self._status_label.setText(t("download_complete"))
 
     def _on_playlist_redownload_failed(self, song_mid: str):
         """Handle playlist re-download failure."""
-        del song_mid
-        from services.download.download_manager import DownloadManager
-
-        try:
-            dm = DownloadManager.instance()
-            dm.download_completed.disconnect(self._on_playlist_redownload_completed)
-            dm.download_failed.disconnect(self._on_playlist_redownload_failed)
-        except RuntimeError:
+        if song_mid not in self._pending_redownload_mids:
             return
+        self._pending_redownload_mids.discard(song_mid)
         self._status_label.setText(t("download_failed"))
-
-    @staticmethod
-    def _format_quality_label(quality: str) -> str:
-        """Return the translated label for a QQ Music quality code."""
-        from services.cloud.qqmusic.common import get_quality_label_key, normalize_quality
-
-        normalized = normalize_quality(quality)
-        label_key = get_quality_label_key(normalized)
-        return t(label_key) if label_key else normalized
 
     def _play_cloud_favorite(self, cloud_file_id: str, account_id: int):
         """Play a cloud file from favorites."""
@@ -1339,13 +1432,13 @@ class MainWindow(QMainWindow):
             return
 
         # Get cloud account
-        account = self._db.get_cloud_account(account_id)
+        account = self._cloud_account_service.get_account(account_id)
         if not account:
             logger.error(f"[MainWindow] Cloud account {account_id} not found")
             return
 
         # Get cloud file info
-        cloud_file = self._db.get_cloud_file_by_file_id(cloud_file_id)
+        cloud_file = self._cloud_file_service.get_file_by_file_id(cloud_file_id)
         if cloud_file:
             # Create PlaylistItem from cloud file
             item = PlaylistItem.from_cloud_file(cloud_file, account_id, provider=account.provider)
@@ -1694,7 +1787,7 @@ class MainWindow(QMainWindow):
                 added_count = 0
                 duplicate_count = 0
                 for track_id in track_ids:
-                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                    if self._library_service.add_track_to_playlist(playlist.id, track_id):
                         added_count += 1
                     else:
                         duplicate_count += 1
@@ -1718,7 +1811,7 @@ class MainWindow(QMainWindow):
                 added_count = 0
                 duplicate_count = 0
                 for track_id in track_ids:
-                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                    if self._library_service.add_track_to_playlist(playlist.id, track_id):
                         added_count += 1
                     else:
                         duplicate_count += 1
@@ -1905,25 +1998,29 @@ class MainWindow(QMainWindow):
         import json
 
         current_index = self._stacked_widget.currentIndex()
-        view_type = "library"
+        plugin_page_keys = getattr(self, "_plugin_page_keys", {})
+        if current_index in plugin_page_keys:
+            view_type = f"plugin:{plugin_page_keys[current_index]}"
+        else:
+            view_type = "library"
         view_data = {}
 
-        # Map index to view type
-        index_to_type = {
-            0: "library",
-            1: "cloud",
-            2: "playlists",
-            3: "queue",
-            4: "albums",
-            5: "artists",
-            6: "artist",
-            7: "album",
-            8: "online",
-            9: "genres",
-            10: "genre",
-        }
+        if not view_type.startswith("plugin:"):
+            # Map stacked-widget indices to their persisted view types.
+            index_to_type = {
+                0: "library",
+                1: "cloud",
+                2: "playlists",
+                3: "queue",
+                4: "albums",
+                5: "artists",
+                6: "artist",
+                7: "album",
+                8: "genres",
+                9: "genre",
+            }
 
-        view_type = index_to_type.get(current_index, "library")
+            view_type = index_to_type.get(current_index, "library")
 
         # Special handling for library view - check if it's showing favorites or history
         if view_type == "library":
@@ -1985,28 +2082,24 @@ class MainWindow(QMainWindow):
                     # Find album from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    albums = bootstrap.library_service.get_albums()
-                    for album in albums:
-                        if album.name == name and album.artist == artist:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._album_view.set_album(album)
-                            self._stacked_widget.setCurrentIndex(7)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    album = bootstrap.library_service.get_album_by_name(name, artist)
+                    if album:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._album_view.set_album(album)
+                        self._stacked_widget.setCurrentIndex(7)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "artist":
                 name = view_data.get("name")
                 if name:
                     # Find artist from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    artists = bootstrap.library_service.get_artists()
-                    for artist in artists:
-                        if artist.name == name:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._artist_view.set_artist(artist)
-                            self._stacked_widget.setCurrentIndex(6)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    artist = bootstrap.library_service.get_artist_by_name(name)
+                    if artist:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._artist_view.set_artist(artist)
+                        self._stacked_widget.setCurrentIndex(6)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "cloud":
                 self._show_page(1)
             elif view_type == "playlists":
@@ -2018,23 +2111,37 @@ class MainWindow(QMainWindow):
             elif view_type == "artists":
                 self._show_page(5)
             elif view_type == "online":
-                self._show_page(8)
+                if getattr(self, "_plugin_page_keys", None):
+                    self._show_page(next(iter(self._plugin_page_keys)))
+                else:
+                    self._show_page(0)
+            elif view_type.startswith("plugin:"):
+                plugin_id = view_type.partition(":")[2]
+                page_index = next(
+                    (index for index, value in getattr(self, "_plugin_page_keys", {}).items() if value == plugin_id),
+                    None,
+                )
+                if page_index is not None:
+                    self._show_page(page_index)
+                elif getattr(self, "_plugin_page_keys", None):
+                    # Legacy fallback when the saved plugin is unavailable.
+                    self._show_page(next(iter(self._plugin_page_keys)))
+                else:
+                    self._show_page(0)
             elif view_type == "genres":
-                self._show_page(9)
+                self._show_page(8)
             elif view_type == "genre":
                 name = view_data.get("name")
                 if name:
                     # Find genre from library
                     from app.bootstrap import Bootstrap
                     bootstrap = Bootstrap.instance()
-                    genres = bootstrap.library_service.get_genres()
-                    for genre in genres:
-                        if genre.name == name:
-                            self._nav_stack.append(self._stacked_widget.currentIndex())
-                            self._genre_view.set_genre(genre)
-                            self._stacked_widget.setCurrentIndex(10)
-                            self._update_nav_buttons_for_detail_view()
-                            break
+                    genre = bootstrap.library_service.get_genre_by_name(name)
+                    if genre:
+                        self._nav_stack.append(self._stacked_widget.currentIndex())
+                        self._genre_view.set_genre(genre)
+                        self._stacked_widget.setCurrentIndex(9)
+                        self._update_nav_buttons_for_detail_view()
             elif view_type == "favorites":
                 self._show_favorites()
             elif view_type == "history":
@@ -2114,12 +2221,6 @@ class MainWindow(QMainWindow):
                         logger.debug("Auto-playing restored track")
                         QTimer.singleShot(300, self._player.play)
 
-                    # If cloud source, update cloud view
-                    # if source == "cloud" and current_item.cloud_account_id:
-                    #     account = self._db.get_cloud_account(current_item.cloud_account_id)
-                    #     if account:
-                    #         self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
-
             QTimer.singleShot(200, restore_queue_state)
             return
 
@@ -2133,7 +2234,7 @@ class MainWindow(QMainWindow):
             account_id = self._config.get_cloud_account_id()
             logger.debug(f"Cloud account_id: {account_id}")
             if account_id:
-                account = self._db.get_cloud_account(account_id)
+                account = self._cloud_account_service.get_account(account_id)
                 if account:
                     was_playing = self._config.get_was_playing()
                     logger.debug(f"Restoring cloud playback, account: {account_id}, was_playing: {was_playing}")
@@ -2179,7 +2280,7 @@ class MainWindow(QMainWindow):
                 with suppress(Exception):
                     self._player.engine.set_prevent_auto_next(False)
 
-                track = self._db.get_track(current_track_id)
+                track = self._library_service.get_track(current_track_id)
                 if track:
                     try:
                         logger.debug(f"Restoring local track: {current_track_id}")
@@ -2262,7 +2363,7 @@ class MainWindow(QMainWindow):
                     current_item = self._player.current_track
                     if current_item and current_item.cloud_file_id:
                         position_seconds = current_position / 1000.0
-                        self._db.update_cloud_account_playing_state(
+                        self._cloud_account_service.update_playing_state(
                             account_id=account_id,
                             playing_fid=current_item.cloud_file_id,
                             position=position_seconds,
@@ -2295,8 +2396,11 @@ class MainWindow(QMainWindow):
                 app.quit()
             return
 
-        # Stop playback AFTER saving state
-        self._player.engine.stop()
+        # Stop playback AFTER saving state and explicitly shutdown backend resources.
+        try:
+            self._playback.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down playback backend: {e}")
 
         # Clean up scan controller
         if hasattr(self, '_scan_controller') and self._scan_controller:
@@ -2317,12 +2421,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error cleaning up DownloadManager: {e}")
 
-        # Clean up PlaybackService online download workers
-        try:
-            self._playback.cleanup_download_workers()
-        except Exception as e:
-            logger.error(f"Error cleaning up PlaybackService workers: {e}")
-
         # Clean up lyrics controller threads
         if hasattr(self, '_lyrics_controller') and self._lyrics_controller:
             try:
@@ -2339,8 +2437,14 @@ class MainWindow(QMainWindow):
             self._event_bus.playback_state_changed.disconnect(self._on_playback_state_changed)
         with suppress(RuntimeError):
             self._event_bus.download_completed.disconnect(self._on_cloud_download_completed)
+        from services.download.download_manager import DownloadManager
+        manager = DownloadManager.instance()
+        with suppress(RuntimeError):
+            manager.download_completed.disconnect(self._on_playlist_redownload_completed)
+        with suppress(RuntimeError):
+            manager.download_failed.disconnect(self._on_playlist_redownload_failed)
 
         # Close database
-        self._db.close()
+        self._bootstrap.shutdown_database()
 
         event.accept()

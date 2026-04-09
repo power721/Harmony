@@ -1,6 +1,6 @@
-from services.cloud.qqmusic.client import QQMusicClient
-from services.cloud.qqmusic.qr_login import QQMusicQRLogin
-from services.cloud.qqmusic.common import (
+from plugins.builtin.qqmusic.lib.qqmusic_client import QQMusicClient
+from plugins.builtin.qqmusic.lib.qr_login import QQMusicQRLogin
+from plugins.builtin.qqmusic.lib.common import (
     APIConfig,
     parse_quality,
     get_selectable_qualities,
@@ -35,11 +35,12 @@ def test_parse_quality_supports_chinese_quality_names():
 
 
 def test_quality_fallback_contains_extended_quality_levels():
-    assert "ogg_640" in APIConfig.QUALITY_FALLBACK
-    assert "aac_320" in APIConfig.QUALITY_FALLBACK
-    assert "aac_24" in APIConfig.QUALITY_FALLBACK
-    assert "hires" in APIConfig.QUALITY_FALLBACK
-    assert "dolby" in APIConfig.QUALITY_FALLBACK
+    quality_fallback = APIConfig.QUALITY_FALLBACK
+    assert "ogg_640" in quality_fallback
+    assert "aac_320" in quality_fallback
+    assert "aac_24" in quality_fallback
+    assert "hires" in quality_fallback
+    assert "dolby" in quality_fallback
 
 
 def test_get_song_url_accepts_chinese_quality_name():
@@ -78,14 +79,41 @@ def test_get_song_url_returns_file_type_for_fallback_quality():
     assert result["extension"] == ".ogg"
 
 
-def test_qqmusic_client_uses_expanded_connection_pool():
+def test_qqmusic_client_uses_injected_http_client():
+    fake_http = object()
+
+    client = QQMusicClient(http_client=fake_http)
+
+    assert client._http_client is fake_http
+
+
+def test_qqmusic_client_uses_shared_session_by_default(monkeypatch):
+    fake_session = type("FakeSession", (), {})()
+    fake_session.get_calls = []
+    fake_session.post_calls = []
+
+    def _get(url, **kwargs):
+        fake_session.get_calls.append((url, kwargs))
+        return "get-response"
+
+    def _post(url, **kwargs):
+        fake_session.post_calls.append((url, kwargs))
+        return "post-response"
+
+    fake_session.get = _get
+    fake_session.post = _post
+
+    monkeypatch.setattr("plugins.builtin.qqmusic.lib.qqmusic_client.requests.Session", lambda: fake_session)
+
     client = QQMusicClient()
+    get_result = client._http_get("https://example.com", params={"q": 1}, timeout=5)
+    post_result = client._http_post("https://example.com", data=b"{}", timeout=6)
 
-    https_adapter = client.session.get_adapter("https://u.y.qq.com/cgi-bin/musicu.fcg")
-
-    assert https_adapter._pool_connections == 20
-    assert https_adapter._pool_maxsize == 20
-    assert https_adapter._pool_block is True
+    assert client._http_client is fake_session
+    assert get_result == "get-response"
+    assert post_result == "post-response"
+    assert fake_session.get_calls == [("https://example.com", {"params": {"q": 1}, "headers": None, "timeout": 5})]
+    assert fake_session.post_calls == [("https://example.com", {"data": b"{}", "headers": None, "timeout": 6})]
 
 
 def test_qqmusic_qr_login_uses_expanded_connection_pool():
