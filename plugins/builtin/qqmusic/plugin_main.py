@@ -14,7 +14,7 @@ from .lib.runtime_bridge import bind_context, clear_context
 from .lib.settings_tab import QQMusicSettingsTab
 
 logger = logging.getLogger(__name__)
-_SIDEBAR_ICON_PATH = str(Path(__file__).resolve().parent / "qq_music_logo.svg")
+_SIDEBAR_ICON_PATH = str(Path(__file__).resolve().parent / "sidebar_icon.svg")
 
 
 class QQMusicPlugin:

@@ -2,11 +2,12 @@
 Legacy online music view kept only as a compatibility layer during plugin migration.
 """
 
+import html
 import logging
 from typing import Optional, List, Dict, Any
 
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint, QEvent
-from PySide6.QtGui import QColor, QBrush
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QStringListModel, QPoint, QEvent, QUrl
+from PySide6.QtGui import QColor, QBrush, QDesktopServices
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -609,6 +610,8 @@ class SearchInputWithHotkey(QLineEdit):
 
 
 class OnlineMusicView(QWidget):
+    _QQMUSIC_PROFILE_URL = "https://y.qq.com/n/ryqq_v2/profile/"
+
     """View for searching and browsing online music."""
 
     provider_id = "qqmusic"
@@ -1005,6 +1008,10 @@ class OnlineMusicView(QWidget):
 
         # QQ Music login status
         self._login_status_label = QLabel()
+        self._login_status_label.setTextFormat(Qt.RichText)
+        self._login_status_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self._login_status_label.setOpenExternalLinks(False)
+        self._login_status_label.linkActivated.connect(self._open_qqmusic_profile_link)
         layout.addWidget(self._login_status_label)
 
         # Login/Logout button
@@ -1368,6 +1375,20 @@ class OnlineMusicView(QWidget):
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
 
+    def _format_login_status_text(self, nick: str) -> str:
+        """Format QQ Music login status text, linking only the nickname."""
+        if nick:
+            safe_nick = html.escape(str(nick))
+            return (
+                f'{t("qqmusic_logged_in_as")} '
+                f'<a href="{self._QQMUSIC_PROFILE_URL}">{safe_nick}</a>'
+            )
+        return t("qqmusic_logged_in")
+
+    def _open_qqmusic_profile_link(self, _: str) -> None:
+        """Open the fixed QQ Music profile page for the active account."""
+        QDesktopServices.openUrl(QUrl(self._QQMUSIC_PROFILE_URL))
+
     def _update_login_status(self):
         """Update QQ Music login status display."""
         has_credential = self._service._has_qqmusic_credential()
@@ -1382,10 +1403,7 @@ class OnlineMusicView(QWidget):
             else:
                 nick = ""
 
-            if nick:
-                self._login_status_label.setText(f"{t('qqmusic_logged_in_as')} {nick}")
-            else:
-                self._login_status_label.setText(t("qqmusic_logged_in"))
+            self._login_status_label.setText(self._format_login_status_text(nick))
 
             self._login_btn.setText(t("logout"))
 
@@ -1411,10 +1429,7 @@ class OnlineMusicView(QWidget):
             else:
                 nick = ""
 
-            if nick:
-                self._login_status_label.setText(f"{t('qqmusic_logged_in_as')} {nick}")
-            else:
-                self._login_status_label.setText(t("qqmusic_logged_in"))
+            self._login_status_label.setText(self._format_login_status_text(nick))
 
             self._login_btn.setText(t("logout"))
         else:

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 from urllib.parse import quote
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -1898,7 +1898,7 @@ class CloudDriveView(QWidget):
     def _stop_active_batch_download_threads(self, wait_ms: int = 2000):
         """Stop all currently active batch download threads cooperatively."""
         for thread in list(self._active_batch_download_threads.values()):
-            self._stop_download_thread(thread, wait_ms=wait_ms)
+            CloudDriveView._stop_download_thread(self, thread, wait_ms=wait_ms)
         self._active_batch_download_threads = {}
         self._current_download_thread = None
 
@@ -1908,10 +1908,11 @@ class CloudDriveView(QWidget):
         if not thread:
             return
 
-        self._stop_download_thread(thread, wait_ms=wait_ms)
+        CloudDriveView._stop_download_thread(self, thread, wait_ms=wait_ms)
+        active_batch_download_threads = getattr(self, "_active_batch_download_threads", {})
         self._active_batch_download_threads = {
             fid: active_thread
-            for fid, active_thread in self._active_batch_download_threads.items()
+            for fid, active_thread in active_batch_download_threads.items()
             if active_thread is not thread
         }
         self._current_download_thread = next(iter(self._active_batch_download_threads.values()), None)

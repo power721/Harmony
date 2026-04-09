@@ -156,6 +156,43 @@ def test_update_login_status_prefers_plugin_namespaced_nick():
     view._login_status_label.setText.assert_called_once()
 
 
+def test_update_login_status_renders_nick_as_profile_link():
+    plugin_i18n.set_language("en")
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._service = Mock()
+    view._service._has_qqmusic_credential.return_value = True
+    view._refresh_qqmusic_service = Mock()
+    view._config = Mock()
+    view._config.get_plugin_setting.return_value = "A&B<Nick>"
+    view._login_status_label = Mock()
+    view._login_btn = Mock()
+    view._recommend_section = Mock()
+    view._load_recommendations = Mock()
+
+    OnlineMusicView._update_login_status(view)
+
+    view._login_status_label.setText.assert_called_once_with(
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">A&amp;B&lt;Nick&gt;</a>'
+    )
+
+
+def test_refresh_login_status_renders_nick_as_profile_link():
+    plugin_i18n.set_language("en")
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._service = Mock()
+    view._service._has_qqmusic_credential.return_value = True
+    view._config = Mock()
+    view._config.get_plugin_setting.return_value = "Tester"
+    view._login_status_label = Mock()
+    view._login_btn = Mock()
+
+    OnlineMusicView._refresh_login_status(view)
+
+    view._login_status_label.setText.assert_called_once_with(
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">Tester</a>'
+    )
+
+
 def test_on_login_clicked_clears_plugin_namespaced_credential():
     view = OnlineMusicView.__new__(OnlineMusicView)
     view._service = Mock()
@@ -193,6 +230,21 @@ def test_show_login_dialog_uses_plugin_local_dialog(monkeypatch):
     dialog_ctor.assert_called_once_with(None, view)
     assert dialog.credentials_obtained.connected == view._on_credentials_obtained
     dialog.exec.assert_called_once_with()
+
+
+def test_open_qqmusic_profile_link_uses_fixed_profile_url(monkeypatch):
+    opened_urls = []
+
+    def _fake_open_url(url):
+        opened_urls.append(url.toString())
+        return True
+
+    monkeypatch.setattr(online_music_view.QDesktopServices, "openUrl", _fake_open_url)
+    view = OnlineMusicView.__new__(OnlineMusicView)
+
+    OnlineMusicView._open_qqmusic_profile_link(view, "https://ignored.example/")
+
+    assert opened_urls == ["https://y.qq.com/n/ryqq_v2/profile/"]
 
 
 def test_refresh_qqmusic_service_prefers_plugin_secret(monkeypatch):
