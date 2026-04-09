@@ -103,6 +103,7 @@ class MessageDialog(QDialog):
         self._text_label = QLabel()
         self._text_label.setObjectName("msgText")
         self._text_label.setWordWrap(True)
+        self._text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         scroll = QScrollArea()
         scroll.setWidget(self._text_label)
