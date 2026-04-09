@@ -72,7 +72,13 @@ class PluginOnlineDownloadService:
                 except OSError:
                     continue
 
-    def get_cached_path(self, song_mid: str, quality: Optional[str] = None) -> str:
+    def get_cached_path(
+        self,
+        song_mid: str,
+        quality: Optional[str] = None,
+        provider_id: Optional[str] = None,
+    ) -> str:
+        del provider_id
         existing_path = self._find_existing_cached_path(song_mid)
         if existing_path:
             return existing_path
@@ -80,8 +86,14 @@ class PluginOnlineDownloadService:
         ext = self._get_extension_for_quality(selected_quality)
         return os.path.join(self._download_dir, f"{song_mid}{ext}")
 
-    def is_cached(self, song_mid: str, quality: Optional[str] = None) -> bool:
+    def is_cached(
+        self,
+        song_mid: str,
+        quality: Optional[str] = None,
+        provider_id: Optional[str] = None,
+    ) -> bool:
         _ = quality
+        _ = provider_id
         return self._find_existing_cached_path(song_mid) is not None
 
     def pop_last_download_quality(self, song_mid: str) -> Optional[str]:
@@ -91,11 +103,13 @@ class PluginOnlineDownloadService:
         self,
         song_mid: str,
         song_title: str = "",
+        provider_id: Optional[str] = None,
         quality: Optional[str] = None,
         progress_callback=None,
         force: bool = False,
     ) -> Optional[str]:
         del song_title
+        del provider_id
         selected_quality = quality or "320"
 
         cached_path = self.get_cached_path(song_mid, selected_quality)
