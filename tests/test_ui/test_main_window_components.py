@@ -526,6 +526,150 @@ class TestMainWindowPlaylistOps:
         info_mock.assert_called_once()
 
 
+class TestMainWindowCloudServiceBridge:
+    """Tests for service-based cloud interactions in MainWindow."""
+
+    def test_play_cloud_favorite_uses_cloud_services(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        QMainWindow.__init__(window)
+        account = SimpleNamespace(id=7, provider="quark")
+        cloud_file = SimpleNamespace(
+            file_id="fid_1",
+            name="Cloud Song",
+            size=0,
+            local_path="",
+            duration=0.0,
+        )
+        window._cloud_account_service = Mock()
+        window._cloud_account_service.get_account.return_value = account
+        window._cloud_file_service = Mock()
+        window._cloud_file_service.get_file_by_file_id.return_value = cloud_file
+        window._playback = SimpleNamespace(
+            engine=SimpleNamespace(load_playlist_items=Mock(), play=Mock())
+        )
+
+        window._play_cloud_favorite("fid_1", 7)
+
+        window._cloud_account_service.get_account.assert_called_once_with(7)
+        window._cloud_file_service.get_file_by_file_id.assert_called_once_with("fid_1")
+        window._playback.engine.load_playlist_items.assert_called_once()
+        window._playback.engine.play.assert_called_once_with()
+
+    def test_close_event_saves_cloud_state_via_cloud_account_service(self, qapp):
+        cloud_download_service = SimpleNamespace(cleanup=Mock())
+        download_manager = SimpleNamespace(
+            cleanup=Mock(),
+            download_completed=SimpleNamespace(disconnect=Mock()),
+            download_failed=SimpleNamespace(disconnect=Mock()),
+        )
+        current_item = SimpleNamespace(
+            cloud_file_id="fid_1",
+            local_path="/tmp/cloud.mp3",
+            is_local=False,
+        )
+        fake = SimpleNamespace(
+            _now_playing_window=None,
+            _config=SimpleNamespace(
+                set_start_in_now_playing=Mock(),
+                set_volume=Mock(),
+                set_playback_position=Mock(),
+                set_was_playing=Mock(),
+                get_playback_source=Mock(return_value="cloud"),
+                get_cloud_account_id=Mock(return_value=7),
+                set_playback_source=Mock(),
+                set_current_track_id=Mock(),
+                clear_cloud_account_id=Mock(),
+            ),
+            _settings=SimpleNamespace(setValue=Mock()),
+            saveGeometry=Mock(return_value=b"geometry"),
+            _splitter=SimpleNamespace(saveState=Mock(return_value=b"splitter")),
+            _save_view_state=Mock(),
+            _player=SimpleNamespace(
+                current_source="cloud",
+                state=PlaybackState.PLAYING,
+                current_track=current_item,
+                volume=35,
+                engine=SimpleNamespace(
+                    position=Mock(return_value=3200),
+                    current_index=0,
+                    stop=Mock(),
+                ),
+            ),
+            _playback=SimpleNamespace(
+                begin_shutdown=Mock(),
+                save_queue=Mock(),
+                shutdown=Mock(),
+                cleanup_download_workers=Mock(),
+            ),
+            _cloud_account_service=SimpleNamespace(update_playing_state=Mock()),
+            _force_quit_requested=False,
+            _scan_controller=None,
+            _lyrics_controller=None,
+            _event_bus=SimpleNamespace(
+                track_changed=SimpleNamespace(disconnect=Mock()),
+                position_changed=SimpleNamespace(disconnect=Mock()),
+                playback_state_changed=SimpleNamespace(disconnect=Mock()),
+                download_completed=SimpleNamespace(disconnect=Mock()),
+            ),
+            _on_track_changed=Mock(),
+            _on_position_changed=Mock(),
+            _on_playback_state_changed=Mock(),
+            _on_cloud_download_completed=Mock(),
+            _on_playlist_redownload_completed=Mock(),
+            _on_playlist_redownload_failed=Mock(),
+            _db=SimpleNamespace(close=Mock(), update_cloud_account_playing_state=Mock()),
+        )
+        event = SimpleNamespace(accept=Mock())
+
+        with patch(
+            "services.cloud.download_service.CloudDownloadService.instance",
+            return_value=cloud_download_service,
+        ), patch(
+            "services.download.download_manager.DownloadManager.instance",
+            return_value=download_manager,
+        ):
+            MainWindow.closeEvent(fake, event)
+
+        fake._cloud_account_service.update_playing_state.assert_called_once_with(
+            account_id=7,
+            playing_fid="fid_1",
+            position=3.2,
+            local_path="/tmp/cloud.mp3",
+        )
+        fake._db.update_cloud_account_playing_state.assert_not_called()
+
+    def test_restore_playback_state_uses_library_service_for_local_track(self, qapp):
+        track = SimpleNamespace(duration=180.0)
+        fake = SimpleNamespace(
+            _player=SimpleNamespace(
+                restore_queue=Mock(return_value=False),
+                engine=SimpleNamespace(
+                    set_prevent_auto_next=Mock(),
+                    seek=Mock(),
+                    play=Mock(),
+                ),
+                play_track=Mock(),
+            ),
+            _config=SimpleNamespace(
+                get_playback_source=Mock(return_value="local"),
+                get_current_track_id=Mock(return_value=5),
+                get_playback_position=Mock(return_value=12_000),
+                get_was_playing=Mock(return_value=False),
+            ),
+            _library_service=SimpleNamespace(get_track=Mock(return_value=track)),
+            _db=SimpleNamespace(get_track=Mock()),
+            _normalize_restore_position=Mock(return_value=12_000),
+        )
+
+        with patch("ui.windows.main_window.QTimer.singleShot", side_effect=lambda _delay, callback: callback()):
+            MainWindow._restore_playback_state(fake)
+
+        fake._library_service.get_track.assert_called_once_with(5)
+        fake._db.get_track.assert_not_called()
+        fake._player.play_track.assert_called_once_with(5)
+        fake._player.engine.seek.assert_called_once_with(12_000)
+
+
 class TestSidebarWithConfig:
     """Tests for Sidebar with ConfigManager."""
 

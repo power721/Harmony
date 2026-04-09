@@ -1438,13 +1438,13 @@ class MainWindow(QMainWindow):
             return
 
         # Get cloud account
-        account = self._db.get_cloud_account(account_id)
+        account = self._cloud_account_service.get_account(account_id)
         if not account:
             logger.error(f"[MainWindow] Cloud account {account_id} not found")
             return
 
         # Get cloud file info
-        cloud_file = self._db.get_cloud_file_by_file_id(cloud_file_id)
+        cloud_file = self._cloud_file_service.get_file_by_file_id(cloud_file_id)
         if cloud_file:
             # Create PlaylistItem from cloud file
             item = PlaylistItem.from_cloud_file(cloud_file, account_id, provider=account.provider)
@@ -2275,7 +2275,7 @@ class MainWindow(QMainWindow):
                 with suppress(Exception):
                     self._player.engine.set_prevent_auto_next(False)
 
-                track = self._db.get_track(current_track_id)
+                track = self._library_service.get_track(current_track_id)
                 if track:
                     try:
                         logger.debug(f"Restoring local track: {current_track_id}")
@@ -2358,7 +2358,7 @@ class MainWindow(QMainWindow):
                     current_item = self._player.current_track
                     if current_item and current_item.cloud_file_id:
                         position_seconds = current_position / 1000.0
-                        self._db.update_cloud_account_playing_state(
+                        self._cloud_account_service.update_playing_state(
                             account_id=account_id,
                             playing_fid=current_item.cloud_file_id,
                             position=position_seconds,
