@@ -24,9 +24,28 @@ def test_windows_mpv_bundle_excludes_qt_multimedia_plugins():
 
     assert "platforms" in plugin_dirs
     assert "imageformats" in plugin_dirs
+    assert "platforminputcontexts" in plugin_dirs
     assert "multimedia" not in plugin_dirs
     assert "audio" not in plugin_dirs
     assert "mediaservice" not in plugin_dirs
+
+
+def test_release_script_safe_plugin_dirs_keep_platform_input_contexts():
+    """Linux AppImage pruning must retain Qt input method plugins."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / "release.sh").read_text(encoding="utf-8")
+
+    assert "SAFE_DIRS=(platforms imageformats iconengines platforminputcontexts" in content
+
+
+def test_release_script_explicitly_collects_platform_input_context_plugins():
+    """Linux CI build must copy Qt input method plugins into the PyInstaller bundle."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / "release.sh").read_text(encoding="utf-8")
+
+    assert "collect_qt_input_context_plugins" in content
+    assert 'platforminputcontexts' in content
+    assert 'uv run python' in content
 
 
 def test_windows_workflow_produces_split_backend_executables():

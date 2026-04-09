@@ -57,6 +57,29 @@ prune_qt_plugins() {
     find "$PLUGIN_DIR" -type d -empty -delete 2>/dev/null || true
 }
 
+collect_qt_input_context_plugins() {
+    echo "==> Ensuring Qt input context plugins are bundled"
+
+    INTERNAL_DIR=$(find dist -type d -path "*_internal" | head -n 1)
+    [ -z "$INTERNAL_DIR" ] && { echo "⚠ _internal not found"; return; }
+
+    local bundled_dir="$INTERNAL_DIR/PySide6/Qt/plugins/platforminputcontexts"
+    mkdir -p "$bundled_dir"
+
+    local qt_plugins
+    qt_plugins=$(uv run python -c 'from PySide6.QtCore import QLibraryInfo; print(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))')
+    local source_dir="$qt_plugins/platforminputcontexts"
+
+    if [ ! -d "$source_dir" ]; then
+        echo "⚠ Qt input context plugins not found at: $source_dir"
+        return
+    fi
+
+    cp -a "$source_dir"/. "$bundled_dir"/
+    echo "==> Bundled Qt input context plugins from: $source_dir"
+    ls -la "$bundled_dir" || true
+}
+
 # -------------------------
 # 递归收集依赖（避免重复拷贝）
 # -------------------------
@@ -197,6 +220,7 @@ build_app() {
 
     HARMONY_MPV_ONLY="$HARMONY_MPV_ONLY" uv run pyinstaller "${PYI_ARGS[@]}" "$ENTRY"
 
+    collect_qt_input_context_plugins
     prune_qt_plugins "$MODE"
     collect_runtime_deps
 
