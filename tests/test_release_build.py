@@ -56,6 +56,17 @@ def test_release_script_bundles_builtin_plugins_for_linux_appimage():
     assert '--add-data "plugins/builtin:plugins/builtin"' in content
 
 
+def test_release_script_collects_crypto_for_builtin_plugins():
+    """Linux AppImage builds must bundle Crypto for dynamically loaded builtin plugins."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / "release.sh").read_text(encoding="utf-8")
+
+    assert '--collect-all Crypto' in content, (
+        "release.sh must collect the Crypto package because builtin plugins are "
+        "copied as data and PyInstaller does not analyze their imports."
+    )
+
+
 def test_release_script_apprun_initializes_dbus_session():
     """Linux AppImage launcher should prepare a D-Bus session for MPRIS."""
     repo_root = Path(__file__).resolve().parents[1]

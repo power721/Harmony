@@ -156,3 +156,49 @@ def test_mpris_controller_logs_warning_when_linux_qtdbus_support_is_missing(monk
     assert controller is None
     assert "Linux QtDBus runtime unavailable" in caplog.text
     assert "QtDBus session bus unavailable" in caplog.text
+
+
+def test_start_mpris_disables_controller_when_runtime_start_fails(monkeypatch, caplog):
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    class FailingController:
+        def __init__(self):
+            self._main_window = None
+            self.ui_dispatcher = None
+            self.start_calls = 0
+
+        def start(self):
+            self.start_calls += 1
+            raise RuntimeError("QtDBus session bus unavailable")
+
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    bootstrap._mpris_controller = FailingController()
+
+    with caplog.at_level(logging.WARNING, logger="app.bootstrap"):
+        bootstrap.start_mpris(main_window=object(), ui_dispatcher=object())
+
+    assert bootstrap._mpris_controller is None
+    assert bootstrap._mpris_disabled_reason == "QtDBus session bus unavailable"
+    assert "MPRIS disabled: failed to start D-Bus service" in caplog.text
+    assert "QtDBus session bus unavailable" in caplog.text
+
+
+def test_start_mpris_skips_future_attempts_after_runtime_start_failure(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    class FailingController:
+        def __init__(self):
+            self.start_calls = 0
+
+        def start(self):
+            self.start_calls += 1
+            raise RuntimeError("service name already owned")
+
+    controller = FailingController()
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    bootstrap._mpris_controller = controller
+
+    bootstrap.start_mpris()
+    bootstrap.start_mpris()
+
+    assert controller.start_calls == 1

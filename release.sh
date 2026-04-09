@@ -200,6 +200,7 @@ build_app() {
       --noconfirm --windowed --clean --onedir
       --additional-hooks-dir=hooks
       --collect-all certifi
+      --collect-all Crypto
       --hidden-import mpv
       --add-data "plugins/builtin:plugins/builtin"
       --add-data "ui:ui"

@@ -479,7 +479,15 @@ class Bootstrap:
             if controller is not None:
                 controller._main_window = main_window
                 controller.ui_dispatcher = ui_dispatcher
-                controller.start()
+                try:
+                    controller.start()
+                except RuntimeError as exc:
+                    self._mpris_controller = None
+                    self._mpris_disabled_reason = str(exc) or "unknown runtime error"
+                    logger.warning(
+                        "MPRIS disabled: failed to start D-Bus service (%s).",
+                        self._mpris_disabled_reason,
+                    )
 
     def stop_mpris(self):
         """Stop MPRIS D-Bus service."""
