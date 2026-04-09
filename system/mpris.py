@@ -441,7 +441,41 @@ class MPRISController:
         if last_error is None:
             return default
         message = getattr(last_error, "message", None)
-        return message() if callable(message) else default
+        if callable(message):
+            resolved = message()
+            if resolved:
+                return resolved
+        return default
+
+    def _service_registration_error_message(self) -> str:
+        default = "failed to register MPRIS service"
+        message = self._bus_error_message(default)
+        if message != default:
+            return message
+
+        if self.bus is None or not hasattr(self.bus, "interface"):
+            return default
+
+        interface = self.bus.interface()
+        if interface is None:
+            return default
+
+        owner = ""
+        service_owner = getattr(interface, "serviceOwner", None)
+        if callable(service_owner):
+            owner = service_owner(MPRIS_NAME) or ""
+
+        if not owner:
+            return default
+
+        pid = 0
+        service_pid = getattr(interface, "servicePid", None)
+        if callable(service_pid):
+            pid = service_pid(MPRIS_NAME) or 0
+
+        if pid:
+            return f"MPRIS service name already owned by {owner} (pid={pid})"
+        return f"MPRIS service name already owned by {owner}"
 
     def start(self):
         if self._started:
@@ -462,7 +496,7 @@ class MPRISController:
         if not self.bus.registerService(MPRIS_NAME):
             with self._service_lock:
                 self.service = None
-            raise RuntimeError(self._bus_error_message("failed to register MPRIS service"))
+            raise RuntimeError(self._service_registration_error_message())
 
         options = QDBusConnection.VirtualObjectRegisterOption.SubPath
         if hasattr(self.bus, "registerVirtualObject"):
