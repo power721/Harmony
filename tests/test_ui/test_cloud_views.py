@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import Mock, patch
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QApplication, QLabel
 
 from domain.cloud import CloudFile, CloudAccount
@@ -321,6 +322,87 @@ class TestCloudAccount:
 
 class TestCloudDriveView:
     """Tests for CloudDriveView share-search state handling."""
+
+    def test_show_event_defers_initial_account_load(self, qapp, mock_config):
+        """First show should schedule cloud loading instead of running it inline."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._data_loaded = False
+
+        with patch("ui.views.cloud.cloud_drive_view.QTimer.singleShot") as mock_single_shot, \
+                patch.object(view, "_load_accounts") as mock_load_accounts:
+            view.showEvent(QShowEvent())
+
+        mock_single_shot.assert_called_once()
+        mock_load_accounts.assert_not_called()
+
+    def test_show_event_schedules_initial_load_once(self, qapp, mock_config):
+        """Repeated first-show events should only schedule one deferred initial load."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._data_loaded = False
+
+        with patch("ui.views.cloud.cloud_drive_view.QTimer.singleShot") as mock_single_shot:
+            view.showEvent(QShowEvent())
+            view.showEvent(QShowEvent())
+
+        assert mock_single_shot.call_count == 1
+
+    def test_load_files_uses_background_worker_instead_of_sync_remote_call(self, qapp, mock_config):
+        """Remote cloud listing should be delegated to a worker, not executed inline."""
+        ThemeManager.instance(mock_config)
+        view = CloudDriveView(
+            cloud_account_service=Mock(),
+            cloud_file_service=Mock(),
+            library_service=Mock(),
+            player=Mock(),
+            config_manager=mock_config,
+            cover_service=Mock(),
+        )
+        view._current_account = CloudAccount(
+            id=1,
+            provider="quark",
+            account_name="quark-test",
+            access_token="token",
+        )
+        view._current_parent_id = "folder_A"
+
+        worker = Mock()
+        worker.result_ready = Mock(connect=Mock())
+        worker.load_failed = Mock(connect=Mock())
+        worker.finished = Mock(connect=Mock())
+
+        with patch(
+            "ui.views.cloud.cloud_drive_view.CloudFileListWorker",
+            return_value=worker,
+        ) as worker_cls, patch(
+            "ui.views.cloud.cloud_drive_view.QuarkDriveService.get_file_list",
+            side_effect=AssertionError("sync remote call"),
+        ):
+            view._load_files()
+
+        worker_cls.assert_called_once_with(
+            request_id=1,
+            account_id=1,
+            provider="quark",
+            access_token="token",
+            dir_path="folder_A",
+        )
+        worker.start.assert_called_once_with()
 
     def test_batch_download_starts_up_to_parallel_limit(self, qapp, mock_config):
         """Batch download should immediately fill the parallel worker window."""
@@ -718,7 +800,7 @@ class TestCloudDriveView:
         mock_load_files.assert_called_once()
 
     def test_load_files_clears_cached_folder_when_remote_listing_empty(self, qapp, mock_config):
-        """Empty remote folder listings should still refresh cached folder state."""
+        """Applying an empty remote folder listing should still refresh cached folder state."""
         ThemeManager.instance(mock_config)
         cloud_file_service = Mock()
         cloud_file_service.get_files.return_value = []
@@ -737,12 +819,7 @@ class TestCloudDriveView:
             access_token="token",
         )
         view._current_parent_id = "folder_A"
-
-        with patch(
-            "ui.views.cloud.cloud_drive_view.QuarkDriveService.get_file_list",
-            return_value=([], None),
-        ):
-            view._load_files()
+        view._apply_loaded_files(dir_path="folder_A", files=[], updated_token=None)
 
         cloud_file_service.cache_files.assert_called_once_with(1, [], parent_id="folder_A")
         cloud_file_service.get_files.assert_called_once_with(1, "folder_A")

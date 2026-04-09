@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from system.config import ConfigManager
 
 logger = logging.getLogger(__name__)
+_ACTIVE_FILE_LIST_WORKERS: set[QThread] = set()
 
 
 class BreadcrumbLabel(QLabel):
@@ -118,6 +119,46 @@ class BreadcrumbLabel(QLabel):
         level = min(level, len(parts))
         target_path = "/" if level == 0 else "/" + "/".join(parts[:level])
         self.breadcrumb_clicked.emit(target_path, level)
+
+
+class CloudFileListWorker(QThread):
+    """Background worker for remote cloud directory listing."""
+
+    result_ready = Signal(int, int, str, object, object)
+    load_failed = Signal(int, int, str, str)
+
+    def __init__(self, request_id: int, account_id: int, provider: str, access_token: str, dir_path: str):
+        super().__init__(None)
+        self._request_id = request_id
+        self._account_id = account_id
+        self._provider = provider
+        self._access_token = access_token
+        self._dir_path = dir_path
+
+    def run(self):
+        """Fetch a single directory listing without blocking the UI thread."""
+        try:
+            service = BaiduDriveService if self._provider == "baidu" else QuarkDriveService
+            result = service.get_file_list(self._access_token, self._dir_path)
+            if isinstance(result, tuple):
+                files, updated_token = result
+            else:
+                files, updated_token = result, None
+            self.result_ready.emit(
+                self._request_id,
+                self._account_id,
+                self._dir_path,
+                files,
+                updated_token,
+            )
+        except Exception as exc:
+            logger.error("[CloudDriveView] Failed to load remote file list: %s", exc, exc_info=True)
+            self.load_failed.emit(
+                self._request_id,
+                self._account_id,
+                self._dir_path,
+                str(exc),
+            )
 
 
 class CloudDriveView(QWidget):
@@ -293,6 +334,9 @@ class CloudDriveView(QWidget):
         self._fid_path = []
         self._current_playing_file_id = ""
         self._data_loaded = False
+        self._initial_load_scheduled = False
+        self._file_list_request_id = 0
+        self._file_list_worker: Optional[CloudFileListWorker] = None
         self._share_mode = False
         self._share_pwd_id = ""
         self._share_stoken = ""
@@ -1120,17 +1164,59 @@ class CloudDriveView(QWidget):
             return
 
         self._status_label.setText(t("loading_files"))
+        self._start_file_list_worker(
+            account_id=self._current_account.id,
+            provider=self._current_account.provider,
+            access_token=self._current_account.access_token,
+            dir_path=self._current_parent_id,
+        )
 
-        service = BaiduDriveService if self._current_account.provider == "baidu" else QuarkDriveService
-        dir_path = self._current_parent_id
+    def _start_file_list_worker(self, account_id: int, provider: str, access_token: str, dir_path: str):
+        """Start a background worker for a single cloud directory fetch."""
+        self._file_list_request_id += 1
+        worker = CloudFileListWorker(
+            request_id=self._file_list_request_id,
+            account_id=account_id,
+            provider=provider,
+            access_token=access_token,
+            dir_path=dir_path,
+        )
+        worker.result_ready.connect(self._on_file_list_loaded)
+        worker.load_failed.connect(self._on_file_list_failed)
+        worker.finished.connect(self._on_file_list_worker_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda w=worker: _ACTIVE_FILE_LIST_WORKERS.discard(w))
+        _ACTIVE_FILE_LIST_WORKERS.add(worker)
+        self._file_list_worker = worker
+        worker.start()
 
-        result = service.get_file_list(self._current_account.access_token, dir_path)
+    def _on_file_list_loaded(
+            self,
+            request_id: int,
+            account_id: int,
+            dir_path: str,
+            files: List[CloudFile],
+            updated_token: str | None,
+    ):
+        """Apply the latest successful remote listing on the UI thread."""
+        if request_id != self._file_list_request_id:
+            return
+        if not self._current_account or self._current_account.id != account_id:
+            return
 
-        if isinstance(result, tuple):
-            files, updated_token = result
-        else:
-            files, updated_token = result, None
+        self._apply_loaded_files(dir_path=dir_path, files=files, updated_token=updated_token)
 
+    def _on_file_list_failed(self, request_id: int, account_id: int, dir_path: str, error: str):
+        """Show the latest load failure without clobbering newer requests."""
+        del dir_path
+        if request_id != self._file_list_request_id:
+            return
+        if not self._current_account or self._current_account.id != account_id:
+            return
+        self._status_label.setText(error or t("load_failed"))
+
+    def _apply_loaded_files(self, dir_path: str, files: List[CloudFile], updated_token: str | None):
+        """Cache and render a fetched directory listing."""
         if updated_token:
             self._cloud_account_service.update_token(self._current_account.id, updated_token)
             self._current_account.access_token = updated_token
@@ -1161,6 +1247,12 @@ class CloudDriveView(QWidget):
         self._file_table.populate(files, self._current_playing_file_id)
         self._update_batch_download_button_state()
         self._status_label.setText(f"{len(files)} {t('items')}")
+
+    def _on_file_list_worker_finished(self):
+        """Release the latest worker reference once the thread exits."""
+        worker = self.sender()
+        if worker is self._file_list_worker:
+            self._file_list_worker = None
 
     # === Navigation ===
 
@@ -2314,6 +2406,7 @@ class CloudDriveView(QWidget):
         """Refresh the UI with latest data."""
         self._load_accounts()
         self._data_loaded = True
+        self._initial_load_scheduled = False
 
         self._account_list_title.setText(t("cloud_drive"))
         self._add_account_btn.setText(t("add_account"))
@@ -2400,8 +2493,23 @@ class CloudDriveView(QWidget):
         """Handle show event."""
         super().showEvent(event)
         if not self._data_loaded:
-            self._load_accounts()
+            self._schedule_initial_load()
         self._adjust_share_results_height()
+
+    def _schedule_initial_load(self):
+        """Defer the first cloud load so page navigation can render first."""
+        if self._data_loaded or self._initial_load_scheduled:
+            return
+        self._initial_load_scheduled = True
+        QTimer.singleShot(0, self._perform_initial_load)
+
+    def _perform_initial_load(self):
+        """Run the deferred first cloud load exactly once."""
+        self._initial_load_scheduled = False
+        if self._data_loaded:
+            return
+        self._load_accounts()
+        self._data_loaded = True
 
     def resizeEvent(self, event):
         """Update dynamic sizes on resize."""
@@ -2480,6 +2588,13 @@ class CloudDriveView(QWidget):
                 self._event_bus.download_completed.disconnect(self._on_event_bus_download_completed)
                 self._event_bus.track_changed.disconnect(self._on_track_changed)
                 self._event_bus.playback_state_changed.disconnect(self._on_playback_state_changed)
+            except (TypeError, RuntimeError):
+                pass
+        if self._file_list_worker:
+            try:
+                self._file_list_worker.result_ready.disconnect(self._on_file_list_loaded)
+                self._file_list_worker.load_failed.disconnect(self._on_file_list_failed)
+                self._file_list_worker.finished.disconnect(self._on_file_list_worker_finished)
             except (TypeError, RuntimeError):
                 pass
         super().closeEvent(event)
