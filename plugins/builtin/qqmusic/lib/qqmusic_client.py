@@ -808,7 +808,7 @@ class QQMusicClient:
     def fav_album(self, album_mid: str) -> Dict:
         """Favorite an album."""
         uin = str(self.credential.get("musicid", "")) if self.credential else ""
-        params = {"uin": uin, "v_albumMid": [album_mid], "opertype": 1}
+        params = {"uin": uin, "v_albumMid": [album_mid]}
         return self._make_request("music.musicasset.AlbumFavWrite", "FavAlbum", params)
 
     def unfav_album(self, album_mid: str) -> Dict:
