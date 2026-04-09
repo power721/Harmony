@@ -6,7 +6,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMainWindow
 from domain.playback import PlaybackState
 
 from ui.windows.main_window import MainWindow
@@ -428,6 +428,63 @@ class TestMainWindowRestoreState:
         library_service.get_genres.assert_not_called()
         window._genre_view.set_genre.assert_called_once_with(genre)
         window._stacked_widget.setCurrentIndex.assert_called_once_with(9)
+
+
+class TestMainWindowPlaylistOps:
+    """Tests for playlist mutations routed through MainWindow."""
+
+    def test_add_tracks_to_playlist_uses_library_service_in_single_playlist_mode(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        QMainWindow.__init__(window)
+        window._library_service = Mock()
+        window._library_service.add_track_to_playlist.side_effect = [True, True]
+        window._db = Mock()
+        tracks = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+
+        playlist = SimpleNamespace(id=7, name="My Playlist")
+
+        class _FakeDialog:
+            def __init__(self, library_service, parent):
+                self.library_service = library_service
+                self.parent = parent
+
+            def has_playlists(self):
+                return True
+
+            def has_single_playlist(self):
+                return True
+
+            def get_single_playlist(self):
+                return playlist
+
+            def deleteLater(self):
+                return None
+
+        bootstrap = Mock(library_service=window._library_service)
+
+        def _translate(key, **kwargs):
+            translations = {
+                "success": "success",
+                "added_tracks_to_playlist": "{count}:{name}",
+            }
+            return translations.get(key, key)
+
+        with patch("app.bootstrap.Bootstrap.instance", return_value=bootstrap), patch(
+            "ui.dialogs.add_to_playlist_dialog.AddToPlaylistDialog",
+            _FakeDialog,
+        ), patch(
+            "ui.windows.main_window.MessageDialog.information",
+        ) as info_mock, patch(
+            "ui.windows.main_window.t",
+            side_effect=_translate,
+        ):
+            window._add_tracks_to_playlist(tracks)
+
+        assert window._library_service.add_track_to_playlist.call_count == 2
+        window._library_service.add_track_to_playlist.assert_any_call(7, 1)
+        window._library_service.add_track_to_playlist.assert_any_call(7, 2)
+        window._db.add_track_to_playlist.assert_not_called()
+        info_mock.assert_called_once()
 
 
 class TestSidebarWithConfig:

@@ -1783,7 +1783,7 @@ class MainWindow(QMainWindow):
                 added_count = 0
                 duplicate_count = 0
                 for track_id in track_ids:
-                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                    if self._library_service.add_track_to_playlist(playlist.id, track_id):
                         added_count += 1
                     else:
                         duplicate_count += 1
@@ -1807,7 +1807,7 @@ class MainWindow(QMainWindow):
                 added_count = 0
                 duplicate_count = 0
                 for track_id in track_ids:
-                    if self._db.add_track_to_playlist(playlist.id, track_id):
+                    if self._library_service.add_track_to_playlist(playlist.id, track_id):
                         added_count += 1
                     else:
                         duplicate_count += 1
