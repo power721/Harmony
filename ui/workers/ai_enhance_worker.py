@@ -90,13 +90,16 @@ class AIEnhanceWorker(QThread):
 
             if idx in batch_results:
                 enhanced = batch_results[idx]
+                title = enhanced.get("title") or ""
+                artist = enhanced.get("artist") or ""
+                album = enhanced.get("album") or ""
                 # Update file metadata
                 try:
                     MetadataService.save_metadata(
                         track_path,
-                        title=enhanced.get('title'),
-                        artist=enhanced.get('artist'),
-                        album=enhanced.get('album')
+                        title=title,
+                        artist=artist,
+                        album=album,
                     )
                 except Exception as e:
                     logger.error(f"Failed to save metadata: {e}")
@@ -104,9 +107,9 @@ class AIEnhanceWorker(QThread):
                 # Update database
                 self._library_service.update_track_metadata(
                     track_id,
-                    title=enhanced.get('title'),
-                    artist=enhanced.get('artist'),
-                    album=enhanced.get('album')
+                    title=title,
+                    artist=artist,
+                    album=album,
                 )
                 # Emit metadata_updated signal to update play_queue
                 EventBus.instance().metadata_updated.emit(track_id)

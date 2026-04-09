@@ -47,6 +47,8 @@ class Application(QObject):
     def instance(cls) -> "Application":
         """Get singleton instance."""
         with cls._lock:
+            if cls._instance is None:
+                raise RuntimeError("Application has not been created")
             return cls._instance
 
     @classmethod

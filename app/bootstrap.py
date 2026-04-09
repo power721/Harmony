@@ -445,7 +445,7 @@ class Bootstrap:
         return self._sleep_timer_service
 
     @property
-    def mpris_controller(self) -> "MPRISController":
+    def mpris_controller(self) -> Optional["MPRISController"]:
         """Get MPRIS D-Bus controller (Linux only)."""
         if self._mpris_controller is None:
             if sys.platform == "linux":

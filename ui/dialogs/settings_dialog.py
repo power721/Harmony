@@ -1,7 +1,8 @@
 """General Settings Dialog for configuring host and plugin settings."""
-import importlib
 import logging
 import os
+from importlib import util as importlib_util
+from typing import cast
 
 from app.bootstrap import Bootstrap
 from PySide6.QtCore import Qt
@@ -53,7 +54,7 @@ class GeneralSettingsDialog(QDialog):
         self._plugin_settings_tabs = []
 
         # Make dialog frameless
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setProperty("shell", True)
 
@@ -96,7 +97,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Tab widget for AI and AcoustID settings
         tab_widget = QTabWidget()
-        tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
+        tab_widget.tabBar().setCursor(Qt.CursorShape.PointingHandCursor)
 
         # AI Settings Tab
         ai_tab = QWidget()
@@ -129,7 +130,7 @@ class GeneralSettingsDialog(QDialog):
         api_key_label = QLabel(t("ai_api_key"))
         api_key_label.setMinimumWidth(100)
         self._api_key_input = QLineEdit()
-        self._api_key_input.setEchoMode(QLineEdit.Password)
+        self._api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._api_key_input.setPlaceholderText(t("ai_api_key_placeholder"))
         api_key_layout.addWidget(api_key_label)
         api_key_layout.addWidget(self._api_key_input)
@@ -156,7 +157,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Test button for AI
         test_btn = QPushButton(t("ai_test_connection"))
-        test_btn.setCursor(Qt.PointingHandCursor)
+        test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         test_btn.clicked.connect(self._test_connection)
         ai_layout.addWidget(test_btn)
 
@@ -183,7 +184,7 @@ class GeneralSettingsDialog(QDialog):
         acoustid_key_label = QLabel(t("acoustid_api_key"))
         acoustid_key_label.setMinimumWidth(100)
         self._acoustid_api_key_input = QLineEdit()
-        self._acoustid_api_key_input.setEchoMode(QLineEdit.Password)
+        self._acoustid_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._acoustid_api_key_input.setPlaceholderText(t("acoustid_api_key_placeholder"))
         acoustid_key_layout.addWidget(acoustid_key_label)
         acoustid_key_layout.addWidget(self._acoustid_api_key_input)
@@ -200,7 +201,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Test button for AcoustID
         acoustid_test_btn = QPushButton(t("acoustid_test"))
-        acoustid_test_btn.setCursor(Qt.PointingHandCursor)
+        acoustid_test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         acoustid_test_btn.clicked.connect(self._test_acoustid)
         acoustid_layout.addWidget(acoustid_test_btn)
 
@@ -220,7 +221,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Add button to open cache directory
         open_cache_btn = QPushButton(t("cache_open_directory"))
-        open_cache_btn.setCursor(Qt.PointingHandCursor)
+        open_cache_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_cache_btn.clicked.connect(self._open_cache_directory)
         cache_info_layout.addWidget(open_cache_btn)
 
@@ -240,15 +241,15 @@ class GeneralSettingsDialog(QDialog):
         self._strategy_combo.setFixedWidth(300)
         # Add items
         self._strategy_combo.addItem(t("cache_cleanup_manual"))
-        self._strategy_combo.setItemData(0, "manual", Qt.UserRole)
+        self._strategy_combo.setItemData(0, "manual", Qt.ItemDataRole.UserRole)
         self._strategy_combo.addItem(t("cache_cleanup_time"))
-        self._strategy_combo.setItemData(1, "time", Qt.UserRole)
+        self._strategy_combo.setItemData(1, "time", Qt.ItemDataRole.UserRole)
         self._strategy_combo.addItem(t("cache_cleanup_size"))
-        self._strategy_combo.setItemData(2, "size", Qt.UserRole)
+        self._strategy_combo.setItemData(2, "size", Qt.ItemDataRole.UserRole)
         self._strategy_combo.addItem(t("cache_cleanup_count"))
-        self._strategy_combo.setItemData(3, "count", Qt.UserRole)
+        self._strategy_combo.setItemData(3, "count", Qt.ItemDataRole.UserRole)
         self._strategy_combo.addItem(t("cache_cleanup_disabled"))
-        self._strategy_combo.setItemData(4, "disabled", Qt.UserRole)
+        self._strategy_combo.setItemData(4, "disabled", Qt.ItemDataRole.UserRole)
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
         strategy_selector_layout.addWidget(strategy_label)
         strategy_selector_layout.addWidget(self._strategy_combo)
@@ -342,7 +343,7 @@ class GeneralSettingsDialog(QDialog):
         # Manual cleanup button
         manual_cleanup_layout = QHBoxLayout()
         self._cleanup_now_btn = QPushButton(t("cache_cleanup_now"))
-        self._cleanup_now_btn.setCursor(Qt.PointingHandCursor)
+        self._cleanup_now_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cleanup_now_btn.clicked.connect(self._cleanup_now)
         manual_cleanup_layout.addWidget(self._cleanup_now_btn)
         manual_cleanup_layout.addStretch()
@@ -375,7 +376,7 @@ class GeneralSettingsDialog(QDialog):
         artist_covers_section.addWidget(artist_covers_hint)
 
         self._download_artist_covers_btn = QPushButton(t("batch_download_artist_covers"))
-        self._download_artist_covers_btn.setCursor(Qt.PointingHandCursor)
+        self._download_artist_covers_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._download_artist_covers_btn.clicked.connect(self._batch_download_artist_covers)
         artist_covers_section.addWidget(self._download_artist_covers_btn)
 
@@ -397,7 +398,7 @@ class GeneralSettingsDialog(QDialog):
         album_covers_section.addWidget(album_covers_hint)
 
         self._download_album_covers_btn = QPushButton(t("batch_download_album_covers"))
-        self._download_album_covers_btn.setCursor(Qt.PointingHandCursor)
+        self._download_album_covers_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._download_album_covers_btn.clicked.connect(self._batch_download_album_covers)
         album_covers_section.addWidget(self._download_album_covers_btn)
 
@@ -415,7 +416,7 @@ class GeneralSettingsDialog(QDialog):
         fix_covers_section.addWidget(fix_covers_hint)
 
         self._fix_album_covers_btn = QPushButton(t("fix_album_covers_button"))
-        self._fix_album_covers_btn.setCursor(Qt.PointingHandCursor)
+        self._fix_album_covers_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._fix_album_covers_btn.clicked.connect(self._fix_album_covers)
         fix_covers_section.addWidget(self._fix_album_covers_btn)
 
@@ -440,7 +441,7 @@ class GeneralSettingsDialog(QDialog):
         artist_repair_section.addWidget(artist_repair_hint)
 
         self._rebuild_artists_btn = QPushButton(t("rebuild_artists"))
-        self._rebuild_artists_btn.setCursor(Qt.PointingHandCursor)
+        self._rebuild_artists_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rebuild_artists_btn.clicked.connect(self._rebuild_artists)
         artist_repair_section.addWidget(self._rebuild_artists_btn)
 
@@ -458,7 +459,7 @@ class GeneralSettingsDialog(QDialog):
         album_repair_section.addWidget(album_repair_hint)
 
         self._rebuild_albums_btn = QPushButton(t("rebuild_albums"))
-        self._rebuild_albums_btn.setCursor(Qt.PointingHandCursor)
+        self._rebuild_albums_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rebuild_albums_btn.clicked.connect(self._rebuild_albums)
         album_repair_section.addWidget(self._rebuild_albums_btn)
 
@@ -476,7 +477,7 @@ class GeneralSettingsDialog(QDialog):
         junction_repair_section.addWidget(junction_repair_hint)
 
         self._rebuild_junction_btn = QPushButton(t("rebuild_junction"))
-        self._rebuild_junction_btn.setCursor(Qt.PointingHandCursor)
+        self._rebuild_junction_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rebuild_junction_btn.clicked.connect(self._rebuild_junction)
         junction_repair_section.addWidget(self._rebuild_junction_btn)
 
@@ -543,7 +544,7 @@ class GeneralSettingsDialog(QDialog):
             theme_preset = PRESET_THEMES[theme_key]
             btn = QPushButton(t(theme_preset.display_name))
             btn.setFixedHeight(35)
-            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setProperty("_skip_theme", True)
             btn.setStyleSheet(f"""
                 QPushButton {{
@@ -599,7 +600,7 @@ class GeneralSettingsDialog(QDialog):
             # Color preview button
             color_btn = QPushButton()
             color_btn.setFixedSize(60, 28)
-            color_btn.setCursor(Qt.PointingHandCursor)
+            color_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             color_btn.setProperty("_skip_theme", True)
             colors_layout.addWidget(color_btn, row, grid_col + 1)
 
@@ -636,12 +637,12 @@ class GeneralSettingsDialog(QDialog):
         # Apply / Reset buttons
         theme_btn_layout = QHBoxLayout()
         self._theme_apply_btn = QPushButton(t("theme_apply"))
-        self._theme_apply_btn.setCursor(Qt.PointingHandCursor)
+        self._theme_apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._theme_apply_btn.clicked.connect(self._apply_custom_theme)
         theme_btn_layout.addWidget(self._theme_apply_btn)
 
         self._theme_reset_btn = QPushButton(t("theme_reset"))
-        self._theme_reset_btn.setCursor(Qt.PointingHandCursor)
+        self._theme_reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._theme_reset_btn.clicked.connect(self._reset_theme_colors)
         theme_btn_layout.addWidget(self._theme_reset_btn)
 
@@ -684,13 +685,13 @@ class GeneralSettingsDialog(QDialog):
 
         save_btn = QPushButton(t("save"))
         save_btn.setProperty("role", "primary")
-        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._save_settings)
         button_layout.addWidget(save_btn)
 
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
-        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
@@ -701,14 +702,14 @@ class GeneralSettingsDialog(QDialog):
         """Handle enable checkbox state change."""
         # state is an int from stateChanged signal
         # Qt.Checked = 2, but we also accept True (bool) for direct calls
-        enabled = state == Qt.Checked or state is True or state == 2
+        enabled = state is True or state == 2
         self._base_url_input.setEnabled(enabled)
         self._api_key_input.setEnabled(enabled)
         self._model_input.setEnabled(enabled)
 
     def _on_acoustid_enable_changed(self, state):
         """Handle AcoustID enable checkbox state change."""
-        enabled = state == Qt.Checked or state is True or state == 2
+        enabled = state is True or state == 2
         self._acoustid_api_key_input.setEnabled(enabled)
 
     def _on_strategy_changed(self, index):
@@ -729,7 +730,7 @@ class GeneralSettingsDialog(QDialog):
 
     def _on_auto_cleanup_changed(self, state):
         """Handle auto cleanup checkbox state change."""
-        enabled = state == Qt.Checked or state is True or state == 2
+        enabled = state is True or state == 2
         strategy = self._strategy_combo.currentData()
         interval_enabled = enabled and (strategy in ("time", "size", "count"))
         self._interval_input.setEnabled(interval_enabled)
@@ -925,8 +926,9 @@ class GeneralSettingsDialog(QDialog):
         """Get currently running engine name from parent window playback service."""
         parent = self.parent()
         try:
-            if parent and hasattr(parent, "_playback"):
-                backend = parent._playback.engine.backend
+            playback = getattr(parent, "_playback", None)
+            if playback is not None:
+                backend = playback.engine.backend
                 name = backend.__class__.__name__.lower()
                 if "mpv" in name:
                     return "mpv"
@@ -980,7 +982,7 @@ class GeneralSettingsDialog(QDialog):
 
         # Check if pyacoustid is installed
         try:
-            if importlib.util.find_spec("acoustid") is None:
+            if importlib_util.find_spec("acoustid") is None:
                 raise ImportError
             # The API key can't be tested without an actual file,
             # but we can verify the format and that pyacoustid is installed
@@ -1014,7 +1016,9 @@ class GeneralSettingsDialog(QDialog):
 
             system = platform.system()
             if system == "Windows":
-                os.startfile(cache_dir)
+                startfile = getattr(os, "startfile", None)
+                if callable(startfile):
+                    startfile(cache_dir)
             elif system == "Darwin":  # macOS
                 subprocess.run(["open", cache_dir])
             else:  # Linux
@@ -1564,11 +1568,15 @@ class GeneralSettingsDialog(QDialog):
         if layout is not None:
             while layout.count():
                 item = layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
+                if item is None:
+                    continue
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
         else:
             layout = QVBoxLayout(self._theme_preview_frame)
             layout.setContentsMargins(12, 8, 12, 8)
+        preview_layout = cast(QVBoxLayout, layout)
 
         title = QLabel(t("theme_preview_text"))
         title.setStyleSheet(f"color: {c.get('text', '#ffffff')}; font-size: 14px; font-weight: bold;")
@@ -1583,8 +1591,8 @@ class GeneralSettingsDialog(QDialog):
         h_layout.addWidget(accent)
         h_layout.addWidget(title)
         h_layout.addStretch()
-        layout.addLayout(h_layout)
-        layout.addWidget(secondary)
+        preview_layout.addLayout(h_layout)
+        preview_layout.addWidget(secondary)
 
     def _apply_custom_theme(self):
         """Apply the current theme (preset or custom)."""

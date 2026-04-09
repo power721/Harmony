@@ -28,9 +28,7 @@ from ui.dialogs.message_dialog import MessageDialog, Yes
 from ui.views.playlist_tracks_list_view import PlaylistTracksListView
 
 if TYPE_CHECKING:
-    from services.favorites import FavoritesService
-    from services.library import LibraryService
-    from services.playlist import PlaylistService
+    from services.library import FavoritesService, LibraryService, PlaylistService
 
 
 class PlaylistView(QWidget):
@@ -146,7 +144,7 @@ class PlaylistView(QWidget):
         layout.setSpacing(0)
 
         # Splitter for playlist list and playlist content
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left side - playlist list
         playlist_list_widget = self._create_playlist_list()
@@ -203,14 +201,14 @@ class PlaylistView(QWidget):
         # New playlist button
         self._new_playlist_btn = QPushButton(t("new_playlist"))
         self._new_playlist_btn.setObjectName("newPlaylistBtn")
-        self._new_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._new_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self._new_playlist_btn)
 
         # Playlist list
         self._playlist_list = QListWidget()
         self._playlist_list.setObjectName("playlistList")
-        self._playlist_list.setFocusPolicy(Qt.NoFocus)
-        self._playlist_list.setCursor(Qt.PointingHandCursor)
+        self._playlist_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._playlist_list.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self._playlist_list)
 
         return widget
@@ -234,34 +232,34 @@ class PlaylistView(QWidget):
         # Playlist actions
         self._play_playlist_btn = QPushButton(t("play"))
         self._play_playlist_btn.setObjectName("playlistActionBtn")
-        self._play_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._play_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._play_playlist_btn.setEnabled(False)
         self._play_playlist_btn.clicked.connect(self._play_current_playlist)
         header_layout.addWidget(self._play_playlist_btn)
 
         self._rename_playlist_btn = QPushButton(t("rename"))
         self._rename_playlist_btn.setObjectName("playlistActionBtn")
-        self._rename_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._rename_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rename_playlist_btn.setEnabled(False)
         self._rename_playlist_btn.clicked.connect(self._rename_playlist)
         header_layout.addWidget(self._rename_playlist_btn)
 
         self._delete_playlist_btn = QPushButton("🗑️ " + t("delete_playlist"))
         self._delete_playlist_btn.setObjectName("playlistActionBtn")
-        self._delete_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._delete_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._delete_playlist_btn.setEnabled(False)
         header_layout.addWidget(self._delete_playlist_btn)
 
         self._export_playlist_btn = QPushButton(t("export_playlist"))
         self._export_playlist_btn.setObjectName("playlistActionBtn")
-        self._export_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._export_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._export_playlist_btn.setEnabled(False)
         self._export_playlist_btn.clicked.connect(self._export_playlist)
         header_layout.addWidget(self._export_playlist_btn)
 
         self._import_playlist_btn = QPushButton(t("import_playlist"))
         self._import_playlist_btn.setObjectName("playlistActionBtn")
-        self._import_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._import_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._import_playlist_btn.clicked.connect(self._import_playlist)
         header_layout.addWidget(self._import_playlist_btn)
 
@@ -324,7 +322,7 @@ class PlaylistView(QWidget):
         playlists = self._playlist_service.get_all_playlists()
         for playlist in playlists:
             item = QListWidgetItem(playlist.name)
-            item.setData(Qt.UserRole, playlist.id)
+            item.setData(Qt.ItemDataRole.UserRole, playlist.id)
             self._playlist_list.addItem(item)
 
         # Update UI texts
@@ -343,7 +341,7 @@ class PlaylistView(QWidget):
         self._playlist_list.setCurrentRow(0)
         first_item = self._playlist_list.item(0)
         if first_item:
-            self._load_playlist(first_item.data(Qt.UserRole))
+            self._load_playlist(first_item.data(Qt.ItemDataRole.UserRole))
 
     def _update_ui_texts(self):
         """Update UI texts after language change."""
@@ -376,7 +374,7 @@ class PlaylistView(QWidget):
             # Select the new playlist
             for i in range(self._playlist_list.count()):
                 item = self._playlist_list.item(i)
-                if item.data(Qt.UserRole) == playlist_id:
+                if item.data(Qt.ItemDataRole.UserRole) == playlist_id:
                     self._playlist_list.setCurrentItem(item)
                     self._load_playlist(playlist_id)
                     break
@@ -422,7 +420,7 @@ class PlaylistView(QWidget):
 
     def _on_playlist_selected(self, item: QListWidgetItem):
         """Handle playlist selection."""
-        playlist_id = item.data(Qt.UserRole)
+        playlist_id = item.data(Qt.ItemDataRole.UserRole)
         self._load_playlist(playlist_id)
 
     def _on_playlist_created(self, playlist_id: int):
@@ -431,7 +429,7 @@ class PlaylistView(QWidget):
         # Select and load the new playlist
         for i in range(self._playlist_list.count()):
             item = self._playlist_list.item(i)
-            if item and item.data(Qt.UserRole) == playlist_id:
+            if item and item.data(Qt.ItemDataRole.UserRole) == playlist_id:
                 self._playlist_list.setCurrentItem(item)
                 self._load_playlist(playlist_id)
                 break
@@ -444,7 +442,7 @@ class PlaylistView(QWidget):
 
     def _on_playlist_double_clicked(self, item: QListWidgetItem):
         """Handle playlist double click - load and play."""
-        playlist_id = item.data(Qt.UserRole)
+        playlist_id = item.data(Qt.ItemDataRole.UserRole)
         self._load_playlist(playlist_id)
         self._player.load_playlist(playlist_id)
 
@@ -570,12 +568,14 @@ class PlaylistView(QWidget):
         if reply == Yes:
             removed_count = 0
             for track_id in track_ids:
-                if self._library_service.remove_track(track_id):
+                if self._library_service.delete_track(track_id):
                     removed_count += 1
             if removed_count > 0:
                 success_message = format_count_message("remove_from_library_success", removed_count)
                 MessageDialog.information(self, t("remove_from_library"), success_message)
-                self._load_playlist(self._current_playlist_id)
+                current_playlist_id = self._current_playlist_id
+                if current_playlist_id is not None:
+                    self._load_playlist(current_playlist_id)
 
     def _on_ctx_delete_file(self, tracks: list):
         from utils import format_count_message
@@ -588,10 +588,12 @@ class PlaylistView(QWidget):
                     try:
                         Path(track.path).unlink()
                         if track.id:
-                            self._library_service.remove_track(track.id)
+                            self._library_service.delete_track(track.id)
                     except OSError as e:
                         MessageDialog.warning(self, "Error", str(e))
-            self._load_playlist(self._current_playlist_id)
+            current_playlist_id = self._current_playlist_id
+            if current_playlist_id is not None:
+                self._load_playlist(current_playlist_id)
 
     def _on_ctx_redownload(self, track):
         if not track or not track.id:
@@ -655,7 +657,7 @@ class PlaylistView(QWidget):
                     if p.name == playlist_name:
                         for i in range(self._playlist_list.count()):
                             item = self._playlist_list.item(i)
-                            if item.data(Qt.UserRole) == p.id:
+                            if p.id is not None and item.data(Qt.ItemDataRole.UserRole) == p.id:
                                 self._playlist_list.setCurrentItem(item)
                                 self._load_playlist(p.id)
                                 break

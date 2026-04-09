@@ -15,10 +15,12 @@ from PySide6.QtCore import (
     QPoint,
     QAbstractListModel,
     QModelIndex,
+    QPersistentModelIndex,
     QRunnable,
     QThreadPool,
     QRect,
     QItemSelectionModel,
+    QByteArray,
 )
 from PySide6.QtGui import QColor, QPainter, QImage, QCursor
 from PySide6.QtWidgets import (
@@ -80,7 +82,7 @@ def _resolve_local_cover_path(track: Track) -> str | None:
             if bootstrap and hasattr(bootstrap, 'cover_service'):
                 cover_path = bootstrap.cover_service.get_online_cover(
                     song_mid=cloud_file_id,
-                    album_mid=None,
+                    album_mid="",
                     artist=track.artist,
                     title=track.title,
                     provider_id=track.online_provider_id,
@@ -115,12 +117,12 @@ def _resolve_local_cover_path(track: Track) -> str | None:
 class LocalTrackModel(QAbstractListModel):
     """QAbstractListModel for local track data."""
 
-    TrackRole = Qt.UserRole + 1
-    CoverRole = Qt.UserRole + 2
-    IsFavoriteRole = Qt.UserRole + 3
-    IndexRole = Qt.UserRole + 4
-    IsCurrentRole = Qt.UserRole + 5
-    IsPlayingRole = Qt.UserRole + 6
+    TrackRole = int(Qt.ItemDataRole.UserRole) + 1
+    CoverRole = int(Qt.ItemDataRole.UserRole) + 2
+    IsFavoriteRole = int(Qt.ItemDataRole.UserRole) + 3
+    IndexRole = int(Qt.ItemDataRole.UserRole) + 4
+    IsCurrentRole = int(Qt.ItemDataRole.UserRole) + 5
+    IsPlayingRole = int(Qt.ItemDataRole.UserRole) + 6
 
     cover_ready = Signal(int)
 
@@ -128,14 +130,18 @@ class LocalTrackModel(QAbstractListModel):
         super().__init__(parent)
         self._tracks: List[Track] = []
         self._favorite_ids: set = set()
-        self._current_track_id = None
+        self._current_track_id: int | None = None
         self._is_playing: bool = False
         self._track_id_to_row: dict[int, int] = {}
 
-    def rowCount(self, parent=QModelIndex()):
+    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = QModelIndex()) -> int:
         return len(self._tracks)
 
-    def data(self, index, role=Qt.DisplayRole):
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = int(Qt.ItemDataRole.DisplayRole),
+    ):
         if not index.isValid() or index.row() >= len(self._tracks):
             return None
         row = index.row()
@@ -155,25 +161,26 @@ class LocalTrackModel(QAbstractListModel):
                     and self._is_playing)
         return None
 
-    def roleNames(self):
+    def roleNames(self) -> dict[int, QByteArray]:
         return {
-            Qt.DisplayRole: b"display",
-            self.TrackRole: b"track",
-            self.CoverRole: b"cover",
-            self.IsFavoriteRole: b"favorite",
-            self.IndexRole: b"index",
-            self.IsCurrentRole: b"current",
-            self.IsPlayingRole: b"playing",
+            int(Qt.ItemDataRole.DisplayRole): QByteArray(b"display"),
+            self.TrackRole: QByteArray(b"track"),
+            self.CoverRole: QByteArray(b"cover"),
+            self.IsFavoriteRole: QByteArray(b"favorite"),
+            self.IndexRole: QByteArray(b"index"),
+            self.IsCurrentRole: QByteArray(b"current"),
+            self.IsPlayingRole: QByteArray(b"playing"),
         }
 
     def reset_tracks(self, tracks: List[Track], favorite_ids: set):
         self.beginResetModel()
         self._tracks = list(tracks)
         self._favorite_ids = set(favorite_ids)
-        self._track_id_to_row = {
-            track.id: index for index, track in enumerate(self._tracks)
-            if track and getattr(track, "id", None) is not None
-        }
+        self._track_id_to_row = {}
+        for index, track in enumerate(self._tracks):
+            track_id = track.id if track else None
+            if track_id is not None:
+                self._track_id_to_row[track_id] = index
         self.endResetModel()
 
     def append_tracks(self, tracks: List[Track]):
@@ -185,8 +192,9 @@ class LocalTrackModel(QAbstractListModel):
         self.beginInsertRows(QModelIndex(), start, end)
         self._tracks.extend(tracks)
         for offset, track in enumerate(tracks, start=start):
-            if track and getattr(track, "id", None) is not None:
-                self._track_id_to_row[track.id] = offset
+            track_id = track.id if track else None
+            if track_id is not None:
+                self._track_id_to_row[track_id] = offset
         self.endInsertRows()
 
     def update_favorites(self, favorite_ids: set):
@@ -204,7 +212,7 @@ class LocalTrackModel(QAbstractListModel):
             last = self.index(max(changed_indices))
             self.dataChanged.emit(first, last, [self.IsFavoriteRole])
 
-    def get_track_at(self, row: int):
+    def get_track_at(self, row: int) -> Track | None:
         if 0 <= row < len(self._tracks):
             return self._tracks[row]
         return None
@@ -220,7 +228,7 @@ class LocalTrackModel(QAbstractListModel):
             idx = self.index(row)
             self.dataChanged.emit(idx, idx, [self.CoverRole])
 
-    def set_current_track(self, track_id):
+    def set_current_track(self, track_id: int | None) -> None:
         """Update the current track and emit dataChanged for affected rows."""
         old_track_id = self._current_track_id
         self._current_track_id = track_id
@@ -291,10 +299,17 @@ class LocalTrackDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         return QSize(0, 82)
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex):
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         # Skip off-screen items
         parent_view = self.parent()
-        if parent_view and (option.rect.bottom() < 0 or option.rect.top() > parent_view.height()):
+        if isinstance(parent_view, QWidget) and (
+            option.rect.bottom() < 0 or option.rect.top() > parent_view.height()
+        ):
             return
 
         theme = _get_active_theme()
@@ -308,7 +323,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
             return
 
         painter.save()
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = option.rect
 
@@ -323,8 +338,8 @@ class LocalTrackDelegate(QStyledItemDelegate):
             hover_bg.setAlpha(220)
             painter.fillRect(rect, hover_bg)
             # Hand cursor on hover
-            if self.parent():
-                self.parent().setCursor(Qt.CursorShape.PointingHandCursor)
+            if isinstance(parent_view, QWidget):
+                parent_view.setCursor(Qt.CursorShape.PointingHandCursor)
         else:
             bg = QColor(theme.background)
             bg.setAlpha(220)
@@ -356,7 +371,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
             font.setBold(False)
             painter.setFont(font)
             painter.drawText(x, rect.top(), self._index_width, rect.height(),
-                             Qt.AlignVCenter | Qt.AlignHCenter, str(row + 1))
+                             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter, str(row + 1))
             x += self._index_width
 
         # Cover art
@@ -372,7 +387,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         font.setBold(True)
         painter.setFont(font)
         title_rect = QRect(x, rect.top() + 10, rect.right() - x - 100, 22)
-        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter,
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          self._elided_text(painter, title, title_rect.width()))
 
         # Artist + Album
@@ -385,7 +400,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         font.setBold(False)
         painter.setFont(font)
         info_rect = QRect(x, rect.top() + 32, rect.right() - x - 100, 20)
-        painter.drawText(info_rect, Qt.AlignLeft | Qt.AlignVCenter,
+        painter.drawText(info_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          self._elided_text(painter, artist_album, info_rect.width()))
 
         # Source indicator (if enabled)
@@ -408,7 +423,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
             font.setBold(False)
             painter.setFont(font)
             source_rect = QRect(x, rect.top() + 52, rect.right() - x - 100, 16)
-            painter.drawText(source_rect, Qt.AlignLeft | Qt.AlignVCenter,
+            painter.drawText(source_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                              self._elided_text(painter, source_text, source_rect.width()))
 
         # Duration
@@ -417,7 +432,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         font.setPixelSize(12)
         painter.setFont(font)
         painter.drawText(rect.right() - self._padding - 50 - self._star_size - 10, rect.top(), 50, rect.height(),
-                         Qt.AlignVCenter | Qt.AlignRight, duration_text)
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, duration_text)
 
         # Favorite icon (star)
         star_x = rect.right() - self._padding - self._star_size
@@ -446,12 +461,19 @@ class LocalTrackDelegate(QStyledItemDelegate):
             placeholder = Pm(self._cover_size, self._cover_size)
             placeholder.fill(QColor(theme.background_alt))
             p = QPainter(placeholder)
-            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(QColor(theme.border))
             font = p.font()
             font.setPixelSize(28)
             p.setFont(font)
-            p.drawText(0, 0, self._cover_size, self._cover_size, Qt.AlignCenter, "♪")
+            p.drawText(
+                0,
+                0,
+                self._cover_size,
+                self._cover_size,
+                Qt.AlignmentFlag.AlignCenter,
+                "♪",
+            )
             p.end()
             painter.drawPixmap(rect, placeholder)
 
@@ -463,7 +485,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
 
         # Preload nearby covers (±3 rows)
         parent_view = self.parent()
-        if parent_view and hasattr(parent_view, '_model'):
+        if isinstance(parent_view, LocalTracksListView):
             model = parent_view._model
             for offset in [-3, -2, -1, 1, 2, 3]:
                 nearby_row = row + offset
@@ -481,7 +503,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         self._requested_covers.discard(cache_key)
 
         parent_view = self.parent()
-        if parent_view and hasattr(parent_view, '_on_cover_ready'):
+        if isinstance(parent_view, LocalTracksListView):
             parent_view._on_cover_ready(cache_key, cover_path, qimage)
 
     def _get_cover_cache_key(self, track: Track) -> str:
@@ -506,7 +528,7 @@ class LocalTrackDelegate(QStyledItemDelegate):
         fm = painter.fontMetrics()
         if fm.horizontalAdvance(text) <= max_width:
             return text
-        return fm.elidedText(text, Qt.ElideRight, max_width)
+        return fm.elidedText(text, Qt.TextElideMode.ElideRight, max_width)
 
 
 class LocalTracksListView(QWidget):
@@ -692,6 +714,8 @@ class LocalTracksListView(QWidget):
         bootstrap = Bootstrap.instance()
         if bootstrap and hasattr(bootstrap, 'favorites_service'):
             service = bootstrap.favorites_service
+            if track.id is None:
+                return
             if new_state:
                 service.add_favorite(track_id=track.id)
             else:
@@ -825,7 +849,7 @@ class LocalTracksListView(QWidget):
         """Refresh list viewport styling for the active theme."""
         self._apply_viewport_bg()
 
-    def load_tracks(self, tracks: List[Track], favorite_ids: set = None):
+    def load_tracks(self, tracks: List[Track], favorite_ids: set | None = None):
         """Load tracks into the view."""
         self._model.reset_tracks(tracks, favorite_ids or set())
         self._apply_viewport_bg()

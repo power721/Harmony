@@ -19,6 +19,7 @@ import glob
 from PySide6.QtCore import QCoreApplication
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # This helps the .exe find the 'plugins' folder included by PyInstaller
 if getattr(sys, 'frozen', False):
@@ -85,7 +86,7 @@ def create_audio_backend_bundle_file(audio_backend_bundle: str) -> Path:
     return bundle_file
 
 
-def get_platform_info(target_platform: str = None) -> dict:
+def get_platform_info(target_platform: Optional[str] = None) -> dict:
     """Get platform-specific build configuration."""
     current_system = platform.system().lower()
 
@@ -139,7 +140,7 @@ def get_platform_info(target_platform: str = None) -> dict:
         return platform_info.get(current_system, platform_info["linux"])
 
 
-def find_icon(platform_name: str) -> Path:
+def find_icon(platform_name: str) -> Optional[Path]:
     """Find icon file for the platform."""
     icon_extension = {
         "linux": ".png",
@@ -172,7 +173,7 @@ def find_icon(platform_name: str) -> Path:
     return None
 
 
-def find_png_icon() -> Path:
+def find_png_icon() -> Optional[Path]:
     """Find PNG icon file for conversion."""
     png_paths = [
         PROJECT_ROOT / "icon.png",
@@ -188,7 +189,7 @@ def find_png_icon() -> Path:
     return None
 
 
-def generate_icon(png_path: Path, platform_name: str) -> Path:
+def generate_icon(png_path: Path, platform_name: str) -> Optional[Path]:
     """Generate platform-specific icon from PNG."""
     output_dir = PROJECT_ROOT / "icons"
     output_dir.mkdir(exist_ok=True)
@@ -207,7 +208,7 @@ def generate_icon(png_path: Path, platform_name: str) -> Path:
     return None
 
 
-def generate_ico(png_path: Path, output_path: Path) -> Path:
+def generate_ico(png_path: Path, output_path: Path) -> Optional[Path]:
     """Generate ICO file from PNG using Pillow."""
     try:
         from PIL import Image
@@ -240,7 +241,7 @@ def generate_ico(png_path: Path, output_path: Path) -> Path:
         return None
 
 
-def generate_icns(png_path: Path, output_path: Path) -> Path:
+def generate_icns(png_path: Path, output_path: Path) -> Optional[Path]:
     """Generate ICNS file from PNG."""
     try:
         from PIL import Image
@@ -877,7 +878,7 @@ def check_conda_env():
 
 
 def build_executable(
-    platform_name: str = None,
+    platform_name: Optional[str] = None,
     one_file: bool = True,
     clean: bool = True,
     debug: bool = False,
@@ -1315,7 +1316,7 @@ def main():
         target = None if args.platform == "current" else args.platform
         target_platform = target or platform.system().lower()
         success = build_executable(
-            platform_name=target,
+            platform_name=target_platform,
             one_file=not args.dir,
             clean=args.no_clean is False,
             debug=args.debug,

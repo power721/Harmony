@@ -76,7 +76,7 @@ def add_tracks_to_playlist(
     # Show dialog for user to select playlist
     dialog.set_track_ids(track_ids)
 
-    if dialog.exec() == QDialog.Accepted:
+    if dialog.exec() == QDialog.DialogCode.Accepted:
         playlist = dialog.get_selected_playlist()
         dialog.deleteLater()
         if playlist:
