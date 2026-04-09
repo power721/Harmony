@@ -169,9 +169,7 @@ class MainWindow(QMainWindow):
         saved_lang = self._config.get_language()
         set_language(saved_lang)
 
-        # Keep reference to engine for backward compatibility
-        # Use closures to capture self for methods that need access to db
-        db = self._db
+        # Keep reference to core services for backward compatibility wrappers
         playback = self._playback
         library_service = self._library_service
 
@@ -181,10 +179,6 @@ class MainWindow(QMainWindow):
             @property
             def engine(self):
                 return playback.engine
-
-            @property
-            def db(self):
-                return db
 
             @property
             def current_source(self):

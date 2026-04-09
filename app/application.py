@@ -72,11 +72,6 @@ class Application(QObject):
         return self._bootstrap
 
     @property
-    def db(self):
-        """Get database manager."""
-        return self._bootstrap.db
-
-    @property
     def config(self):
         """Get config manager."""
         return self._bootstrap.config

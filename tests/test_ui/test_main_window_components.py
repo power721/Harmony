@@ -303,6 +303,7 @@ class TestMainWindowPlayerProxy:
         library_service.get_track.assert_called_once_with(1)
         library_service.get_track_by_path.assert_called_once_with("/music/a.mp3")
         library_service.get_track_by_cloud_file_id.assert_called_once_with("abc")
+        assert not hasattr(window._player, "db")
 
     def test_close_event_uses_playback_shutdown(self, qapp):
         """MainWindow shutdown should explicitly close playback backend resources."""
