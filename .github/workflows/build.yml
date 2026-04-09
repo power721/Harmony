@@ -77,9 +77,9 @@ jobs:
           echo "version=$QT_VERSION" >> $GITHUB_OUTPUT
           echo "Qt version: $QT_VERSION"
 
-      - name: Cache fcitx5 Qt6 plugin
-        id: cache-fcitx5
-        uses: actions/cache@v4
+      - name: Restore fcitx5 Qt6 plugin cache
+        id: restore-fcitx5-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/fcitx5-qt6-plugin
@@ -94,7 +94,7 @@ jobs:
           # 检查缓存
           CACHED_PLUGIN="$HOME/.cache/fcitx5-qt6-plugin/libfcitx5platforminputcontextplugin.so"
 
-          if [ -f "$CACHED_PLUGIN" ]; then
+          if [ "${{ steps.restore-fcitx5-cache.outputs.cache-hit }}" = "true" ] && [ -f "$CACHED_PLUGIN" ]; then
             echo "==> Restoring fcitx5 plugin from cache"
             mkdir -p "$PLUGIN_DEST"
             cp "$CACHED_PLUGIN" "$PLUGIN_DEST/"
@@ -112,6 +112,14 @@ jobs:
 
           # 验证插件存在
           ls -la "$PLUGIN_DEST"
+
+      - name: Save fcitx5 Qt6 plugin cache
+        if: steps.restore-fcitx5-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/fcitx5-qt6-plugin
+          key: fcitx5-qt6-${{ steps.qt-version.outputs.version }}-${{ runner.os }}
 
       - name: Generate Qt plugin whitelist (Dynamic Analysis)
         run: |

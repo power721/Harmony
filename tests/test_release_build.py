@@ -175,6 +175,26 @@ def test_windows_workflow_downloads_repo_mpv_runtime():
     assert "choco install mpv" not in section
 
 
+def test_linux_workflow_uses_explicit_fcitx5_cache_restore_and_save():
+    """Linux CI should restore and save the fcitx5 plugin cache explicitly."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+
+    build_linux_section = re.search(
+        r"build-linux:\n(?P<section>.*?)(?:\n  build-macos:|\Z)",
+        content,
+        re.DOTALL,
+    )
+    assert build_linux_section, "build.yml must define a build-linux job"
+
+    section = build_linux_section.group("section")
+    assert "Restore fcitx5 Qt6 plugin cache" in section
+    assert "uses: actions/cache/restore@v4" in section
+    assert "Save fcitx5 Qt6 plugin cache" in section
+    assert "uses: actions/cache/save@v4" in section
+    assert "uses: actions/cache@v4" not in section
+
+
 def test_collect_data_files_includes_builtin_plugins(tmp_path, monkeypatch):
     """Packaged builds must include builtin plugins for runtime discovery."""
     repo_root = tmp_path / "repo"
