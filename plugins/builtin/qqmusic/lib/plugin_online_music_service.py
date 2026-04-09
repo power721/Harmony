@@ -88,9 +88,25 @@ class PluginOnlineMusicService:
                 return detail
         return self._client_adapter.get_artist_detail(singer_mid)
 
-    def get_artist_albums(self, singer_mid: str, number: int = 30, begin: int = 0) -> list[dict[str, Any]]:
+    def get_artist_albums(self, singer_mid: str, number: int = 30, begin: int = 0) -> dict[str, Any]:
         _ = begin
-        return self._client_adapter.get_artist_albums(singer_mid, limit=number)
+        payload = self._client_adapter.get_artist_albums(singer_mid, limit=number)
+        if isinstance(payload, dict):
+            albums = payload.get("albums", [])
+            total = int(payload.get("total", 0) or 0)
+            if not isinstance(albums, list):
+                albums = []
+            if total <= 0:
+                total = len(albums)
+            return {
+                "albums": albums,
+                "total": total,
+            }
+        albums = payload if isinstance(payload, list) else []
+        return {
+            "albums": albums,
+            "total": len(albums),
+        }
 
     def get_album_detail(self, album_mid: str, page: int = 1, page_size: int = 50) -> Optional[dict[str, Any]]:
         if self._provider and hasattr(self._provider, "get_album_info_with_fav_status"):

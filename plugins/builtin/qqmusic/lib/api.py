@@ -224,7 +224,6 @@ class QQMusicPluginAPI:
             timeout=15,
         )
         data = response.json()
-        print(data)
         if data.get("code") != 0:
             return None
         result = data.get("data", {})

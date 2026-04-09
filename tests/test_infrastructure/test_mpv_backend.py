@@ -57,6 +57,10 @@ class _FakeMPV:
     def observe_property(self, prop, callback):
         self._observers[prop] = callback
 
+    def unobserve_property(self, prop, callback):
+        if self._observers.get(prop) is callback:
+            self._observers.pop(prop, None)
+
     def command(self, *args):
         self._commands.append(args)
         if args and args[0] == "seek":
@@ -66,7 +70,9 @@ class _FakeMPV:
 
     def trigger(self, prop, value):
         self._props[prop] = value
-        callback = self._observers[prop]
+        callback = self._observers.get(prop)
+        if callback is None:
+            return
         callback(prop, value)
 
     def terminate(self):
@@ -349,3 +355,23 @@ def test_mpv_backend_marks_media_loaded_on_duration_update_after_active_replace(
 
     assert backend._media_ready is True
     assert loaded == [True]
+
+
+def test_mpv_backend_cleanup_unobserves_property_callbacks(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+
+    positions = []
+    backend.position_changed.connect(positions.append)
+
+    player.trigger("idle-active", False)
+    player.trigger("time-pos", 1.5)
+    assert positions[-1] == 1500
+
+    backend.cleanup()
+    player.trigger("time-pos", 2.0)
+
+    assert positions == [1500]

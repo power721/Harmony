@@ -739,6 +739,32 @@ def test_plugin_online_music_service_strips_em_tags_in_search_results(monkeypatc
     assert result.tracks[0].album_name == "叶惠美"
 
 
+def test_plugin_online_music_service_wraps_artist_albums_with_total(monkeypatch):
+    context = Mock()
+    context.settings = Mock()
+    service = PluginOnlineMusicService(context)
+    albums = [
+        {
+            "mid": "album-1",
+            "name": "Album 1",
+            "singer_mid": "artist-1",
+            "singer_name": "Artist 1",
+        }
+    ]
+    monkeypatch.setattr(
+        service,
+        "_client_adapter",
+        Mock(get_artist_albums=Mock(return_value=albums)),
+    )
+
+    result = service.get_artist_albums("artist-1", number=10, begin=0)
+
+    assert result == {
+        "albums": albums,
+        "total": 1,
+    }
+
+
 def test_online_music_view_emits_play_after_download_even_if_progress_close_triggers_cancel(
     qtbot,
     monkeypatch,

@@ -7,9 +7,11 @@ import importlib
 import logging
 import os
 import sys
+import weakref
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Signal
+from shiboken6 import isValid
 
 from .audio_backend import AudioBackend, AudioEffectsState, AudioEffectCapabilities
 
@@ -122,6 +124,8 @@ class MpvAudioBackend(AudioBackend):
         self._media_ready = False
         self._pending_seek_ms: int | None = None
         self._end_notified = False
+        self._cleaned_up = False
+        self._observed_callbacks: list[tuple[str, object]] = []
         self._effects_state = AudioEffectsState(
             enabled=True,
             eq_bands=[0.0] * len(self.FREQUENCY_BANDS),
@@ -246,7 +250,16 @@ class MpvAudioBackend(AudioBackend):
         return AudioEffectCapabilities.all_supported()
 
     def cleanup(self):
+        self._cleaned_up = True
         self._set_polling_enabled(False)
+        unobserve = getattr(self._player, "unobserve_property", None)
+        if callable(unobserve):
+            for prop, callback in self._observed_callbacks:
+                try:
+                    unobserve(prop, callback)
+                except Exception:
+                    pass
+        self._observed_callbacks.clear()
         try:
             self._player.command("stop")
         except Exception:
@@ -259,7 +272,12 @@ class MpvAudioBackend(AudioBackend):
                 pass
 
     def _observe_property(self, prop: str, bridge_signal: Signal):
+        self_ref = weakref.ref(self)
+
         def callback(*args):
+            backend = self_ref()
+            if backend is None or not isValid(backend) or backend._cleaned_up:
+                return
             # python-mpv callback payload can vary by version.
             if len(args) >= 2:
                 value = args[1]
@@ -267,9 +285,13 @@ class MpvAudioBackend(AudioBackend):
                 value = args[0]
             else:
                 value = None
-            bridge_signal.emit(value)
+            try:
+                bridge_signal.emit(value)
+            except RuntimeError:
+                logger.debug("[MpvAudioBackend] Ignoring late property callback for %s", prop)
 
         self._player.observe_property(prop, callback)
+        self._observed_callbacks.append((prop, callback))
 
     def _safe_get_property(self, prop: str, default):
         try:
