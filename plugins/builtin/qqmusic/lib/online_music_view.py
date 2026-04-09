@@ -2266,6 +2266,7 @@ class OnlineMusicView(QWidget):
 
         self._hotkey_request_id += 1
         request_id = self._hotkey_request_id
+        self._stop_worker(self._hotkey_worker, "hotkey_worker")
 
         self._hotkey_worker = HotkeyWorker(self._qqmusic_service)
         self._hotkey_worker.hotkey_ready.connect(
@@ -2379,6 +2380,7 @@ class OnlineMusicView(QWidget):
 
         self._completion_request_id += 1
         request_id = self._completion_request_id
+        self._stop_worker(self._completion_worker, "completion_worker")
 
         # Note: Completion API works without login too
         self._completion_worker = CompletionWorker(self._qqmusic_service, keyword)
@@ -2429,6 +2431,7 @@ class OnlineMusicView(QWidget):
         """Execute search."""
         self._search_request_id += 1
         request_id = self._search_request_id
+        self._stop_worker(self._search_worker, "search_worker")
 
         self._search_worker = SearchWorker(
             self._service,
@@ -2665,6 +2668,7 @@ class OnlineMusicView(QWidget):
         """Load more items for grid view."""
         self._search_request_id += 1
         request_id = self._search_request_id
+        self._stop_worker(self._search_worker, "search_worker")
 
         self._search_worker = SearchWorker(
             self._service,

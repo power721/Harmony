@@ -338,6 +338,15 @@ class _FakeWorker:
         self.delete_later_called = True
 
 
+class _FakeAsyncWorker(_FakeWorker):
+    def __init__(self, running=True):
+        super().__init__(running=running)
+        self.search_completed = _FakeSignal()
+        self.search_failed = _FakeSignal()
+        self.completion_ready = _FakeSignal()
+        self.hotkey_ready = _FakeSignal()
+
+
 def test_load_top_lists_stops_existing_worker_cooperatively():
     """Top-list reload should stop old worker via interruption/quit/wait before starting new one."""
     view = OnlineMusicView.__new__(OnlineMusicView)
@@ -357,6 +366,82 @@ def test_load_top_lists_stops_existing_worker_cooperatively():
     assert old_worker.wait_called is True
     assert view._top_list_worker is new_worker
     assert new_worker.top_list_loaded.connected == view._on_top_lists_loaded
+    assert new_worker.started is True
+
+
+def test_load_hotkeys_stops_existing_worker_cooperatively():
+    """Hotkey reload should stop the old worker before replacing it."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._qqmusic_service = object()
+    view._hotkey_request_id = 0
+    old_worker = _FakeAsyncWorker(running=True)
+    new_worker = _FakeAsyncWorker(running=False)
+    view._hotkey_worker = old_worker
+    view._on_hotkey_ready = Mock()
+
+    with patch.object(online_music_view, "isValid", return_value=True), patch.object(
+        online_music_view, "HotkeyWorker", return_value=new_worker
+    ):
+        OnlineMusicView._load_hotkeys(view)
+
+    assert old_worker.request_interruption_called is True
+    assert old_worker.quit_called is True
+    assert old_worker.wait_called is True
+    assert view._hotkey_worker is new_worker
+    assert new_worker.hotkey_ready.connected is not None
+    assert new_worker.started is True
+
+
+def test_trigger_completion_stops_existing_worker_cooperatively():
+    """Completion requests should stop the previous worker before launching a new one."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._qqmusic_service = object()
+    view._completion_request_id = 0
+    view._search_input = Mock()
+    view._search_input.text.return_value = "hello"
+    old_worker = _FakeAsyncWorker(running=True)
+    new_worker = _FakeAsyncWorker(running=False)
+    view._completion_worker = old_worker
+    view._on_completion_ready = Mock()
+
+    with patch.object(online_music_view, "isValid", return_value=True), patch.object(
+        online_music_view, "CompletionWorker", return_value=new_worker
+    ):
+        OnlineMusicView._trigger_completion(view)
+
+    assert old_worker.request_interruption_called is True
+    assert old_worker.quit_called is True
+    assert old_worker.wait_called is True
+    assert view._completion_worker is new_worker
+    assert new_worker.completion_ready.connected is not None
+    assert new_worker.started is True
+
+
+def test_do_search_stops_existing_worker_cooperatively():
+    """New searches should stop the previous search worker before replacing it."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._search_request_id = 0
+    view._service = object()
+    view._current_keyword = "hello"
+    view._current_search_type = SearchType.SONG
+    view._current_page = 1
+    old_worker = _FakeAsyncWorker(running=True)
+    new_worker = _FakeAsyncWorker(running=False)
+    view._search_worker = old_worker
+    view._on_search_completed = Mock()
+    view._on_search_failed = Mock()
+
+    with patch.object(online_music_view, "isValid", return_value=True), patch.object(
+        online_music_view, "SearchWorker", return_value=new_worker
+    ):
+        OnlineMusicView._do_search(view)
+
+    assert old_worker.request_interruption_called is True
+    assert old_worker.quit_called is True
+    assert old_worker.wait_called is True
+    assert view._search_worker is new_worker
+    assert new_worker.search_completed.connected is not None
+    assert new_worker.search_failed.connected is not None
     assert new_worker.started is True
 
 
