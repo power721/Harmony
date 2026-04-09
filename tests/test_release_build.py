@@ -48,6 +48,14 @@ def test_release_script_explicitly_collects_platform_input_context_plugins():
     assert 'uv run python' in content
 
 
+def test_release_script_bundles_builtin_plugins_for_linux_appimage():
+    """Linux CI build must ship builtin plugins inside the PyInstaller bundle."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / "release.sh").read_text(encoding="utf-8")
+
+    assert '--add-data "plugins/builtin:plugins/builtin"' in content
+
+
 def test_windows_workflow_produces_split_backend_executables():
     """Windows CI must upload separate QT and MPV executables without a portable zip."""
     repo_root = Path(__file__).resolve().parents[1]
