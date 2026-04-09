@@ -2204,12 +2204,6 @@ class MainWindow(QMainWindow):
                         logger.debug("Auto-playing restored track")
                         QTimer.singleShot(300, self._player.play)
 
-                    # If cloud source, update cloud view
-                    # if source == "cloud" and current_item.cloud_account_id:
-                    #     account = self._db.get_cloud_account(current_item.cloud_account_id)
-                    #     if account:
-                    #         self._stacked_widget.setCurrentWidget(self._cloud_drive_view)
-
             QTimer.singleShot(200, restore_queue_state)
             return
 
