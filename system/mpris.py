@@ -79,6 +79,16 @@ def _safe_float(value, default=0.0) -> float:
         return float(default)
 
 
+def _unwrap_dbus_value(value):
+    reply_value = getattr(value, "value", None)
+    if callable(reply_value):
+        try:
+            return reply_value()
+        except Exception:
+            return value
+    return value
+
+
 def _safe_file_uri(path: str) -> str:
     if not path:
         return ""
@@ -463,7 +473,7 @@ class MPRISController:
         owner = ""
         service_owner = getattr(interface, "serviceOwner", None)
         if callable(service_owner):
-            owner = service_owner(MPRIS_NAME) or ""
+            owner = _unwrap_dbus_value(service_owner(MPRIS_NAME)) or ""
 
         if not owner:
             return default
@@ -471,7 +481,7 @@ class MPRISController:
         pid = 0
         service_pid = getattr(interface, "servicePid", None)
         if callable(service_pid):
-            pid = service_pid(MPRIS_NAME) or 0
+            pid = _unwrap_dbus_value(service_pid(MPRIS_NAME)) or 0
 
         if pid:
             return f"MPRIS service name already owned by {owner} (pid={pid})"

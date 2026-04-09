@@ -262,3 +262,45 @@ def test_mpris_controller_start_reports_owner_when_service_name_is_taken(monkeyp
 
     with pytest.raises(RuntimeError, match=r"already owned by :1\.2032 \(pid=381574\)"):
         controller.start()
+
+
+def test_mpris_controller_start_unwraps_qdbus_reply_owner_and_pid(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    class FakeReply:
+        def __init__(self, value):
+            self._value = value
+
+        def value(self):
+            return self._value
+
+    class FakeInterface:
+        def serviceOwner(self, name):
+            assert name == mpris.MPRIS_NAME
+            return FakeReply(":1.2032")
+
+        def servicePid(self, name):
+            assert name == mpris.MPRIS_NAME
+            return FakeReply(381574)
+
+    class FakeBus:
+        def isConnected(self):
+            return True
+
+        def registerService(self, _name):
+            return False
+
+        def lastError(self):
+            return types.SimpleNamespace(message=lambda: "")
+
+        def interface(self):
+            return FakeInterface()
+
+    monkeypatch.setattr(mpris.QDBusConnection, "sessionBus", staticmethod(lambda: FakeBus()))
+
+    controller = mpris.MPRISController(
+        playback_service=types.SimpleNamespace(playlist=[], current_track=None),
+    )
+
+    with pytest.raises(RuntimeError, match=r"already owned by :1\.2032 \(pid=381574\)"):
+        controller.start()
