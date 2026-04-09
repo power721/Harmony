@@ -1998,25 +1998,29 @@ class MainWindow(QMainWindow):
         import json
 
         current_index = self._stacked_widget.currentIndex()
-        view_type = "library"
+        plugin_page_keys = getattr(self, "_plugin_page_keys", {})
+        if current_index in plugin_page_keys:
+            view_type = f"plugin:{plugin_page_keys[current_index]}"
+        else:
+            view_type = "library"
         view_data = {}
 
-        # Map index to view type
-        index_to_type = {
-            0: "library",
-            1: "cloud",
-            2: "playlists",
-            3: "queue",
-            4: "albums",
-            5: "artists",
-            6: "artist",
-            7: "album",
-            8: "online",
-            9: "genres",
-            10: "genre",
-        }
+        if not view_type.startswith("plugin:"):
+            # Map stacked-widget indices to their persisted view types.
+            index_to_type = {
+                0: "library",
+                1: "cloud",
+                2: "playlists",
+                3: "queue",
+                4: "albums",
+                5: "artists",
+                6: "artist",
+                7: "album",
+                8: "genres",
+                9: "genre",
+            }
 
-        view_type = index_to_type.get(current_index, "library")
+            view_type = index_to_type.get(current_index, "library")
 
         # Special handling for library view - check if it's showing favorites or history
         if view_type == "library":
@@ -2108,6 +2112,19 @@ class MainWindow(QMainWindow):
                 self._show_page(5)
             elif view_type == "online":
                 if getattr(self, "_plugin_page_keys", None):
+                    self._show_page(next(iter(self._plugin_page_keys)))
+                else:
+                    self._show_page(0)
+            elif view_type.startswith("plugin:"):
+                plugin_id = view_type.partition(":")[2]
+                page_index = next(
+                    (index for index, value in getattr(self, "_plugin_page_keys", {}).items() if value == plugin_id),
+                    None,
+                )
+                if page_index is not None:
+                    self._show_page(page_index)
+                elif getattr(self, "_plugin_page_keys", None):
+                    # Legacy fallback when the saved plugin is unavailable.
                     self._show_page(next(iter(self._plugin_page_keys)))
                 else:
                     self._show_page(0)

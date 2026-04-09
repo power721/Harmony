@@ -473,6 +473,54 @@ class TestMainWindowRestoreState:
         window._genre_view.set_genre.assert_called_once_with(genre)
         window._stacked_widget.setCurrentIndex.assert_called_once_with(9)
 
+    def test_restore_view_state_reopens_specific_plugin_page(self, qapp):
+        window = self._make_restore_window(qapp)
+        window._config = Mock()
+        window._config.get_view_type.return_value = "plugin:qqmusic"
+        window._config.get_view_data.return_value = "{}"
+        window._plugin_page_keys = {10: "qqmusic", 11: "netease"}
+
+        with patch(
+            "ui.windows.main_window.QTimer.singleShot",
+            side_effect=lambda _delay, callback: callback(),
+        ):
+            window._restore_view_state()
+
+        window._show_page.assert_called_once_with(10)
+
+
+class TestMainWindowSaveViewState:
+    """Tests for persisted navigation state."""
+
+    def _make_save_window(self, current_index: int):
+        return SimpleNamespace(
+            _stacked_widget=SimpleNamespace(currentIndex=Mock(return_value=current_index)),
+            _library_view=SimpleNamespace(get_current_view=Mock(return_value="all")),
+            _album_view=SimpleNamespace(get_album=Mock(return_value=None)),
+            _artist_view=SimpleNamespace(get_artist=Mock(return_value=None)),
+            _genre_view=SimpleNamespace(get_genre=Mock(return_value=None)),
+            _plugin_page_keys={},
+            _config=SimpleNamespace(
+                set_view_type=Mock(),
+                set_view_data=Mock(),
+            ),
+        )
+
+    def test_save_view_state_persists_genres_page(self):
+        fake = self._make_save_window(current_index=8)
+
+        MainWindow._save_view_state(fake)
+
+        fake._config.set_view_type.assert_called_once_with("genres")
+
+    def test_save_view_state_persists_plugin_page_by_plugin_id(self):
+        fake = self._make_save_window(current_index=10)
+        fake._plugin_page_keys = {10: "qqmusic"}
+
+        MainWindow._save_view_state(fake)
+
+        fake._config.set_view_type.assert_called_once_with("plugin:qqmusic")
+
 
 class TestMainWindowPlaylistOps:
     """Tests for playlist mutations routed through MainWindow."""
