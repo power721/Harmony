@@ -1135,6 +1135,7 @@ class QQMusicService:
                 album_info = song_info.get("album", {})
                 album_name = album_info.get("name", "") if isinstance(album_info, dict) else ""
                 tracks.append({
+                    "id": song_info.get("songid") or song_info.get("id"),
                     "mid": song_info.get("songmid", "") or song_info.get("mid", ""),
                     "title": song_info.get("songname", "") or song_info.get("name", "") or song_info.get("title", ""),
                     "singer": singer_name,

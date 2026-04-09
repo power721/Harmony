@@ -814,20 +814,20 @@ class QQMusicClient:
     def unfav_album(self, album_mid: str) -> Dict:
         """Unfavorite an album."""
         uin = str(self.credential.get("musicid", "")) if self.credential else ""
-        params = {"uin": uin, "v_albumMid": [album_mid], "opertype": 2}
-        return self._make_request("music.musicasset.AlbumFavWrite", "FavAlbum", params)
+        params = {"uin": uin, "v_albumMid": [album_mid]}
+        return self._make_request("music.musicasset.AlbumFavWrite", "CancelFavAlbum", params)
 
     def fav_playlist(self, playlist_id) -> Dict:
         """Favorite a playlist."""
-        uin = str(self.credential.get("musicid", "")) if self.credential else ""
-        params = {"uin": uin, "v_playlistId": [playlist_id], "opertype": 1}
+        playlist_tid = int(playlist_id) if str(playlist_id).isdigit() else playlist_id
+        params = {"uin": '', "v_playlistId": [playlist_tid]}
         return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
 
     def unfav_playlist(self, playlist_id) -> Dict:
         """Unfavorite a playlist."""
-        uin = str(self.credential.get("musicid", "")) if self.credential else ""
-        params = {"uin": uin, "v_playlistId": [playlist_id], "opertype": 2}
-        return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
+        playlist_tid = int(playlist_id) if str(playlist_id).isdigit() else playlist_id
+        params = {"uin": '', "v_playlistId": [playlist_tid]}
+        return self._make_request("music.musicasset.PlaylistFavWrite", "CancelFavPlaylist", params)
 
     def make_batch_request(self, requests: Dict[str, Dict]) -> Dict:
         """

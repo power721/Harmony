@@ -129,3 +129,39 @@ def test_get_top_list_songs_uses_shared_top_list_normalizer():
             "duration": 180,
         }
     ]
+
+
+def test_get_my_fav_songs_preserves_song_id_for_unfavorite_actions():
+    service = QQMusicService({"musicid": "1", "musickey": "secret"})
+    service.client = SimpleNamespace(
+        get_euin=lambda: "1",
+        get_fav_song=lambda *_args, **_kwargs: {
+            "songlist": [
+                {
+                    "data": {
+                        "songid": 12345,
+                        "songmid": "song-mid",
+                        "songname": "Song 1",
+                        "singer": [{"name": "Singer 1"}],
+                        "album": {"name": "Album 1", "mid": "album-1"},
+                        "interval": 180,
+                    }
+                }
+            ]
+        }
+    )
+
+    songs = service.get_my_fav_songs()
+
+    assert songs == [
+        {
+            "id": 12345,
+            "mid": "song-mid",
+            "title": "Song 1",
+            "singer": "Singer 1",
+            "album": "Album 1",
+            "album_mid": "album-1",
+            "duration": 180,
+            "cover_url": "https://y.gtimg.cn/music/photo_new/T002R300x300M000album-1.jpg",
+        }
+    ]

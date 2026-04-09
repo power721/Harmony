@@ -838,6 +838,7 @@ class OnlineMusicView(QWidget):
         self._fav_workers: List[FavWorker] = []
         self._fav_loaded = False
         self._fav_data: Dict[str, list] = {}  # Store loaded favorites data
+        self._active_favorites_card_type: Optional[str] = None
 
         # Navigation history stack - tracks where user came from
         # Each entry is a dict: {'page': 'top_list'|'results'|'playlists'|'albums', 'data': ...}
@@ -925,6 +926,7 @@ class OnlineMusicView(QWidget):
         self._detail_view.add_all_tracks_to_queue.connect(self._on_add_all_to_queue_from_detail)
         # Connect album click from artist detail view
         self._detail_view.album_clicked.connect(self._on_album_clicked)
+        self._detail_view.favorites_collection_changed.connect(self._on_favorites_collection_changed)
         self._stack.addWidget(self._detail_view)
 
         layout.addWidget(self._stack, 1)  # Give stretch factor so it doesn't push other widgets
@@ -1560,7 +1562,9 @@ class OnlineMusicView(QWidget):
             return
 
         self._fav_loaded = True
-        self._favorites_section.show_loading()
+        self._show_favorites_after_reload = self._should_show_favorites_section()
+        if self._show_favorites_after_reload:
+            self._favorites_section.show_loading()
         self._fav_data = {}  # Store data for click handling
 
         for fav_type in ["fav_songs", "created_playlists", "fav_playlists", "fav_albums", "followed_singers"]:
@@ -1576,6 +1580,80 @@ class OnlineMusicView(QWidget):
         # Check if all 5 types loaded (initial load)
         if len(self._fav_data) == 5:
             self._display_favorites_cards()
+            self._refresh_active_favorites_view()
+
+    def _on_favorites_collection_changed(self, collection_type: str):
+        """Invalidate QQ favorites cache and trigger a background reload."""
+        self._fav_loaded = False
+        self._load_favorites()
+
+    def _should_show_favorites_section(self) -> bool:
+        """Return whether the favorites summary section should be visible after loading."""
+        if getattr(self, "_active_favorites_card_type", None):
+            return False
+        if not hasattr(self, "_stack") or not hasattr(self, "_top_list_page"):
+            return False
+        return self._stack.currentWidget() == self._top_list_page
+
+    def _refresh_active_favorites_view(self):
+        """Refresh the currently active favorites-derived view with reloaded data."""
+        collection_type = getattr(self, "_active_favorites_card_type", None)
+        if not collection_type:
+            return
+
+        if collection_type == "fav_songs":
+            current_widget = self._stack.currentWidget() if hasattr(self, "_stack") else None
+            if current_widget == getattr(self, "_detail_view", None):
+                self._show_fav_songs_in_table(self._fav_data.get("fav_songs", []))
+            return
+
+        if collection_type == "fav_playlists":
+            self._replace_navigation_state_data(
+                "playlists",
+                t("fav_playlists"),
+                self._fav_data.get("fav_playlists", []),
+            )
+            return
+
+        if collection_type == "fav_albums":
+            self._replace_navigation_state_data(
+                "albums",
+                t("fav_albums"),
+                self._fav_data.get("fav_albums", []),
+            )
+            return
+
+        if collection_type == "followed_singers":
+            self._refresh_followed_singers_page()
+
+    def _replace_navigation_state_data(self, page: str, title: str, data: list):
+        """Replace cached favorites data in the navigation stack for back navigation."""
+        navigation_stack = getattr(self, "_navigation_stack", None)
+        if not navigation_stack:
+            return
+        for state in reversed(navigation_stack):
+            if state.get("page") == page:
+                state["title"] = title
+                state["data"] = data
+                return
+
+    def _refresh_followed_singers_page(self):
+        """Reload the followed singers page without changing the current navigation context."""
+        singers = self._fav_data.get("followed_singers", [])
+        if not hasattr(self, "_singers_page"):
+            return
+
+        from .models import OnlineArtist
+
+        artists = [OnlineArtist(
+            mid=singer.get("mid", ""),
+            name=singer.get("name", ""),
+            avatar_url=singer.get("cover_url", ""),
+            fan_count=singer.get("fan_count", 0),
+        ) for singer in singers]
+
+        self._singers_page.clear()
+        self._singers_page.load_data(artists)
 
     def _get_random_cover(self, items: list) -> str:
         """Get a random cover from a list of items."""
@@ -1689,7 +1767,7 @@ class OnlineMusicView(QWidget):
 
     def _display_favorites_cards(self):
         """Display 4 summary cards in the favorites section."""
-
+        should_show = self._should_show_favorites_section()
         cards = []
 
         # Card 1: 收藏歌曲
@@ -1743,6 +1821,8 @@ class OnlineMusicView(QWidget):
         })
 
         self._favorites_section.load_recommendations(cards)
+        if not should_show:
+            self._favorites_section.hide()
 
     def _parse_recommendation(self, recommend_type: str, data: Any) -> Optional[Dict[str, Any]]:
         """Parse recommendation data to extract card info."""
@@ -1863,6 +1943,7 @@ class OnlineMusicView(QWidget):
     def _on_favorites_card_clicked(self, data: Dict[str, Any]):
         """Handle favorites section card click."""
         card_type = data.get("card_type", "")
+        self._active_favorites_card_type = card_type
 
         # Hide favorites and recommendations when viewing any favorites content
         self._favorites_section.hide()
@@ -1893,6 +1974,7 @@ class OnlineMusicView(QWidget):
         cover_url = ""
         for t_data in tracks:
             song = {
+                "id": t_data.get("id"),
                 "mid": t_data.get("mid", ""),
                 "songmid": t_data.get("mid", ""),
                 "title": t_data.get("title", ""),
@@ -1914,7 +1996,7 @@ class OnlineMusicView(QWidget):
         self._detail_view.load_songs_directly(songs, t("fav_songs"), cover_url)
         self._stack.setCurrentWidget(self._detail_view)
 
-    def _show_playlist_list_in_detail(self, title: str, playlists: list):
+    def _show_playlist_list_in_detail(self, title: str, playlists: list, *, push_navigation: bool = True):
         """Show a list of playlists in the grid view."""
         from .models import OnlinePlaylist
 
@@ -1938,14 +2020,14 @@ class OnlineMusicView(QWidget):
         self._results_stack.setCurrentWidget(self._playlists_page)
         self._stack.setCurrentWidget(self._results_page)
 
-        # Push navigation state
-        self._navigation_stack.append({
-            'page': 'playlists',
-            'title': title,
-            'data': playlists
-        })
+        if push_navigation:
+            self._navigation_stack.append({
+                'page': 'playlists',
+                'title': title,
+                'data': playlists
+            })
 
-    def _show_album_list_in_detail(self, title: str, albums: list):
+    def _show_album_list_in_detail(self, title: str, albums: list, *, push_navigation: bool = True):
         """Show a list of albums in the grid view."""
         from .models import OnlineAlbum
 
@@ -1972,14 +2054,14 @@ class OnlineMusicView(QWidget):
         self._results_stack.setCurrentWidget(self._albums_page)
         self._stack.setCurrentWidget(self._results_page)
 
-        # Push navigation state
-        self._navigation_stack.append({
-            'page': 'albums',
-            'title': title,
-            'data': albums
-        })
+        if push_navigation:
+            self._navigation_stack.append({
+                'page': 'albums',
+                'title': title,
+                'data': albums
+            })
 
-    def _show_singer_list_in_detail(self, title: str, singers: list):
+    def _show_singer_list_in_detail(self, title: str, singers: list, *, push_navigation: bool = True):
         """Show a list of followed singers in the grid view."""
         from .models import OnlineArtist
 
@@ -2001,12 +2083,12 @@ class OnlineMusicView(QWidget):
         self._results_stack.setCurrentWidget(self._singers_page)
         self._stack.setCurrentWidget(self._results_page)
 
-        # Push navigation state
-        self._navigation_stack.append({
-            'page': 'singers',
-            'title': title,
-            'data': singers
-        })
+        if push_navigation:
+            self._navigation_stack.append({
+                'page': 'singers',
+                'title': title,
+                'data': singers
+            })
 
     def _on_recommendation_clicked(self, data: Dict[str, Any]):
         """Handle recommendation card click."""
@@ -2752,6 +2834,34 @@ class OnlineMusicView(QWidget):
             prev_state = self._navigation_stack.pop()
             page = prev_state.get('page')
 
+            if (
+                self._active_favorites_card_type == "followed_singers"
+                and page == 'results'
+                and prev_state.get('tab') == 'artists'
+            ):
+                self._show_singer_list_in_detail(
+                    t("followed_singers"),
+                    self._fav_data.get("followed_singers", []),
+                    push_navigation=False,
+                )
+                return
+
+            if self._active_favorites_card_type == "fav_playlists" and page == 'playlists':
+                self._show_playlist_list_in_detail(
+                    t("fav_playlists"),
+                    self._fav_data.get("fav_playlists", []),
+                    push_navigation=False,
+                )
+                return
+
+            if self._active_favorites_card_type == "fav_albums" and page == 'albums':
+                self._show_album_list_in_detail(
+                    t("fav_albums"),
+                    self._fav_data.get("fav_albums", []),
+                    push_navigation=False,
+                )
+                return
+
             if page == 'playlists':
                 # Return to playlist list
                 title = prev_state.get('title', '')
@@ -2812,6 +2922,7 @@ class OnlineMusicView(QWidget):
         self._fav_back_btn.hide()
         # Clear navigation stack when returning to main view
         self._navigation_stack.clear()
+        self._active_favorites_card_type = None
         # Show favorites and recommendations
         if self._fav_loaded and self._fav_data:
             self._favorites_section.show()

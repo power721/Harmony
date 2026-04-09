@@ -415,6 +415,7 @@ class OnlineDetailView(QWidget):
     insert_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
     add_all_tracks_to_queue = Signal(list)  # List of OnlineTrack (all tracks)
     album_clicked = Signal(object)  # OnlineAlbum
+    favorites_collection_changed = Signal(str)  # fav_songs, fav_albums, fav_playlists, followed_singers
 
     _STYLE_BUTTONS = """
         QPushButton {
@@ -1837,6 +1838,7 @@ class OnlineDetailView(QWidget):
         if success:
             self._is_followed = not self._is_followed
             self._update_follow_btn_style()
+            self._notify_favorites_collection_changed("followed_singers")
 
     def _update_fav_btn_style(self):
         """Update favorite button text and style for album/playlist."""
@@ -1892,6 +1894,10 @@ class OnlineDetailView(QWidget):
         if success:
             self._is_faved = not self._is_faved
             self._update_fav_btn_style()
+            if self._detail_type == "album":
+                self._notify_favorites_collection_changed("fav_albums")
+            elif self._detail_type == "playlist":
+                self._notify_favorites_collection_changed("fav_playlists")
 
     def _on_play_current(self):
         """Play current page tracks."""
@@ -2075,14 +2081,21 @@ class OnlineDetailView(QWidget):
 
     def _on_list_qq_fav_toggle(self, tracks: list, all_favorited: bool):
         """Handle QQ Music favorites toggle from list view context menu."""
+        changed = False
         for track in tracks:
             if not track.id:
                 logger.warning(f"Cannot toggle QQ favorite for track without id: {track.title}")
                 continue
             if all_favorited:
-                self._service.unfav_song(track.id)
+                changed = bool(self._service.unfav_song(track.id)) or changed
             else:
-                self._service.fav_song(track.id)
+                changed = bool(self._service.fav_song(track.id)) or changed
+        if changed:
+            self._notify_favorites_collection_changed("fav_songs")
+
+    def _notify_favorites_collection_changed(self, collection_type: str):
+        """Notify parent views that QQ Music collection data should be reloaded."""
+        self.favorites_collection_changed.emit(collection_type)
 
     def _on_list_download_requested(self, tracks: list):
         """Handle download from list view context menu."""
