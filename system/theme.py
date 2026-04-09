@@ -14,6 +14,7 @@ from typing import Optional, Dict
 from weakref import WeakSet
 from PySide6.QtCore import Signal, QObject
 from PySide6.QtWidgets import QWidget, QApplication
+from shiboken6 import isValid
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,9 @@ class ThemeManager(QObject):
 
         # Refresh all registered widgets
         for widget in list(self._widgets):
+            if not self._is_widget_valid(widget):
+                self._widgets.discard(widget)
+                continue
             if hasattr(widget, 'refresh_theme'):
                 try:
                     widget.refresh_theme()
@@ -284,6 +288,15 @@ class ThemeManager(QObject):
             widget: QWidget instance to register
         """
         self._widgets.add(widget)
+
+    @staticmethod
+    def _is_widget_valid(widget) -> bool:
+        """Return False for Qt wrappers whose underlying C++ object is already gone."""
+        try:
+            return isValid(widget)
+        except TypeError:
+            # Test doubles and non-Qt objects should keep existing behavior.
+            return True
 
     def get_qss(self, template: str) -> str:
         """

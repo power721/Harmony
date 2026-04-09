@@ -718,15 +718,18 @@ class OnlineDetailView(QWidget):
 
         # Name
         self._name_label = QLabel()
+        self._name_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         info_layout.addWidget(self._name_label)
 
         # Secondary info (artist/creator)
         self._secondary_label = QLabel()
+        self._secondary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         info_layout.addWidget(self._secondary_label)
 
         # Extra info row (company, genre, language, etc.)
         self._extra_label = QLabel()
         self._extra_label.setWordWrap(True)
+        self._extra_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         info_layout.addWidget(self._extra_label)
 
         # Stats

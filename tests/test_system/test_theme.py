@@ -2,6 +2,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from PySide6.QtWidgets import QWidget
+from shiboken6 import delete
+
 from system.theme import Theme, ThemeManager, PRESET_THEMES
 
 
@@ -315,6 +318,24 @@ class TestThemeManager:
         # Both widgets refreshed
         widget1.refresh_theme.assert_called_once()
         widget2.refresh_theme.assert_called_once()
+
+    def test_apply_and_broadcast_skips_deleted_qt_widgets(self, mock_config, qtbot):
+        """Deleted Qt widgets should be pruned before refresh to avoid stale wrapper errors."""
+
+        class RefreshableWidget(QWidget):
+            def refresh_theme(self):
+                self.setStyleSheet("color: red;")
+
+        tm = ThemeManager.instance(mock_config)
+        widget = RefreshableWidget()
+        tm.register_widget(widget)
+        delete(widget)
+
+        with patch("system.theme.logger.error") as mock_error:
+            tm.set_theme('gold')
+
+        assert len(tm._widgets) == 0
+        mock_error.assert_not_called()
 
     @patch('system.theme.QApplication')
     def test_apply_global_stylesheet_no_qapp(self, mock_qapp):
