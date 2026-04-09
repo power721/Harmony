@@ -87,6 +87,15 @@ def test_fetch_online_cover_supports_plugin_cover_result_shape(monkeypatch):
     assert cover_path == "/tmp/cover.jpg"
 
 
+def test_fetch_online_cover_returns_none_when_no_sources(monkeypatch):
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_sources", lambda: [])
+
+    cover_path = service._fetch_online_cover("Song 1", "Singer 1", "Album 1", "cache-key")
+
+    assert cover_path is None
+
+
 def test_search_covers_converts_and_scores_results(monkeypatch):
     source = SimpleNamespace(
         name="FakeCoverSource",
@@ -149,6 +158,15 @@ def test_search_covers_supports_plugin_cover_result_shape(monkeypatch):
     assert results[0]["score"] == 88.0
 
 
+def test_search_covers_returns_empty_list_when_no_sources(monkeypatch):
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_sources", lambda: [])
+
+    results = service.search_covers("Song 1", "Singer 1", "Album 1")
+
+    assert results == []
+
+
 def test_search_artist_covers_supports_plugin_artist_result_shape(monkeypatch):
     source = SimpleNamespace(
         name="QQMusic",
@@ -171,3 +189,12 @@ def test_search_artist_covers_supports_plugin_artist_result_shape(monkeypatch):
     assert results[0]["id"] == "artist-1"
     assert results[0]["singer_mid"] == "artist-1"
     assert results[0]["album_count"] == 12
+
+
+def test_search_artist_covers_returns_empty_list_when_no_sources(monkeypatch):
+    service = CoverService(http_client=SimpleNamespace())
+    monkeypatch.setattr(service, "_get_artist_sources", lambda: [])
+
+    results = service.search_artist_covers("Singer 1", limit=5)
+
+    assert results == []

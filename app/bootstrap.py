@@ -46,6 +46,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _get_bundle_resource_root() -> Path:
+    """Return the root directory containing bundled application resources."""
+    if getattr(sys, "frozen", False):
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root:
+            return Path(bundle_root)
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _get_app_data_root() -> Path:
+    """Return the writable app data root for plugin state and external installs."""
+    if getattr(sys, "frozen", False):
+        try:
+            import platformdirs
+
+            return Path(platformdirs.user_data_dir("Harmony", "HarmonyPlayer"))
+        except ImportError:
+            return Path.home() / ".local" / "share" / "Harmony"
+    return _get_bundle_resource_root() / "data"
+
+
 def _can_import_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     try:
         import dbus
@@ -424,13 +446,15 @@ class Bootstrap:
         """Get plugin manager."""
         if self._plugin_manager is None:
             logger.info("[Bootstrap] Initializing plugin manager")
+            bundle_root = _get_bundle_resource_root()
+            app_data_root = _get_app_data_root()
             self._plugin_manager = PluginManager(
-                builtin_root=Path("plugins/builtin"),
-                external_root=Path("data/plugins/external"),
-                state_store=PluginStateStore(Path("data/plugins/state.json")),
+                builtin_root=bundle_root / "plugins" / "builtin",
+                external_root=app_data_root / "plugins" / "external",
+                state_store=PluginStateStore(app_data_root / "plugins" / "state.json"),
                 context_factory=BootstrapPluginContextFactory(
                     self,
-                    storage_root=Path("data/plugins/storage"),
+                    storage_root=app_data_root / "plugins" / "storage",
                 ),
             )
         if not self._plugins_loaded:

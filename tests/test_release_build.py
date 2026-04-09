@@ -125,3 +125,17 @@ def test_windows_workflow_downloads_repo_mpv_runtime():
     assert "http://46.38.157.230/libmpv-2.dll" in section
     assert "mpv\\libmpv-2.dll" in section
     assert "choco install mpv" not in section
+
+
+def test_collect_data_files_includes_builtin_plugins(tmp_path, monkeypatch):
+    """Packaged builds must include builtin plugins for runtime discovery."""
+    repo_root = tmp_path / "repo"
+    builtin_plugin = repo_root / "plugins" / "builtin" / "demo"
+    builtin_plugin.mkdir(parents=True)
+    (builtin_plugin / "plugin.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(build, "PROJECT_ROOT", repo_root)
+
+    data_files = build.collect_data_files()
+
+    assert (str(repo_root / "plugins" / "builtin"), "plugins/builtin") in data_files

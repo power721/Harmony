@@ -27,12 +27,44 @@ def test_bootstrap_exposes_plugin_manager(monkeypatch):
     assert manager is fake_manager
     assert bootstrap.plugin_manager is fake_manager
 
+    project_root = Path(bootstrap_module.__file__).resolve().parent.parent
     _, kwargs = manager_ctor.call_args
-    assert kwargs["builtin_root"] == Path("plugins/builtin")
-    assert kwargs["external_root"] == Path("data/plugins/external")
+    assert kwargs["builtin_root"] == project_root / "plugins" / "builtin"
+    assert kwargs["external_root"] == project_root / "data" / "plugins" / "external"
     assert kwargs["state_store"] is fake_state_store
     assert hasattr(kwargs["context_factory"], "build")
     fake_manager.load_enabled_plugins.assert_called_once()
+
+
+def test_bootstrap_resolves_plugin_paths_for_frozen_runtime(monkeypatch, tmp_path):
+    fake_state_store = object()
+    fake_manager = MagicMock()
+    state_store_ctor = MagicMock(return_value=fake_state_store)
+    manager_ctor = MagicMock(return_value=fake_manager)
+    bundle_root = tmp_path / "bundle"
+    user_data_root = tmp_path / "user-data"
+
+    monkeypatch.setattr(bootstrap_module, "PluginStateStore", state_store_ctor, raising=False)
+    monkeypatch.setattr(bootstrap_module, "PluginManager", manager_ctor, raising=False)
+    monkeypatch.setattr(bootstrap_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(bootstrap_module.sys, "_MEIPASS", str(bundle_root), raising=False)
+    monkeypatch.setitem(
+        sys.modules,
+        "platformdirs",
+        MagicMock(user_data_dir=MagicMock(return_value=str(user_data_root))),
+    )
+
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    bootstrap._config = object()
+    bootstrap._event_bus = object()
+    bootstrap._http_client = object()
+
+    _ = bootstrap.plugin_manager
+
+    _, kwargs = manager_ctor.call_args
+    assert kwargs["builtin_root"] == bundle_root / "plugins" / "builtin"
+    assert kwargs["external_root"] == user_data_root / "plugins" / "external"
+    state_store_ctor.assert_called_once_with(user_data_root / "plugins" / "state.json")
 
 
 def test_bootstrap_only_loads_plugins_once(monkeypatch):

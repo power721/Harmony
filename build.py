@@ -300,6 +300,11 @@ def collect_data_files() -> list:
     """Collect additional data files to include."""
     datas = []
 
+    builtin_plugins_dir = PROJECT_ROOT / "plugins" / "builtin"
+    if builtin_plugins_dir.exists():
+        datas.append((str(builtin_plugins_dir), "plugins/builtin"))
+        print(f"[INFO] Found builtin plugins: {builtin_plugins_dir}")
+
     # Translations
     translations_dir = PROJECT_ROOT / "translations"
     if translations_dir.exists():
