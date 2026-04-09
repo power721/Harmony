@@ -286,6 +286,34 @@ class TestSqliteTrackRepository:
         result = track_repo.update(track)
         assert result is True
 
+    def test_batch_add_avoids_per_artist_id_selects(self, track_repo):
+        """Batch import should resolve artist ids in bulk instead of per artist per track."""
+        tracks = [
+            Track(
+                path=f"/music/song_{i}.mp3",
+                title=f"Song {i}",
+                artist="Artist A, Artist B",
+                album="Album",
+            )
+            for i in range(3)
+        ]
+
+        statements = []
+        conn = track_repo._get_connection()
+        conn.set_trace_callback(statements.append)
+        try:
+            added = track_repo.batch_add(tracks)
+        finally:
+            conn.set_trace_callback(None)
+
+        artist_id_selects = [
+            sql for sql in statements
+            if "SELECT id FROM artists WHERE name =" in sql
+        ]
+
+        assert added == 3
+        assert artist_id_selects == []
+
     def test_get_by_id_repairs_legacy_placeholder_online_provider_id(self, track_repo, temp_db):
         """Reading old online tracks should normalize and repair placeholder provider ids."""
         conn = sqlite3.connect(temp_db)

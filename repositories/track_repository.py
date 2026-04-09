@@ -406,6 +406,8 @@ class SqliteTrackRepository(BaseRepository):
             # Load known artists once for all tracks
             cursor.execute("SELECT normalized_name FROM artists")
             known_artists = {row[0] for row in cursor.fetchall() if row[0]}
+            pending_track_artists: list[tuple[int, list[str]]] = []
+            artist_names_to_upsert: set[str] = set()
 
             for track in tracks:
                 try:
@@ -421,27 +423,51 @@ class SqliteTrackRepository(BaseRepository):
                     ))
                     track_id = cursor.lastrowid
 
-                    # Create artist entries and junction records
                     if track.artist:
                         artist_names = split_artists_aware(track.artist, known_artists)
-                        for position, artist_name in enumerate(artist_names):
-                            normalized = normalize_artist_name(artist_name)
-                            cursor.execute("""
-                                INSERT INTO artists (name, normalized_name) VALUES (?, ?)
-                                ON CONFLICT(name) DO UPDATE SET normalized_name = ?
-                            """, (artist_name, normalized, normalized))
-                            cursor.execute("SELECT id FROM artists WHERE name = ?", (artist_name,))
-                            artist_row = cursor.fetchone()
-                            if artist_row:
-                                artist_id = artist_row[0]
-                                cursor.execute("""
-                                    INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
-                                    VALUES (?, ?, ?)
-                                """, (track_id, artist_id, position))
+                        if artist_names:
+                            pending_track_artists.append((track_id, artist_names))
+                            artist_names_to_upsert.update(artist_names)
 
                     added_count += 1
                 except sqlite3.IntegrityError:
                     pass  # Track already exists
+
+            if artist_names_to_upsert:
+                artist_rows = [
+                    (artist_name, normalize_artist_name(artist_name), normalize_artist_name(artist_name))
+                    for artist_name in sorted(artist_names_to_upsert)
+                ]
+                cursor.executemany(
+                    """
+                        INSERT INTO artists (name, normalized_name) VALUES (?, ?)
+                        ON CONFLICT(name) DO UPDATE SET normalized_name = ?
+                    """,
+                    artist_rows,
+                )
+
+                placeholders = ",".join("?" for _ in artist_names_to_upsert)
+                cursor.execute(
+                    f"SELECT id, name FROM artists WHERE name IN ({placeholders})",
+                    sorted(artist_names_to_upsert),
+                )
+                artist_id_map = {row["name"]: row["id"] for row in cursor.fetchall()}
+
+                track_artist_rows = []
+                for track_id, artist_names in pending_track_artists:
+                    for position, artist_name in enumerate(artist_names):
+                        artist_id = artist_id_map.get(artist_name)
+                        if artist_id:
+                            track_artist_rows.append((track_id, artist_id, position))
+
+                if track_artist_rows:
+                    cursor.executemany(
+                        """
+                            INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                            VALUES (?, ?, ?)
+                        """,
+                        track_artist_rows,
+                    )
 
             conn.commit()
         except Exception:
