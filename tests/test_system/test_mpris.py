@@ -145,6 +145,47 @@ def test_mpris_service_returns_player_properties_without_tracklist(monkeypatch):
     assert service.root_properties()["HasTrackList"] is False
 
 
+def test_mpris_service_root_properties_include_desktop_entry(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    service = mpris.MPRISService(playback_service=object())
+
+    assert service.root_properties()["DesktopEntry"] == "harmony"
+
+
+def test_mpris_player_adaptor_declares_int64_position_and_writable_volume(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    service = mpris.MPRISService(playback_service=object())
+    adaptor = service.player_adaptor
+    meta_object = adaptor.metaObject()
+
+    properties = {}
+    for index in range(meta_object.propertyOffset(), meta_object.propertyCount()):
+        prop = meta_object.property(index)
+        properties[prop.name()] = prop
+
+    assert properties["Position"].typeName() == "qlonglong"
+    assert properties["Position"].isReadable() is True
+    assert properties["Volume"].isWritable() is True
+
+
+def test_mpris_player_adaptor_declares_int64_seek_signatures(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    service = mpris.MPRISService(playback_service=object())
+    adaptor = service.player_adaptor
+    meta_object = adaptor.metaObject()
+
+    methods = {
+        bytes(meta_object.method(index).methodSignature()).decode(): meta_object.method(index)
+        for index in range(meta_object.methodOffset(), meta_object.methodCount())
+    }
+
+    assert "Seek(qlonglong)" in methods
+    assert "SetPosition(QDBusObjectPath,qlonglong)" in methods
+
+
 def test_mpris_controller_passes_ui_dispatcher_to_service(monkeypatch):
     mpris = _load_mpris_module(monkeypatch)
 

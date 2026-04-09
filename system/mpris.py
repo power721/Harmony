@@ -3,7 +3,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtDBus import QDBusConnection, QDBusMessage, QDBusObjectPath, QDBusVirtualObject
+from PySide6.QtCore import ClassInfo, QObject, Property, Signal, Slot
+from PySide6.QtDBus import QDBusAbstractAdaptor, QDBusConnection, QDBusMessage, QDBusObjectPath
 
 from app import Bootstrap
 from domain import PlaylistItem
@@ -14,58 +15,7 @@ ROOT_INTERFACE = "org.mpris.MediaPlayer2"
 PLAYER_INTERFACE = "org.mpris.MediaPlayer2.Player"
 PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 EMPTY_TRACK_ID = "/org/mpris/MediaPlayer2/track/none"
-
-INTROSPECTION_XML = f"""
-<node>
-  <interface name="{ROOT_INTERFACE}">
-    <method name="Raise"/>
-    <method name="Quit"/>
-  </interface>
-  <interface name="{PLAYER_INTERFACE}">
-    <method name="Play"/>
-    <method name="Pause"/>
-    <method name="Stop"/>
-    <method name="PlayPause"/>
-    <method name="Next"/>
-    <method name="Previous"/>
-    <method name="Seek">
-      <arg direction="in" type="x" name="Offset"/>
-    </method>
-    <method name="SetPosition">
-      <arg direction="in" type="o" name="TrackId"/>
-      <arg direction="in" type="x" name="Position"/>
-    </method>
-    <signal name="Seeked">
-      <arg type="x" name="Position"/>
-    </signal>
-  </interface>
-  <interface name="{PROPERTIES_INTERFACE}">
-    <method name="Get">
-      <arg direction="in" type="s" name="interface"/>
-      <arg direction="in" type="s" name="property"/>
-      <arg direction="out" type="v" name="value"/>
-    </method>
-    <method name="GetAll">
-      <arg direction="in" type="s" name="interface"/>
-      <arg direction="out" type="a{{sv}}" name="properties"/>
-    </method>
-    <method name="Set">
-      <arg direction="in" type="s" name="interface"/>
-      <arg direction="in" type="s" name="property"/>
-      <arg direction="in" type="v" name="value"/>
-    </method>
-    <signal name="PropertiesChanged">
-      <arg type="s" name="interface"/>
-      <arg type="a{{sv}}" name="changed_properties"/>
-      <arg type="as" name="invalidated_properties"/>
-    </signal>
-  </interface>
-</node>
-""".strip()
-
-
-class _PropertyReadOnlyError(RuntimeError):
-    pass
+DESKTOP_ENTRY = "harmony"
 
 
 def _safe_str(value) -> str:
@@ -112,64 +62,25 @@ def _make_track_object_path(track: PlaylistItem) -> QDBusObjectPath:
     return QDBusObjectPath(f"/org/mpris/MediaPlayer2/track/{digest}")
 
 
-class MPRISService(QDBusVirtualObject):
+class MPRISService(QObject):
     def __init__(self, playback_service, main_window=None, ui_dispatcher=None):
         super().__init__()
         self.playback_service = playback_service
         self._main_window = main_window
         self._ui_dispatcher = ui_dispatcher
         self.bus = None
-
-    def introspect(self, path):
-        if path == MPRIS_PATH:
-            return INTROSPECTION_XML
-        return ""
-
-    def handleMessage(self, message, connection):
-        if message.path() != MPRIS_PATH:
-            return False
-
-        interface_name = message.interface()
-        member = message.member()
-        args = message.arguments()
-
-        try:
-            if interface_name == ROOT_INTERFACE:
-                result = getattr(self, member)(*args)
-            elif interface_name == PLAYER_INTERFACE:
-                result = getattr(self, member)(*args)
-            elif interface_name == PROPERTIES_INTERFACE:
-                result = getattr(self, member)(*args)
-            else:
-                return False
-        except _PropertyReadOnlyError as exc:
-            connection.send(message.createErrorReply(
-                "org.freedesktop.DBus.Error.PropertyReadOnly",
-                str(exc),
-            ))
-            return True
-        except Exception as exc:
-            connection.send(message.createErrorReply(
-                "org.freedesktop.DBus.Error.Failed",
-                str(exc),
-            ))
-            return True
-
-        if message.isReplyRequired():
-            reply = message.createReply() if result is None else message.createReply(result)
-            connection.send(reply)
-        return True
+        # Keep strong references so the adaptors stay exported for the lifetime
+        # of the registered object.
+        self.root_adaptor = _RootAdaptor(self)
+        self.player_adaptor = _PlayerAdaptor(self)
 
     def _current_track(self) -> PlaylistItem | None:
         return getattr(self.playback_service, "current_track", None)
 
     def position_us(self) -> int:
-        method = getattr(self.playback_service, "position", None)
-        ms = method() if callable(method) else 0.0
+        position_value = getattr(self.playback_service, "position", 0.0)
+        ms = position_value() if callable(position_value) else position_value
         return int(_safe_float(ms) * 1000)
-
-    def _position_us(self) -> int:
-        return self.position_us()
 
     def _playback_status(self) -> str:
         status_method = getattr(self.playback_service, "playback_status", None)
@@ -231,6 +142,7 @@ class MPRISService(QDBusVirtualObject):
             "CanRaise": self._main_window is not None,
             "HasTrackList": False,
             "Identity": "MusicPlayer",
+            "DesktopEntry": DESKTOP_ENTRY,
             "SupportedUriSchemes": ["file", "http", "https"],
             "SupportedMimeTypes": [
                 "audio/mpeg",
@@ -285,7 +197,7 @@ class MPRISService(QDBusVirtualObject):
         message.setArguments(args)
         self.bus.send(message)
 
-    def Raise(self):
+    def _raise(self):
         if self._main_window:
             def _raise_window():
                 try:
@@ -297,7 +209,10 @@ class MPRISService(QDBusVirtualObject):
 
             self._dispatch_to_ui(_raise_window)
 
-    def Quit(self):
+    def Raise(self):
+        self._raise()
+
+    def _quit(self):
         if self._main_window:
             def _quit_window():
                 try:
@@ -307,28 +222,40 @@ class MPRISService(QDBusVirtualObject):
 
             self._dispatch_to_ui(_quit_window)
 
-    def Play(self):
+    def Quit(self):
+        self._quit()
+
+    def _play(self):
         def _play():
             self.playback_service.play()
             self.emit_player_properties(["PlaybackStatus"])
 
         self._dispatch_to_ui(_play)
 
-    def Pause(self):
+    def Play(self):
+        self._play()
+
+    def _pause(self):
         def _pause():
             self.playback_service.pause()
             self.emit_player_properties(["PlaybackStatus"])
 
         self._dispatch_to_ui(_pause)
 
-    def Stop(self):
+    def Pause(self):
+        self._pause()
+
+    def _stop(self):
         def _stop():
             self.playback_service.stop()
             self.emit_player_properties(["PlaybackStatus"])
 
         self._dispatch_to_ui(_stop)
 
-    def PlayPause(self):
+    def Stop(self):
+        self._stop()
+
+    def _play_pause(self):
         def _play_pause():
             if self._playback_status() == "Playing":
                 self.playback_service.pause()
@@ -338,7 +265,10 @@ class MPRISService(QDBusVirtualObject):
 
         self._dispatch_to_ui(_play_pause)
 
-    def Next(self):
+    def PlayPause(self):
+        self._play_pause()
+
+    def _next(self):
         def _next():
             self.playback_service.play_next()
             self.emit_player_properties(["PlaybackStatus", "Metadata"])
@@ -346,7 +276,10 @@ class MPRISService(QDBusVirtualObject):
 
         self._dispatch_to_ui(_next)
 
-    def Previous(self):
+    def Next(self):
+        self._next()
+
+    def _previous(self):
         def _previous():
             self.playback_service.play_previous()
             self.emit_player_properties(["PlaybackStatus", "Metadata"])
@@ -354,7 +287,10 @@ class MPRISService(QDBusVirtualObject):
 
         self._dispatch_to_ui(_previous)
 
-    def Seek(self, offset):
+    def Previous(self):
+        self._previous()
+
+    def _seek(self, offset):
         def _seek():
             ms = int(offset) // 1000
             self.playback_service.seek(ms)
@@ -362,7 +298,10 @@ class MPRISService(QDBusVirtualObject):
 
         self._dispatch_to_ui(_seek)
 
-    def SetPosition(self, track_id, position):
+    def Seek(self, offset):
+        self._seek(offset)
+
+    def _set_position(self, track_id, position):
         def _set_position():
             track = self._current_track()
             if not track:
@@ -381,32 +320,22 @@ class MPRISService(QDBusVirtualObject):
 
         self._dispatch_to_ui(_set_position)
 
-    def Get(self, interface_name, property_name):
-        props = self.GetAll(interface_name)
-        return props[property_name]
+    def SetPosition(self, track_id, position):
+        self._set_position(track_id, position)
 
-    def GetAll(self, interface_name):
-        if interface_name == ROOT_INTERFACE:
-            return self.root_properties()
-        if interface_name == PLAYER_INTERFACE:
-            return self.player_properties()
-        return {}
+    def _set_volume(self, value):
+        setter = getattr(self.playback_service, "set_volume", None)
+        if not callable(setter):
+            return
 
-    def Set(self, interface_name, property_name, value):
-        if interface_name == PLAYER_INTERFACE and property_name == "Volume":
-            setter = getattr(self.playback_service, "set_volume", None)
-            if callable(setter):
-                def _set_volume():
-                    setter(float(value))
-                    self.emit_player_properties(["Volume"])
+        def _set_volume():
+            setter(float(value))
+            self.emit_player_properties(["Volume"])
 
-                self._dispatch_to_ui(_set_volume)
-                return
-
-        raise _PropertyReadOnlyError(f"Property {property_name} is read-only")
+        self._dispatch_to_ui(_set_volume)
 
     def emit_seeked(self, position):
-        self._send_signal(PLAYER_INTERFACE, "Seeked", [int(position)])
+        self.player_adaptor.Seeked.emit(int(position))
 
     def emit_player_properties(self, names=None):
         props = self.player_properties()
@@ -425,6 +354,154 @@ class MPRISService(QDBusVirtualObject):
             "PropertiesChanged",
             [ROOT_INTERFACE, changed, []],
         )
+
+
+@ClassInfo(**{"D-Bus Interface": ROOT_INTERFACE})
+class _RootAdaptor(QDBusAbstractAdaptor):
+    def __init__(self, service: MPRISService):
+        super().__init__(service)
+        self._service = service
+
+    @Property(bool)
+    def CanQuit(self):
+        return bool(self._service.root_properties()["CanQuit"])
+
+    @Property(bool)
+    def CanRaise(self):
+        return bool(self._service.root_properties()["CanRaise"])
+
+    @Property(bool)
+    def HasTrackList(self):
+        return bool(self._service.root_properties()["HasTrackList"])
+
+    @Property(str)
+    def Identity(self):
+        return str(self._service.root_properties()["Identity"])
+
+    @Property(str)
+    def DesktopEntry(self):
+        return str(self._service.root_properties()["DesktopEntry"])
+
+    @Property("QStringList")
+    def SupportedUriSchemes(self):
+        return list(self._service.root_properties()["SupportedUriSchemes"])
+
+    @Property("QStringList")
+    def SupportedMimeTypes(self):
+        return list(self._service.root_properties()["SupportedMimeTypes"])
+
+    @Slot()
+    def Raise(self):
+        self._service._raise()
+
+    @Slot()
+    def Quit(self):
+        self._service._quit()
+
+
+@ClassInfo(**{"D-Bus Interface": PLAYER_INTERFACE})
+class _PlayerAdaptor(QDBusAbstractAdaptor):
+    Seeked = Signal("qlonglong")
+
+    def __init__(self, service: MPRISService):
+        super().__init__(service)
+        self._service = service
+
+    @Property(str)
+    def PlaybackStatus(self):
+        return str(self._service.player_properties()["PlaybackStatus"])
+
+    @Property(str)
+    def LoopStatus(self):
+        return str(self._service.player_properties()["LoopStatus"])
+
+    @Property("double")
+    def Rate(self):
+        return float(self._service.player_properties()["Rate"])
+
+    @Property(bool)
+    def Shuffle(self):
+        return bool(self._service.player_properties()["Shuffle"])
+
+    @Property("QVariantMap")
+    def Metadata(self):
+        return dict(self._service.player_properties()["Metadata"])
+
+    def _get_volume(self):
+        return float(self._service.player_properties()["Volume"])
+
+    def _set_volume(self, value):
+        self._service._set_volume(value)
+
+    @Property("qlonglong")
+    def Position(self):
+        return int(self._service.player_properties()["Position"])
+
+    @Property("double")
+    def MinimumRate(self):
+        return float(self._service.player_properties()["MinimumRate"])
+
+    @Property("double")
+    def MaximumRate(self):
+        return float(self._service.player_properties()["MaximumRate"])
+
+    @Property(bool)
+    def CanGoNext(self):
+        return bool(self._service.player_properties()["CanGoNext"])
+
+    @Property(bool)
+    def CanGoPrevious(self):
+        return bool(self._service.player_properties()["CanGoPrevious"])
+
+    @Property(bool)
+    def CanPlay(self):
+        return bool(self._service.player_properties()["CanPlay"])
+
+    @Property(bool)
+    def CanPause(self):
+        return bool(self._service.player_properties()["CanPause"])
+
+    @Property(bool)
+    def CanSeek(self):
+        return bool(self._service.player_properties()["CanSeek"])
+
+    @Property(bool)
+    def CanControl(self):
+        return bool(self._service.player_properties()["CanControl"])
+
+    @Slot()
+    def Play(self):
+        self._service._play()
+
+    @Slot()
+    def Pause(self):
+        self._service._pause()
+
+    @Slot()
+    def Stop(self):
+        self._service._stop()
+
+    @Slot()
+    def PlayPause(self):
+        self._service._play_pause()
+
+    @Slot()
+    def Next(self):
+        self._service._next()
+
+    @Slot()
+    def Previous(self):
+        self._service._previous()
+
+    @Slot("qlonglong")
+    def Seek(self, offset):
+        self._service._seek(offset)
+
+    @Slot("QDBusObjectPath", "qlonglong")
+    def SetPosition(self, track_id, position):
+        self._service._set_position(track_id, position)
+
+    Volume = Property("double", _get_volume, _set_volume)
 
 
 class MPRISController:
@@ -508,16 +585,8 @@ class MPRISController:
                 self.service = None
             raise RuntimeError(self._service_registration_error_message())
 
-        options = QDBusConnection.VirtualObjectRegisterOption.SubPath
-        if hasattr(self.bus, "registerVirtualObject"):
-            registered = self.bus.registerVirtualObject(MPRIS_PATH, self.service, options)
-        else:
-            export_options = (
-                QDBusConnection.RegisterOption.ExportAllSlots
-                | QDBusConnection.RegisterOption.ExportAllSignals
-            )
-            registered = self.bus.registerObject(MPRIS_PATH, self.service, export_options)
-
+        export_options = QDBusConnection.RegisterOption.ExportAdaptors
+        registered = self.bus.registerObject(MPRIS_PATH, self.service, export_options)
         if not registered:
             self.bus.unregisterService(MPRIS_NAME)
             with self._service_lock:
