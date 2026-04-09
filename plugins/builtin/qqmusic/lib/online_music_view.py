@@ -2855,18 +2855,34 @@ class OnlineMusicView(QWidget):
         if row < 0 or row >= len(self._current_tracks):
             return
 
-        # If viewing top list, play all songs starting from clicked
-        if self._is_top_list_view:
-            self._play_all_from_top_list(row)
-        else:
-            track = self._current_tracks[row]
-            self._play_track(track)
+        self._play_current_tracks_from_index(row)
 
     def _play_all_from_top_list(self, start_index: int):
         """Play all songs from top list starting from given index."""
-        tracks_data = self._build_tracks_payload(self._current_tracks)
+        self._play_current_tracks_from_index(start_index)
 
+    def _play_current_tracks_from_index(self, start_index: int):
+        """Play the current visible track list from the given index."""
+        if start_index < 0 or start_index >= len(self._current_tracks):
+            return
+
+        tracks_data = self._build_tracks_payload(self._current_tracks)
         self.play_online_tracks.emit(start_index, tracks_data)
+
+    def _play_current_tracks_from_track(self, track: OnlineTrack):
+        """Play the current visible track list from the given track."""
+        if not track:
+            return
+
+        for index, current_track in enumerate(self._current_tracks):
+            if current_track is track:
+                self._play_current_tracks_from_index(index)
+                return
+
+            current_mid = getattr(current_track, "mid", None)
+            if current_mid and current_mid == getattr(track, "mid", None):
+                self._play_current_tracks_from_index(index)
+                return
 
     def _play_track(self, track: OnlineTrack):
         """Play an online track."""
@@ -2915,18 +2931,27 @@ class OnlineMusicView(QWidget):
         """Handle download finished."""
         logger.info(f"Download finished callback: mid={song_mid}, path={local_path}")
 
-        # Close progress dialog
-        if hasattr(self, '_download_progress') and self._download_progress:
-            self._download_progress.close()
-
-        # Get stored track
+        worker = getattr(self, '_download_worker', None)
+        progress = getattr(self, '_download_progress', None)
         track = getattr(self, '_downloading_track', None)
+        was_cancelled = bool(getattr(worker, "_cancelled", False))
+
+        # Clear current references before closing the dialog because
+        # QProgressDialog.close() can emit canceled(), which routes back into
+        # _cancel_download() and would otherwise mark a completed worker as cancelled.
+        self._download_progress = None
+        self._download_worker = None
+        self._downloading_track = None
+
+        if progress:
+            progress.close()
+
         if not track:
             logger.error("No downloading_track found")
             return
 
         # Skip if download was cancelled
-        if hasattr(self, '_download_worker') and self._download_worker._cancelled:
+        if was_cancelled:
             logger.info(f"Download cancelled: {song_mid}")
             return
 
@@ -3121,11 +3146,7 @@ class OnlineMusicView(QWidget):
         """Play selected tracks."""
         if not tracks:
             return
-        # Play first track and add rest to queue
-        self._play_track(tracks[0])
-        if len(tracks) > 1:
-            tracks_data = self._build_tracks_payload(tracks[1:])
-            self.add_multiple_to_queue.emit(tracks_data)
+        self._play_current_tracks_from_track(tracks[0])
 
     def _add_selected_to_queue(self, tracks: List[OnlineTrack]):
         """Add selected tracks to queue."""
@@ -3270,7 +3291,7 @@ class OnlineMusicView(QWidget):
     def _on_ranking_track_activated(self, track):
         """Handle track activation from ranking list view."""
         logger.info(f"Ranking track activated: {track.title}")
-        self._play_track(track)
+        self._play_current_tracks_from_track(track)
 
     def _on_ranking_favorite_toggled(self, track, is_favorite: bool):
         """Handle favorite toggle from ranking list view star click."""

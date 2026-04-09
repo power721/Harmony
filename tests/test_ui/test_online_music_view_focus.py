@@ -33,12 +33,53 @@ def test_click_outside_search_input_clears_focus(qtbot):
 
 
 def test_ranking_track_activation_plays_selected_track():
-    """Ranking list activation should route into the normal play path."""
+    """Ranking list activation should play the whole current list from the selected track."""
     view = OnlineMusicView.__new__(OnlineMusicView)
-    played = []
-    track = SimpleNamespace(title="Top Song")
-    view._play_track = lambda selected_track: played.append(selected_track)
+    track_a = SimpleNamespace(mid="a", title="Song A")
+    track_b = SimpleNamespace(mid="b", title="Song B")
+    emitted = []
+    view._current_tracks = [track_a, track_b]
+    view.play_online_tracks = SimpleNamespace(
+        emit=lambda start_index, tracks: emitted.append((start_index, tracks))
+    )
+    view._build_tracks_payload = lambda tracks: [(track.mid, {}) for track in tracks]
 
-    OnlineMusicView._on_ranking_track_activated(view, track)
+    OnlineMusicView._on_ranking_track_activated(view, track_b)
 
-    assert played == [track]
+    assert emitted == [(1, [("a", {}), ("b", {})])]
+
+
+def test_play_selected_tracks_plays_current_list_from_first_selected_track():
+    """Play should use the full current list and start from the first selected song."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    track_a = SimpleNamespace(mid="a", title="Song A")
+    track_b = SimpleNamespace(mid="b", title="Song B")
+    track_c = SimpleNamespace(mid="c", title="Song C")
+    emitted = []
+    view._current_tracks = [track_a, track_b, track_c]
+    view.play_online_tracks = SimpleNamespace(
+        emit=lambda start_index, tracks: emitted.append((start_index, tracks))
+    )
+    view._build_tracks_payload = lambda tracks: [(track.mid, {}) for track in tracks]
+
+    OnlineMusicView._play_selected_tracks(view, [track_b, track_c])
+
+    assert emitted == [(1, [("a", {}), ("b", {}), ("c", {})])]
+
+
+def test_search_result_double_click_plays_current_list_from_clicked_row():
+    """Search result activation should play the whole current list from the clicked row."""
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    track_a = SimpleNamespace(mid="a", title="Song A")
+    track_b = SimpleNamespace(mid="b", title="Song B")
+    emitted = []
+    view._current_tracks = [track_a, track_b]
+    view._is_top_list_view = False
+    view.play_online_tracks = SimpleNamespace(
+        emit=lambda start_index, tracks: emitted.append((start_index, tracks))
+    )
+    view._build_tracks_payload = lambda tracks: [(track.mid, {}) for track in tracks]
+
+    OnlineMusicView._on_track_double_clicked(view, SimpleNamespace(row=lambda: 1))
+
+    assert emitted == [(1, [("a", {}), ("b", {})])]

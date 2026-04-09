@@ -1,8 +1,9 @@
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from plugins.builtin.qqmusic.lib import i18n as plugin_i18n
 from plugins.builtin.qqmusic.lib.client import QQMusicPluginClient
-from plugins.builtin.qqmusic.lib.models import OnlineArtist
+from plugins.builtin.qqmusic.lib.models import OnlineArtist, OnlineTrack
 from plugins.builtin.qqmusic.lib.online_music_view import OnlineMusicView
 from plugins.builtin.qqmusic.lib.plugin_online_music_service import PluginOnlineMusicService
 from plugins.builtin.qqmusic.lib.provider import QQMusicOnlineProvider
@@ -13,6 +14,7 @@ from plugins.builtin.qqmusic.lib.runtime_bridge import (
     create_online_music_service,
 )
 from plugins.builtin.qqmusic.plugin_main import QQMusicPlugin
+from tests.test_plugins.qqmusic_test_context import bind_test_context
 
 
 def test_qqmusic_plugin_registers_expected_capabilities():
@@ -735,3 +737,98 @@ def test_plugin_online_music_service_strips_em_tags_in_search_results(monkeypatc
     assert result.tracks[0].title == "晴天"
     assert result.tracks[0].singer_name == "周杰伦"
     assert result.tracks[0].album_name == "叶惠美"
+
+
+def test_online_music_view_emits_play_after_download_even_if_progress_close_triggers_cancel(
+    qtbot,
+    monkeypatch,
+):
+    theme_manager = SimpleNamespace(
+        register_widget=lambda _widget: None,
+        get_qss=lambda template: template,
+        get_themed_popup_surface_style=lambda: "",
+        get_themed_completer_popup_style=lambda: "",
+        current_theme=SimpleNamespace(
+            background="#121212",
+            background_alt="#282828",
+            background_hover="#2a2a2a",
+            text="#ffffff",
+            text_secondary="#b3b3b3",
+            highlight="#1db954",
+            highlight_hover="#1ed760",
+            border="#3a3a3a",
+        ),
+    )
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "nick": "",
+        "quality": "320",
+        "search_history": [],
+        "ranking_view_mode": "table",
+    }.get(key, default)
+    settings.set.side_effect = lambda key, value: None
+    settings.get_language.return_value = "zh"
+    settings.get_online_music_download_dir.return_value = "/tmp/online-cache"
+
+    service = Mock()
+    service._has_qqmusic_credential.return_value = False
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_online_music_service",
+        lambda **kwargs: service,
+    )
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_online_download_service",
+        lambda **kwargs: Mock(),
+    )
+
+    context = bind_test_context(theme_manager=theme_manager)
+    view = OnlineMusicView(config_manager=settings, qqmusic_service=None, plugin_context=context)
+    qtbot.addWidget(view)
+
+    track = OnlineTrack(mid="song-mid", title="Track Title", duration=180)
+    view._downloading_track = track
+
+    class _WorkerStub:
+        def __init__(self):
+            self._cancelled = False
+
+        def cancel(self):
+            self._cancelled = True
+
+    class _ProgressDialogStub:
+        def __init__(self, on_close):
+            self._on_close = on_close
+            self.closed = False
+            self._close_emitted = False
+
+        def close(self):
+            self.closed = True
+            if self._close_emitted:
+                return
+            self._close_emitted = True
+            self._on_close()
+
+    worker = _WorkerStub()
+    view._download_worker = worker
+    view._download_progress = _ProgressDialogStub(lambda: view._cancel_download(track.mid))
+
+    emitted = []
+    view.play_online_track.connect(lambda song_mid, local_path, metadata: emitted.append((song_mid, local_path, metadata)))
+
+    view._on_download_finished(track.mid, "/tmp/song.mp3")
+
+    assert emitted == [
+        (
+            "song-mid",
+            "/tmp/song.mp3",
+            {
+                "provider_id": "qqmusic",
+                "title": "Track Title",
+                "artist": "",
+                "album": "",
+                "duration": 180,
+                "album_mid": "",
+                "cover_url": "",
+            },
+        )
+    ]

@@ -2101,7 +2101,7 @@ class OnlineDetailView(QWidget):
     def _play_tracks(self, tracks: list):
         """Play multiple tracks."""
         if tracks:
-            self.play_all.emit(tracks, 0)
+            self._play_track(tracks[0])
 
     def _download_track(self, track: OnlineTrack):
         """Download a track."""

@@ -1,6 +1,7 @@
 """Tests for OnlineDetailView action button visibility based on page count."""
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -56,3 +57,20 @@ def test_all_actions_visible_when_multiple_pages():
     assert not view._play_all_btn.isHidden()
     assert not view._insert_all_queue_btn.isHidden()
     assert not view._add_all_queue_btn.isHidden()
+
+
+def test_play_tracks_plays_current_page_from_first_selected_track():
+    """Detail view play should use the full current page starting at the first selected track."""
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    track_a = SimpleNamespace(mid="a", title="Song A")
+    track_b = SimpleNamespace(mid="b", title="Song B")
+    track_c = SimpleNamespace(mid="c", title="Song C")
+    emitted = []
+    view._tracks = [track_a, track_b, track_c]
+    view.play_all = SimpleNamespace(
+        emit=lambda tracks, index: emitted.append((tracks, index))
+    )
+
+    OnlineDetailView._play_tracks(view, [track_b, track_c])
+
+    assert emitted == [([track_a, track_b, track_c], 1)]
