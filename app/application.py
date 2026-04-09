@@ -139,10 +139,6 @@ class Application(QObject):
         if cache_cleaner:
             cache_cleaner.stop()
 
-        # Stop database write worker and wait for pending writes
-        db = self._bootstrap.db
-        if db and hasattr(db, '_write_worker') and db._write_worker:
-            db._write_worker.wait_idle()
-            db._write_worker.stop()
+        self._bootstrap.shutdown_database()
 
         self._qt_app.quit()

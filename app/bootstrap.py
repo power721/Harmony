@@ -528,3 +528,21 @@ class Bootstrap:
         """Stop MPRIS D-Bus service."""
         if self._mpris_controller is not None:
             self._mpris_controller.stop()
+
+    def shutdown_database(self):
+        """Flush and close the shared database manager if it has been initialized."""
+        db = self._db
+        if db is None:
+            return
+
+        write_worker = getattr(db, "_write_worker", None)
+        if write_worker is not None:
+            try:
+                write_worker.wait_idle()
+            except Exception:
+                logger.exception("[Bootstrap] Failed waiting for DB write worker to go idle")
+
+        try:
+            db.close()
+        except Exception:
+            logger.exception("[Bootstrap] Failed closing database manager")

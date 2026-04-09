@@ -2428,6 +2428,6 @@ class MainWindow(QMainWindow):
             manager.download_failed.disconnect(self._on_playlist_redownload_failed)
 
         # Close database
-        self._bootstrap.db.close()
+        self._bootstrap.shutdown_database()
 
         event.accept()

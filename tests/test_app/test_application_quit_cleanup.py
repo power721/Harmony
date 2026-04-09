@@ -7,11 +7,10 @@ from app.application import Application
 def test_quit_calls_hotkeys_cleanup(monkeypatch):
     app = Application.__new__(Application)
     cache_cleaner = SimpleNamespace(stop=Mock())
-    write_worker = SimpleNamespace(wait_idle=Mock(), stop=Mock())
     app._bootstrap = SimpleNamespace(
         stop_mpris=Mock(),
         cache_cleaner_service=cache_cleaner,
-        db=SimpleNamespace(_write_worker=write_worker),
+        shutdown_database=Mock(),
     )
     app._qt_app = SimpleNamespace(quit=Mock())
     cleanup = Mock()
@@ -21,3 +20,4 @@ def test_quit_calls_hotkeys_cleanup(monkeypatch):
     Application.quit(app)
 
     cleanup.assert_called_once_with()
+    app._bootstrap.shutdown_database.assert_called_once_with()
