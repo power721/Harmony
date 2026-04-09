@@ -3,42 +3,11 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MPRIS_PATH = PROJECT_ROOT / "system" / "mpris.py"
-
-
-class _FakeDbusObject:
-    def __init__(self, *_args, **_kwargs):
-        pass
-
-
-class _FakeBusName:
-    def __init__(self, *_args, **_kwargs):
-        pass
-
-
-class _FakeLoop:
-    def __init__(self):
-        self.running = False
-
-    def run(self):
-        self.running = True
-
-    def quit(self):
-        self.running = False
-
-    def is_running(self):
-        return self.running
-
-
-class _FakeThread:
-    def __init__(self, target=None, **_kwargs):
-        self._target = target
-
-    def start(self):
-        if self._target is not None:
-            self._target()
+MPRIS_MODULE_PATH = PROJECT_ROOT / "system" / "mpris.py"
 
 
 class _FakeSignal:
@@ -66,55 +35,17 @@ class _FakeBootstrap:
         return _FakeBootstrapInstance()
 
 
-def _identity_decorator(*_args, **_kwargs):
-    def decorator(fn):
-        return fn
-
-    return decorator
-
-
 def _load_mpris_module(monkeypatch):
-    fake_dbus = types.ModuleType("dbus")
-    fake_dbus.ObjectPath = str
-    fake_dbus.Dictionary = lambda value=None, signature=None: dict(value or {})
-    fake_dbus.String = str
-    fake_dbus.Array = lambda value, signature=None: list(value)
-    fake_dbus.Int64 = int
-    fake_dbus.Boolean = bool
-    fake_dbus.Double = float
-    fake_dbus.SessionBus = lambda: object()
-    fake_dbus.exceptions = types.SimpleNamespace(DBusException=RuntimeError)
-    fake_dbus.mainloop = types.SimpleNamespace(
-        glib=types.SimpleNamespace(DBusGMainLoop=lambda set_as_default=False: None)
-    )
-    fake_dbus.service = types.SimpleNamespace(
-        Object=_FakeDbusObject,
-        BusName=_FakeBusName,
-        method=_identity_decorator,
-        signal=_identity_decorator,
-    )
-
-    fake_gi = types.ModuleType("gi")
-    fake_repository = types.ModuleType("gi.repository")
-    fake_repository.GLib = types.SimpleNamespace(MainLoop=_FakeLoop)
-    fake_gi.repository = fake_repository
-
     fake_app = types.ModuleType("app")
     fake_app.Bootstrap = _FakeBootstrap
 
     fake_domain = types.ModuleType("domain")
     fake_domain.PlaylistItem = object
 
-    monkeypatch.setitem(sys.modules, "dbus", fake_dbus)
-    monkeypatch.setitem(sys.modules, "dbus.mainloop", fake_dbus.mainloop)
-    monkeypatch.setitem(sys.modules, "dbus.mainloop.glib", fake_dbus.mainloop.glib)
-    monkeypatch.setitem(sys.modules, "dbus.service", fake_dbus.service)
-    monkeypatch.setitem(sys.modules, "gi", fake_gi)
-    monkeypatch.setitem(sys.modules, "gi.repository", fake_repository)
     monkeypatch.setitem(sys.modules, "app", fake_app)
     monkeypatch.setitem(sys.modules, "domain", fake_domain)
 
-    spec = importlib.util.spec_from_file_location("mpris_under_test", MPRIS_PATH)
+    spec = importlib.util.spec_from_file_location("mpris_under_test", MPRIS_MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -136,7 +67,6 @@ def test_mpris_service_dispatches_playback_commands_via_ui_dispatcher(monkeypatc
         dispatched.append((fn, args, kwargs))
 
     service = mpris.MPRISService(
-        bus=object(),
         playback_service=PlaybackService(),
         ui_dispatcher=dispatcher,
     )
@@ -175,7 +105,6 @@ def test_mpris_service_dispatches_window_commands_via_ui_dispatcher(monkeypatch)
         dispatched.append((fn, args, kwargs))
 
     service = mpris.MPRISService(
-        bus=object(),
         playback_service=object(),
         main_window=Window(),
         ui_dispatcher=dispatcher,
@@ -192,24 +121,50 @@ def test_mpris_service_dispatches_window_commands_via_ui_dispatcher(monkeypatch)
     assert window_calls == ["showNormal", "raise_", "activateWindow"]
 
 
+def test_mpris_service_returns_player_properties_without_tracklist(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    playback_service = types.SimpleNamespace(
+        current_track=None,
+        is_playing=False,
+        is_stopped=True,
+        can_seek=True,
+        volume=0.5,
+        loop_status="None",
+        shuffle=False,
+        position=lambda: 321.0,
+    )
+
+    service = mpris.MPRISService(playback_service=playback_service)
+    props = service.player_properties()
+
+    assert "Metadata" in props
+    assert "CanControl" in props
+    assert "Position" in props
+    assert props["Position"] == 321000
+    assert service.root_properties()["HasTrackList"] is False
+
+
 def test_mpris_controller_passes_ui_dispatcher_to_service(monkeypatch):
     mpris = _load_mpris_module(monkeypatch)
 
     captured = {}
 
+    class FakeBus:
+        def registerService(self, _name):
+            return True
+
+        def registerObject(self, _path, _service, _options):
+            return True
+
     class FakeService:
-        def __init__(self, bus, playback_service, main_window=None, ui_dispatcher=None):
-            captured["bus"] = bus
+        def __init__(self, playback_service, main_window=None, ui_dispatcher=None):
             captured["playback_service"] = playback_service
             captured["main_window"] = main_window
             captured["ui_dispatcher"] = ui_dispatcher
 
-        def TrackListReplaced(self, *_args, **_kwargs):
-            pass
-
     monkeypatch.setattr(mpris, "MPRISService", FakeService)
-    monkeypatch.setattr(mpris.threading, "Thread", _FakeThread)
-    monkeypatch.setattr(mpris.GLib, "MainLoop", _FakeLoop)
+    monkeypatch.setattr(mpris.QDBusConnection, "sessionBus", staticmethod(lambda: FakeBus()))
 
     playback_service = types.SimpleNamespace(playlist=[], current_track=None)
     controller = mpris.MPRISController(playback_service=playback_service)
@@ -228,24 +183,47 @@ def test_mpris_controller_track_change_uses_stable_service_reference(monkeypatch
 
     controller = mpris.MPRISController.__new__(mpris.MPRISController)
     controller._service_lock = mpris.threading.Lock()
-    controller.playback_service = types.SimpleNamespace(playlist=[], current_track=None)
+    controller.playback_service = types.SimpleNamespace(current_track=None)
 
-    class _FakeService:
+    class FakeService:
         def __init__(self):
             self.seeked = []
 
         def emit_player_properties(self, _names):
             controller.service = None
 
-        def Seeked(self, value):
+        def emit_seeked(self, value):
             self.seeked.append(value)
 
-        def _position_us(self):
+        def position_us(self):
             return 123
 
-        def TrackListReplaced(self, *_args, **_kwargs):
-            pass
-
-    controller.service = _FakeService()
+    fake_service = FakeService()
+    controller.service = fake_service
 
     mpris.MPRISController.on_track_changed(controller)
+
+    assert fake_service.seeked == [123]
+
+
+def test_mpris_controller_start_raises_when_service_registration_fails(monkeypatch):
+    mpris = _load_mpris_module(monkeypatch)
+
+    class FakeBus:
+        def isConnected(self):
+            return True
+
+        def registerService(self, _name):
+            return False
+
+        def lastError(self):
+            return types.SimpleNamespace(message=lambda: "name already owned")
+
+    monkeypatch.setattr(mpris.QDBusConnection, "sessionBus", staticmethod(lambda: FakeBus()))
+
+    controller = mpris.MPRISController(
+        playback_service=types.SimpleNamespace(playlist=[], current_track=None),
+    )
+
+    with pytest.raises(RuntimeError, match="name already owned"):
+        controller.start()

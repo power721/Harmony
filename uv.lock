@@ -227,12 +227,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dbus-python"
-version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ff/24/63118050c7dd7be04b1ccd60eab53fef00abe844442e1b6dec92dae505d6/dbus-python-1.4.0.tar.gz", hash = "sha256:991666e498f60dbf3e49b8b7678f5559b8a65034fdf61aae62cdecdb7d89c770", size = 232490, upload-time = "2025-03-13T19:57:54.212Z" }
-
-[[package]]
 name = "distro"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -550,9 +544,6 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
-linux = [
-    { name = "dbus-python" },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -564,7 +555,6 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "certifi", specifier = ">=2024.0.0" },
-    { name = "dbus-python", marker = "extra == 'linux'", specifier = ">=1.4.0" },
     { name = "harmony-plugin-api", specifier = ">=0.1.1" },
     { name = "lxml", specifier = ">=6.0.2" },
     { name = "mpv", specifier = ">=1.0.0" },
@@ -585,7 +575,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "shiboken6", specifier = ">=6.11.0" },
 ]
-provides-extras = ["dev", "linux"]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [

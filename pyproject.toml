@@ -31,9 +31,6 @@ dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
 ]
-linux = [
-    "dbus-python>=1.4.0",
-]
 
 [dependency-groups]
 dev = [

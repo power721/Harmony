@@ -1,7 +1,5 @@
 from pathlib import Path
-import builtins
 import logging
-import os
 import sys
 from unittest.mock import MagicMock
 
@@ -114,16 +112,41 @@ def test_bootstrap_no_longer_exposes_qqmusic_client_helpers():
     assert not hasattr(bootstrap_module.Bootstrap, "refresh_qqmusic_client")
 
 
-def test_mpris_controller_logs_warning_when_linux_dbus_support_is_missing(monkeypatch, caplog):
-    original_import = builtins.__import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "dbus" or name.startswith("dbus."):
-            raise ImportError("dbus unavailable")
-        return original_import(name, globals, locals, fromlist, level)
-
+def test_linux_mpris_runtime_is_ready_when_qtdbus_is_available(monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_can_import_linux_mpris_runtime",
+        lambda: (True, None),
+    )
+
+    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
+
+    assert ready is True
+    assert reason is None
+
+
+def test_linux_mpris_runtime_reports_qtdbus_failure(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_can_import_linux_mpris_runtime",
+        lambda: (False, "QtDBus session bus unavailable"),
+    )
+
+    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
+
+    assert ready is False
+    assert reason == "QtDBus session bus unavailable"
+
+
+def test_mpris_controller_logs_warning_when_linux_qtdbus_support_is_missing(monkeypatch, caplog):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_ensure_linux_mpris_runtime",
+        lambda: (False, "QtDBus session bus unavailable"),
+    )
 
     bootstrap = bootstrap_module.Bootstrap(":memory:")
 
@@ -131,84 +154,5 @@ def test_mpris_controller_logs_warning_when_linux_dbus_support_is_missing(monkey
         controller = bootstrap.mpris_controller
 
     assert controller is None
-    assert "MPRIS disabled" in caplog.text
-    assert "dbus unavailable" in caplog.text
-
-
-def test_enable_linux_mpris_runtime_adds_system_module_roots(monkeypatch, tmp_path):
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(
-        bootstrap_module,
-        "_discover_linux_python_module_roots",
-        lambda: [os.fspath(tmp_path)],
-    )
-    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != os.fspath(tmp_path)])
-
-    def fake_can_import():
-        if os.fspath(tmp_path) in sys.path:
-            return True, None
-        return False, "gi unavailable"
-
-    monkeypatch.setattr(
-        bootstrap_module,
-        "_can_import_linux_mpris_runtime",
-        fake_can_import,
-    )
-
-    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
-
-    assert ready is True
-    assert reason is None
-    assert sys.path[0] == os.fspath(tmp_path)
-
-
-def test_enable_linux_mpris_runtime_reports_missing_modules_when_recovery_fails(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(
-        bootstrap_module,
-        "_discover_linux_python_module_roots",
-        lambda: [],
-    )
-
-    original_import = builtins.__import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "dbus" or name.startswith("dbus.") or name == "gi" or name.startswith("gi."):
-            raise ImportError(f"{name} unavailable")
-        return original_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
-
-    assert ready is False
-    assert reason is not None
-    assert "unavailable" in reason
-
-
-def test_enable_linux_mpris_runtime_reports_host_binding_loading_failure(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(
-        bootstrap_module,
-        "_discover_linux_python_module_roots",
-        lambda: ["/usr/lib/python3/dist-packages"],
-    )
-    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != "/usr/lib/python3/dist-packages"])
-
-    attempts = iter([
-        (False, "No module named 'dbus'"),
-        (False, "No module named '_dbus_bindings'"),
-    ])
-
-    monkeypatch.setattr(
-        bootstrap_module,
-        "_can_import_linux_mpris_runtime",
-        lambda: next(attempts),
-    )
-
-    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
-
-    assert ready is False
-    assert reason is not None
-    assert "host D-Bus Python bindings" in reason
-    assert "_dbus_bindings" in reason
+    assert "Linux QtDBus runtime unavailable" in caplog.text
+    assert "QtDBus session bus unavailable" in caplog.text

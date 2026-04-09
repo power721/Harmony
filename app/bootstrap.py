@@ -2,9 +2,7 @@
 Bootstrap - Dependency injection container.
 """
 
-import importlib
 import logging
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -70,104 +68,16 @@ def _get_app_data_root() -> Path:
 
 def _can_import_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     try:
-        import dbus
-        import dbus.mainloop.glib
-        import dbus.service
-        from gi.repository import GLib
-
-        _ = (dbus.mainloop.glib, dbus.service, GLib)
+        from PySide6.QtDBus import QDBusConnection
         return True, None
     except ImportError as exc:
         return False, str(exc)
-
-
-def _discover_linux_python_module_roots() -> list[str]:
-    python_bin = Path("/usr/bin/python3")
-    if not python_bin.exists():
-        return []
-
-    try:
-        result = subprocess.run(
-            [
-                str(python_bin),
-                "-c",
-                (
-                    "import importlib, os\n"
-                    "roots = []\n"
-                    "for name in ('dbus', 'gi'):\n"
-                    "    try:\n"
-                    "        module = importlib.import_module(name)\n"
-                    "    except Exception:\n"
-                    "        continue\n"
-                    "    path = getattr(module, '__file__', None)\n"
-                    "    if not path:\n"
-                    "        continue\n"
-                    "    root = os.path.dirname(os.path.dirname(path))\n"
-                    "    if root not in roots:\n"
-                    "        roots.append(root)\n"
-                    "print('\\n'.join(roots))\n"
-                ),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return []
-
-    roots = []
-    for line in result.stdout.splitlines():
-        root = line.strip()
-        if root and root not in roots:
-            roots.append(root)
-    return roots
-
-
-def _normalize_linux_mpris_runtime_failure(reason: Optional[str], recovered_reason: Optional[str]) -> Optional[str]:
-    final_reason = recovered_reason or reason
-    if not final_reason:
-        return final_reason
-
-    if "_dbus_bindings" in final_reason:
-        return (
-            "host D-Bus Python bindings were discovered but could not be loaded "
-            f"by the frozen runtime ({final_reason})"
-        )
-
-    if "_gi" in final_reason:
-        return (
-            "host PyGObject bindings were discovered but could not be loaded "
-            f"by the frozen runtime ({final_reason})"
-        )
-
-    return final_reason
-
 
 def _ensure_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     if sys.platform != "linux":
         return True, None
 
-    ready, reason = _can_import_linux_mpris_runtime()
-    if ready:
-        return True, None
-
-    added = False
-    for root in reversed(_discover_linux_python_module_roots()):
-        if root and root not in sys.path:
-            sys.path.insert(0, root)
-            added = True
-
-    if added:
-        importlib.invalidate_caches()
-
-    recovered_ready, recovered_reason = _can_import_linux_mpris_runtime()
-    if recovered_ready:
-        return True, None
-
-    if added:
-        return False, _normalize_linux_mpris_runtime_failure(reason, recovered_reason)
-
-    return False, recovered_reason
+    return _can_import_linux_mpris_runtime()
 
 
 class Bootstrap:
@@ -545,9 +455,7 @@ class Bootstrap:
                 if not ready:
                     self._mpris_disabled_reason = reason or "unknown import error"
                     logger.warning(
-                        "MPRIS disabled: missing Linux D-Bus runtime (%s). "
-                        "Install the optional 'linux' dependencies and ensure system "
-                        "PyGObject bindings are available to the application.",
+                        "MPRIS disabled: Linux QtDBus runtime unavailable (%s).",
                         self._mpris_disabled_reason,
                     )
 
