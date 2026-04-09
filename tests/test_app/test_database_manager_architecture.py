@@ -47,7 +47,7 @@ def test_production_code_does_not_call_database_manager_crud_directly():
 
 
 def test_database_manager_no_longer_exposes_track_or_playlist_crud_api():
-    """Track/playlist CRUD should live in repositories, not DatabaseManager."""
+    """Business CRUD should live in repositories/services, not DatabaseManager."""
     forbidden_api = (
         "add_track",
         "add_track_async",
@@ -73,6 +73,14 @@ def test_database_manager_no_longer_exposes_track_or_playlist_crud_api():
         "add_track_to_playlist",
         "remove_track_from_playlist",
         "delete_playlist",
+        "add_favorite",
+        "remove_favorite",
+        "get_all_favorite_track_ids",
+        "get_favorites",
+        "get_cloud_account",
+        "update_cloud_account_playing_state",
+        "update_cloud_file_local_path",
+        "get_cloud_file_by_file_id",
     )
 
     for name in forbidden_api:
