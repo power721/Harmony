@@ -56,6 +56,16 @@ def test_release_script_bundles_builtin_plugins_for_linux_appimage():
     assert '--add-data "plugins/builtin:plugins/builtin"' in content
 
 
+def test_release_script_apprun_initializes_dbus_session():
+    """Linux AppImage launcher should prepare a D-Bus session for MPRIS."""
+    repo_root = Path(__file__).resolve().parents[1]
+    content = (repo_root / "release.sh").read_text(encoding="utf-8")
+
+    assert "DBUS_SESSION_BUS_ADDRESS" in content
+    assert "dbus-launch --sh-syntax" in content
+    assert 'local bus_path="/run/user/$uid/bus"' in content
+
+
 def test_windows_workflow_produces_split_backend_executables():
     """Windows CI must upload separate QT and MPV executables without a portable zip."""
     repo_root = Path(__file__).resolve().parents[1]

@@ -184,3 +184,31 @@ def test_enable_linux_mpris_runtime_reports_missing_modules_when_recovery_fails(
     assert ready is False
     assert reason is not None
     assert "unavailable" in reason
+
+
+def test_enable_linux_mpris_runtime_reports_host_binding_loading_failure(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_discover_linux_python_module_roots",
+        lambda: ["/usr/lib/python3/dist-packages"],
+    )
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != "/usr/lib/python3/dist-packages"])
+
+    attempts = iter([
+        (False, "No module named 'dbus'"),
+        (False, "No module named '_dbus_bindings'"),
+    ])
+
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_can_import_linux_mpris_runtime",
+        lambda: next(attempts),
+    )
+
+    ready, reason = bootstrap_module._ensure_linux_mpris_runtime()
+
+    assert ready is False
+    assert reason is not None
+    assert "host D-Bus Python bindings" in reason
+    assert "_dbus_bindings" in reason

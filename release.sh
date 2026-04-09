@@ -268,6 +268,46 @@ export LD_LIBRARY_PATH="${HERE}/usr/bin:${HERE}/usr/bin/_internal:${HERE}/usr/bi
 export QT_PLUGIN_PATH="${HERE}/usr/bin/_internal/PySide6/Qt/plugins"
 export HARMONY_ENABLE_QT_FALLBACK=0
 
+check_dbus() {
+    [ -n "$DBUS_SESSION_BUS_ADDRESS" ]
+}
+
+setup_system_dbus() {
+    local uid
+    uid=$(id -u)
+    local bus_path="/run/user/$uid/bus"
+
+    if [ -S "$bus_path" ]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus_path"
+        return 0
+    fi
+
+    return 1
+}
+
+setup_dbus_launch() {
+    if command -v dbus-launch >/dev/null 2>&1; then
+        eval "$(dbus-launch --sh-syntax)"
+        export DBUS_SESSION_BUS_ADDRESS
+        export DBUS_SESSION_BUS_PID
+        return 0
+    fi
+
+    return 1
+}
+
+init_dbus() {
+    if check_dbus; then
+        return
+    fi
+
+    if setup_system_dbus; then
+        return
+    fi
+
+    setup_dbus_launch || true
+}
+
 # OpenGL fallback
 export QT_XCB_GL_INTEGRATION=none
 export LIBGL_ALWAYS_SOFTWARE=1
@@ -278,6 +318,7 @@ if [ -z "$DISPLAY" ]; then
   exit 1
 fi
 
+init_dbus
 exec "${HERE}/usr/bin/Harmony" "$@"
 EOF
 

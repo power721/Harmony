@@ -123,6 +123,26 @@ def _discover_linux_python_module_roots() -> list[str]:
     return roots
 
 
+def _normalize_linux_mpris_runtime_failure(reason: Optional[str], recovered_reason: Optional[str]) -> Optional[str]:
+    final_reason = recovered_reason or reason
+    if not final_reason:
+        return final_reason
+
+    if "_dbus_bindings" in final_reason:
+        return (
+            "host D-Bus Python bindings were discovered but could not be loaded "
+            f"by the frozen runtime ({final_reason})"
+        )
+
+    if "_gi" in final_reason:
+        return (
+            "host PyGObject bindings were discovered but could not be loaded "
+            f"by the frozen runtime ({final_reason})"
+        )
+
+    return final_reason
+
+
 def _ensure_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     if sys.platform != "linux":
         return True, None
@@ -140,7 +160,14 @@ def _ensure_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     if added:
         importlib.invalidate_caches()
 
-    return _can_import_linux_mpris_runtime()
+    recovered_ready, recovered_reason = _can_import_linux_mpris_runtime()
+    if recovered_ready:
+        return True, None
+
+    if added:
+        return False, _normalize_linux_mpris_runtime_failure(reason, recovered_reason)
+
+    return False, recovered_reason
 
 
 class Bootstrap:
