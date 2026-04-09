@@ -77,6 +77,25 @@ prune_qt_plugin_files() {
         libibusplatforminputcontextplugin.so
 }
 
+prune_qt_runtime() {
+    local internal_dir=$1
+    local qt_dir="$internal_dir/PySide6/Qt"
+    local qt_lib_dir="$qt_dir/lib"
+    local pattern
+
+    if [ "$HARMONY_MPV_ONLY" = "1" ]; then
+        rm -rf "$qt_dir/qml"
+
+        for pattern in \
+            "libQt6Labs*.so*" \
+            "libQt6Qml*.so*" \
+            "libQt6Quick*.so*" \
+            "libQt6VirtualKeyboard*.so*"; do
+            rm -f "$qt_lib_dir"/$pattern
+        done
+    fi
+}
+
 prune_plugin_subdir_files() {
     local subdir=$1
     shift
@@ -270,6 +289,7 @@ build_app() {
 
     collect_qt_input_context_plugins
     prune_qt_plugins "$MODE"
+    prune_qt_runtime "dist/$APP_NAME/_internal"
     collect_runtime_deps
 
     # 保留 Qt 的，删 Python 的
