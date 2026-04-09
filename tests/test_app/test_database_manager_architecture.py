@@ -1,6 +1,8 @@
 from pathlib import Path
+import inspect
 
 from infrastructure.database.sqlite_manager import DatabaseManager
+from services.library.file_organization_service import FileOrganizationService
 
 
 _PRODUCTION_ROOTS = ("app", "ui", "services", "system", "plugins")
@@ -85,3 +87,8 @@ def test_database_manager_no_longer_exposes_track_or_playlist_crud_api():
 
     for name in forbidden_api:
         assert not hasattr(DatabaseManager, name), name
+
+
+def test_file_organization_service_no_longer_accepts_db_manager():
+    """Library-adjacent services should not keep deprecated db_manager constructor args."""
+    assert "db_manager" not in inspect.signature(FileOrganizationService.__init__).parameters

@@ -416,7 +416,6 @@ class Bootstrap:
                 track_repo=self.track_repo,
                 cloud_repo=self.cloud_repo,
                 event_bus=self.event_bus,
-                db_manager=self.db,
                 queue_repo=self.queue_repo,
             )
         return self._file_org_service

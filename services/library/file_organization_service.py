@@ -16,7 +16,7 @@ class FileOrganizationService:
     Service for organizing music files into structured directory layouts.
     """
 
-    def __init__(self, track_repo, cloud_repo, event_bus, db_manager=None, queue_repo=None):
+    def __init__(self, track_repo, cloud_repo, event_bus, queue_repo=None):
         """
         Initialize file organization service.
 
@@ -24,13 +24,11 @@ class FileOrganizationService:
             track_repo: Track repository instance
             cloud_repo: Cloud repository instance
             event_bus: Global event bus
-            db_manager: Database manager instance (deprecated, for backward compat)
             queue_repo: Queue repository instance
         """
         self._track_repo = track_repo
         self._cloud_repo = cloud_repo
         self._event_bus = event_bus
-        self._db = db_manager
         self._queue_repo = queue_repo
 
     def _get_all_lyrics_paths(self, audio_path: Path) -> List[Path]:
