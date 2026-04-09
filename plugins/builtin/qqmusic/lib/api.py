@@ -231,11 +231,15 @@ class QQMusicPluginAPI:
         if not singer_list:
             return None
         singer = singer_list[0]
-        title = singer.get("basic_info", {}).get("name", "")
+        basic_info = singer.get("basic_info", {})
+        title = basic_info.get("name", "")
         songs = self.search(title, search_type="song", limit=30).get("tracks", [])
         return {
-            "title": title,
-            "description": singer.get("ex_info", {}).get("desc", ""),
+            "mid": basic_info.get("singer_mid", singer_mid),
+            "name": title,
+            "desc": singer.get("ex_info", {}).get("desc", ""),
+            "avatar": build_artist_cover_url(basic_info.get("singer_mid", singer_mid), 300) or "",
+            "album_count": int(basic_info.get("album_total", 0) or 0),
             "songs": songs,
         }
 
@@ -250,11 +254,38 @@ class QQMusicPluginAPI:
             return None
         album = data.get("data", {})
         basic_info = album.get("basicInfo", {})
-        songs = [normalize_song_item(item.get("songInfo", item)) for item in album.get("songList", [])]
+        singer_list = album.get("singer", {}).get("singerList", [])
+        song_items = album.get("songList", [])
+        songs = [normalize_song_item(item.get("songInfo", item)) for item in song_items]
+        singer_names = ", ".join(
+            str(singer.get("name", "")).strip()
+            for singer in singer_list
+            if isinstance(singer, dict) and str(singer.get("name", "")).strip()
+        )
+
+        if not songs:
+            album_name = basic_info.get("albumName", album.get("name", ""))
+            search_keyword = " ".join(part for part in (singer_names, album_name) if part)
+            search_tracks = self.search(search_keyword, search_type="song", limit=50, page=1).get("tracks", [])
+            matched_tracks = [track for track in search_tracks if self._track_matches_album(track, album_mid, album_name)]
+            songs = matched_tracks or search_tracks
+
+        singer_mid = ""
+        for singer in singer_list:
+            if isinstance(singer, dict) and singer.get("mid"):
+                singer_mid = str(singer.get("mid"))
+                break
         return {
-            "title": basic_info.get("albumName", album.get("name", "")),
+            "mid": basic_info.get("albumMid", album_mid),
+            "name": basic_info.get("albumName", album.get("name", "")),
+            "singer": singer_names,
+            "singer_mid": singer_mid,
+            "cover_url": build_album_cover_url(basic_info.get("albumMid", album_mid), 500) or "",
+            "publish_date": basic_info.get("publishDate", ""),
             "description": basic_info.get("desc", ""),
+            "company": album.get("company", {}).get("name", ""),
             "songs": songs,
+            "total": len(songs),
         }
 
     def get_playlist_detail(self, playlist_id: str) -> dict | None:
@@ -270,10 +301,28 @@ class QQMusicPluginAPI:
         dirinfo = playlist.get("dirinfo", {})
         songs = [normalize_song_item(item) for item in playlist.get("songlist", [])]
         return {
-            "title": dirinfo.get("title", playlist.get("name", "")),
+            "id": str(dirinfo.get("id", playlist_id)),
+            "name": dirinfo.get("title", playlist.get("name", "")),
+            "creator": (
+                dirinfo.get("creator", {}).get("nick", "")
+                if isinstance(dirinfo.get("creator"), dict)
+                else ""
+            ),
+            "cover": dirinfo.get("picurl", "") or dirinfo.get("picurl2", ""),
             "description": dirinfo.get("desc", playlist.get("description", "")),
             "songs": songs,
+            "total": int(playlist.get("total_song_num", len(songs)) or len(songs)),
         }
+
+    @staticmethod
+    def _track_matches_album(track: dict[str, Any], album_mid: str, album_name: str) -> bool:
+        if not isinstance(track, dict):
+            return False
+        track_album_mid = str(track.get("album_mid", "") or "")
+        if album_mid and track_album_mid == album_mid:
+            return True
+        track_album_name = str(track.get("album", "") or "").strip()
+        return bool(album_name and track_album_name == album_name)
 
     def get_hotkeys(self) -> list[dict]:
         response = self._context.http.get(f"{self.REMOTE_BASE_URL}/hotkey", timeout=10)

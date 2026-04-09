@@ -1035,10 +1035,8 @@ class OnlineDetailView(QWidget):
         # Show albums section for artist
         self._albums_section.show()
 
-        # Show follow button for artist
-        self._fav_btn.hide()
-        self._follow_btn.show()
         self._is_followed = False
+        self._update_social_action_visibility()
         self._update_follow_btn_style()
 
         # Note: Follow status will be fetched together with detail in batch request
@@ -1053,9 +1051,6 @@ class OnlineDetailView(QWidget):
         self._mid = mid
         self._current_page = 1  # Reset to first page
 
-        # Hide follow button for non-artist views
-        self._follow_btn.hide()
-
         # Set placeholder info
         self._type_label.setText(t("album"))
         self._name_label.setText(name)
@@ -1067,10 +1062,8 @@ class OnlineDetailView(QWidget):
         # Hide albums section for album detail
         self._albums_section.hide()
 
-        # Show favorite button for album
-        self._fav_btn.show()
-        self._follow_btn.hide()
         self._is_faved = False
+        self._update_social_action_visibility()
         self._update_fav_btn_style()
 
         # Note: Fav status will be fetched together with detail in batch request
@@ -1085,12 +1078,8 @@ class OnlineDetailView(QWidget):
         self._mid = playlist_id
         self._current_page = 1  # Reset to first page
 
-        # Hide follow button for non-artist views
-        self._follow_btn.hide()
-
-        # Show favorite button for playlist
-        self._fav_btn.show()
         self._is_faved = False
+        self._update_social_action_visibility()
         self._update_fav_btn_style()
 
         # Set placeholder info
@@ -1122,8 +1111,7 @@ class OnlineDetailView(QWidget):
         self._use_tracks_list_view = True  # Use OnlineTracksListView for recommendations
 
         # Hide follow/fav buttons for recommendation song lists
-        self._follow_btn.hide()
-        self._fav_btn.hide()
+        self._update_social_action_visibility()
 
         # Set info
         self._type_label.setText(t("playlists"))
@@ -1155,6 +1143,29 @@ class OnlineDetailView(QWidget):
 
         # Display songs
         self._display_songs(self._tracks)
+
+    def _has_qqmusic_credential(self) -> bool:
+        """Return whether QQ Music social actions are available."""
+        checker = getattr(self._service, "_has_qqmusic_credential", None)
+        if callable(checker):
+            try:
+                return bool(checker())
+            except Exception:
+                logger.debug("[OnlineDetailView] Failed to query QQ credential status", exc_info=True)
+        return False
+
+    def _update_social_action_visibility(self):
+        """Show social action buttons only when the user is authenticated."""
+        self._follow_btn.hide()
+        self._fav_btn.hide()
+
+        if not self._has_qqmusic_credential():
+            return
+
+        if self._detail_type == "artist":
+            self._follow_btn.show()
+        elif self._detail_type in {"album", "playlist"} and self._mid:
+            self._fav_btn.show()
 
     def _load_detail(self):
         """Load detail data."""
@@ -1610,14 +1621,17 @@ class OnlineDetailView(QWidget):
             album_data = song.get("album")
             if isinstance(album_data, dict):
                 album = AlbumInfo(
-                    mid=album_data.get("mid", ""),
-                    name=album_data.get("name", "")
+                    mid=album_data.get("mid", song.get("albummid", song.get("albumMid", song.get("album_mid", "")))),
+                    name=album_data.get("name", song.get("albumname", song.get("albumName", "")))
                 )
             elif isinstance(album_data, str):
-                album = AlbumInfo(mid="", name=album_data)
+                album = AlbumInfo(
+                    mid=song.get("albummid", song.get("albumMid", song.get("album_mid", ""))),
+                    name=album_data or song.get("albumname", song.get("albumName", "")),
+                )
             else:
                 album = AlbumInfo(
-                    mid=song.get("albummid", song.get("albumMid", "")),
+                    mid=song.get("albummid", song.get("albumMid", song.get("album_mid", ""))),
                     name=song.get("albumname", song.get("albumName", ""))
                 )
 
