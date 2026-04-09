@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from infrastructure.database.sqlite_manager import DatabaseManager
+
 
 _PRODUCTION_ROOTS = ("app", "ui", "services", "system", "plugins")
 _FORBIDDEN_PATTERNS = (
@@ -42,3 +44,36 @@ def test_production_code_does_not_call_database_manager_crud_directly():
                     violations.append(f"{path}: {pattern}")
 
     assert violations == []
+
+
+def test_database_manager_no_longer_exposes_track_or_playlist_crud_api():
+    """Track/playlist CRUD should live in repositories, not DatabaseManager."""
+    forbidden_api = (
+        "add_track",
+        "add_track_async",
+        "get_track",
+        "get_tracks_by_ids",
+        "get_track_by_path",
+        "get_track_by_cloud_file_id",
+        "get_tracks_by_cloud_file_ids",
+        "get_track_index_for_paths",
+        "add_tracks_bulk",
+        "get_all_tracks",
+        "search_tracks",
+        "delete_track",
+        "delete_track_async",
+        "update_track",
+        "update_track_async",
+        "update_track_cover_path",
+        "update_track_path",
+        "create_playlist",
+        "get_playlist",
+        "get_all_playlists",
+        "get_playlist_tracks",
+        "add_track_to_playlist",
+        "remove_track_from_playlist",
+        "delete_playlist",
+    )
+
+    for name in forbidden_api:
+        assert not hasattr(DatabaseManager, name), name
