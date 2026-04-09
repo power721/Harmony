@@ -339,6 +339,30 @@ class TestSqliteTrackRepository:
 
         assert row[0] is None
 
+    def test_get_by_id_does_not_write_back_for_normalized_online_rows(self, track_repo):
+        """Reading already-normalized online rows should remain a pure read."""
+        track_id = track_repo.add(Track(
+            path="online://qqmusic/track/abc",
+            title="Online",
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="abc",
+        ))
+
+        conn = track_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            track = track_repo.get_by_id(track_id)
+        finally:
+            conn.set_trace_callback(None)
+
+        writes = [sql for sql in statements if sql.strip().upper().startswith("UPDATE TRACKS")]
+
+        assert track is not None
+        assert track.online_provider_id == "qqmusic"
+        assert writes == []
+
     def test_get_by_cloud_file_id_matches_legacy_qq_row_without_provider_id(self, track_repo, temp_db):
         """QQ legacy rows without provider id should still resolve for qqmusic lookups."""
         conn = sqlite3.connect(temp_db)
