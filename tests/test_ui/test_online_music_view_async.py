@@ -1,5 +1,6 @@
 """Async request coordination tests for OnlineMusicView."""
 
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from domain.online_music import OnlineTrack, SearchResult, SearchType
@@ -191,6 +192,50 @@ def test_refresh_login_status_renders_nick_as_profile_link():
     view._login_status_label.setText.assert_called_once_with(
         'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">Tester</a>'
     )
+
+
+def test_format_login_status_text_uses_theme_text_color_for_profile_link(monkeypatch):
+    plugin_i18n.set_language("en")
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    monkeypatch.setattr(
+        online_music_view,
+        "current_theme",
+        lambda: SimpleNamespace(text="#abcdef"),
+    )
+
+    result = OnlineMusicView._format_login_status_text(view, "Tester")
+
+    assert result == (
+        'Logged in as '
+        '<a href="https://y.qq.com/n/ryqq_v2/profile/" '
+        'style="color: #abcdef; text-decoration: none;">Tester</a>'
+    )
+
+
+def test_refresh_theme_refreshes_login_status_markup(monkeypatch):
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view.setStyleSheet = Mock()
+    view._online_music_title = Mock()
+    view._login_status_label = Mock()
+    view._search_input = Mock()
+    search_style = Mock()
+    view._search_input.style.return_value = search_style
+    view._tabs = Mock()
+    view._rankings_title = Mock()
+    view._top_list_title = Mock()
+    view._fav_back_btn = Mock()
+    view._results_info = Mock()
+    view._top_songs_table = Mock()
+    view._results_table = Mock()
+    view._page_label = Mock()
+    view._completer = None
+    view._hotkey_popup = None
+    view._refresh_login_status = Mock()
+    monkeypatch.setattr(online_music_view, "get_qss", lambda style: style)
+
+    OnlineMusicView.refresh_theme(view)
+
+    view._refresh_login_status.assert_called_once_with()
 
 
 def test_on_login_clicked_clears_plugin_namespaced_credential():

@@ -1314,6 +1314,7 @@ class OnlineMusicView(QWidget):
         # Header
         self._online_music_title.setStyleSheet(get_qss(self._STYLE_TITLE))
         self._login_status_label.setStyleSheet(get_qss(self._STYLE_STATUS_LABEL))
+        self._refresh_login_status()
 
         # Search input
         style = self._search_input.style()
@@ -1379,9 +1380,18 @@ class OnlineMusicView(QWidget):
         """Format QQ Music login status text, linking only the nickname."""
         if nick:
             safe_nick = html.escape(str(nick))
+            try:
+                theme = current_theme()
+            except RuntimeError:
+                theme = None
+            link_color = getattr(theme, "text", "")
+            link_style = ""
+            if link_color:
+                safe_link_color = html.escape(str(link_color), quote=True)
+                link_style = f' style="color: {safe_link_color}; text-decoration: none;"'
             return (
                 f'{t("qqmusic_logged_in_as")} '
-                f'<a href="{self._QQMUSIC_PROFILE_URL}">{safe_nick}</a>'
+                f'<a href="{self._QQMUSIC_PROFILE_URL}"{link_style}>{safe_nick}</a>'
             )
         return t("qqmusic_logged_in")
 
