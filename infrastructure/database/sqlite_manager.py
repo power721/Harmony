@@ -7,7 +7,7 @@ import re
 import sqlite3
 import threading
 from concurrent.futures import Future
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 from infrastructure.database.db_write_worker import get_write_worker
 

@@ -5,7 +5,6 @@ Sidebar navigation widget for MainWindow.
 from typing import List, Tuple, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 
 from system.i18n import t, get_language

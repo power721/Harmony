@@ -48,8 +48,6 @@ def test_do_deduplicates_new_call_arriving_during_leader_completion():
     time.sleep(0.05)
 
     leader_state = singleflight._calls["same-key"]
-    monkeypatch = None
-
     try:
         leader_state.event.set = lambda: wrapped_set(leader_state.event)  # type: ignore[method-assign]
         release_leader.set()

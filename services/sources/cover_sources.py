@@ -3,7 +3,6 @@ Cover art source implementations.
 """
 
 import logging
-import os
 from typing import Optional, List
 
 from .base import CoverSource, CoverSearchResult

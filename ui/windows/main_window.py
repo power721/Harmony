@@ -1200,7 +1200,6 @@ class MainWindow(QMainWindow):
         """Play a list of tracks starting from the given index."""
         if tracks:
             from domain.playlist_item import PlaylistItem
-            from domain.track import TrackSource
             from pathlib import Path
 
             # Create PlaylistItems with full track info (including local_path)

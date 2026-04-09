@@ -4,7 +4,6 @@ Unified configuration storage using database.
 """
 import base64
 import binascii
-import json
 import logging
 import threading
 from typing import Any, Dict, Optional, TYPE_CHECKING

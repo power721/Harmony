@@ -479,7 +479,6 @@ class LyricsController(QObject):
     def on_track_changed(self, track_item):
         """Handle track change event."""
         from domain.playlist_item import PlaylistItem
-        from domain.track import TrackSource
 
         if isinstance(track_item, PlaylistItem):
             path = track_item.local_path

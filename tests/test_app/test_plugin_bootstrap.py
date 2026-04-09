@@ -106,8 +106,6 @@ def test_online_download_service_is_created_with_plugin_agnostic_gateway(monkeyp
 
 
 def test_bootstrap_no_longer_exposes_qqmusic_client_helpers():
-    bootstrap = bootstrap_module.Bootstrap(":memory:")
-
     assert not hasattr(bootstrap_module.Bootstrap, "qqmusic_client")
     assert not hasattr(bootstrap_module.Bootstrap, "refresh_qqmusic_client")
 

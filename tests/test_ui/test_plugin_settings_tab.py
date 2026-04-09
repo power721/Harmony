@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from PySide6.QtCore import QRect, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QTabWidget, QTableWidget, QWidget
 
 from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI

@@ -101,7 +101,6 @@ class LibraryView(QWidget):
         self._all_tracks_source = None
         self._pending_redownload_mids: set[str] = set()
 
-        from system.theme import ThemeManager
         ThemeManager.instance().register_widget(self)
 
         self._setup_ui()
@@ -284,7 +283,6 @@ class LibraryView(QWidget):
 
     def refresh_theme(self):
         """Apply themed styles from ThemeManager."""
-        from system.theme import ThemeManager
         theme_manager = ThemeManager.instance()
 
         self.setStyleSheet(theme_manager.get_qss(self._STYLE_TEMPLATE))

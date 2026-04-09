@@ -2,7 +2,6 @@
 import importlib
 import logging
 import os
-from typing import Optional
 
 from app.bootstrap import Bootstrap
 from PySide6.QtCore import Qt
@@ -10,7 +9,7 @@ from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QCheckBox, QGroupBox, QTabWidget,
-    QWidget, QComboBox, QFileDialog, QColorDialog,
+    QWidget, QComboBox, QColorDialog,
     QGridLayout, QFrame, QGraphicsDropShadowEffect
 )
 

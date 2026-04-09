@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from . import plugin_sdk_runtime
+from .media_bridge import PluginMediaBridge
 from .plugin_sdk_ui import PluginDialogBridgeImpl, PluginThemeBridgeImpl
 
 class PluginSettingsBridgeImpl:
@@ -212,9 +213,6 @@ class BootstrapPluginContextFactory:
             )
             object.__setattr__(context, "runtime", runtime_bridge)
         return context
-
-
-from .media_bridge import PluginMediaBridge
 
 __all__ = [
     "BootstrapPluginContextFactory",

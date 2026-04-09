@@ -69,7 +69,7 @@ def _get_app_data_root() -> Path:
 def _can_import_linux_mpris_runtime() -> tuple[bool, Optional[str]]:
     try:
         from PySide6.QtDBus import QDBusConnection
-        return True, None
+        return QDBusConnection is not None, None
     except ImportError as exc:
         return False, str(exc)
 

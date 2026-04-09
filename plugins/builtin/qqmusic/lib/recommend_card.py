@@ -3,7 +3,7 @@ Recommendation card widgets for QQ Music recommendations.
 """
 
 import logging
-from typing import Callable, Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List
 
 from PySide6.QtCore import Qt, Signal, QThread, QRect
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont

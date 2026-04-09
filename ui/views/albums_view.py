@@ -626,9 +626,6 @@ class AlbumsView(QWidget):
         if not album:
             return
 
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
-
         menu = QMenu(self)
 
         # View details action
