@@ -61,3 +61,8 @@ def test_file_organization_service_is_constructed_without_db_manager(monkeypatch
     assert bootstrap.file_org_service is fake_service
     _, kwargs = ctor.call_args
     assert "db_manager" not in kwargs
+
+
+def test_bootstrap_no_longer_exposes_public_db_property():
+    """Database manager should remain an internal bootstrap detail."""
+    assert not hasattr(bootstrap_module.Bootstrap, "db")

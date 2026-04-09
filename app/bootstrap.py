@@ -186,9 +186,8 @@ class Bootstrap:
 
     # ===== Infrastructure =====
 
-    @property
-    def db(self) -> DatabaseManager:
-        """Get database manager."""
+    def _get_db_manager(self) -> DatabaseManager:
+        """Get or create the internal database manager."""
         if self._db is None:
             self._db = DatabaseManager(self._db_path)
         return self._db
@@ -228,70 +227,70 @@ class Bootstrap:
     def track_repo(self) -> SqliteTrackRepository:
         """Get track repository."""
         if self._track_repo is None:
-            self._track_repo = SqliteTrackRepository(self._db_path, db_manager=self.db)
+            self._track_repo = SqliteTrackRepository(self._db_path, db_manager=self._get_db_manager())
         return self._track_repo
 
     @property
     def playlist_repo(self) -> SqlitePlaylistRepository:
         """Get playlist repository."""
         if self._playlist_repo is None:
-            self._playlist_repo = SqlitePlaylistRepository(self._db_path, db_manager=self.db)
+            self._playlist_repo = SqlitePlaylistRepository(self._db_path, db_manager=self._get_db_manager())
         return self._playlist_repo
 
     @property
     def cloud_repo(self) -> SqliteCloudRepository:
         """Get cloud repository."""
         if self._cloud_repo is None:
-            self._cloud_repo = SqliteCloudRepository(self._db_path, db_manager=self.db)
+            self._cloud_repo = SqliteCloudRepository(self._db_path, db_manager=self._get_db_manager())
         return self._cloud_repo
 
     @property
     def queue_repo(self) -> SqliteQueueRepository:
         """Get queue repository."""
         if self._queue_repo is None:
-            self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self.db)
+            self._queue_repo = SqliteQueueRepository(self._db_path, db_manager=self._get_db_manager())
         return self._queue_repo
 
     @property
     def favorite_repo(self) -> SqliteFavoriteRepository:
         """Get favorite repository."""
         if self._favorite_repo is None:
-            self._favorite_repo = SqliteFavoriteRepository(self._db_path, db_manager=self.db)
+            self._favorite_repo = SqliteFavoriteRepository(self._db_path, db_manager=self._get_db_manager())
         return self._favorite_repo
 
     @property
     def history_repo(self) -> SqliteHistoryRepository:
         """Get history repository."""
         if self._history_repo is None:
-            self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self.db)
+            self._history_repo = SqliteHistoryRepository(self._db_path, db_manager=self._get_db_manager())
         return self._history_repo
 
     @property
     def album_repo(self) -> SqliteAlbumRepository:
         """Get album repository."""
         if self._album_repo is None:
-            self._album_repo = SqliteAlbumRepository(self._db_path, db_manager=self.db)
+            self._album_repo = SqliteAlbumRepository(self._db_path, db_manager=self._get_db_manager())
         return self._album_repo
 
     @property
     def artist_repo(self) -> SqliteArtistRepository:
         """Get artist repository."""
         if self._artist_repo is None:
-            self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self.db)
+            self._artist_repo = SqliteArtistRepository(self._db_path, db_manager=self._get_db_manager())
         return self._artist_repo
 
     @property
     def genre_repo(self) -> SqliteGenreRepository:
         """Get genre repository."""
         if self._genre_repo is None:
-            self._genre_repo = SqliteGenreRepository(self._db_path, db_manager=self.db)
+            self._genre_repo = SqliteGenreRepository(self._db_path, db_manager=self._get_db_manager())
         return self._genre_repo
 
     @property
     def settings_repo(self) -> SqliteSettingsRepository:
         """Get settings repository."""
         if self._settings_repo is None:
-            self._settings_repo = SqliteSettingsRepository(self._db_path, db_manager=self.db)
+            self._settings_repo = SqliteSettingsRepository(self._db_path, db_manager=self._get_db_manager())
         return self._settings_repo
 
     # ===== Services =====
