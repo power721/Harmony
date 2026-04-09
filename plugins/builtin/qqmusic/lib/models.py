@@ -28,7 +28,7 @@ class OnlineTrack:
     """
     Online track from search result.
 
-    Unified format from different API sources (QQ Music, api.ygking.top).
+    Unified format from different API sources (QQ Music, music.har01d.cn).
     """
 
     mid: str = ""  # Song MID (unique identifier)

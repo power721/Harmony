@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from .common import get_quality_label_key, get_selectable_qualities
 from .i18n import get_language, set_language, t
+from .api import QQMusicPluginAPI
 from .login_dialog import QQMusicLoginDialog
 from .runtime_bridge import bind_context, current_theme as sdk_current_theme, register_themed_widget
 
@@ -179,6 +180,8 @@ class QQMusicSettingsTab(QWidget):
 
         # Download directory settings
         self._download_dir_group = QGroupBox(t("online_music_download_dir", "下载目录"))
+        download_dir_group_layout = QVBoxLayout()
+        download_dir_group_layout.setSpacing(6)
         download_dir_layout = QHBoxLayout()
         self._download_dir_label = QLabel(t("online_music_download_dir", "下载目录"))
         self._download_dir_input = QLineEdit()
@@ -190,28 +193,56 @@ class QQMusicSettingsTab(QWidget):
         download_dir_layout.addWidget(self._download_dir_label)
         download_dir_layout.addWidget(self._download_dir_input)
         download_dir_layout.addWidget(self._browse_btn)
-        self._download_dir_group.setLayout(download_dir_layout)
-        qqmusic_layout.addWidget(self._download_dir_group)
 
-        # Hint label for download directory
         self._download_dir_hint = QLabel(t("online_music_download_dir_hint", "设置在线音乐缓存和下载目录"))
         self._download_dir_hint.setStyleSheet("font-size: 11px;")
         self._download_dir_hint.setWordWrap(True)
-        qqmusic_layout.addWidget(self._download_dir_hint)
+        download_dir_group_layout.addLayout(download_dir_layout)
+        download_dir_group_layout.addWidget(self._download_dir_hint)
+        self._download_dir_group.setLayout(download_dir_group_layout)
+        qqmusic_layout.addWidget(self._download_dir_group)
+
+        # Remote API settings
+        self._remote_api_group = QGroupBox(t("qqmusic_remote_api_url", "远程 API 地址"))
+        remote_api_group_layout = QVBoxLayout()
+        remote_api_group_layout.setSpacing(6)
+        remote_api_layout = QHBoxLayout()
+        self._remote_api_label = QLabel(t("qqmusic_remote_api_url", "远程 API 地址"))
+        self._remote_api_input = QLineEdit()
+        self._remote_api_input.setPlaceholderText(QQMusicPluginAPI.DEFAULT_REMOTE_API_URL)
+        self._remote_api_input.editingFinished.connect(self._save_settings)
+        remote_api_layout.addWidget(self._remote_api_label)
+        remote_api_layout.addWidget(self._remote_api_input)
+
+        self._remote_api_hint = QLabel(
+            t(
+                "qqmusic_remote_api_url_hint",
+                "用于搜索、歌词和封面等远程接口请求，默认 https://music.har01d.cn",
+            )
+        )
+        self._remote_api_hint.setStyleSheet("font-size: 11px;")
+        self._remote_api_hint.setWordWrap(True)
+        remote_api_group_layout.addLayout(remote_api_layout)
+        remote_api_group_layout.addWidget(self._remote_api_hint)
+        self._remote_api_group.setLayout(remote_api_group_layout)
+        qqmusic_layout.addWidget(self._remote_api_group)
+
+        # QQ Music login settings
+        self._login_group = QGroupBox(t("qqmusic_login"))
+        login_layout = QVBoxLayout()
+        login_layout.setSpacing(10)
 
         # QQ Music instructions
         self._qqmusic_instructions_label = QLabel(
-            f"<b>{t('qqmusic_login')}</b><br><br>"
             f"{t('qqmusic_faster_api_hint', t('qqmusic_account_hint'))}"
         )
         self._qqmusic_instructions_label.setWordWrap(True)
-        qqmusic_layout.addWidget(self._qqmusic_instructions_label)
+        login_layout.addWidget(self._qqmusic_instructions_label)
 
         # QQ Music credential status
         self._qqmusic_status_label = QLabel()
         self._qqmusic_status_label.setWordWrap(True)
-        qqmusic_layout.addWidget(self._qqmusic_status_label)
-        self._status_label = self._qqmusic_status_label
+        login_layout.addWidget(self._qqmusic_status_label)
 
         # QQ Music buttons
         qqmusic_button_layout = QHBoxLayout()
@@ -226,7 +257,9 @@ class QQMusicSettingsTab(QWidget):
         self._qqmusic_logout_btn.clicked.connect(self._qqmusic_logout)
         qqmusic_button_layout.addWidget(self._qqmusic_logout_btn)
 
-        qqmusic_layout.addLayout(qqmusic_button_layout)
+        login_layout.addLayout(qqmusic_button_layout)
+        self._login_group.setLayout(login_layout)
+        qqmusic_layout.addWidget(self._login_group)
 
         # Update status after buttons are created
         self._update_qqmusic_status()
@@ -282,6 +315,15 @@ class QQMusicSettingsTab(QWidget):
                 or "data/online_cache"
             )
             self._download_dir_input.setText(download_dir)
+            remote_api_url = str(
+                self._context.settings.get(
+                    "remote_api_url",
+                    QQMusicPluginAPI.DEFAULT_REMOTE_API_URL,
+                )
+                or QQMusicPluginAPI.DEFAULT_REMOTE_API_URL
+            )
+            self._remote_api_input.setText(remote_api_url)
+            QQMusicPluginAPI.set_remote_base_url(remote_api_url)
         finally:
             self._loading_settings = False
 
@@ -294,11 +336,16 @@ class QQMusicSettingsTab(QWidget):
         self._save_settings()
 
     def _save_settings(self) -> None:
+        remote_api_url = self._remote_api_input.text().strip() or QQMusicPluginAPI.DEFAULT_REMOTE_API_URL
+        if self._remote_api_input.text() != remote_api_url:
+            self._remote_api_input.setText(remote_api_url)
         self._context.settings.set("quality", self._quality_combo.currentData(Qt.UserRole))
         self._context.settings.set(
             "download_dir",
             self._download_dir_input.text().strip() or "data/online_cache",
         )
+        self._context.settings.set("remote_api_url", remote_api_url)
+        QQMusicPluginAPI.set_remote_base_url(remote_api_url)
 
     def _browse_download_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -394,13 +441,21 @@ class QQMusicSettingsTab(QWidget):
         self._quality_label.setText(t("qqmusic_quality"))
         self._download_dir_group.setTitle(t("online_music_download_dir", "下载目录"))
         self._download_dir_label.setText(t("online_music_download_dir", "下载目录"))
+        self._remote_api_group.setTitle(t("qqmusic_remote_api_url", "远程 API 地址"))
+        self._remote_api_label.setText(t("qqmusic_remote_api_url", "远程 API 地址"))
+        self._login_group.setTitle(t("qqmusic_login"))
+        self._remote_api_hint.setText(
+            t(
+                "qqmusic_remote_api_url_hint",
+                "用于搜索、歌词和封面等远程接口请求，默认 https://music.har01d.cn",
+            )
+        )
         self._browse_btn.setText(t("online_music_browse", "浏览..."))
         self._download_dir_hint.setText(
             t("online_music_download_dir_hint", "设置在线音乐缓存和下载目录")
         )
         self._qqmusic_instructions_label.setText(
-            f"<b>{t('qqmusic_login')}</b><br><br>"
-            f"{t('qqmusic_faster_api_hint', t('qqmusic_account_hint'))}"
+            t('qqmusic_faster_api_hint', t('qqmusic_account_hint'))
         )
         self._qqmusic_qr_btn.setText(t("qqmusic_qr_login", t("qqmusic_login")))
         self._qqmusic_logout_btn.setText(t("qqmusic_clear", t("clear_credentials")))
@@ -413,14 +468,19 @@ class QQMusicSettingsTab(QWidget):
 
         self._quality_group.setStyleSheet(qss(self._STYLE_GROUP))
         self._download_dir_group.setStyleSheet(qss(self._STYLE_GROUP))
+        self._remote_api_group.setStyleSheet(qss(self._STYLE_GROUP))
+        self._login_group.setStyleSheet(qss(self._STYLE_GROUP))
         self._quality_label.setStyleSheet(qss(self._STYLE_STATUS))
         self._download_dir_label.setStyleSheet(qss(self._STYLE_STATUS))
+        self._remote_api_label.setStyleSheet(qss(self._STYLE_STATUS))
         self._qqmusic_status_label.setStyleSheet(qss(self._STYLE_STATUS))
         self._quality_combo.setStyleSheet(qss(self._STYLE_INPUT))
         self._quality_combo.view().setStyleSheet(qss(self._STYLE_POPUP))
         self._quality_combo.view().window().setStyleSheet(qss(self._STYLE_POPUP_CONTAINER))
         self._download_dir_input.setStyleSheet(qss(self._STYLE_INPUT))
+        self._remote_api_input.setStyleSheet(qss(self._STYLE_INPUT))
         for button in (self._browse_btn, self._qqmusic_qr_btn, self._qqmusic_logout_btn):
             button.setStyleSheet(qss(self._STYLE_BUTTON))
         self._download_dir_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        self._remote_api_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         self._qqmusic_instructions_label.setStyleSheet(f"color: {theme.text};")

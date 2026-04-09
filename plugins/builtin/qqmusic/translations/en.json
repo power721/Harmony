@@ -105,6 +105,8 @@
   "qqmusic_qr_display_failed": "Failed to display QR code",
   "qqmusic_qr_expired": "QR Code Expired",
   "qqmusic_qr_timeout_refresh": "QR code expired. Click refresh to get a new one",
+  "qqmusic_remote_api_url": "Remote API URL",
+  "qqmusic_remote_api_url_hint": "Used for remote API requests such as search, lyrics, and covers. Default: https://music.har01d.cn",
   "qqmusic_rankings": "Rankings",
   "qqmusic_refresh_qr": "Refresh QR Code",
   "qqmusic_related_albums": "Related Albums",

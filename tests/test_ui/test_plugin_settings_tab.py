@@ -3,6 +3,7 @@ from unittest.mock import Mock
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QTabWidget, QTableWidget, QWidget
 
+from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
 from system.i18n import set_language, t
@@ -647,6 +648,7 @@ def test_qqmusic_settings_tab_matches_legacy_sections(qtbot):
     settings.get.side_effect = lambda key, default=None: {
         "quality": "320",
         "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
         "credential": {"musicid": "12345", "loginType": 2},
         "nick": "Tester",
     }.get(key, default)
@@ -657,6 +659,7 @@ def test_qqmusic_settings_tab_matches_legacy_sections(qtbot):
 
     assert widget._quality_combo.count() >= 3
     assert widget._download_dir_input.text() == "data/online_cache"
+    assert widget._remote_api_input.text() == "https://music.har01d.cn"
     assert widget._qqmusic_qr_btn.isHidden() is False
     assert widget._qqmusic_logout_btn.isHidden() is False
     assert widget._qqmusic_status_label.text()
@@ -664,11 +667,12 @@ def test_qqmusic_settings_tab_matches_legacy_sections(qtbot):
     assert hasattr(widget, "_qqmusic_logout")
 
 
-def test_qqmusic_settings_tab_save_writes_plugin_scoped_settings(qtbot):
+def test_qqmusic_settings_tab_wraps_login_controls_in_group(qtbot):
     settings = Mock()
     settings.get.side_effect = lambda key, default=None: {
         "quality": "320",
-        "download_dir": "",
+        "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
         "credential": None,
         "nick": "",
     }.get(key, default)
@@ -676,12 +680,75 @@ def test_qqmusic_settings_tab_save_writes_plugin_scoped_settings(qtbot):
 
     widget = QQMusicSettingsTab(context)
     qtbot.addWidget(widget)
-    widget._download_dir_input.setText("/tmp/music")
-    widget._quality_combo.setCurrentIndex(1)
-    widget._save_settings()
 
-    settings.set.assert_any_call("download_dir", "/tmp/music")
-    settings.set.assert_any_call("quality", widget._quality_combo.currentData())
+    assert widget._qqmusic_instructions_label.parentWidget() is widget._login_group
+    assert widget._qqmusic_status_label.parentWidget() is widget._login_group
+    assert widget._qqmusic_qr_btn.parentWidget() is widget._login_group
+    assert widget._qqmusic_logout_btn.parentWidget() is widget._login_group
+
+
+def test_qqmusic_settings_tab_avoids_duplicate_login_header_in_group(qtbot):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
+        "credential": None,
+        "nick": "",
+    }.get(key, default)
+    context = _build_plugin_context(settings)
+
+    widget = QQMusicSettingsTab(context)
+    qtbot.addWidget(widget)
+
+    assert widget._login_group.title()
+    assert "<b>" not in widget._qqmusic_instructions_label.text()
+
+
+def test_qqmusic_settings_tab_wraps_setting_hints_in_groups(qtbot):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
+        "credential": None,
+        "nick": "",
+    }.get(key, default)
+    context = _build_plugin_context(settings)
+
+    widget = QQMusicSettingsTab(context)
+    qtbot.addWidget(widget)
+
+    assert widget._download_dir_hint.parentWidget() is widget._download_dir_group
+    assert widget._remote_api_hint.parentWidget() is widget._remote_api_group
+
+
+def test_qqmusic_settings_tab_save_writes_plugin_scoped_settings(qtbot):
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "download_dir": "",
+        "remote_api_url": "",
+        "credential": None,
+        "nick": "",
+    }.get(key, default)
+    context = _build_plugin_context(settings)
+    original_base_url = QQMusicPluginAPI.REMOTE_BASE_URL
+
+    try:
+        widget = QQMusicSettingsTab(context)
+        qtbot.addWidget(widget)
+        widget._download_dir_input.setText("/tmp/music")
+        widget._remote_api_input.setText("https://example.com/custom/")
+        widget._quality_combo.setCurrentIndex(1)
+        widget._save_settings()
+
+        settings.set.assert_any_call("download_dir", "/tmp/music")
+        settings.set.assert_any_call("remote_api_url", "https://example.com/custom/")
+        settings.set.assert_any_call("quality", widget._quality_combo.currentData())
+        assert QQMusicPluginAPI.REMOTE_BASE_URL == "https://example.com/custom/api"
+    finally:
+        QQMusicPluginAPI.REMOTE_BASE_URL = original_base_url
 
 
 def test_qqmusic_settings_tab_translates_quality_labels(qtbot):
@@ -689,6 +756,7 @@ def test_qqmusic_settings_tab_translates_quality_labels(qtbot):
     settings.get.side_effect = lambda key, default=None: {
         "quality": "320",
         "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
         "credential": None,
         "nick": "",
     }.get(key, default)
@@ -707,6 +775,7 @@ def test_qqmusic_settings_tab_applies_popup_stylesheet_directly(qtbot):
     settings.get.side_effect = lambda key, default=None: {
         "quality": "320",
         "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
         "credential": None,
         "nick": "",
     }.get(key, default)
@@ -728,6 +797,7 @@ def test_qqmusic_settings_tab_keeps_content_padding(qtbot):
     settings.get.side_effect = lambda key, default=None: {
         "quality": "320",
         "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
         "credential": None,
         "nick": "",
     }.get(key, default)

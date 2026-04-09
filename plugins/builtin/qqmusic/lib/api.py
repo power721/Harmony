@@ -13,10 +13,35 @@ from .search_normalizers import (
 
 
 class QQMusicPluginAPI:
-    REMOTE_BASE_URL = "https://api.ygking.top/api"
+    DEFAULT_REMOTE_API_URL = "https://music.har01d.cn"
+    REMOTE_BASE_URL = f"{DEFAULT_REMOTE_API_URL}/api"
 
     def __init__(self, context):
         self._context = context
+        self.set_remote_base_url(self._get_configured_remote_api_url())
+
+    def _get_configured_remote_api_url(self) -> str:
+        settings = getattr(self._context, "settings", None)
+        if settings is None or not hasattr(settings, "get"):
+            return self.DEFAULT_REMOTE_API_URL
+
+        value = settings.get("remote_api_url", self.DEFAULT_REMOTE_API_URL)
+        if isinstance(value, str) and value.strip():
+            return value
+        return self.DEFAULT_REMOTE_API_URL
+
+    @classmethod
+    def _normalize_remote_base_url(cls, url: str | None) -> str:
+        normalized = str(url or cls.DEFAULT_REMOTE_API_URL).strip() or cls.DEFAULT_REMOTE_API_URL
+        normalized = normalized.rstrip("/")
+        if normalized.endswith("/api"):
+            return normalized
+        return f"{normalized}/api"
+
+    @classmethod
+    def set_remote_base_url(cls, url: str | None) -> str:
+        cls.REMOTE_BASE_URL = cls._normalize_remote_base_url(url)
+        return cls.REMOTE_BASE_URL
 
     def search(
             self,

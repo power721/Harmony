@@ -34,7 +34,7 @@ def test_qqmusic_api_search_artist_uses_singer_search(monkeypatch):
 
 def test_qqmusic_api_get_artist_detail_returns_detail_view_shape(monkeypatch):
     responses = {
-        "https://api.ygking.top/api/singer": {
+        "https://music.har01d.cn/api/singer": {
             "code": 0,
             "data": {
                 "singer_list": [
@@ -395,3 +395,23 @@ def test_qqmusic_api_search_extracts_total_from_payload():
 
     assert result["total"] == 321
     assert len(result["tracks"]) == 1
+
+
+def test_qqmusic_api_init_updates_class_remote_base_url_from_settings():
+    original_base_url = QQMusicPluginAPI.REMOTE_BASE_URL
+
+    try:
+        context = SimpleNamespace(
+            settings=SimpleNamespace(
+                get=lambda key, default=None: {
+                    "remote_api_url": "https://mirror.example.com/custom-api/",
+                }.get(key, default)
+            ),
+            http=SimpleNamespace(get=lambda *_args, **_kwargs: None),
+        )
+
+        QQMusicPluginAPI(context)
+
+        assert QQMusicPluginAPI.REMOTE_BASE_URL == "https://mirror.example.com/custom-api/api"
+    finally:
+        QQMusicPluginAPI.REMOTE_BASE_URL = original_base_url

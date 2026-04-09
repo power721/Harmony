@@ -105,6 +105,8 @@
   "qqmusic_qr_display_failed": "二维码显示失败",
   "qqmusic_qr_expired": "二维码已过期",
   "qqmusic_qr_timeout_refresh": "二维码已过期，请点击刷新按钮重新生成",
+  "qqmusic_remote_api_url": "远程 API 地址",
+  "qqmusic_remote_api_url_hint": "用于搜索、歌词和封面等远程接口请求，默认 https://music.har01d.cn",
   "qqmusic_rankings": "排行榜",
   "qqmusic_refresh_qr": "刷新二维码",
   "qqmusic_related_albums": "相关专辑",
