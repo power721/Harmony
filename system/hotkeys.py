@@ -27,6 +27,14 @@ if TYPE_CHECKING:
 _listener = None
 
 
+def _stop_listener():
+    """Stop the active global media listener if one exists."""
+    global _listener
+    if _listener:
+        _listener.stop()
+        _listener = None
+
+
 class GlobalHotkeys(QObject):
     """
     Global hotkey manager.
@@ -149,17 +157,19 @@ class GlobalHotkeys(QObject):
             self._window.close()
 
 
-def setup_media_key_handler(player: "PlaybackService"):
+def setup_media_key_handler(player: "PlaybackService") -> bool:
     """
     Setup media key handler using system-specific APIs.
 
-    This is a placeholder for platform-specific implementations:
-    - Windows: Use keyboard or pynput library
-    - macOS: Use pyobjc to listen to media key events
-    - Linux: Use MPRIS D-Bus interface
+    Linux uses the application's MPRIS service for true background media-key
+    integration. Windows uses a pynput listener when available. macOS
+    currently falls back to window-focused shortcuts only.
 
     Args:
         player: Player controller
+
+    Returns:
+        True when a true global/system media-key integration path is available.
     """
     try:
         # Try to setup platform-specific media key handling
@@ -168,32 +178,48 @@ def setup_media_key_handler(player: "PlaybackService"):
         system = platform.system()
 
         if system == "Linux":
-            _setup_linux_media_keys(player)
+            return _setup_linux_media_keys(player)
         elif system == "Darwin":  # macOS
-            _setup_macos_media_keys(player)
+            return _setup_macos_media_keys(player)
         elif system == "Windows":
-            _setup_windows_media_keys(player)
+            return _setup_windows_media_keys(player)
+        return False
 
     except Exception as e:
         logger.error(f"Could not setup media key handler: {e}", exc_info=True)
+        return False
 
 
-def _setup_linux_media_keys(player: "PlaybackService"):
-    """Setup media keys on Linux using MPRIS."""
-    pass
+def _setup_linux_media_keys(player: "PlaybackService") -> bool:
+    """Use the MPRIS runtime as the Linux system media-key integration path."""
+    del player
+    try:
+        from app import Bootstrap
+
+        controller = Bootstrap.instance().mpris_controller
+        if controller is None:
+            logger.warning("Linux global media keys unavailable: MPRIS runtime is disabled")
+            return False
+
+        logger.info("Linux global media keys provided via MPRIS")
+        return True
+    except Exception as exc:
+        logger.warning("Linux global media keys unavailable via MPRIS: %s", exc)
+        return False
 
 
-def _setup_macos_media_keys(player: "PlaybackService"):
+def _setup_macos_media_keys(player: "PlaybackService") -> bool:
     """Setup media keys on macOS."""
+    del player
     # Requires pyobjc and CGEvent tap
-    # This is a simplified placeholder
-    pass
+    # Leave graceful fallback to in-app shortcuts until a native backend exists.
+    logger.info("macOS global media keys are not implemented; falling back to focused shortcuts")
+    return False
 
 
-def _setup_windows_media_keys(player: "PlaybackService"):
+def _setup_windows_media_keys(player: "PlaybackService") -> bool:
     """Setup media keys on Windows."""
     # Requires keyboard or pynput library
-    # This is a simplified placeholder
     try:
         from pynput import keyboard
 
@@ -210,16 +236,16 @@ def _setup_windows_media_keys(player: "PlaybackService"):
 
         # Start listener in a separate thread
         global _listener
+        _stop_listener()
         _listener = keyboard.Listener(on_press=on_press)
         _listener.start()
+        return True
 
     except ImportError:
         logger.debug("pynput not available for Windows media key support")
+        return False
 
 
 def cleanup():
     """Stop and clean up the Windows media key listener."""
-    global _listener
-    if _listener:
-        _listener.stop()
-        _listener = None
+    _stop_listener()

@@ -16,7 +16,7 @@ from app import Bootstrap
 from domain.playback import PlaybackState
 from domain.playlist_item import PlaylistItem
 from domain.track import TrackSource
-from PySide6.QtCore import Qt, Signal, QSettings, QTimer
+from PySide6.QtCore import Qt, Signal, QSettings, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -2308,6 +2308,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle window close."""
         self._is_closing = True
+        QThreadPool.globalInstance().clear()
         is_now_playing_visible = self._now_playing_window is not None and self._now_playing_window.isVisible()
         self._config.set_start_in_now_playing(bool(is_now_playing_visible))
         if self._now_playing_window is not None and self._now_playing_window.isVisible():
