@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: harmony-plugin-api
-Version: 0.1.0
+Version: 0.1.1
 Summary: Pure plugin SDK for Harmony plugins
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
