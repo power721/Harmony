@@ -129,6 +129,10 @@ class SqliteGenreRepository(BaseRepository):
         Returns:
             Genre object or None if not found
         """
+        name = str(name or "").strip()
+        if not name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 

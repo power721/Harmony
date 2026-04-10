@@ -295,3 +295,26 @@ def test_update_cover_path_works_without_updated_at_column():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_get_by_name_returns_none_for_blank_name_without_querying():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        repo = SqliteGenreRepository(db_path)
+        conn = repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            genre = repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert genre is None
+        assert statements == []
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass

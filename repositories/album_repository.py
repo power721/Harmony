@@ -88,6 +88,11 @@ class SqliteAlbumRepository(BaseRepository):
         Returns:
             Album object or None if not found
         """
+        album_name = str(album_name or "").strip()
+        artist = str(artist or "").strip() or None
+        if not album_name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 

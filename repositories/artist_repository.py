@@ -84,6 +84,10 @@ class SqliteArtistRepository(BaseRepository):
         Returns:
             Artist object or None if not found
         """
+        artist_name = str(artist_name or "").strip()
+        if not artist_name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 

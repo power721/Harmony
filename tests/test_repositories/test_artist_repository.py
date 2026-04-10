@@ -244,6 +244,19 @@ class TestSqliteArtistRepository:
         assert artist.song_count == 3
         assert artist.album_count == 2  # Album 1 and Album 2
 
+    def test_get_by_name_returns_none_for_blank_name_without_querying(self, artist_repo):
+        """Blank artist names should be rejected before touching the database."""
+        conn = artist_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            artist = artist_repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert artist is None
+        assert statements == []
+
     def test_refresh_artist_updates_single_cached_artist(self, populated_db):
         """Targeted artist refresh should update stats for the requested artist only."""
         repo = SqliteArtistRepository(populated_db)

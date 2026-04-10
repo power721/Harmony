@@ -142,6 +142,19 @@ class TestSqliteAlbumRepository:
         assert album.song_count == 2
         assert album.duration == 380.0  # 180 + 200
 
+    def test_get_by_name_returns_none_for_blank_name_without_querying(self, album_repo):
+        """Blank album names should be rejected before touching the database."""
+        conn = album_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            album = album_repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert album is None
+        assert statements == []
+
     def test_get_by_name_with_artist(self, album_repo, populated_db):
         """Test getting album by name and artist."""
         album = album_repo.get_by_name("Album 2", artist="Artist B")
