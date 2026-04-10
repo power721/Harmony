@@ -58,3 +58,28 @@ def test_organize_tracks_reports_rollback_failure(monkeypatch, tmp_path):
 
     assert results["failed"] == 1
     assert any("文件回滚失败" in error for error in results["errors"])
+
+
+def test_organize_tracks_rejects_non_writable_target_dir(tmp_path):
+    target_dir = tmp_path / "organized"
+    target_dir.mkdir()
+    target_dir.chmod(0o500)
+
+    track_repo = Mock()
+    event_bus = SimpleNamespace(tracks_organized=SimpleNamespace(emit=Mock()))
+    service = FileOrganizationService(
+        track_repo=track_repo,
+        cloud_repo=Mock(),
+        event_bus=event_bus,
+        queue_repo=Mock(),
+    )
+
+    try:
+        results = service.organize_tracks([1], str(target_dir))
+    finally:
+        target_dir.chmod(0o700)
+
+    assert results["success"] == 0
+    assert results["failed"] == 1
+    assert any("目标目录不可写" in error for error in results["errors"])
+    track_repo.get_by_ids.assert_not_called()
