@@ -160,6 +160,17 @@ class TestThemeManager:
         result = tm.get_qss(template)
         assert '#FFD700' in result
 
+    def test_get_qss_cache_uses_stable_digest_key(self, mock_config):
+        tm = ThemeManager.instance(mock_config)
+        template = "color: %highlight%;"
+
+        tm.get_qss(template)
+
+        [(cache_key, _value)] = list(tm._qss_cache.items())
+        assert isinstance(cache_key[0], str)
+        assert len(cache_key[0]) == 64
+        assert cache_key[1] == tm.current_theme.name
+
     def test_highlight_color_property(self, mock_config):
         tm = ThemeManager.instance(mock_config)
         assert tm.highlight_color == '#1db954'

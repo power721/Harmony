@@ -6,6 +6,7 @@ selection, and hover colors. Supports preset themes and custom colors.
 Real-time theme switching via widget registration and refresh mechanism.
 """
 
+import hashlib
 import logging
 import threading
 from dataclasses import dataclass
@@ -309,8 +310,8 @@ class ThemeManager(QObject):
             QSS string with tokens replaced by actual colors
         """
         theme = self._current_theme
-        # Use hash of template + theme name as cache key
-        cache_key = (hash(template), theme.name)
+        # Use stable digest of template + theme name as cache key.
+        cache_key = (hashlib.sha256(template.encode("utf-8")).hexdigest(), theme.name)
         cached = self._qss_cache.get(cache_key)
         if cached is not None:
             return cached
