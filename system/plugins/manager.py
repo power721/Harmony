@@ -109,12 +109,17 @@ class PluginManager:
             return
 
         _manifest, plugin, context = loaded
+        package_name = None
+        if hasattr(self._loader, "_package_name"):
+            package_name = self._loader._package_name(plugin_id, context.plugin_root if hasattr(context, "plugin_root") else Path("."))
         try:
             plugin.unregister(context)
         except Exception:
             logger.exception("[PluginManager] Failed to unregister plugin %s", plugin_id)
         finally:
             self.registry.unregister_plugin(plugin_id)
+            if package_name and hasattr(self._loader, "_purge_package_modules"):
+                self._loader._purge_package_modules(package_name)
 
     def discover_roots(self) -> list[tuple[str, Path]]:
         def _is_plugin_root(path: Path) -> bool:
