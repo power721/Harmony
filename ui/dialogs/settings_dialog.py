@@ -18,6 +18,7 @@ from infrastructure.audio import PlayerEngine
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
+from ui.dialogs.rounded_mask_debounce_mixin import RoundedMaskDebounceMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.plugin_management_tab import PluginManagementTab
@@ -37,7 +38,7 @@ def _get_audio_engine_options() -> list[tuple[str, str]]:
     return options
 
 
-class GeneralSettingsDialog(DraggableDialogMixin, QDialog):
+class GeneralSettingsDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
     """Dialog for configuring host and plugin settings."""
 
     def __init__(self, config_manager, parent=None):
@@ -1629,13 +1630,6 @@ class GeneralSettingsDialog(DraggableDialogMixin, QDialog):
     def refresh_theme(self):
         """Refresh theme when changed."""
         self._title_bar_controller.refresh_theme()
-
-    def resizeEvent(self, event):
-        """Apply rounded corner mask."""
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
 
 # Backward compatibility alias
 AISettingsDialog = GeneralSettingsDialog

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QMessageBox as _QMB
 from system.i18n import t
 from system.theme import ThemeManager
 from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
+from ui.dialogs.rounded_mask_debounce_mixin import RoundedMaskDebounceMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.icons import IconName, get_icon
 
@@ -30,7 +31,7 @@ Cancel = _QMB.StandardButton.Cancel
 StandardButton = _QMB.StandardButton
 
 
-class MessageDialog(DraggableDialogMixin, QDialog):
+class MessageDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
     """Theme-aware frameless message dialog."""
 
     _STYLE_TEMPLATE = """
@@ -140,12 +141,6 @@ class MessageDialog(DraggableDialogMixin, QDialog):
         self._title_bar_controller.refresh_theme()
         icon_name = self._ICON_MAP.get(self._dialog_type, IconName.INFO)
         self._icon_label.setPixmap(get_icon(icon_name, None, 24).pixmap(24, 24))
-
-    def resizeEvent(self, event):
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
 
     # --- Drag to move ---
     # === Static API (drop-in replacement for QMessageBox) ===

@@ -15,10 +15,11 @@ from PySide6.QtWidgets import (
 
 from system.theme import ThemeManager
 from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
+from ui.dialogs.rounded_mask_debounce_mixin import RoundedMaskDebounceMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 
-class ProgressDialog(DraggableDialogMixin, QDialog):
+class ProgressDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
     """Frameless progress dialog with rounded corners and shadow."""
 
     canceled = Signal()
@@ -105,9 +106,3 @@ class ProgressDialog(DraggableDialogMixin, QDialog):
 
     def refresh_theme(self):
         self._title_bar_controller.refresh_theme()
-
-    def resizeEvent(self, event):
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
