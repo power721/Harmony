@@ -22,6 +22,14 @@ _FTS_UNSAFE_CHARACTERS = re.compile(r"[^\w\s.-]+", re.UNICODE)
 class DatabaseManager:
     """Manages SQLite database operations for the music player."""
 
+    @staticmethod
+    def _enable_wal_mode(conn: sqlite3.Connection) -> None:
+        """Enable WAL mode and warn if SQLite keeps a different journal mode."""
+        row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+        journal_mode = str(row[0]).lower() if row else ""
+        if journal_mode != "wal":
+            logger.warning("[DatabaseManager] WAL mode was not applied; current journal_mode=%s", journal_mode or "unknown")
+
     def __init__(self, db_path: str = "Harmony.db"):
         """
         Initialize database manager.
@@ -43,7 +51,7 @@ class DatabaseManager:
             self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrent access
-            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self._enable_wal_mode(self.local.conn)
             # Set busy timeout for this connection
             self.local.conn.execute("PRAGMA busy_timeout=30000")
             # Performance optimizations

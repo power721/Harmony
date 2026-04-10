@@ -1,6 +1,7 @@
 """Cleanup behavior tests for DatabaseManager."""
 
 import tempfile
+import sqlite3
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -32,3 +33,40 @@ def test_database_manager_registers_atexit_cleanup_and_stops_write_worker(monkey
 
         fake_worker.stop.assert_called_once_with()
         assert not hasattr(manager.local, "conn")
+
+
+def test_database_manager_logs_when_wal_mode_is_not_applied(monkeypatch, caplog, tmp_path):
+    """DatabaseManager should verify WAL mode instead of assuming the pragma succeeded."""
+
+    class _FakeCursor:
+        def __init__(self, row=None):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
+    class _FakeConnection:
+        def __init__(self):
+            self.row_factory = None
+            self.executed = []
+
+        def execute(self, sql):
+            self.executed.append(sql)
+            if sql == "PRAGMA journal_mode=WAL":
+                return _FakeCursor(("delete",))
+            return _FakeCursor((1,))
+
+        def close(self):
+            return None
+
+    fake_conn = _FakeConnection()
+    fake_worker = Mock()
+
+    monkeypatch.setattr(sqlite_manager_module, "get_write_worker", lambda _db_path: fake_worker)
+    monkeypatch.setattr(sqlite_manager_module.sqlite3, "connect", lambda *_args, **_kwargs: fake_conn)
+    monkeypatch.setattr(DatabaseManager, "_init_database", lambda self: None)
+
+    manager = DatabaseManager(str(tmp_path / "wal.db"))
+    manager._get_connection()
+
+    assert "WAL mode was not applied" in caplog.text
