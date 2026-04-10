@@ -116,15 +116,24 @@ class Application(QObject):
 
         # Clean up old image cache
         from infrastructure.cache import ImageCache
-        ImageCache.cleanup(days=7)
+        try:
+            ImageCache.cleanup(days=7)
+        except Exception:
+            logger.warning("Image cache cleanup failed", exc_info=True)
 
         # Start cache cleaner service
         cache_cleaner = self._bootstrap.cache_cleaner_service
         if cache_cleaner:
-            cache_cleaner.start()
+            try:
+                cache_cleaner.start()
+            except Exception:
+                logger.warning("Cache cleaner start failed", exc_info=True)
 
         # Start MPRIS D-Bus service (Linux only)
-        self._bootstrap.start_mpris(self._main_window, self._dispatch_to_ui)
+        try:
+            self._bootstrap.start_mpris(self._main_window, self._dispatch_to_ui)
+        except Exception:
+            logger.warning("MPRIS startup failed", exc_info=True)
 
         return self._qt_app.exec()
 
