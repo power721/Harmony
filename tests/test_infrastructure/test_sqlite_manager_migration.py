@@ -240,3 +240,35 @@ def test_init_database_does_not_create_track_indexes_twice(monkeypatch):
         statement for statement in statements if "CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id" in statement
     ]
     assert len(cloud_file_index_statements) == 1
+
+
+def test_init_database_creates_unique_cache_indexes():
+    """Database init should create explicit unique indexes for cache tables."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        db = DatabaseManager(db_path)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA index_list(albums)")
+        album_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_albums_unique" in album_indexes
+
+        cursor.execute("PRAGMA index_list(artists)")
+        artist_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_artists_unique" in artist_indexes
+
+        cursor.execute("PRAGMA index_list(genres)")
+        genre_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_genres_unique" in genre_indexes
+
+        conn.close()
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass

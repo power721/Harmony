@@ -683,6 +683,19 @@ class DatabaseManager:
         # Run migrations for existing databases
         self._run_migrations(conn, cursor)
 
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_unique
+                           ON albums(name, artist)
+                       """)
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_artists_unique
+                           ON artists(name)
+                       """)
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_unique
+                           ON genres(name)
+                       """)
+
         # Create indexes for columns that may be added by migrations.
         cursor.execute("PRAGMA table_info(tracks)")
         track_columns = {col[1] for col in cursor.fetchall()}
