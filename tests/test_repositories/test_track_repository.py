@@ -630,6 +630,27 @@ class TestTrackRepositoryBatchOperations:
         deleted = track_repo.delete_batch([99999, 88888])
         assert deleted == 0
 
+    def test_get_local_track_ids_in_directory_returns_only_descendant_local_paths(self, track_repo):
+        """Directory lookup should stay inside the scanned subtree and exclude online tracks."""
+        track_id_1 = track_repo.add(Track(path="/music/scan/a.mp3", title="A", source=TrackSource.LOCAL))
+        track_id_2 = track_repo.add(Track(path="/music/scan/sub/b.flac", title="B", source=TrackSource.LOCAL))
+        track_repo.add(Track(path="/music/scan-sibling/c.mp3", title="C", source=TrackSource.LOCAL))
+        track_repo.add(Track(path="/music/other/d.mp3", title="D", source=TrackSource.LOCAL))
+        track_repo.add(Track(
+            path="online://qqmusic/track/scan",
+            title="Online",
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="scan",
+        ))
+
+        results = track_repo.get_local_track_ids_in_directory("/music/scan")
+
+        assert results == {
+            "/music/scan/a.mp3": track_id_1,
+            "/music/scan/sub/b.flac": track_id_2,
+        }
+
 
 class TestTrackRepositoryAlbumOperations:
     """Test album-related operations."""

@@ -5,6 +5,7 @@ SQLite implementation of TrackRepository.
 import logging
 import re
 import sqlite3
+from pathlib import Path
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 from domain.track import Track, TrackId, TrackSource
@@ -130,6 +131,36 @@ class SqliteTrackRepository(BaseRepository):
                 path: {"size": track.file_size, "mtime": track.file_mtime}
                 for path, track in tracks.items()
             }
+
+    def get_local_track_ids_in_directory(self, directory: str) -> Dict[str, int]:
+        """Get persisted local track ids keyed by path for a directory subtree."""
+        if not directory:
+            return {}
+
+        base_path = Path(directory).resolve(strict=False)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, path
+            FROM tracks
+            WHERE (source IS NULL OR UPPER(COALESCE(source, '')) NOT IN ('ONLINE', 'QQ'))
+              AND path LIKE ?
+            """,
+            (f"{base_path}%",),
+        )
+
+        results: Dict[str, int] = {}
+        for row in cursor.fetchall():
+            path_value = row["path"] or ""
+            try:
+                candidate_path = Path(path_value).resolve(strict=False)
+                candidate_path.relative_to(base_path)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            results[path_value] = row["id"]
+
+        return results
 
     def get_by_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
         """Get multiple tracks by cloud file IDs in batch. Returns dict mapping cloud_file_id -> Track."""

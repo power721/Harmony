@@ -734,6 +734,21 @@ class TestLibraryService:
         assert result == mock_track
         mock_track_repo.get_by_path.assert_called_once_with("/music/song.mp3")
 
+    def test_get_local_track_ids_in_directory(self, library_service, mock_track_repo):
+        """Test getting local track ids for a specific directory."""
+        mock_track_repo.get_local_track_ids_in_directory.return_value = {
+            "/music/scan/a.mp3": 1,
+            "/music/scan/sub/b.mp3": 2,
+        }
+
+        result = library_service.get_local_track_ids_in_directory("/music/scan")
+
+        assert result == {
+            "/music/scan/a.mp3": 1,
+            "/music/scan/sub/b.mp3": 2,
+        }
+        mock_track_repo.get_local_track_ids_in_directory.assert_called_once_with("/music/scan")
+
     def test_get_track_by_cloud_file_id(self, library_service, mock_track_repo):
         """Test getting a track by cloud file ID."""
         mock_track = Track(id=1, cloud_file_id="cloud_123")

@@ -56,6 +56,7 @@ class FileCandidate:
 class ScanStats:
     discovered: int = 0
     added: int = 0
+    removed: int = 0
     skipped: int = 0
     unchanged: int = 0
     failed: int = 0
@@ -143,13 +144,16 @@ class ScanWorker(QObject):
             # Phase B: import / update
             self._import_candidates(candidates, stats)
 
+            if not self.is_cancelled():
+                self._cleanup_missing_tracks(candidates, stats)
+
             if self.is_cancelled():
                 stats.cancelled = True
 
             elapsed = time.time() - start_time
             logger.info(
                 f"[ScanWorker] Finished in {elapsed:.2f}s | "
-                f"discovered={stats.discovered}, added={stats.added}, "
+                f"discovered={stats.discovered}, added={stats.added}, removed={stats.removed}, "
                 f"skipped={stats.skipped}, unchanged={stats.unchanged}, failed={stats.failed}"
             )
 
@@ -422,6 +426,29 @@ class ScanWorker(QObject):
         """Refresh albums, artists, and genres tables."""
         if self._library_service:
             self._library_service.refresh_albums_artists(immediate=True)
+
+    def _cleanup_missing_tracks(self, candidates: list[FileCandidate] | list[Track], stats: ScanStats):
+        """Remove persisted local tracks in this folder that no longer exist on disk."""
+        if self.is_cancelled() or not self._library_service:
+            return
+
+        existing_tracks = self._library_service.get_local_track_ids_in_directory(self.folder_path) or {}
+        if not existing_tracks:
+            return
+
+        discovered_paths = {
+            candidate.path
+            for candidate in candidates
+            if getattr(candidate, "path", None)
+        }
+        stale_paths = sorted(path for path in existing_tracks if path not in discovered_paths)
+        if not stale_paths:
+            return
+
+        deleted_count = self._library_service.delete_tracks(
+            [existing_tracks[path] for path in stale_paths]
+        )
+        stats.removed += int(deleted_count or 0)
 
     def _safe_extract_cover(self, file_path: str, metadata: dict) -> Optional[str]:
         """

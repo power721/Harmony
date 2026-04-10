@@ -65,3 +65,50 @@ def test_scan_worker_flush_batch_uses_library_service_bulk_insert():
     library_service.add_tracks_bulk.assert_called_once()
     assert stats.added == 2
     assert stats.skipped == 1
+
+
+def test_scan_worker_cleanup_removes_missing_tracks_only_within_scanned_folder():
+    """Scan cleanup should delete only tracks missing from the scanned directory."""
+    library_service = SimpleNamespace(
+        get_local_track_ids_in_directory=MagicMock(return_value={
+            "/music/scan/keep.mp3": 1,
+            "/music/scan/missing.mp3": 2,
+        }),
+        delete_tracks=MagicMock(return_value=1),
+    )
+    worker = ScanWorker(
+        folder_path="/music/scan",
+        library_service=library_service,
+        cover_service=None,
+    )
+    stats = ScanStats()
+    candidates = [
+        Track(path="/music/scan/keep.mp3", title="Keep", created_at=datetime.now()),
+    ]
+
+    worker._cleanup_missing_tracks(candidates, stats)
+
+    library_service.get_local_track_ids_in_directory.assert_called_once_with("/music/scan")
+    library_service.delete_tracks.assert_called_once_with([2])
+    assert stats.removed == 1
+
+
+def test_scan_worker_cleanup_skips_deletion_when_cancelled():
+    """Cancelled scans should not remove missing tracks."""
+    library_service = SimpleNamespace(
+        get_local_track_ids_in_directory=MagicMock(return_value={"/music/scan/missing.mp3": 2}),
+        delete_tracks=MagicMock(return_value=1),
+    )
+    worker = ScanWorker(
+        folder_path="/music/scan",
+        library_service=library_service,
+        cover_service=None,
+    )
+    stats = ScanStats()
+    worker.cancel()
+
+    worker._cleanup_missing_tracks([], stats)
+
+    library_service.get_local_track_ids_in_directory.assert_not_called()
+    library_service.delete_tracks.assert_not_called()
+    assert stats.removed == 0

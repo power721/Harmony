@@ -132,6 +132,10 @@ class LibraryService:
         """Get path -> {size, mtime} index for incremental scan."""
         return self._track_repo.get_index_for_paths(paths)
 
+    def get_local_track_ids_in_directory(self, directory: str) -> dict[str, int]:
+        """Get persisted local track ids keyed by path for a directory subtree."""
+        return self._track_repo.get_local_track_ids_in_directory(directory)
+
     def get_all_tracks(
             self,
             limit: int = DEFAULT_TRACK_PAGE_SIZE,

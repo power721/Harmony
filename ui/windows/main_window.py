@@ -1248,10 +1248,11 @@ class MainWindow(QMainWindow):
 
             stats = payload.get("stats", {})
             added = stats.get("added", 0)
+            removed = stats.get("removed", 0)
             unchanged = stats.get("unchanged", 0)
             failed = stats.get("failed", 0)
             logger.info(
-                f"[MainWindow] Scan complete: added={added}, unchanged={unchanged}, failed={failed}"
+                f"[MainWindow] Scan complete: added={added}, removed={removed}, unchanged={unchanged}, failed={failed}"
             )
             # Refresh views
             self._library_view.refresh()
