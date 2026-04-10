@@ -101,3 +101,17 @@ def test_cleanup_stops_windows_listener_and_clears_reference():
 
     assert listener.stopped is True
     assert hotkeys._listener is None
+
+
+def test_global_hotkeys_cleanup_deletes_shortcuts_and_clears_list():
+    first = SimpleNamespace(deleteLater=lambda: deleted.append("first"))
+    second = SimpleNamespace(deleteLater=lambda: deleted.append("second"))
+    deleted = []
+
+    manager = hotkeys.GlobalHotkeys.__new__(hotkeys.GlobalHotkeys)
+    manager._shortcuts = [first, second]
+
+    hotkeys.GlobalHotkeys.cleanup(manager)
+
+    assert deleted == ["first", "second"]
+    assert manager._shortcuts == []

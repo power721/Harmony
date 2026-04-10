@@ -156,6 +156,15 @@ class GlobalHotkeys(QObject):
         else:
             self._window.close()
 
+    def cleanup(self):
+        """Release owned shortcuts explicitly."""
+        for shortcut in self._shortcuts:
+            try:
+                shortcut.deleteLater()
+            except Exception:
+                logger.debug("Failed to delete shortcut during cleanup", exc_info=True)
+        self._shortcuts.clear()
+
 
 def setup_media_key_handler(player: "PlaybackService") -> bool:
     """
