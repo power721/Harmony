@@ -6,6 +6,7 @@ import logging
 import re
 import sqlite3
 import threading
+import unicodedata
 from concurrent.futures import Future
 from typing import Callable, Dict, Optional
 
@@ -93,11 +94,13 @@ class DatabaseManager:
     @staticmethod
     def _build_safe_fts_query(query: str) -> Optional[str]:
         """Normalize user input into literal FTS terms and remove FTS operators."""
-        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", query)
+        normalized = unicodedata.normalize("NFKD", query)
+        cleaned = "".join(ch for ch in normalized if not unicodedata.category(ch).startswith("C"))
+        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", cleaned)
         cleaned = _FTS_BOOLEAN_OPERATORS.sub(" ", cleaned)
         cleaned = cleaned.replace("*", " ")
         cleaned = _FTS_UNSAFE_CHARACTERS.sub(" ", cleaned)
-        terms = [term for term in cleaned.split() if term]
+        terms = [term[:64] for term in cleaned.split() if term]
         if not terms:
             return None
         return " ".join(f'"{term}"' for term in terms)

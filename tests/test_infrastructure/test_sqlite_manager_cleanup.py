@@ -70,3 +70,19 @@ def test_database_manager_logs_when_wal_mode_is_not_applied(monkeypatch, caplog,
     manager._get_connection()
 
     assert "WAL mode was not applied" in caplog.text
+
+
+def test_build_safe_fts_query_normalizes_unicode_and_strips_control_chars():
+    query = "Cafe\u0301\x00Title"
+
+    result = DatabaseManager._build_safe_fts_query(query)
+
+    assert result == '"Cafe" "Title"'
+
+
+def test_build_safe_fts_query_limits_term_length():
+    query = "a" * 80
+
+    result = DatabaseManager._build_safe_fts_query(query)
+
+    assert result == f'"{"a" * 64}"'
