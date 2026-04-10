@@ -869,8 +869,11 @@ class TestSidebarWithConfig:
         config = Mock()
         config.get_ai_enabled.return_value = False
         config.get_albums_visible.return_value = True
+        config.get_artists_visible.return_value = False
         config.get_genres_visible.return_value = False
         config.get_cloud_drive_visible.return_value = True
+        config.get_favorites_visible.return_value = False
+        config.get_history_visible.return_value = False
         config.get_most_played_visible.return_value = False
         config.get_recently_added_visible.return_value = False
 
@@ -878,7 +881,60 @@ class TestSidebarWithConfig:
         nav_map = {page: btn for page, btn in sidebar._nav_buttons}
 
         assert not nav_map[Sidebar.PAGE_ALBUMS].isHidden()
+        assert nav_map[Sidebar.PAGE_ARTISTS].isHidden()
         assert nav_map[Sidebar.PAGE_GENRES].isHidden()
         assert not nav_map[Sidebar.PAGE_CLOUD].isHidden()
+        assert nav_map[Sidebar.PAGE_FAVORITES].isHidden()
+        assert nav_map[Sidebar.PAGE_HISTORY].isHidden()
         assert nav_map[Sidebar.PAGE_MOST_PLAYED].isHidden()
         assert nav_map[Sidebar.PAGE_RECENTLY_ADDED].isHidden()
+
+
+class TestMainWindowViewVisibilityRouting:
+    """Tests for MainWindow behavior when optional views are disabled."""
+
+    def test_sidebar_request_falls_back_to_library_when_history_hidden(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        MainWindow.__mro__[1].__init__(window)
+        window._nav_stack = [1]
+        window._config = Mock()
+        window._config.get_history_visible.return_value = False
+        window._config.get_favorites_visible.return_value = True
+        window._config.get_most_played_visible.return_value = True
+        window._config.get_recently_added_visible.return_value = True
+        window._config.get_albums_visible.return_value = True
+        window._config.get_artists_visible.return_value = True
+        window._config.get_genres_visible.return_value = True
+        window._config.get_cloud_drive_visible.return_value = True
+        window._show_page = Mock()
+        window._show_history = Mock()
+        window._show_favorites = Mock()
+        window._show_most_played = Mock()
+        window._show_recently_added = Mock()
+
+        window._on_sidebar_page_requested(Sidebar.PAGE_HISTORY)
+
+        window._show_page.assert_called_once_with(Sidebar.PAGE_LIBRARY)
+        window._show_history.assert_not_called()
+
+    def test_ensure_current_view_is_visible_falls_back_when_favorites_hidden(self, qapp):
+        window = MainWindow.__new__(MainWindow)
+        MainWindow.__mro__[1].__init__(window)
+        window._stacked_widget = Mock()
+        window._stacked_widget.currentIndex.return_value = Sidebar.PAGE_LIBRARY
+        window._library_view = Mock()
+        window._library_view.get_current_view.return_value = "favorites"
+        window._config = Mock()
+        window._config.get_albums_visible.return_value = True
+        window._config.get_artists_visible.return_value = True
+        window._config.get_genres_visible.return_value = True
+        window._config.get_cloud_drive_visible.return_value = True
+        window._config.get_most_played_visible.return_value = True
+        window._config.get_recently_added_visible.return_value = True
+        window._config.get_favorites_visible.return_value = False
+        window._config.get_history_visible.return_value = True
+        window._show_page = Mock()
+
+        window._ensure_current_view_is_visible()
+
+        window._show_page.assert_called_once_with(Sidebar.PAGE_LIBRARY)

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.dialogs.settings_dialog import GeneralSettingsDialog
 from system.theme import ThemeManager
+from ui.widgets.toggle_switch import ToggleSwitch
 
 
 class _FakePluginManagementTab(QWidget):
@@ -36,8 +37,11 @@ def test_settings_dialog_exposes_views_tab_controls():
     config.get_cache_cleanup_count.return_value = 100
     config.get_cache_cleanup_interval_hours.return_value = 1
     config.get_albums_visible.return_value = True
+    config.get_artists_visible.return_value = True
     config.get_genres_visible.return_value = False
     config.get_cloud_drive_visible.return_value = True
+    config.get_favorites_visible.return_value = True
+    config.get_history_visible.return_value = True
     config.get_most_played_visible.return_value = False
     config.get_recently_added_visible.return_value = False
     config.get.side_effect = lambda key, default=None: default
@@ -52,13 +56,44 @@ def test_settings_dialog_exposes_views_tab_controls():
             patch("ui.dialogs.settings_dialog.PluginManagementTab", _FakePluginManagementTab):
         dialog = GeneralSettingsDialog(config)
 
-    assert hasattr(dialog, "_show_albums_checkbox")
-    assert hasattr(dialog, "_show_genres_checkbox")
-    assert hasattr(dialog, "_show_cloud_checkbox")
-    assert hasattr(dialog, "_show_most_played_checkbox")
-    assert hasattr(dialog, "_show_recently_added_checkbox")
-    assert dialog._show_albums_checkbox.isChecked() is True
-    assert dialog._show_genres_checkbox.isChecked() is False
-    assert dialog._show_cloud_checkbox.isChecked() is True
-    assert dialog._show_most_played_checkbox.isChecked() is False
-    assert dialog._show_recently_added_checkbox.isChecked() is False
+    assert hasattr(dialog, "_show_albums_toggle")
+    assert hasattr(dialog, "_show_artists_toggle")
+    assert hasattr(dialog, "_show_genres_toggle")
+    assert hasattr(dialog, "_show_cloud_toggle")
+    assert hasattr(dialog, "_show_favorites_toggle")
+    assert hasattr(dialog, "_show_history_toggle")
+    assert hasattr(dialog, "_show_most_played_toggle")
+    assert hasattr(dialog, "_show_recently_added_toggle")
+    assert isinstance(dialog._show_albums_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_artists_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_genres_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_cloud_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_favorites_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_history_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_most_played_toggle, ToggleSwitch)
+    assert isinstance(dialog._show_recently_added_toggle, ToggleSwitch)
+    assert dialog._show_albums_toggle.isChecked() is True
+    assert dialog._show_artists_toggle.isChecked() is True
+    assert dialog._show_genres_toggle.isChecked() is False
+    assert dialog._show_cloud_toggle.isChecked() is True
+    assert dialog._show_favorites_toggle.isChecked() is True
+    assert dialog._show_history_toggle.isChecked() is True
+    assert dialog._show_most_played_toggle.isChecked() is False
+    assert dialog._show_recently_added_toggle.isChecked() is False
+    assert hasattr(dialog, "_views_labels")
+    assert hasattr(dialog, "_views_rows")
+    assert dialog._views_labels["albums"].text()
+    assert dialog._views_labels["artists"].text()
+    assert dialog._views_labels["genres"].text()
+    assert dialog._views_labels["cloud"].text()
+    assert dialog._views_labels["favorites"].text()
+    assert dialog._views_labels["history"].text()
+    assert dialog._views_labels["most_played"].text()
+    assert dialog._views_labels["recently_added"].text()
+
+    albums_row = dialog._views_rows["albums"]
+    albums_layout = albums_row.layout()
+    assert dialog._views_labels["albums"].minimumWidth() == dialog._views_labels["artists"].minimumWidth()
+    assert albums_layout.itemAt(0).widget() is dialog._show_albums_toggle
+    assert albums_layout.itemAt(1).spacerItem() is not None
+    assert albums_layout.itemAt(2).widget() is dialog._views_labels["albums"]

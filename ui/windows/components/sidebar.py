@@ -265,8 +265,11 @@ class Sidebar(QWidget):
         """Apply config-driven visibility for optional navigation entries."""
         visible_pages = {
             self.PAGE_ALBUMS: self._config.get_albums_visible() if self._config else True,
+            self.PAGE_ARTISTS: self._config.get_artists_visible() if self._config else True,
             self.PAGE_GENRES: self._config.get_genres_visible() if self._config else False,
             self.PAGE_CLOUD: self._config.get_cloud_drive_visible() if self._config else True,
+            self.PAGE_FAVORITES: self._config.get_favorites_visible() if self._config else True,
+            self.PAGE_HISTORY: self._config.get_history_visible() if self._config else True,
             self.PAGE_MOST_PLAYED: self._config.get_most_played_visible() if self._config else False,
             self.PAGE_RECENTLY_ADDED: self._config.get_recently_added_visible() if self._config else False,
         }

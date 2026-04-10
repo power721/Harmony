@@ -580,9 +580,15 @@ class MainWindow(QMainWindow):
         """Handle sidebar page request."""
         self._nav_stack.clear()
         if page_index == Sidebar.PAGE_FAVORITES:
-            self._show_favorites()
+            if self._config.get_favorites_visible():
+                self._show_favorites()
+            else:
+                self._show_page(Sidebar.PAGE_LIBRARY)
         elif page_index == Sidebar.PAGE_HISTORY:
-            self._show_history()
+            if self._config.get_history_visible():
+                self._show_history()
+            else:
+                self._show_page(Sidebar.PAGE_LIBRARY)
         elif page_index == Sidebar.PAGE_MOST_PLAYED:
             if self._config.get_most_played_visible():
                 self._show_most_played()
@@ -594,6 +600,8 @@ class MainWindow(QMainWindow):
             else:
                 self._show_page(Sidebar.PAGE_LIBRARY)
         elif page_index == Sidebar.PAGE_ALBUMS and not self._config.get_albums_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+        elif page_index == Sidebar.PAGE_ARTISTS and not self._config.get_artists_visible():
             self._show_page(Sidebar.PAGE_LIBRARY)
         elif page_index == Sidebar.PAGE_GENRES and not self._config.get_genres_visible():
             self._show_page(Sidebar.PAGE_LIBRARY)
@@ -1379,6 +1387,9 @@ class MainWindow(QMainWindow):
         if current_index == Sidebar.PAGE_ALBUMS and not self._config.get_albums_visible():
             self._show_page(Sidebar.PAGE_LIBRARY)
             return
+        if current_index == Sidebar.PAGE_ARTISTS and not self._config.get_artists_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+            return
         if current_index == Sidebar.PAGE_GENRES and not self._config.get_genres_visible():
             self._show_page(Sidebar.PAGE_LIBRARY)
             return
@@ -1387,7 +1398,11 @@ class MainWindow(QMainWindow):
             return
         if current_index == Sidebar.PAGE_LIBRARY:
             current_view = self._library_view.get_current_view()
-            if current_view == "most_played" and not self._config.get_most_played_visible():
+            if current_view == "favorites" and not self._config.get_favorites_visible():
+                self._show_page(Sidebar.PAGE_LIBRARY)
+            elif current_view == "history" and not self._config.get_history_visible():
+                self._show_page(Sidebar.PAGE_LIBRARY)
+            elif current_view == "most_played" and not self._config.get_most_played_visible():
                 self._show_page(Sidebar.PAGE_LIBRARY)
             elif current_view == "recently_added" and not self._config.get_recently_added_visible():
                 self._show_page(Sidebar.PAGE_LIBRARY)
@@ -2168,7 +2183,10 @@ class MainWindow(QMainWindow):
                 else:
                     self._show_page(0)
             elif view_type == "artists":
-                self._show_page(5)
+                if self._config.get_artists_visible():
+                    self._show_page(5)
+                else:
+                    self._show_page(0)
             elif view_type == "online":
                 if getattr(self, "_plugin_page_keys", None):
                     self._show_page(next(iter(self._plugin_page_keys)))
@@ -2205,9 +2223,15 @@ class MainWindow(QMainWindow):
                         self._stacked_widget.setCurrentIndex(9)
                         self._update_nav_buttons_for_detail_view()
             elif view_type == "favorites":
-                self._show_favorites()
+                if self._config.get_favorites_visible():
+                    self._show_favorites()
+                else:
+                    self._show_page(0)
             elif view_type == "history":
-                self._show_history()
+                if self._config.get_history_visible():
+                    self._show_history()
+                else:
+                    self._show_page(0)
             elif view_type == "most_played":
                 if self._config.get_most_played_visible():
                     self._show_most_played()

@@ -60,8 +60,11 @@ class SettingKey:
     UI_THEME = "ui.theme"  # Theme name: "dark", "gold", "ocean", "purple", "sunset", or "custom"
     UI_THEME_CUSTOM = "ui.theme.custom"  # Custom theme colors dict (only if ui.theme is "custom")
     UI_SHOW_ALBUMS = "ui.show_albums"
+    UI_SHOW_ARTISTS = "ui.show_artists"
     UI_SHOW_GENRES = "ui.show_genres"
     UI_SHOW_CLOUD = "ui.show_cloud"
+    UI_SHOW_FAVORITES = "ui.show_favorites"
+    UI_SHOW_HISTORY = "ui.show_history"
     UI_SHOW_MOST_PLAYED = "ui.show_most_played"
     UI_SHOW_RECENTLY_ADDED = "ui.show_recently_added"
 
@@ -606,6 +609,14 @@ class ConfigManager:
         """Set whether the Genres sidebar entry is enabled."""
         self.set(SettingKey.UI_SHOW_GENRES, enabled)
 
+    def get_artists_visible(self) -> bool:
+        """Get whether the Artists sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_ARTISTS, True))
+
+    def set_artists_visible(self, enabled: bool):
+        """Set whether the Artists sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_ARTISTS, enabled)
+
     def get_cloud_drive_visible(self) -> bool:
         """Get whether the Cloud Drive sidebar entry is enabled."""
         return bool(self.get(SettingKey.UI_SHOW_CLOUD, True))
@@ -613,6 +624,22 @@ class ConfigManager:
     def set_cloud_drive_visible(self, enabled: bool):
         """Set whether the Cloud Drive sidebar entry is enabled."""
         self.set(SettingKey.UI_SHOW_CLOUD, enabled)
+
+    def get_favorites_visible(self) -> bool:
+        """Get whether the Favorites sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_FAVORITES, True))
+
+    def set_favorites_visible(self, enabled: bool):
+        """Set whether the Favorites sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_FAVORITES, enabled)
+
+    def get_history_visible(self) -> bool:
+        """Get whether the History sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_HISTORY, True))
+
+    def set_history_visible(self, enabled: bool):
+        """Set whether the History sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_HISTORY, enabled)
 
     def get_most_played_visible(self) -> bool:
         """Get whether the Most Played sidebar entry is enabled."""

@@ -21,6 +21,7 @@ from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 from ui.dialogs.plugin_management_tab import PluginManagementTab
 from ui.dialogs.progress_dialog import ProgressDialog
+from ui.widgets.toggle_switch import ToggleSwitch
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -666,17 +667,39 @@ class GeneralSettingsDialog(QDialog):
         views_group_layout = QVBoxLayout()
         views_group_layout.setSpacing(8)
 
-        self._show_albums_checkbox = QCheckBox(t("view_show_albums"))
-        self._show_genres_checkbox = QCheckBox(t("view_show_genres"))
-        self._show_cloud_checkbox = QCheckBox(t("view_show_cloud"))
-        self._show_most_played_checkbox = QCheckBox(t("view_show_most_played"))
-        self._show_recently_added_checkbox = QCheckBox(t("view_show_recently_added"))
+        self._views_labels = {}
+        self._views_rows = {}
+        self._views_label_width = 140
 
-        views_group_layout.addWidget(self._show_albums_checkbox)
-        views_group_layout.addWidget(self._show_genres_checkbox)
-        views_group_layout.addWidget(self._show_cloud_checkbox)
-        views_group_layout.addWidget(self._show_most_played_checkbox)
-        views_group_layout.addWidget(self._show_recently_added_checkbox)
+        def add_view_toggle_row(key: str, text: str, attr_name: str) -> None:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(12)
+
+            label = QLabel(text)
+            label.setStyleSheet("font-size: 13px;")
+            label.setMinimumWidth(self._views_label_width)
+            toggle = ToggleSwitch(False, row)
+            toggle.setFixedWidth(44)
+
+            self._views_labels[key] = label
+            self._views_rows[key] = row
+            setattr(self, attr_name, toggle)
+
+            row_layout.addWidget(toggle)
+            row_layout.addSpacing(10)
+            row_layout.addWidget(label)
+            views_group_layout.addWidget(row)
+
+        add_view_toggle_row("albums", t("view_show_albums"), "_show_albums_toggle")
+        add_view_toggle_row("artists", t("view_show_artists"), "_show_artists_toggle")
+        add_view_toggle_row("genres", t("view_show_genres"), "_show_genres_toggle")
+        add_view_toggle_row("cloud", t("view_show_cloud"), "_show_cloud_toggle")
+        add_view_toggle_row("favorites", t("view_show_favorites"), "_show_favorites_toggle")
+        add_view_toggle_row("history", t("view_show_history"), "_show_history_toggle")
+        add_view_toggle_row("most_played", t("view_show_most_played"), "_show_most_played_toggle")
+        add_view_toggle_row("recently_added", t("view_show_recently_added"), "_show_recently_added_toggle")
 
         views_hint = QLabel(t("view_settings_hint"))
         views_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
@@ -843,11 +866,14 @@ class GeneralSettingsDialog(QDialog):
         self._select_theme_preset(theme_name, load_only=True)
 
         # Load view visibility settings
-        self._show_albums_checkbox.setChecked(self._config.get_albums_visible())
-        self._show_genres_checkbox.setChecked(self._config.get_genres_visible())
-        self._show_cloud_checkbox.setChecked(self._config.get_cloud_drive_visible())
-        self._show_most_played_checkbox.setChecked(self._config.get_most_played_visible())
-        self._show_recently_added_checkbox.setChecked(self._config.get_recently_added_visible())
+        self._show_albums_toggle.setChecked(self._config.get_albums_visible(), animate=False)
+        self._show_artists_toggle.setChecked(self._config.get_artists_visible(), animate=False)
+        self._show_genres_toggle.setChecked(self._config.get_genres_visible(), animate=False)
+        self._show_cloud_toggle.setChecked(self._config.get_cloud_drive_visible(), animate=False)
+        self._show_favorites_toggle.setChecked(self._config.get_favorites_visible(), animate=False)
+        self._show_history_toggle.setChecked(self._config.get_history_visible(), animate=False)
+        self._show_most_played_toggle.setChecked(self._config.get_most_played_visible(), animate=False)
+        self._show_recently_added_toggle.setChecked(self._config.get_recently_added_visible(), animate=False)
 
     def _save_settings(self):
         """Save settings to config."""
@@ -941,11 +967,14 @@ class GeneralSettingsDialog(QDialog):
             except Exception as e:
                 logger.warning(f"Failed to apply theme: {e}")
 
-        self._config.set_albums_visible(self._show_albums_checkbox.isChecked())
-        self._config.set_genres_visible(self._show_genres_checkbox.isChecked())
-        self._config.set_cloud_drive_visible(self._show_cloud_checkbox.isChecked())
-        self._config.set_most_played_visible(self._show_most_played_checkbox.isChecked())
-        self._config.set_recently_added_visible(self._show_recently_added_checkbox.isChecked())
+        self._config.set_albums_visible(self._show_albums_toggle.isChecked())
+        self._config.set_artists_visible(self._show_artists_toggle.isChecked())
+        self._config.set_genres_visible(self._show_genres_toggle.isChecked())
+        self._config.set_cloud_drive_visible(self._show_cloud_toggle.isChecked())
+        self._config.set_favorites_visible(self._show_favorites_toggle.isChecked())
+        self._config.set_history_visible(self._show_history_toggle.isChecked())
+        self._config.set_most_played_visible(self._show_most_played_toggle.isChecked())
+        self._config.set_recently_added_visible(self._show_recently_added_toggle.isChecked())
 
         MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()
