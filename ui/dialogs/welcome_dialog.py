@@ -74,6 +74,7 @@ class WelcomeDialog(QDialog):
         self._library_service = library_service
         self._drag_pos = None
         self._selected_folder = None
+        self._icon_label = None
 
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -111,6 +112,7 @@ class WelcomeDialog(QDialog):
 
         # Icon
         icon_label = QLabel()
+        self._icon_label = icon_label
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_pixmap = get_icon(IconName.MUSIC, None, 48).pixmap(48, 48)
         icon_label.setPixmap(icon_pixmap)
@@ -173,10 +175,8 @@ class WelcomeDialog(QDialog):
         self._apply_style()
         self._title_bar_controller.refresh_theme()
         icon_pixmap = get_icon(IconName.MUSIC, None, 48).pixmap(48, 48)
-        for child in self.findChildren(QLabel):
-            if child.pixmap() and child.pixmap().width() >= 48:
-                child.setPixmap(icon_pixmap)
-                break
+        if self._icon_label is not None:
+            self._icon_label.setPixmap(icon_pixmap)
 
     def resizeEvent(self, event):
         path = QPainterPath()
