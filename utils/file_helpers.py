@@ -1,6 +1,7 @@
 """
 File utility functions for file organization.
 """
+import os
 import re
 from pathlib import Path
 from domain.track import Track
@@ -59,6 +60,14 @@ def calculate_target_path(track: Track, target_dir: str) -> tuple[Path, Path]:
     if not track.path or not track.path.strip():
         raise ValueError(f"Track '{track.title}' has no local path")
 
+    target_path = Path(target_dir)
+    if not target_path.exists():
+        raise ValueError(f"target directory does not exist: {target_dir}")
+    if not target_path.is_dir():
+        raise ValueError(f"target directory is not a directory: {target_dir}")
+    if not os.access(target_path, os.W_OK):
+        raise ValueError(f"target directory is not writable: {target_dir}")
+
     track_path = Path(track.path)
     ext = track_path.suffix
     title = sanitize_filename(track.title or track_path.stem)
@@ -67,17 +76,17 @@ def calculate_target_path(track: Track, target_dir: str) -> tuple[Path, Path]:
     if track.album and track.artist:
         artist = sanitize_filename(track.artist)
         album = sanitize_filename(track.album)
-        base = Path(target_dir) / artist / album / title
+        base = target_path / artist / album / title
         return base.with_suffix(ext), base.with_suffix('.lrc')
 
     # 规则2: 只有歌手 → 歌手/歌曲
     if track.artist:
         artist = sanitize_filename(track.artist)
-        base = Path(target_dir) / artist / title
+        base = target_path / artist / title
         return base.with_suffix(ext), base.with_suffix('.lrc')
 
     # 规则3: 无歌手 → 直接在目标目录
-    base = Path(target_dir) / title
+    base = target_path / title
     return base.with_suffix(ext), base.with_suffix('.lrc')
 
 

@@ -152,6 +152,23 @@ class TestCalculateTargetPath:
         with pytest.raises(ValueError, match="no local path"):
             calculate_target_path(track, str(temp_dir))
 
+    def test_calculate_raises_when_target_dir_does_not_exist(self, temp_dir):
+        """Target directory must already exist."""
+        track = Track(path="/music/song.mp3", title="Test Song")
+        missing_dir = temp_dir / "missing"
+
+        with pytest.raises(ValueError, match="target directory"):
+            calculate_target_path(track, str(missing_dir))
+
+    def test_calculate_raises_when_target_dir_is_not_directory(self, temp_dir):
+        """Target directory must be a directory path."""
+        track = Track(path="/music/song.mp3", title="Test Song")
+        target_file = temp_dir / "target.txt"
+        target_file.write_text("not a directory")
+
+        with pytest.raises(ValueError, match="target directory"):
+            calculate_target_path(track, str(target_file))
+
 
 class TestEnsureDirectory:
     """Test ensure_directory function."""
