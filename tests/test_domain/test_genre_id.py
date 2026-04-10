@@ -19,3 +19,13 @@ def test_named_genre_id_is_stable_across_accesses():
 
     assert first == "rock"
     assert second == "rock"
+
+
+def test_empty_genre_id_is_stable_across_accesses():
+    genre = Genre(name="")
+
+    first = genre.id
+    second = genre.id
+
+    assert first == second
+    assert first.startswith("unknown:")

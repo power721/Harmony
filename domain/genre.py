@@ -26,17 +26,12 @@ class Genre:
         """Get display name for the genre."""
         return self.name if self.name else "Unknown Genre"
 
-    @property
+    @cached_property
     def id(self) -> str:
         """Generate a unique ID for the genre based on name."""
         if self.name:
-            return self._named_id
+            return self.name.lower()
         return f"unknown:{id(self)}"
-
-    @cached_property
-    def _named_id(self) -> str:
-        """Cache the normalized ID for named genres."""
-        return self.name.lower()
 
     def __hash__(self):
         """Make Genre hashable for use in sets."""
