@@ -324,6 +324,7 @@
     "plugins_disabled": "已禁用",
     "plugins_source_builtin": "内置",
     "plugins_source_external": "外部",
+    "plugins_restart_required_after_toggle": "此插件的启用或禁用更改将在你重启应用后生效。",
     "redownload": "⬇ 重新下载",
     "redownload_hint": "提示：高音质可能因版权限制无法下载，将自动降级到可用音质",
     "select_quality": "选择音质",

@@ -166,11 +166,12 @@ class PluginManager:
                     "source": source,
                     "enabled": bool(state.get("enabled", True)),
                     "load_error": state.get("load_error"),
+                    "requires_restart_on_toggle": manifest.requires_restart_on_toggle,
                 }
             )
         return plugins
 
-    def set_plugin_enabled(self, plugin_id: str, enabled: bool) -> None:
+    def set_plugin_enabled(self, plugin_id: str, enabled: bool) -> dict[str, bool]:
         for source, plugin_root in self.discover_roots():
             manifest = self._read_manifest_or_none(plugin_root)
             if manifest is None:
@@ -185,11 +186,13 @@ class PluginManager:
                 version=existing.get("version", manifest.version),
                 load_error=existing.get("load_error"),
             )
+            if manifest.requires_restart_on_toggle:
+                return {"requires_restart": True}
             if enabled:
                 self._load_plugin_root(source, plugin_root)
             else:
                 self._unload_plugin(plugin_id)
-            return
+            return {"requires_restart": False}
         raise KeyError(f"Unknown plugin: {plugin_id}")
 
     def install_zip(self, zip_path: str | Path) -> Path:

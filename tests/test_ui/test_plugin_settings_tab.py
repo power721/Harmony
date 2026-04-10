@@ -390,6 +390,49 @@ def test_plugin_management_tab_uses_row_level_toggles(qtbot):
     assert manager.list_plugins.call_count == 3
 
 
+def test_plugin_management_tab_shows_restart_prompt_for_restart_required_plugin(
+    monkeypatch,
+    qtbot,
+):
+    _init_theme_manager()
+    manager = Mock()
+    manager.list_plugins.side_effect = [
+        [
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "source": "builtin",
+                "enabled": True,
+                "load_error": None,
+                "requires_restart_on_toggle": True,
+            }
+        ],
+        [
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "source": "builtin",
+                "enabled": False,
+                "load_error": None,
+                "requires_restart_on_toggle": True,
+            }
+        ],
+    ]
+    manager.set_plugin_enabled.return_value = {"requires_restart": True}
+    information = Mock()
+    monkeypatch.setattr("ui.dialogs.message_dialog.MessageDialog.information", information)
+
+    widget = PluginManagementTab(manager)
+    qtbot.addWidget(widget)
+
+    qtbot.mouseClick(_plugin_toggle(widget, "qqmusic"), Qt.LeftButton)
+
+    manager.set_plugin_enabled.assert_called_once_with("qqmusic", False)
+    information.assert_called_once()
+
+
 def test_settings_dialog_includes_plugins_tab(monkeypatch, qtbot):
     config = Mock()
     config.get.return_value = "dark"

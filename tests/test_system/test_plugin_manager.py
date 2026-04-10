@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 import zipfile
 
 from PySide6.QtGui import QIcon
@@ -203,6 +204,62 @@ def test_manager_can_toggle_plugin_enabled_state_without_loading(tmp_path: Path)
     assert enabled_state is not None
     assert enabled_state["enabled"] is True
     assert enabled_state["version"] == "1.0.0"
+
+
+def test_manager_toggle_for_restart_required_plugin_only_updates_state(tmp_path: Path):
+    builtin_root = tmp_path / "builtin"
+    plugin_root = builtin_root / "qqmusic"
+    plugin_root.mkdir(parents=True)
+
+    (plugin_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "qqmusic",
+                "name": "QQ Music",
+                "version": "1.0.0",
+                "api_version": "1",
+                "entrypoint": "plugin_main.py",
+                "entry_class": "QQMusicPlugin",
+                "capabilities": ["sidebar"],
+                "min_app_version": "0.1.0",
+                "requires_restart_on_toggle": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plugin_root / "plugin_main.py").write_text(
+        "class QQMusicPlugin:\n"
+        "    plugin_id = 'qqmusic'\n"
+        "    def register(self, context):\n"
+        "        pass\n"
+        "    def unregister(self, context):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    store = PluginStateStore(tmp_path / "state.json")
+    manager = PluginManager(
+        builtin_root=builtin_root,
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=_ContextFactory(),
+    )
+    manager._load_plugin_root = Mock()
+    manager._unload_plugin = Mock()
+
+    disable_result = manager.set_plugin_enabled("qqmusic", False)
+    disabled_state = store.get("qqmusic")
+    enable_result = manager.set_plugin_enabled("qqmusic", True)
+    enabled_state = store.get("qqmusic")
+
+    assert disable_result == {"requires_restart": True}
+    assert enable_result == {"requires_restart": True}
+    assert disabled_state is not None
+    assert disabled_state["enabled"] is False
+    assert enabled_state is not None
+    assert enabled_state["enabled"] is True
+    manager._load_plugin_root.assert_not_called()
+    manager._unload_plugin.assert_not_called()
 
 
 def test_manager_disabling_loaded_plugin_unregisters_runtime_lyrics_sources(tmp_path: Path):

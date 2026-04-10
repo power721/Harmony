@@ -324,6 +324,7 @@
     "plugins_disabled": "Disabled",
     "plugins_source_builtin": "Built-in",
     "plugins_source_external": "External",
+    "plugins_restart_required_after_toggle": "This plugin's enable or disable change will take effect after you restart the app.",
     "redownload": "⬇ Re-download",
     "redownload_hint": "Note: High quality may not be available due to copyright, will auto-downgrade to available quality",
     "select_quality": "Select Quality",

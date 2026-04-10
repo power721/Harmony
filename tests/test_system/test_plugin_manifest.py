@@ -35,6 +35,41 @@ def test_manifest_accepts_cover_capability():
     assert "cover" in manifest.capabilities
 
 
+def test_manifest_accepts_requires_restart_on_toggle():
+    manifest = PluginManifest.from_dict(
+        {
+            "id": "qqmusic",
+            "name": "QQ Music",
+            "version": "1.0.0",
+            "api_version": "1",
+            "entrypoint": "plugin_main.py",
+            "entry_class": "QQMusicPlugin",
+            "capabilities": ["sidebar"],
+            "min_app_version": "0.1.0",
+            "requires_restart_on_toggle": True,
+        }
+    )
+
+    assert manifest.requires_restart_on_toggle is True
+
+
+def test_manifest_defaults_requires_restart_on_toggle_to_false():
+    manifest = PluginManifest.from_dict(
+        {
+            "id": "qqmusic",
+            "name": "QQ Music",
+            "version": "1.0.0",
+            "api_version": "1",
+            "entrypoint": "plugin_main.py",
+            "entry_class": "QQMusicPlugin",
+            "capabilities": ["sidebar"],
+            "min_app_version": "0.1.0",
+        }
+    )
+
+    assert manifest.requires_restart_on_toggle is False
+
+
 def test_manifest_rejects_unknown_capability():
     with pytest.raises(PluginManifestError):
         PluginManifest.from_dict(

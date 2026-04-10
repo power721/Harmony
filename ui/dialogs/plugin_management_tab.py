@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.message_dialog import MessageDialog
 from ui.widgets.toggle_switch import ToggleSwitch
 
 
@@ -158,7 +159,13 @@ class PluginManagementTab(QWidget):
     def _set_plugin_enabled(self, plugin_id: str, enabled: bool) -> None:
         if not plugin_id:
             return
-        self._plugin_manager.set_plugin_enabled(plugin_id, enabled)
+        result = self._plugin_manager.set_plugin_enabled(plugin_id, enabled)
+        if isinstance(result, dict) and result.get("requires_restart"):
+            MessageDialog.information(
+                self,
+                t("info"),
+                t("plugins_restart_required_after_toggle"),
+            )
         self.refresh()
 
     def resizeEvent(self, event) -> None:

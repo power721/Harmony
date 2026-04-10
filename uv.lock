@@ -252,11 +252,11 @@ wheels = [
 
 [[package]]
 name = "harmony-plugin-api"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0e/a4/852b1d8859b040f6fbd48b8fa6852fab813909cacac8deede8fc426d03a9/harmony_plugin_api-0.1.1.tar.gz", hash = "sha256:12de02dfbf1d8d95cbdebc07a825ae924877bca66b12df7ab2adc75bfc23f9e0", size = 4563, upload-time = "2026-04-09T03:52:34.429Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/23/acbefbc73df542e2424a2b56db8bcb7848f075b48ba3ee319ce12f593451/harmony_plugin_api-0.1.2.tar.gz", hash = "sha256:e740cfc7ed3cb6b2789acffd3592b8d710e0064c8f19cd3fc3a465af7e855263", size = 4638, upload-time = "2026-04-10T06:14:27.238Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0d/82/47dcebb8896a1e820a06b0098bf5c3b37be1f6fbdb6cee704ff16edb9936/harmony_plugin_api-0.1.1-py3-none-any.whl", hash = "sha256:72b4589d996da5f1788d955f445791d3443fa0e8961ea23e53ecc7b2ddaeddd8", size = 6893, upload-time = "2026-04-09T03:52:33.094Z" },
+    { url = "https://files.pythonhosted.org/packages/47/59/3de4a8927745ebedbfa6300e4f5a5b2ce92b7024d48cdeab9ef188dca71e/harmony_plugin_api-0.1.2-py3-none-any.whl", hash = "sha256:d0d46056c282845962d7fd06b550580e808cec28e4880e76f25f1c205d8df072", size = 6964, upload-time = "2026-04-10T06:14:26.335Z" },
 ]
 
 [[package]]
@@ -556,7 +556,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "certifi", specifier = ">=2024.0.0" },
-    { name = "harmony-plugin-api", specifier = ">=0.1.1" },
+    { name = "harmony-plugin-api", specifier = ">=0.1.2" },
     { name = "lxml", specifier = ">=6.0.2" },
     { name = "mpv", specifier = ">=1.0.0" },
     { name = "mutagen", specifier = ">=1.47.0" },

@@ -47,6 +47,7 @@ class PluginManifest:
     capabilities: tuple[str, ...]
     min_app_version: str
     max_app_version: str | None = None
+    requires_restart_on_toggle: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PluginManifest":
@@ -85,6 +86,11 @@ class PluginManifest:
             raise PluginManifestError(
                 "Manifest field 'max_app_version' must be a string if provided"
             )
+        requires_restart_on_toggle = data.get("requires_restart_on_toggle", False)
+        if not isinstance(requires_restart_on_toggle, bool):
+            raise PluginManifestError(
+                "Manifest field 'requires_restart_on_toggle' must be a bool if provided"
+            )
 
         return cls(
             id=_require_str(data, "id"),
@@ -96,4 +102,5 @@ class PluginManifest:
             capabilities=capabilities,
             min_app_version=_require_str(data, "min_app_version"),
             max_app_version=max_app_version,
+            requires_restart_on_toggle=requires_restart_on_toggle,
         )

@@ -6,5 +6,6 @@
   "entrypoint": "plugin_main.py",
   "entry_class": "QQMusicPlugin",
   "capabilities": ["sidebar", "settings_tab", "lyrics_source", "cover", "online_music_provider"],
-  "min_app_version": "0.1.0"
+  "min_app_version": "0.1.0",
+  "requires_restart_on_toggle": true
 }
