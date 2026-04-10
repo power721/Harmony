@@ -40,3 +40,23 @@ def test_set_enabled_serializes_read_modify_write(monkeypatch, tmp_path):
 
     payload = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert set(payload) == {"plugin-a", "plugin-b"}
+
+
+def test_set_enabled_retries_atomic_replace_on_temporary_failure(monkeypatch, tmp_path):
+    store = PluginStateStore(tmp_path / "state.json")
+    real_replace = store._replace_file
+    calls = {"count": 0}
+
+    def flaky_replace(tmp_path_arg, dest_path_arg):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise PermissionError("file locked")
+        return real_replace(tmp_path_arg, dest_path_arg)
+
+    monkeypatch.setattr(store, "_replace_file", flaky_replace)
+
+    store.set_enabled("plugin-a", True, "builtin", "1.0.0")
+
+    payload = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert payload["plugin-a"]["enabled"] is True
+    assert calls["count"] == 3

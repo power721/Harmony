@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from threading import Lock
 
@@ -27,7 +28,22 @@ class PluginStateStore:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        os.replace(tmp_path, self._path)
+        last_error = None
+        for attempt in range(3):
+            try:
+                self._replace_file(tmp_path, self._path)
+                return
+            except OSError as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise
+                time.sleep(0.05)
+        if last_error is not None:
+            raise last_error
+
+    @staticmethod
+    def _replace_file(tmp_path: Path, dest_path: Path) -> None:
+        os.replace(tmp_path, dest_path)
 
     def set_enabled(
         self,
