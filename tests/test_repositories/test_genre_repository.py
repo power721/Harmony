@@ -369,3 +369,33 @@ def test_get_by_name_returns_none_for_blank_name_without_querying():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_get_by_name_falls_back_to_tracks_when_cache_table_is_empty():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, "/covers/rock.jpg"),
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteGenreRepository(db_path)
+        genre = repo.get_by_name("Rock")
+
+        assert genre is not None
+        assert genre.name == "Rock"
+        assert genre.cover_path == "/covers/rock.jpg"
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass

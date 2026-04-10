@@ -119,7 +119,6 @@ class SqliteAlbumRepository(BaseRepository):
                     song_count=row["song_count"] or 0,
                     duration=row["total_duration"] or 0.0,
                 )
-            return None
 
         # Fallback to direct query
         if artist:

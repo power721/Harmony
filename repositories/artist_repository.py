@@ -106,7 +106,6 @@ class SqliteArtistRepository(BaseRepository):
                     song_count=row["song_count"] or 0,
                     album_count=row["album_count"] or 0,
                 )
-            return None
 
         # Fallback to direct query
         cursor.execute("""

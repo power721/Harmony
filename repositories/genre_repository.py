@@ -178,7 +178,6 @@ class SqliteGenreRepository(BaseRepository):
                     album_count=row["album_count"] or 0,
                     duration=row["total_duration"] or 0.0,
                 )
-            return None
 
         # Fallback to direct query
         cursor.execute("""
