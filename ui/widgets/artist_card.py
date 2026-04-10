@@ -172,13 +172,7 @@ class ArtistCard(HoverEffectMixin, QWidget):
             try:
                 pixmap = QPixmap(cover_path)
                 if not pixmap.isNull():
-                    # Create circular mask
-                    scaled = pixmap.scaled(
-                        self.AVATAR_SIZE, self.AVATAR_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    circular = self._make_circular(scaled)
+                    circular = self._make_circular(pixmap)
                     self._avatar_label.setPixmap(circular)
                     return
             except Exception as e:
@@ -189,7 +183,13 @@ class ArtistCard(HoverEffectMixin, QWidget):
 
     def _make_circular(self, pixmap: QPixmap) -> QPixmap:
         """Make a pixmap circular."""
-        size = min(pixmap.width(), pixmap.height())
+        scaled = pixmap.scaled(
+            self.AVATAR_SIZE,
+            self.AVATAR_SIZE,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+        size = min(scaled.width(), scaled.height())
         result = QPixmap(size, size)
         result.fill(Qt.transparent)
 
@@ -204,14 +204,9 @@ class ArtistCard(HoverEffectMixin, QWidget):
         painter.setClipPath(clip_path)
 
         # Draw the pixmap
-        painter.drawPixmap(0, 0, pixmap)
+        painter.drawPixmap(0, 0, scaled)
         painter.end()
-
-        return result.scaled(
-            self.AVATAR_SIZE, self.AVATAR_SIZE,
-            Qt.KeepAspectRatioByExpanding,
-            Qt.SmoothTransformation
-        )
+        return result
 
     def _set_default_avatar(self):
         """Set default avatar when no image is available."""
