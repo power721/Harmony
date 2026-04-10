@@ -491,7 +491,7 @@ class LyricsService:
                             album=r.album,
                             duration=r.duration,
                             source=r.source,
-                            id=r.id,
+                            id=r.song_id,
                             cover_url=r.cover_url,
                         ) for r in search_results)
                 except Exception as e:

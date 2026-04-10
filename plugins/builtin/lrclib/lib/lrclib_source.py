@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class LRCLIBPluginSource:
     source_id = "lrclib"
     display_name = "LRCLIB"
+    name = "LRCLIB"
 
     def __init__(self, http_client) -> None:
         self._http_client = http_client
