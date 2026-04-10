@@ -39,6 +39,15 @@ def test_plugin_settings_bridge_uses_secret_store_for_credentials():
     config.set_plugin_secret.assert_called_once_with("qqmusic", "credential", '{"musicid": "2"}')
 
 
+def test_plugin_settings_bridge_logs_invalid_credential_json(caplog):
+    config = Mock()
+    config.get_plugin_secret.return_value = "{broken-json"
+    bridge = PluginSettingsBridgeImpl("qqmusic", config)
+
+    assert bridge.get("credential", {}) == {}
+    assert "Invalid credential JSON" in caplog.text
+
+
 def test_plugin_settings_bridge_namespaces_language_key():
     config = Mock()
     config.get.return_value = "zh"

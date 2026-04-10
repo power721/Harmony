@@ -1,12 +1,15 @@
 """
 Base class for SQLite repositories.
 """
+import logging
 import sqlite3
 import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 class BaseRepository:
@@ -36,7 +39,7 @@ class BaseRepository:
             except sqlite3.OperationalError:
                 # Another thread may already be switching journal mode on a shared
                 # test database. The connection remains usable without failing init.
-                pass
+                logger.debug("[BaseRepository] Failed to enable WAL mode for %s", self.db_path, exc_info=True)
             self.local.conn.execute("PRAGMA busy_timeout=30000")
         return self.local.conn
 
@@ -46,7 +49,7 @@ class BaseRepository:
             try:
                 self.local.conn.close()
             except Exception:
-                pass
+                logger.debug("[BaseRepository] Failed to close connection for %s", self.db_path, exc_info=True)
             self.local.conn = None
 
     def _table_exists(self, table_name: str) -> bool:

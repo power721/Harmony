@@ -8,6 +8,8 @@ from . import plugin_sdk_runtime
 from .media_bridge import PluginMediaBridge
 from .plugin_sdk_ui import PluginDialogBridgeImpl, PluginThemeBridgeImpl
 
+logger = logging.getLogger(__name__)
+
 class PluginSettingsBridgeImpl:
     def __init__(self, plugin_id: str, config) -> None:
         self._plugin_id = plugin_id
@@ -26,6 +28,11 @@ class PluginSettingsBridgeImpl:
                 try:
                     return json.loads(value)
                 except Exception:
+                    logger.warning(
+                        "[PluginSettingsBridge] Invalid credential JSON for plugin %s",
+                        self._plugin_id,
+                        exc_info=True,
+                    )
                     return default
             return value
         return self._config.get(self._key(key), default)
