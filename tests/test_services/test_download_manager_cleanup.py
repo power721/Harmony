@@ -168,6 +168,44 @@ def test_download_manager_uses_lock_for_worker_registry():
     assert hasattr(manager, "_download_lock")
 
 
+def test_download_manager_instance_is_thread_safe(monkeypatch):
+    DownloadManager._instance = None
+    init_calls = []
+    original_init = DownloadManager.__init__
+
+    def fake_init(self, parent=None):
+        init_calls.append("init")
+        time.sleep(0.05)
+        self._config = None
+        self._cloud_repo = None
+        self._playback_service = None
+        self._download_workers = {}
+        self._download_handlers = {}
+        self._download_lock = threading.Lock()
+
+    monkeypatch.setattr(DownloadManager, "__init__", fake_init)
+
+    try:
+        results = []
+
+        def get_instance():
+            results.append(DownloadManager.instance())
+
+        first = threading.Thread(target=get_instance)
+        second = threading.Thread(target=get_instance)
+        first.start()
+        second.start()
+        first.join()
+        second.join()
+
+        assert len(init_calls) == 1
+        assert len(results) == 2
+        assert results[0] is results[1]
+    finally:
+        monkeypatch.setattr(DownloadManager, "__init__", original_init)
+        DownloadManager._instance = None
+
+
 def test_set_dependencies_does_not_accept_database_manager():
     """DownloadManager should not expose DatabaseManager dependency."""
     params = inspect.signature(DownloadManager.set_dependencies).parameters

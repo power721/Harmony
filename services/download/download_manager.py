@@ -31,6 +31,7 @@ class DownloadManager(QObject):
     """
 
     _instance = None
+    _instance_lock = threading.Lock()
 
     # Signals
     download_started = Signal(str)  # song_mid or file_id
@@ -41,7 +42,9 @@ class DownloadManager(QObject):
     def instance(cls) -> "DownloadManager":
         """Get singleton instance."""
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self, parent=None):

@@ -263,12 +263,15 @@ class CloudDownloadService(QObject):
     token_updated = Signal(str)  # new_token
 
     _instance = None
+    _instance_lock = threading.Lock()
 
     @classmethod
     def instance(cls) -> "CloudDownloadService":
         """Get the singleton instance."""
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self, parent=None):
