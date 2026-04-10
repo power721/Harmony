@@ -318,6 +318,51 @@ def test_refresh_genre_updates_single_cached_genre():
             pass
 
 
+def test_refresh_genre_uses_upsert_without_delete():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', '/covers/existing.jpg', 1, 1, 180.0)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 2", "Rock", 200.0, "/covers/rock.jpg"),
+            ],
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            assert repo.refresh_genre("Rock") is True
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert not any("DELETE FROM GENRES" in statement.upper() for statement in statements)
+        assert any("UPDATE GENRES" in statement.upper() or "INSERT INTO GENRES" in statement.upper() for statement in statements)
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_delete_if_empty_removes_genre_without_tracks():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

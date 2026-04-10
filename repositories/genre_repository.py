@@ -316,20 +316,40 @@ class SqliteGenreRepository(BaseRepository):
             if not row or not row["song_count"]:
                 return False
 
-            cursor.execute("DELETE FROM genres WHERE name = ?", (genre_name,))
+            cover_path = row["cover_path"] or existing_cover
+            payload = (
+                cover_path,
+                row["song_count"] or 0,
+                row["album_count"] or 0,
+                row["total_duration"] or 0.0,
+                row["name"],
+            )
             cursor.execute(
                 """
-                INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
-                VALUES (?, ?, ?, ?, ?)
+                UPDATE genres
+                SET cover_path = ?,
+                    song_count = ?,
+                    album_count = ?,
+                    total_duration = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
                 """,
-                (
-                    row["name"],
-                    row["cover_path"] or existing_cover,
-                    row["song_count"] or 0,
-                    row["album_count"] or 0,
-                    row["total_duration"] or 0.0,
-                ),
+                payload,
             )
+            if cursor.rowcount == 0:
+                cursor.execute(
+                    """
+                    INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["name"],
+                        cover_path,
+                        row["song_count"] or 0,
+                        row["album_count"] or 0,
+                        row["total_duration"] or 0.0,
+                    ),
+                )
             conn.commit()
             return True
         except sqlite3.DatabaseError:
