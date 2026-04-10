@@ -146,6 +146,53 @@ def test_get_all_cached_query_avoids_order_by_random():
             pass
 
 
+def test_get_all_fallback_query_avoids_correlated_cover_subqueries():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 1", "Rock", 200.0, "/covers/rock1.jpg"),
+                ("/music/c.mp3", "C", "Artist", "Album 2", "Rock", 210.0, "/covers/rock2.jpg"),
+            ],
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            genres = repo.get_all(use_cache=False)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert len(genres) == 1
+        genre_queries = [
+            statement for statement in statements
+            if "WITH TRACK_COVER AS" in statement.upper()
+        ]
+        assert len(genre_queries) == 1
+        query = genre_queries[0].upper()
+        assert "SELECT T2.COVER_PATH" not in query
+        assert "JOIN ALBUMS A ON A.NAME = T3.ALBUM" not in query
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_get_all_cached_query_does_not_probe_cache_table_existence():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
