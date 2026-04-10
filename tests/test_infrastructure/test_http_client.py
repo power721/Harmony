@@ -4,6 +4,8 @@ Tests for HttpClient infrastructure component.
 
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
+
+import requests
 from infrastructure.network.http_client import HttpClient
 
 
@@ -448,6 +450,43 @@ class TestDownload:
         assert result is False
         # File should be cleaned up even if partially written
         assert not Path(dest).exists()
+
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_download_logs_timeout_error_with_specific_context(self, mock_session_class, tmp_path, caplog):
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'content-length': '1024'}
+        mock_response.raise_for_status = Mock()
+        mock_response.iter_content.side_effect = requests.Timeout("Request timeout")
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        dest = str(tmp_path / "timeout.bin")
+
+        client = HttpClient()
+        result = client.download("http://example.com/file", dest)
+
+        assert result is False
+        assert "Download timed out" in caplog.text
+
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_download_logs_http_error_with_specific_context(self, mock_session_class, tmp_path, caplog):
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        dest = str(tmp_path / "forbidden.bin")
+
+        client = HttpClient()
+        result = client.download("http://example.com/file", dest)
+
+        assert result is False
+        assert "Download HTTP error" in caplog.text
 
     @patch('infrastructure.network.http_client.requests.Session')
     def test_download_failure_does_not_leave_partial_destination(self, mock_session_class, tmp_path):

@@ -319,6 +319,30 @@ class HttpClient:
                 temp_path = None
                 return True
 
+        except requests.Timeout as e:
+            logger.error(f"Download timed out: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
+        except requests.ConnectionError as e:
+            logger.error(f"Download connection error: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
+        except requests.HTTPError as e:
+            logger.error(f"Download HTTP error: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
             if temp_path and Path(temp_path).exists():
