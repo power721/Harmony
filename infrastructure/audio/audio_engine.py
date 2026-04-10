@@ -523,6 +523,11 @@ class PlayerEngine(QObject):
             if expected_index is not None and 0 <= expected_index < len(self._playlist):
                 if self._playlist[expected_index].cloud_file_id == cloud_file_id:
                     matched_indices.append(expected_index)
+            elif cloud_file_id in self._cloud_file_id_to_index:
+                mapped_index = self._cloud_file_id_to_index[cloud_file_id]
+                if 0 <= mapped_index < len(self._playlist):
+                    if self._playlist[mapped_index].cloud_file_id == cloud_file_id:
+                        matched_indices.append(mapped_index)
 
             for i, item in enumerate(self._playlist):
                 if item.cloud_file_id == cloud_file_id and i not in matched_indices:

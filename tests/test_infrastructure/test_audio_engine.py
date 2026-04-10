@@ -49,6 +49,40 @@ def test_update_playlist_item_updates_all_duplicate_cloud_ids():
     assert engine._playlist[1].needs_download is False
 
 
+def test_update_playlist_item_prefers_cloud_id_index_for_primary_match():
+    """Mapped cloud-file index should be used as the primary match before list scanning."""
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._playlist_lock = threading.RLock()
+    engine._playlist = [
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="First",
+            needs_download=True,
+        ),
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="Second",
+            needs_download=True,
+        ),
+    ]
+    engine._cloud_file_id_to_index = {"song_mid_123": 1}
+
+    updated_index = PlayerEngine.update_playlist_item(
+        engine,
+        cloud_file_id="song_mid_123",
+        local_path="/tmp/downloaded.mp3",
+        needs_download=False,
+    )
+
+    assert updated_index == 1
+    assert engine._playlist[0].local_path == "/tmp/downloaded.mp3"
+    assert engine._playlist[1].local_path == "/tmp/downloaded.mp3"
+
+
 class _FakeBackend:
     def __init__(self):
         self.set_source_calls = []
