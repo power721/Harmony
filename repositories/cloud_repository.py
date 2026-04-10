@@ -210,72 +210,33 @@ class SqliteCloudRepository(BaseRepository):
         """Update the last playing file and position for an account."""
         conn = self._get_connection()
         cursor = conn.cursor()
+        updates = []
+        params = []
 
-        # Build update query dynamically based on provided parameters
-        if playing_fid is not None and position is not None and local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid        = ?,
-                    last_position           = ?,
-                    last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, position, local_path, account_id),
-            )
-        elif playing_fid is not None and position is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid = ?,
-                    last_position    = ?,
-                    updated_at       = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, position, account_id),
-            )
-        elif playing_fid is not None and local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid        = ?,
-                    last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, local_path, account_id),
-            )
-        elif playing_fid is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_fid = ?,
-                    updated_at       = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (playing_fid, account_id),
-            )
-        elif position is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_position = ?,
-                    updated_at    = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (position, account_id),
-            )
-        elif local_path is not None:
-            cursor.execute(
-                """
-                UPDATE cloud_accounts
-                SET last_playing_local_path = ?,
-                    updated_at              = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (local_path, account_id),
-            )
+        if playing_fid is not None:
+            updates.append("last_playing_fid = ?")
+            params.append(playing_fid)
+        if position is not None:
+            updates.append("last_position = ?")
+            params.append(position)
+        if local_path is not None:
+            updates.append("last_playing_local_path = ?")
+            params.append(local_path)
+
+        if not updates:
+            return False
+
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(account_id)
+
+        cursor.execute(
+            f"""
+            UPDATE cloud_accounts
+            SET {', '.join(updates)}
+            WHERE id = ?
+            """,
+            params,
+        )
 
         conn.commit()
         return cursor.rowcount > 0

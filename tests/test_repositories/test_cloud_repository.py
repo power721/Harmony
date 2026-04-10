@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from infrastructure.security.secret_store import SecretStore
 from repositories.cloud_repository import SqliteCloudRepository
@@ -562,6 +563,18 @@ class TestCloudAccountFilterAndCreate:
 
         result = cloud_repo.update_account_playing_state(account_id)
         assert result is False
+
+    def test_update_account_playing_state_no_params_does_not_touch_database(self):
+        repo = SqliteCloudRepository.__new__(SqliteCloudRepository)
+        cursor = Mock()
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteCloudRepository.update_account_playing_state(repo, 1)
+
+        assert result is False
+        cursor.execute.assert_not_called()
+        conn.commit.assert_not_called()
 
 
 class TestCloudFileSpecializedQueries:
