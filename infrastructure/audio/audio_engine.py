@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _BUNDLED_AUDIO_BACKEND_ALL = "all"
 _BUNDLED_AUDIO_BACKEND_FILE = Path("bundle") / "audio_backend.txt"
+_MAX_TEMP_FILES = 50
+_TEMP_FILES_TO_KEEP = 30
 
 
 def _normalize_bundled_audio_backend_mode(mode: str | None) -> str:
@@ -330,7 +332,6 @@ class PlayerEngine(QObject):
 
     def cleanup_temp_files(self):
         """Clean up temporary files from cloud playback."""
-        import os
         for temp_file in self._temp_files:
             try:
                 if os.path.exists(temp_file):
@@ -348,15 +349,14 @@ class PlayerEngine(QObject):
         """
         self._temp_files.append(file_path)
         # Prevent unlimited growth - cleanup old files if list gets too large
-        if len(self._temp_files) > 100:
+        if len(self._temp_files) > _MAX_TEMP_FILES:
             self._cleanup_old_temp_files()
 
     def _cleanup_old_temp_files(self):
         """Clean up old temporary files, keeping only recent ones."""
-        import os
-        # Keep only the most recent 50 files
-        files_to_remove = self._temp_files[:-50]
-        self._temp_files = self._temp_files[-50:]
+        # Keep only the most recent tracked temp files.
+        files_to_remove = self._temp_files[:-_TEMP_FILES_TO_KEEP]
+        self._temp_files = self._temp_files[-_TEMP_FILES_TO_KEEP:]
 
         for temp_file in files_to_remove:
             try:
@@ -397,13 +397,16 @@ class PlayerEngine(QObject):
                 self._playlist.insert(index, item)
                 if self._current_index >= index:
                     self._current_index += 1
-                # Incremental index update - shift all indices >= index by 1
-                for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
-                    if idx >= index:
-                        self._cloud_file_id_to_index[cloud_id] = idx + 1
-                # Add new item's cloud_file_id if present
-                if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
-                    self._cloud_file_id_to_index[item.cloud_file_id] = index
+                try:
+                    # Incremental index update - shift all indices >= index by 1
+                    for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
+                        if idx >= index:
+                            self._cloud_file_id_to_index[cloud_id] = idx + 1
+                    # Add new item's cloud_file_id if present
+                    if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
+                        self._cloud_file_id_to_index[item.cloud_file_id] = index
+                except Exception:
+                    self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
     def move_track(self, from_index: int, to_index: int):
@@ -521,6 +524,11 @@ class PlayerEngine(QObject):
             if expected_index is not None and 0 <= expected_index < len(self._playlist):
                 if self._playlist[expected_index].cloud_file_id == cloud_file_id:
                     matched_indices.append(expected_index)
+            elif cloud_file_id in self._cloud_file_id_to_index:
+                mapped_index = self._cloud_file_id_to_index[cloud_file_id]
+                if 0 <= mapped_index < len(self._playlist):
+                    if self._playlist[mapped_index].cloud_file_id == cloud_file_id:
+                        matched_indices.append(mapped_index)
 
             for i, item in enumerate(self._playlist):
                 if item.cloud_file_id == cloud_file_id and i not in matched_indices:

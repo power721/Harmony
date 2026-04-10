@@ -17,11 +17,12 @@ from PySide6.QtWidgets import (
 
 from domain.artist import Artist
 from system.i18n import t
+from ui.widgets.hover_effect_mixin import HoverEffectMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ArtistCard(QWidget):
+class ArtistCard(HoverEffectMixin, QWidget):
     """
     Card widget for displaying artist information.
 
@@ -92,9 +93,9 @@ class ArtistCard(QWidget):
         # Pre-computed stylesheets for hover (H-08 optimization)
         theme = ThemeManager.instance().current_theme
         radius = self.BORDER_RADIUS
-        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
-        self._avatar_container.setStyleSheet(self._style_normal)
+        self._set_hover_target(self._avatar_container)
+        self._style_normal, self._style_hover = self._build_hover_styles(theme, radius)
+        self._apply_hover_style()
 
         # Avatar label
         self._avatar_label = QLabel(self._avatar_container)
@@ -171,13 +172,7 @@ class ArtistCard(QWidget):
             try:
                 pixmap = QPixmap(cover_path)
                 if not pixmap.isNull():
-                    # Create circular mask
-                    scaled = pixmap.scaled(
-                        self.AVATAR_SIZE, self.AVATAR_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    circular = self._make_circular(scaled)
+                    circular = self._make_circular(pixmap)
                     self._avatar_label.setPixmap(circular)
                     return
             except Exception as e:
@@ -188,7 +183,13 @@ class ArtistCard(QWidget):
 
     def _make_circular(self, pixmap: QPixmap) -> QPixmap:
         """Make a pixmap circular."""
-        size = min(pixmap.width(), pixmap.height())
+        scaled = pixmap.scaled(
+            self.AVATAR_SIZE,
+            self.AVATAR_SIZE,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+        size = min(scaled.width(), scaled.height())
         result = QPixmap(size, size)
         result.fill(Qt.transparent)
 
@@ -203,14 +204,9 @@ class ArtistCard(QWidget):
         painter.setClipPath(clip_path)
 
         # Draw the pixmap
-        painter.drawPixmap(0, 0, pixmap)
+        painter.drawPixmap(0, 0, scaled)
         painter.end()
-
-        return result.scaled(
-            self.AVATAR_SIZE, self.AVATAR_SIZE,
-            Qt.KeepAspectRatioByExpanding,
-            Qt.SmoothTransformation
-        )
+        return result
 
     def _set_default_avatar(self):
         """Set default avatar when no image is available."""
@@ -242,18 +238,6 @@ class ArtistCard(QWidget):
 
         self._avatar_label.setPixmap(pixmap)
 
-    def enterEvent(self, event):
-        """Handle mouse enter for hover effect."""
-        self._is_hovering = True
-        self._avatar_container.setStyleSheet(self._style_hover)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        """Handle mouse leave for hover effect."""
-        self._is_hovering = False
-        self._avatar_container.setStyleSheet(self._style_normal)
-        super().leaveEvent(event)
-
     def mousePressEvent(self, event):
         """Handle mouse click."""
         if event.button() == Qt.LeftButton:
@@ -277,14 +261,8 @@ class ArtistCard(QWidget):
         radius = self.BORDER_RADIUS
 
         # Update pre-computed stylesheets
-        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
-
-        # Apply current state
-        if self._is_hovering:
-            self._avatar_container.setStyleSheet(self._style_hover)
-        else:
-            self._avatar_container.setStyleSheet(self._style_normal)
+        self._style_normal, self._style_hover = self._build_hover_styles(theme, radius)
+        self._apply_hover_style()
 
         # Update text labels
         self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""

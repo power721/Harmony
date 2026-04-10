@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from repositories.artist_repository import SqliteArtistRepository
 from repositories.track_repository import SqliteTrackRepository
@@ -224,6 +225,66 @@ class TestSqliteArtistRepository:
         # Cleanup
         os.unlink(db_path)
 
+    def test_get_all_cached_query_does_not_probe_cache_table_existence(self, temp_db):
+        """Cache-backed artist reads should not re-run table existence probes on every call."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE tracks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT UNIQUE NOT NULL,
+                    title TEXT,
+                    artist TEXT,
+                    album TEXT,
+                    genre TEXT,
+                    duration REAL,
+                    cover_path TEXT,
+                    cloud_file_id TEXT,
+                    source TEXT DEFAULT 'Local'
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE artists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    cover_path TEXT,
+                    song_count INTEGER,
+                    album_count INTEGER,
+                    normalized_name TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+                VALUES ('Artist X', '/covers/x.jpg', 10, 3, 'artist x')
+                """
+            )
+            conn.commit()
+
+            statements = []
+            conn.set_trace_callback(statements.append)
+            repo = SqliteArtistRepository(db_path)
+            repo._get_connection = lambda: conn
+            try:
+                repo.get_all(use_cache=True)
+                repo.get_all(use_cache=True)
+            finally:
+                conn.set_trace_callback(None)
+                conn.close()
+
+            probes = [sql for sql in statements if "SELECT 1 FROM artists LIMIT 1" in sql]
+            assert probes == []
+        finally:
+            os.unlink(db_path)
+
     def test_get_all_order_by_song_count(self, artist_repo, populated_db):
         """Test that artists are ordered by song count descending."""
         artists = artist_repo.get_all(use_cache=False)
@@ -243,6 +304,19 @@ class TestSqliteArtistRepository:
         assert artist.name == "Artist A"
         assert artist.song_count == 3
         assert artist.album_count == 2  # Album 1 and Album 2
+
+    def test_get_by_name_returns_none_for_blank_name_without_querying(self, artist_repo):
+        """Blank artist names should be rejected before touching the database."""
+        conn = artist_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            artist = artist_repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert artist is None
+        assert statements == []
 
     def test_refresh_artist_updates_single_cached_artist(self, populated_db):
         """Targeted artist refresh should update stats for the requested artist only."""
@@ -346,6 +420,45 @@ class TestSqliteArtistRepository:
 
         artists = artist_repo.get_all(use_cache=True)
         assert len(artists) == 2
+
+    def test_refresh_uses_single_tracks_query(self, populated_db):
+        """Artist refresh should gather track data with one scan of the tracks table."""
+        conn = sqlite3.connect(populated_db)
+        conn.row_factory = sqlite3.Row
+        statements = []
+        conn.set_trace_callback(statements.append)
+
+        repo = SqliteArtistRepository(populated_db)
+        repo._get_connection = lambda: conn
+        try:
+            assert repo.refresh() is True
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        track_selects = [
+            statement for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "FROM TRACKS" in statement.upper()
+        ]
+        assert len(track_selects) == 1
+
+    def test_refresh_rolls_back_when_upsert_fails(self):
+        repo = SqliteArtistRepository.__new__(SqliteArtistRepository)
+        cursor = Mock()
+        cursor.fetchall.side_effect = [
+            [],
+            [{"artist": "Artist A", "album": "Album 1", "cover_path": None}],
+        ]
+        cursor.execute.side_effect = [None, None, sqlite3.DatabaseError("boom")]
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteArtistRepository.refresh(repo)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     def test_update_cover_path(self, temp_db, populated_db):
         """Test updating cover path for an artist."""

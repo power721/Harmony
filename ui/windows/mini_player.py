@@ -33,6 +33,7 @@ from services.lyrics.lyrics_loader import LyricsLoader
 from services.playback import PlaybackService
 from system.i18n import t
 from ui.icons import IconName, get_icon
+from ui.widgets.cover_loader import CoverLoader
 from ui.widgets.mini_lyrics_widget import MiniLyricsWidget
 from ui.widgets.player_controls import ClickableSlider
 from utils import format_time
@@ -555,51 +556,12 @@ class MiniPlayer(QWidget):
         version = self._cover_load_version
 
         def load_cover():
-            from pathlib import Path
-
-            # First check if cover_path is already saved in database
-            cover_path = track_dict.get("cover_path")
-            if cover_path and Path(cover_path).exists():
-                return cover_path
-
-            # Fall back to extracting from file
-            path = track_dict.get("path", "")
-            title = track_dict.get("title", "")
-            artist = track_dict.get("artist", "")
-            album = track_dict.get("album", "")
-
-            # Check if this is an online track
-            source = track_dict.get("source", "")
-            cloud_file_id = track_dict.get("cloud_file_id", "")
-            provider_id = track_dict.get("online_provider_id")
-            is_online_track = source in ("online", "ONLINE")
-
-            if is_online_track and cloud_file_id:
-                # For online tracks, resolve cover by provider track id
-                logger.debug(f"[MiniPlayer] Getting cover for online track: song_mid={cloud_file_id}")
-                try:
-                    cover_service = self._player.cover_service
-                    if cover_service:
-                        cover_path = cover_service.get_online_cover(
-                            song_mid=cloud_file_id,
-                            album_mid=None,  # We don't have album_mid in track_dict yet
-                            artist=track_dict.get("artist", ""),
-                            title=track_dict.get("title", ""),
-                            provider_id=provider_id,
-                        )
-                        if cover_path:
-                            logger.debug(f"[MiniPlayer] Got online cover: {cover_path}")
-                            return cover_path
-                except Exception as e:
-                    logger.error(f"[MiniPlayer] Error getting online cover: {e}")
-
-            # For cloud files that need download, skip online cover fetching
-            # Online cover will be fetched after download completes in _save_cloud_track_to_library
-            needs_download = track_dict.get("needs_download", False)
-            is_cloud = track_dict.get("is_cloud", False)
-            skip_online = needs_download or (is_cloud and not path)
-
-            return self._player.get_track_cover(path, title, artist, album, skip_online=skip_online)
+            return CoverLoader.resolve_track_cover_path(
+                track_dict,
+                getattr(self._player, "cover_service", None),
+                self._player.get_track_cover,
+                logger,
+            )
 
         class CoverLoadWorker(QRunnable):
             def __init__(self, load_func, signal, worker_version):
@@ -628,15 +590,28 @@ class MiniPlayer(QWidget):
         self._cover_load_version += 1
         self._cover_thread = None
 
+    def _disconnect_runtime_signals(self):
+        """Disconnect engine signals owned by this window."""
+        engine = getattr(self._player, "engine", None)
+        if engine is None:
+            return
+        with suppress(Exception):
+            engine.state_changed.disconnect(self._on_state_changed)
+        with suppress(Exception):
+            engine.position_changed.disconnect(self._on_position_changed)
+        with suppress(Exception):
+            engine.duration_changed.disconnect(self._on_duration_changed)
+        with suppress(Exception):
+            engine.current_track_changed.disconnect(self._on_track_changed)
+        with suppress(Exception):
+            engine.current_track_pending.disconnect(self._on_pending_track_changed)
+
     def _show_cover(self, cover_path: str):
         """Show cover art (called via signal from background thread)."""
         if cover_path:
-            pixmap = QPixmap(cover_path)
-            if not pixmap.isNull():
-                scaled = pixmap.scaled(
-                    50, 50, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
-                )
-                self._cover_label.setPixmap(scaled)
+            pixmap = CoverLoader.load_scaled_pixmap(cover_path, 50, 50)
+            if pixmap is not None:
+                self._cover_label.setPixmap(pixmap)
             else:
                 self._set_default_cover()
         else:
@@ -737,6 +712,7 @@ class MiniPlayer(QWidget):
     def closeEvent(self, event):
         """Handle close event."""
         self._invalidate_cover_load()
+        self._disconnect_runtime_signals()
         # Clean up lyrics thread
         self._stop_lyrics_thread(wait_ms=1000, cleanup_signals=True)
 

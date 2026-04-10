@@ -13,10 +13,12 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
+from ui.dialogs.rounded_mask_debounce_mixin import RoundedMaskDebounceMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 
-class InputDialog(QDialog):
+class InputDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
     """Custom input dialog with dark theme styling and frameless window."""
 
     def __init__(self, title: str, label: str, text: str = "", parent=None):
@@ -92,22 +94,6 @@ class InputDialog(QDialog):
         self._apply_style()
         self._title_bar_controller.refresh_theme()
 
-    def resizeEvent(self, event):
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
 
     def get_text(self) -> str:
         """Get the input text."""

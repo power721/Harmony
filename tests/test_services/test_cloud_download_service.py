@@ -2,6 +2,7 @@
 Tests for CloudDownloadService cache path handling.
 """
 
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,6 +43,16 @@ def test_get_cached_path_does_not_reuse_same_name_cache_for_different_file_ids(t
     assert service.get_cached_path(second_file.file_id, second_file) is None
 
 
+def test_get_cached_path_returns_none_when_download_dir_missing(tmp_path):
+    """Missing download directories should be treated as a cache miss."""
+    service = CloudDownloadService()
+    service.set_download_dir(str(tmp_path / "missing"))
+
+    cloud_file = CloudFile(file_id="fid-1", name="song.mp3", size=4)
+
+    assert service.get_cached_path(cloud_file.file_id, cloud_file) is None
+
+
 def test_cleanup_stops_active_download_workers():
     """Cleanup must stop outstanding worker threads before the service is destroyed."""
     service = CloudDownloadService()
@@ -55,6 +66,42 @@ def test_cleanup_stops_active_download_workers():
     assert worker.cancel_called is True
     assert worker.isRunning() is False
     assert service._active_downloads == {}
+
+
+def test_cloud_download_service_instance_is_thread_safe(monkeypatch):
+    CloudDownloadService._instance = None
+    init_calls = []
+    original_init = CloudDownloadService.__init__
+
+    def fake_init(self, parent=None):
+        init_calls.append("init")
+        time.sleep(0.05)
+        self._active_downloads = {}
+        self._downloads_lock = threading.Lock()
+        self._cached_paths = {}
+        self._download_dir = "data/cloud_downloads"
+
+    monkeypatch.setattr(CloudDownloadService, "__init__", fake_init)
+
+    try:
+        results = []
+
+        def get_instance():
+            results.append(CloudDownloadService.instance())
+
+        first = threading.Thread(target=get_instance)
+        second = threading.Thread(target=get_instance)
+        first.start()
+        second.start()
+        first.join()
+        second.join()
+
+        assert len(init_calls) == 1
+        assert len(results) == 2
+        assert results[0] is results[1]
+    finally:
+        monkeypatch.setattr(CloudDownloadService, "__init__", original_init)
+        CloudDownloadService._instance = None
 
 
 def test_cancel_download_uses_cooperative_stop_for_unresponsive_worker():

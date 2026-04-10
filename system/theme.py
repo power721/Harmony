@@ -6,6 +6,7 @@ selection, and hover colors. Supports preset themes and custom colors.
 Real-time theme switching via widget registration and refresh mechanism.
 """
 
+import hashlib
 import logging
 import threading
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import QWidget, QApplication
 from shiboken6 import isValid
 
 logger = logging.getLogger(__name__)
+QSS_CACHE_MAXSIZE = 128
 
 
 @dataclass
@@ -167,6 +169,7 @@ class ThemeManager(QObject):
         self._config = config
         self._current_theme = self._load_theme()
         self._widgets: WeakSet[QWidget] = WeakSet()
+        self._widgets_lock = threading.Lock()
         self._qss_cache: dict = {}
         self._global_qss_template: str | None = None
         logger.info(f"ThemeManager initialized with theme: {self._current_theme.name}")
@@ -270,9 +273,12 @@ class ThemeManager(QObject):
         self.theme_changed.emit(self._current_theme)
 
         # Refresh all registered widgets
-        for widget in list(self._widgets):
+        with self._widgets_lock:
+            widgets = list(self._widgets)
+        for widget in widgets:
             if not self._is_widget_valid(widget):
-                self._widgets.discard(widget)
+                with self._widgets_lock:
+                    self._widgets.discard(widget)
                 continue
             if hasattr(widget, 'refresh_theme'):
                 try:
@@ -287,7 +293,8 @@ class ThemeManager(QObject):
         Args:
             widget: QWidget instance to register
         """
-        self._widgets.add(widget)
+        with self._widgets_lock:
+            self._widgets.add(widget)
 
     @staticmethod
     def _is_widget_valid(widget) -> bool:
@@ -309,8 +316,8 @@ class ThemeManager(QObject):
             QSS string with tokens replaced by actual colors
         """
         theme = self._current_theme
-        # Use hash of template + theme name as cache key
-        cache_key = (hash(template), theme.name)
+        # Use stable digest of template + theme name as cache key.
+        cache_key = (hashlib.sha256(template.encode("utf-8")).hexdigest(), theme.name)
         cached = self._qss_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -332,6 +339,8 @@ class ThemeManager(QObject):
         for token, color in tokens.items():
             result = result.replace(token, color)
 
+        if len(self._qss_cache) >= QSS_CACHE_MAXSIZE:
+            self._qss_cache.pop(next(iter(self._qss_cache)))
         self._qss_cache[cache_key] = result
         return result
 

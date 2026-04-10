@@ -3,8 +3,10 @@
 import os
 import sqlite3
 import tempfile
+from unittest.mock import Mock
 
 from infrastructure.database.sqlite_manager import DatabaseManager
+import infrastructure.database.sqlite_manager as sqlite_manager_module
 
 
 def test_init_database_handles_legacy_tracks_without_genre_column():
@@ -44,6 +46,34 @@ def test_init_database_handles_legacy_tracks_without_genre_column():
         cursor.execute("PRAGMA index_list(tracks)")
         indexes = {row[1] for row in cursor.fetchall()}
         assert "idx_tracks_genre" in indexes
+        conn.close()
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_init_database_creates_missing_filter_indexes():
+    """Database init should create the still-missing lookup indexes used by filters."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        db = DatabaseManager(db_path)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA index_list(tracks)")
+        track_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_tracks_path" in track_indexes
+
+        cursor.execute("PRAGMA index_list(cloud_accounts)")
+        account_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_cloud_accounts_is_active" in account_indexes
+
         conn.close()
         db.close()
     finally:
@@ -175,6 +205,68 @@ def test_init_database_migrates_legacy_qq_online_provider_rows():
 
         assert track_row == ("ONLINE", "qqmusic")
         assert queue_row == ("qqmusic",)
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_init_database_does_not_create_track_indexes_twice(monkeypatch):
+    """Fresh database init should not emit duplicate CREATE INDEX statements for migrated track columns."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    statements = []
+    real_connect = sqlite3.connect
+
+    def _tracking_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(sqlite_manager_module, "get_write_worker", lambda _db_path: Mock(stop=Mock()))
+    monkeypatch.setattr(sqlite_manager_module.sqlite3, "connect", _tracking_connect)
+
+    try:
+        db = DatabaseManager(db_path)
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+    cloud_file_index_statements = [
+        statement for statement in statements if "CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id" in statement
+    ]
+    assert len(cloud_file_index_statements) == 1
+
+
+def test_init_database_creates_unique_cache_indexes():
+    """Database init should create explicit unique indexes for cache tables."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        db = DatabaseManager(db_path)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA index_list(albums)")
+        album_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_albums_unique" in album_indexes
+
+        cursor.execute("PRAGMA index_list(artists)")
+        artist_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_artists_unique" in artist_indexes
+
+        cursor.execute("PRAGMA index_list(genres)")
+        genre_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_genres_unique" in genre_indexes
+
+        conn.close()
+        db.close()
     finally:
         try:
             os.unlink(db_path)

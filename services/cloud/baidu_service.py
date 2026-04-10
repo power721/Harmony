@@ -233,7 +233,7 @@ class BaiduDriveService:
                     if account_info and account_info.get('nickname'):
                         username = account_info['nickname']
                 except Exception:
-                    pass
+                    logger.warning("[BaiduService] Failed to fetch account nickname after login", exc_info=True)
 
                 return {
                     'account_email': username,

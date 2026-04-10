@@ -156,6 +156,8 @@ class EqualizerWidget(QWidget):
         self._config = config_manager
         self._sliders: list[QSlider] = []
         self._value_labels: list[QLabel] = []
+        self._freq_labels: list[QLabel] = []
+        self._all_sliders: list[QSlider] = []
         self._updating_controls = False
         self._effects_enabled = True
         self._bass_boost = 0.0
@@ -288,6 +290,7 @@ class EqualizerWidget(QWidget):
         freq_label.setAlignment(Qt.AlignCenter)
         freq_label.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
         layout.addWidget(freq_label)
+        self._freq_labels.append(freq_label)
 
         # Value label
         value_label = QLabel('0')
@@ -307,6 +310,7 @@ class EqualizerWidget(QWidget):
         )
         layout.addWidget(slider)
         self._sliders.append(slider)
+        self._all_sliders.append(slider)
         self._value_labels.append(value_label)
 
         return widget
@@ -342,6 +346,7 @@ class EqualizerWidget(QWidget):
         slider.setValue(0)
         slider.valueChanged.connect(on_change)
         row.addWidget(slider, 1)
+        self._all_sliders.append(slider)
         value_label = QLabel("0")
         value_label.setFixedWidth(28)
         value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -471,12 +476,10 @@ class EqualizerWidget(QWidget):
         # Update all styled widgets
         self.setStyleSheet(ThemeManager.instance().get_qss(self._WIDGET_STYLE))
 
-        # Find and update all child widgets
-        for child in self.findChildren(QLabel):
-            if child.text() in [self._format_frequency(f) for f in self.FREQUENCY_BANDS]:
-                child.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
-            elif child.text().isdigit() or child.text().startswith('-'):
-                child.setStyleSheet(ThemeManager.instance().get_qss(self._VALUE_LABEL_STYLE))
+        for child in self._freq_labels:
+            child.setStyleSheet(ThemeManager.instance().get_qss(self._FREQ_LABEL_STYLE))
+        for child in self._value_labels:
+            child.setStyleSheet(ThemeManager.instance().get_qss(self._VALUE_LABEL_STYLE))
 
         # Update combo box
         self._effects_enabled_checkbox.setStyleSheet(
@@ -484,7 +487,7 @@ class EqualizerWidget(QWidget):
         )
 
         # Update sliders
-        for slider in self.findChildren(QSlider):
+        for slider in self._all_sliders:
             slider.setStyleSheet(ThemeManager.instance().get_qss(self._SLIDER_STYLE))
 
     def _load_state(self):

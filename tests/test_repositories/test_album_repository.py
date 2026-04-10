@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from repositories.album_repository import SqliteAlbumRepository
 
@@ -132,6 +133,33 @@ class TestSqliteAlbumRepository:
         assert albums[0].name == "Cached Album"
         assert albums[0].song_count == 5
 
+    def test_get_all_cached_query_does_not_probe_cache_table_existence(self, temp_db, populated_db):
+        """Cache-backed album reads should not re-run table existence probes on every call."""
+        conn = sqlite3.connect(populated_db)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+            VALUES ('Cached Album', 'Cached Artist', '/cache/cover.jpg', 5, 900.0)
+            """
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteAlbumRepository(temp_db)
+        repo._get_connection = lambda: conn
+        try:
+            repo.get_all(use_cache=True)
+            repo.get_all(use_cache=True)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        probes = [sql for sql in statements if "SELECT 1 FROM albums LIMIT 1" in sql]
+        assert probes == []
+
     def test_get_by_name(self, album_repo, populated_db):
         """Test getting album by name."""
         album = album_repo.get_by_name("Album 1")
@@ -141,6 +169,19 @@ class TestSqliteAlbumRepository:
         assert album.artist == "Artist A"
         assert album.song_count == 2
         assert album.duration == 380.0  # 180 + 200
+
+    def test_get_by_name_returns_none_for_blank_name_without_querying(self, album_repo):
+        """Blank album names should be rejected before touching the database."""
+        conn = album_repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            album = album_repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert album is None
+        assert statements == []
 
     def test_get_by_name_with_artist(self, album_repo, populated_db):
         """Test getting album by name and artist."""
@@ -219,6 +260,19 @@ class TestSqliteAlbumRepository:
 
         albums = album_repo.get_all(use_cache=True)
         assert len(albums) == 3  # Album 1 + Album 2 (Artist A) + Album 2 (Artist B)
+
+    def test_refresh_rolls_back_when_insert_fails(self):
+        repo = SqliteAlbumRepository.__new__(SqliteAlbumRepository)
+        cursor = Mock()
+        cursor.execute.side_effect = [None, sqlite3.DatabaseError("boom")]
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteAlbumRepository.refresh(repo)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     def test_refresh_album_updates_single_cached_album(self, populated_db):
         """Targeted album refresh should upsert only the requested aggregate row."""

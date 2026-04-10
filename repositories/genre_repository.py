@@ -2,6 +2,7 @@
 SQLite implementation of GenreRepository.
 """
 
+import sqlite3
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.genre import Genre
@@ -18,6 +19,35 @@ class SqliteGenreRepository(BaseRepository):
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         super().__init__(db_path, db_manager)
 
+    @staticmethod
+    def _genre_cover_ctes() -> str:
+        """Common CTEs for first-cover lookups without correlated subqueries."""
+        return """
+            WITH track_cover AS (
+                SELECT
+                    genre,
+                    cover_path,
+                    ROW_NUMBER() OVER (PARTITION BY genre ORDER BY id) AS row_num
+                FROM tracks
+                WHERE genre IS NOT NULL
+                  AND genre != ''
+                  AND cover_path IS NOT NULL
+                  AND cover_path != ''
+            ),
+            album_cover AS (
+                SELECT
+                    t.genre,
+                    a.cover_path,
+                    ROW_NUMBER() OVER (PARTITION BY t.genre ORDER BY t.id) AS row_num
+                FROM tracks t
+                JOIN albums a ON a.name = t.album
+                WHERE t.genre IS NOT NULL
+                  AND t.genre != ''
+                  AND a.cover_path IS NOT NULL
+                  AND a.cover_path != ''
+            )
+        """
+
     def get_all(self, use_cache: bool = True) -> List[Genre]:
         """
         Get all genres.
@@ -32,83 +62,62 @@ class SqliteGenreRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use genres table first
-        if use_cache:
-            cursor.execute("SELECT 1 FROM genres LIMIT 1")
-            if cursor.fetchone() is not None:
-                cursor.execute("""
+        if use_cache and self._table_exists("genres"):
+                cursor.execute(
+                    self._genre_cover_ctes()
+                    + """
                     SELECT
                         g.name,
-                        COALESCE(
-                            (
-                                SELECT t.cover_path
-                                FROM tracks t
-                                WHERE t.genre = g.name
-                                  AND t.cover_path IS NOT NULL
-                                  AND t.cover_path != ''
-                                ORDER BY t.id
-                                LIMIT 1
-                            ),
-                            (
-                                SELECT a.cover_path
-                                FROM tracks t
-                                JOIN albums a ON a.name = t.album
-                                WHERE t.genre = g.name
-                                  AND a.cover_path IS NOT NULL
-                                  AND a.cover_path != ''
-                                ORDER BY t.id
-                                LIMIT 1
-                            ),
-                            g.cover_path
-                        ) AS cover_path,
+                        COALESCE(tc.cover_path, ac.cover_path, g.cover_path) AS cover_path,
                         g.song_count,
                         g.album_count,
                         g.total_duration
                     FROM genres g
+                    LEFT JOIN track_cover tc ON tc.genre = g.name AND tc.row_num = 1
+                    LEFT JOIN album_cover ac ON ac.genre = g.name AND ac.row_num = 1
                     ORDER BY g.song_count DESC
-                """)
+                    """
+                )
                 rows = cursor.fetchall()
-                return [
-                    Genre(
-                        name=row["name"] or "",
-                        cover_path=row["cover_path"],
-                        song_count=row["song_count"] or 0,
-                        album_count=row["album_count"] or 0,
-                        duration=row["total_duration"] or 0.0,
-                    )
-                    for row in rows
-                ]
+                if rows:
+                    return [
+                        Genre(
+                            name=row["name"] or "",
+                            cover_path=row["cover_path"],
+                            song_count=row["song_count"] or 0,
+                            album_count=row["album_count"] or 0,
+                            duration=row["total_duration"] or 0.0,
+                        )
+                        for row in rows
+                    ]
 
         # Fallback to direct query with aggregate cover lookup
-        cursor.execute("""
+        cursor.execute(
+            self._genre_cover_ctes()
+            + """
+            , genre_stats AS (
+                SELECT
+                    genre AS name,
+                    COUNT(*) AS song_count,
+                    COUNT(DISTINCT album) AS album_count,
+                    SUM(duration) AS total_duration
+                FROM tracks
+                WHERE genre IS NOT NULL AND genre != ''
+                GROUP BY genre
+            )
             SELECT
-                t.genre as name,
-                (
-                    SELECT t2.cover_path
-                    FROM tracks t2
-                    WHERE t2.genre = t.genre
-                      AND t2.cover_path IS NOT NULL
-                      AND t2.cover_path != ''
-                    ORDER BY t2.id
-                    LIMIT 1
-                ) as track_cover_path,
-                (
-                    SELECT a.cover_path
-                    FROM tracks t3
-                    JOIN albums a ON a.name = t3.album
-                    WHERE t3.genre = t.genre
-                      AND a.cover_path IS NOT NULL
-                      AND a.cover_path != ''
-                    ORDER BY t3.id
-                    LIMIT 1
-                ) as album_cover_path,
-                COUNT(*) as song_count,
-                COUNT(DISTINCT t.album) as album_count,
-                SUM(t.duration) as total_duration
-            FROM tracks t
-            WHERE t.genre IS NOT NULL AND t.genre != ''
-            GROUP BY t.genre
-            ORDER BY song_count DESC
-        """)
+                gs.name,
+                tc.cover_path AS track_cover_path,
+                ac.cover_path AS album_cover_path,
+                gs.song_count,
+                gs.album_count,
+                gs.total_duration
+            FROM genre_stats gs
+            LEFT JOIN track_cover tc ON tc.genre = gs.name AND tc.row_num = 1
+            LEFT JOIN album_cover ac ON ac.genre = gs.name AND ac.row_num = 1
+            ORDER BY gs.song_count DESC
+            """
+        )
         rows = cursor.fetchall()
 
         return [Genre(
@@ -129,43 +138,31 @@ class SqliteGenreRepository(BaseRepository):
         Returns:
             Genre object or None if not found
         """
+        name = str(name or "").strip()
+        if not name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
         # Try to use genres table first
-        cursor.execute("SELECT 1 FROM genres LIMIT 1")
-        if cursor.fetchone() is not None:
-            cursor.execute("""
+        if self._table_exists("genres"):
+            cursor.execute(
+                self._genre_cover_ctes()
+                + """
                 SELECT
                     g.name,
-                    COALESCE(
-                        (
-                            SELECT t.cover_path
-                            FROM tracks t
-                            WHERE t.genre = g.name
-                              AND t.cover_path IS NOT NULL
-                              AND t.cover_path != ''
-                            ORDER BY t.id
-                            LIMIT 1
-                        ),
-                        (
-                            SELECT a.cover_path
-                            FROM tracks t
-                            JOIN albums a ON a.name = t.album
-                            WHERE t.genre = g.name
-                              AND a.cover_path IS NOT NULL
-                              AND a.cover_path != ''
-                            ORDER BY t.id
-                            LIMIT 1
-                        ),
-                        g.cover_path
-                    ) AS cover_path,
+                    COALESCE(tc.cover_path, ac.cover_path, g.cover_path) AS cover_path,
                     g.song_count,
                     g.album_count,
                     g.total_duration
                 FROM genres g
+                LEFT JOIN track_cover tc ON tc.genre = g.name AND tc.row_num = 1
+                LEFT JOIN album_cover ac ON ac.genre = g.name AND ac.row_num = 1
                 WHERE g.name = ?
-            """, (name,))
+                """,
+                (name,),
+            )
             row = cursor.fetchone()
             if row:
                 return Genre(
@@ -175,38 +172,34 @@ class SqliteGenreRepository(BaseRepository):
                     album_count=row["album_count"] or 0,
                     duration=row["total_duration"] or 0.0,
                 )
-            return None
 
         # Fallback to direct query
-        cursor.execute("""
+        cursor.execute(
+            self._genre_cover_ctes()
+            + """
+            , genre_stats AS (
+                SELECT
+                    genre AS name,
+                    COUNT(*) AS song_count,
+                    COUNT(DISTINCT album) AS album_count,
+                    SUM(duration) AS total_duration
+                FROM tracks
+                WHERE genre = ?
+                GROUP BY genre
+            )
             SELECT
-                t.genre as name,
-                (
-                    SELECT t2.cover_path
-                    FROM tracks t2
-                    WHERE t2.genre = t.genre
-                      AND t2.cover_path IS NOT NULL
-                      AND t2.cover_path != ''
-                    ORDER BY t2.id
-                    LIMIT 1
-                ) as track_cover_path,
-                (
-                    SELECT a.cover_path
-                    FROM tracks t3
-                    JOIN albums a ON a.name = t3.album
-                    WHERE t3.genre = t.genre
-                      AND a.cover_path IS NOT NULL
-                      AND a.cover_path != ''
-                    ORDER BY t3.id
-                    LIMIT 1
-                ) as album_cover_path,
-                COUNT(*) as song_count,
-                COUNT(DISTINCT t.album) as album_count,
-                SUM(t.duration) as total_duration
-            FROM tracks t
-            WHERE t.genre = ?
-            GROUP BY t.genre
-        """, (name,))
+                gs.name,
+                tc.cover_path AS track_cover_path,
+                ac.cover_path AS album_cover_path,
+                gs.song_count,
+                gs.album_count,
+                gs.total_duration
+            FROM genre_stats gs
+            LEFT JOIN track_cover tc ON tc.genre = gs.name AND tc.row_num = 1
+            LEFT JOIN album_cover ac ON ac.genre = gs.name AND ac.row_num = 1
+            """,
+            (name,),
+        )
         row = cursor.fetchone()
         if not row:
             return None
@@ -254,33 +247,37 @@ class SqliteGenreRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Clear genres table
-        cursor.execute("DELETE FROM genres")
+        try:
+            # Clear genres table
+            cursor.execute("DELETE FROM genres")
 
-        # Rebuild from tracks with aggregate cover lookup
-        cursor.execute("""
-            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
-            SELECT
-                genre as name,
-                (
-                    SELECT t2.cover_path
-                    FROM tracks t2
-                    WHERE t2.genre = t.genre
-                      AND t2.cover_path IS NOT NULL
-                      AND t2.cover_path != ''
-                    ORDER BY t2.id
-                    LIMIT 1
-                ) as cover_path,
-                COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count,
-                SUM(duration) as total_duration
-            FROM tracks t
-            WHERE genre IS NOT NULL AND genre != ''
-            GROUP BY genre
-        """)
+            # Rebuild from tracks with aggregate cover lookup
+            cursor.execute("""
+                INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+                SELECT
+                    genre as name,
+                    (
+                        SELECT t2.cover_path
+                        FROM tracks t2
+                        WHERE t2.genre = t.genre
+                          AND t2.cover_path IS NOT NULL
+                          AND t2.cover_path != ''
+                        ORDER BY t2.id
+                        LIMIT 1
+                    ) as cover_path,
+                    COUNT(*) as song_count,
+                    COUNT(DISTINCT album) as album_count,
+                    SUM(duration) as total_duration
+                FROM tracks t
+                WHERE genre IS NOT NULL AND genre != ''
+                GROUP BY genre
+            """)
 
-        conn.commit()
-        return True
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def refresh_genre(self, genre_name: str) -> bool:
         """Refresh a single genre cache row from tracks."""
@@ -289,51 +286,75 @@ class SqliteGenreRepository(BaseRepository):
 
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT cover_path FROM genres WHERE name = ?", (genre_name,))
-        existing = cursor.fetchone()
-        existing_cover = existing["cover_path"] if existing else None
+        try:
+            cursor.execute("SELECT cover_path FROM genres WHERE name = ?", (genre_name,))
+            existing = cursor.fetchone()
+            existing_cover = existing["cover_path"] if existing else None
 
-        cursor.execute(
-            """
-            SELECT
-                ? as name,
-                (
-                    SELECT t2.cover_path
-                    FROM tracks t2
-                    WHERE t2.genre = ?
-                      AND t2.cover_path IS NOT NULL
-                      AND t2.cover_path != ''
-                    ORDER BY t2.id
-                    LIMIT 1
-                ) as cover_path,
-                COUNT(*) as song_count,
-                COUNT(DISTINCT album) as album_count,
-                SUM(duration) as total_duration
-            FROM tracks
-            WHERE genre = ?
-            """,
-            (genre_name, genre_name, genre_name),
-        )
-        row = cursor.fetchone()
-        if not row or not row["song_count"]:
-            return False
+            cursor.execute(
+                """
+                SELECT
+                    ? as name,
+                    (
+                        SELECT t2.cover_path
+                        FROM tracks t2
+                        WHERE t2.genre = ?
+                          AND t2.cover_path IS NOT NULL
+                          AND t2.cover_path != ''
+                        ORDER BY t2.id
+                        LIMIT 1
+                    ) as cover_path,
+                    COUNT(*) as song_count,
+                    COUNT(DISTINCT album) as album_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE genre = ?
+                """,
+                (genre_name, genre_name, genre_name),
+            )
+            row = cursor.fetchone()
+            if not row or not row["song_count"]:
+                return False
 
-        cursor.execute("DELETE FROM genres WHERE name = ?", (genre_name,))
-        cursor.execute(
-            """
-            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                row["name"],
-                row["cover_path"] or existing_cover,
+            cover_path = row["cover_path"] or existing_cover
+            payload = (
+                cover_path,
                 row["song_count"] or 0,
                 row["album_count"] or 0,
                 row["total_duration"] or 0.0,
-            ),
-        )
-        conn.commit()
-        return True
+                row["name"],
+            )
+            cursor.execute(
+                """
+                UPDATE genres
+                SET cover_path = ?,
+                    song_count = ?,
+                    album_count = ?,
+                    total_duration = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
+                """,
+                payload,
+            )
+            if cursor.rowcount == 0:
+                cursor.execute(
+                    """
+                    INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["name"],
+                        cover_path,
+                        row["song_count"] or 0,
+                        row["album_count"] or 0,
+                        row["total_duration"] or 0.0,
+                    ),
+                )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def delete_if_empty(self, genre_name: str) -> bool:
         """Delete a cached genre row when no source tracks remain."""

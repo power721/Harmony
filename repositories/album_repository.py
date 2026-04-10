@@ -2,6 +2,7 @@
 SQLite implementation of AlbumRepository.
 """
 
+import sqlite3
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.album import Album
@@ -31,25 +32,24 @@ class SqliteAlbumRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use albums table first
-        if use_cache:
-            cursor.execute("SELECT 1 FROM albums LIMIT 1")
-            if cursor.fetchone() is not None:
+        if use_cache and self._table_exists("albums"):
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
                     FROM albums
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()
-                return [
-                    Album(
-                        name=row["name"] or "",
-                        artist=row["artist"] or "",
-                        cover_path=row["cover_path"],
-                        song_count=row["song_count"] or 0,
-                        duration=row["total_duration"] or 0.0,
-                    )
-                    for row in rows
-                ]
+                if rows:
+                    return [
+                        Album(
+                            name=row["name"] or "",
+                            artist=row["artist"] or "",
+                            cover_path=row["cover_path"],
+                            song_count=row["song_count"] or 0,
+                            duration=row["total_duration"] or 0.0,
+                        )
+                        for row in rows
+                    ]
 
         # Fallback to direct query (slower)
         cursor.execute("""
@@ -88,12 +88,16 @@ class SqliteAlbumRepository(BaseRepository):
         Returns:
             Album object or None if not found
         """
+        album_name = str(album_name or "").strip()
+        artist = str(artist or "").strip() or None
+        if not album_name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
         # Try to use albums table first
-        cursor.execute("SELECT 1 FROM albums LIMIT 1")
-        if cursor.fetchone() is not None:
+        if self._table_exists("albums"):
             if artist:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
@@ -115,7 +119,6 @@ class SqliteAlbumRepository(BaseRepository):
                     song_count=row["song_count"] or 0,
                     duration=row["total_duration"] or 0.0,
                 )
-            return None
 
         # Fallback to direct query
         if artist:
@@ -172,26 +175,29 @@ class SqliteAlbumRepository(BaseRepository):
         """
         conn = self._get_connection()
         cursor = conn.cursor()
+        try:
+            # Clear albums table
+            cursor.execute("DELETE FROM albums")
 
-        # Clear albums table
-        cursor.execute("DELETE FROM albums")
+            # Rebuild from tracks with aggregate cover lookup
+            cursor.execute("""
+                INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+                SELECT
+                    album as name,
+                    artist,
+                    MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album IS NOT NULL AND album != ''
+                GROUP BY album, artist
+            """)
 
-        # Rebuild from tracks with aggregate cover lookup
-        cursor.execute("""
-            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
-            SELECT
-                album as name,
-                artist,
-                MAX(CASE WHEN cover_path IS NOT NULL THEN cover_path END) as cover_path,
-                COUNT(*) as song_count,
-                SUM(duration) as total_duration
-            FROM tracks
-            WHERE album IS NOT NULL AND album != ''
-            GROUP BY album, artist
-        """)
-
-        conn.commit()
-        return True
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def refresh_album(self, album_name: str, artist: str) -> bool:
         """Refresh a single album cache row from tracks."""
@@ -200,46 +206,50 @@ class SqliteAlbumRepository(BaseRepository):
 
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT cover_path FROM albums WHERE name = ? AND artist = ?",
-            (album_name, artist),
-        )
-        existing = cursor.fetchone()
-        existing_cover = existing["cover_path"] if existing else None
+        try:
+            cursor.execute(
+                "SELECT cover_path FROM albums WHERE name = ? AND artist = ?",
+                (album_name, artist),
+            )
+            existing = cursor.fetchone()
+            existing_cover = existing["cover_path"] if existing else None
 
-        cursor.execute(
-            """
-            SELECT
-                ? as name,
-                ? as artist,
-                MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path,
-                COUNT(*) as song_count,
-                SUM(duration) as total_duration
-            FROM tracks
-            WHERE album = ? AND artist = ?
-            """,
-            (album_name, artist, album_name, artist),
-        )
-        row = cursor.fetchone()
-        if not row or not row["song_count"]:
+            cursor.execute(
+                """
+                SELECT
+                    ? as name,
+                    ? as artist,
+                    MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) as cover_path,
+                    COUNT(*) as song_count,
+                    SUM(duration) as total_duration
+                FROM tracks
+                WHERE album = ? AND artist = ?
+                """,
+                (album_name, artist, album_name, artist),
+            )
+            row = cursor.fetchone()
+            if not row or not row["song_count"]:
+                return False
+
+            cursor.execute("DELETE FROM albums WHERE name = ? AND artist = ?", (album_name, artist))
+            cursor.execute(
+                """
+                INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    row["name"],
+                    row["artist"],
+                    row["cover_path"] or existing_cover,
+                    row["song_count"] or 0,
+                    row["total_duration"] or 0.0,
+                ),
+            )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
             return False
-
-        cursor.execute("DELETE FROM albums WHERE name = ? AND artist = ?", (album_name, artist))
-        cursor.execute(
-            """
-            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                row["name"],
-                row["artist"],
-                row["cover_path"] or existing_cover,
-                row["song_count"] or 0,
-                row["total_duration"] or 0.0,
-            ),
-        )
-        conn.commit()
-        return True
 
     def delete_if_empty(self, album_name: str, artist: str) -> bool:
         """Delete a cached album row when no source tracks remain."""

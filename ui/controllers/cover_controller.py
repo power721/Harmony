@@ -89,15 +89,16 @@ class CoverController(QObject):
     def cancel(self, token: str):
         with self._lock:
             future = self._futures.get(token)
-            if future:
-                future.cancel()
-                logger.debug(f"[CoverController] cancelled: {token}")
+        if future:
+            future.cancel()
+            logger.debug(f"[CoverController] cancelled: {token}")
 
     def cancel_all(self):
         with self._lock:
-            for future in self._futures.values():
-                future.cancel()
+            futures = list(self._futures.values())
             self._futures.clear()
+        for future in futures:
+            future.cancel()
 
     def shutdown(self):
         if self._shutdown:

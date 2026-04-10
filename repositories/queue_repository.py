@@ -9,6 +9,7 @@ from typing import List, TYPE_CHECKING
 
 from domain.playback import PlayQueueItem
 from repositories.base_repository import BaseRepository
+from utils.normalization import normalize_online_provider_id
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -19,13 +20,6 @@ class SqliteQueueRepository(BaseRepository):
 
     def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
         super().__init__(db_path, db_manager)
-
-    @staticmethod
-    def _normalize_online_provider_id(value):
-        normalized = str(value or "").strip()
-        if not normalized or normalized.lower() == "online":
-            return None
-        return normalized
 
     def load(self) -> List[PlayQueueItem]:
         """Load the saved play queue."""
@@ -69,7 +63,7 @@ class SqliteQueueRepository(BaseRepository):
                 source=get_source(row, columns),
                 track_id=row["track_id"],
                 cloud_file_id=row["cloud_file_id"],
-                online_provider_id=self._normalize_online_provider_id(
+                online_provider_id=normalize_online_provider_id(
                     row["online_provider_id"] if "online_provider_id" in columns else None
                 ),
                 cloud_account_id=row["cloud_account_id"],
@@ -89,7 +83,7 @@ class SqliteQueueRepository(BaseRepository):
             repair_ids = [
                 row["id"]
                 for row in rows
-                if self._normalize_online_provider_id(row["online_provider_id"]) is None
+                if normalize_online_provider_id(row["online_provider_id"]) is None
                 and str(row["online_provider_id"] or "").strip().lower() == "online"
             ]
             if repair_ids:
@@ -117,7 +111,7 @@ class SqliteQueueRepository(BaseRepository):
                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                    """, [
                                        (item.position, item.source, item.track_id,
-                                        item.cloud_file_id, self._normalize_online_provider_id(item.online_provider_id),
+                                        item.cloud_file_id, normalize_online_provider_id(item.online_provider_id),
                                         item.cloud_account_id, item.local_path,
                                         item.title, item.artist, item.album, item.duration,
                                         (item.created_at or datetime.now()).isoformat(sep=" "),

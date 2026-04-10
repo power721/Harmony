@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -26,6 +27,7 @@ class PluginManager:
         )
         self.registry = PluginRegistry()
         self._loaded_plugins: dict[str, tuple[object, object, object]] = {}
+        self._loaded_plugins_lock = threading.Lock()
 
     def _read_manifest_or_none(self, plugin_root: Path):
         try:
@@ -44,77 +46,84 @@ class PluginManager:
         plugin = None
         context = None
         started_at = time.perf_counter()
-        try:
-            manifest = self._loader.read_manifest(plugin_root)
-            if manifest.id in self._loaded_plugins:
-                logger.debug("[PluginManager] Skip already loaded plugin %s", manifest.id)
-                return
+        with self._loaded_plugins_lock:
+            try:
+                manifest = self._loader.read_manifest(plugin_root)
+                if manifest.id in self._loaded_plugins:
+                    logger.debug("[PluginManager] Skip already loaded plugin %s", manifest.id)
+                    return
 
-            state = self._state_store.get(manifest.id)
-            if state and state.get("enabled") is False:
-                logger.info("[PluginManager] Skip disabled plugin %s", manifest.id)
-                return
+                state = self._state_store.get(manifest.id)
+                if state and state.get("enabled") is False:
+                    logger.info("[PluginManager] Skip disabled plugin %s", manifest.id)
+                    return
 
-            logger.info(
-                "[PluginManager] Loading plugin %s from %s (%s)",
-                manifest.id,
-                plugin_root,
-                source,
-            )
-            manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
-            context = self._context_factory.build(manifest)
-            plugin.register(context)
-            self._loaded_plugins[manifest.id] = (manifest, plugin, context)
-            duration_ms = (time.perf_counter() - started_at) * 1000
-            logger.info(
-                "[PluginManager] Loaded plugin %s in %.1fms",
-                manifest.id,
-                duration_ms,
-            )
-            self._state_store.set_enabled(
-                manifest.id,
-                True if state is None else bool(state.get("enabled", True)),
-                source=source,
-                version=manifest.version,
-                load_error=None,
-            )
-        except Exception as exc:
-            plugin_id = manifest.id if manifest is not None else plugin_root.name
-            version = manifest.version if manifest is not None else ""
-            enabled_on_error = True if state is None else bool(state.get("enabled", True))
-            if plugin is not None and context is not None:
-                try:
-                    plugin.unregister(context)
-                except Exception:
-                    pass
-            logger.exception(
-                "[PluginManager] Failed to load plugin %s from %s",
-                plugin_id,
-                plugin_root,
-            )
-            self.registry.unregister_plugin(plugin_id)
-            self._loaded_plugins.pop(plugin_id, None)
-            self._state_store.set_enabled(
-                plugin_id,
-                enabled_on_error,
-                source=source,
-                version=version,
-                load_error=str(exc),
-            )
+                logger.info(
+                    "[PluginManager] Loading plugin %s from %s (%s)",
+                    manifest.id,
+                    plugin_root,
+                    source,
+                )
+                manifest, plugin = self._loader.load_plugin(plugin_root, manifest)
+                context = self._context_factory.build(manifest)
+                plugin.register(context)
+                self._loaded_plugins[manifest.id] = (manifest, plugin, context)
+                duration_ms = (time.perf_counter() - started_at) * 1000
+                logger.info(
+                    "[PluginManager] Loaded plugin %s in %.1fms",
+                    manifest.id,
+                    duration_ms,
+                )
+                self._state_store.set_enabled(
+                    manifest.id,
+                    True if state is None else bool(state.get("enabled", True)),
+                    source=source,
+                    version=manifest.version,
+                    load_error=None,
+                )
+            except Exception as exc:
+                plugin_id = manifest.id if manifest is not None else plugin_root.name
+                version = manifest.version if manifest is not None else ""
+                enabled_on_error = True if state is None else bool(state.get("enabled", True))
+                if plugin is not None and context is not None:
+                    try:
+                        plugin.unregister(context)
+                    except Exception:
+                        pass
+                logger.exception(
+                    "[PluginManager] Failed to load plugin %s from %s",
+                    plugin_id,
+                    plugin_root,
+                )
+                self.registry.unregister_plugin(plugin_id)
+                self._loaded_plugins.pop(plugin_id, None)
+                self._state_store.set_enabled(
+                    plugin_id,
+                    enabled_on_error,
+                    source=source,
+                    version=version,
+                    load_error=str(exc),
+                )
 
     def _unload_plugin(self, plugin_id: str) -> None:
-        loaded = self._loaded_plugins.pop(plugin_id, None)
+        with self._loaded_plugins_lock:
+            loaded = self._loaded_plugins.pop(plugin_id, None)
         if loaded is None:
             self.registry.unregister_plugin(plugin_id)
             return
 
         _manifest, plugin, context = loaded
+        package_name = None
+        if hasattr(self._loader, "_package_name"):
+            package_name = self._loader._package_name(plugin_id, context.plugin_root if hasattr(context, "plugin_root") else Path("."))
         try:
             plugin.unregister(context)
         except Exception:
             logger.exception("[PluginManager] Failed to unregister plugin %s", plugin_id)
         finally:
             self.registry.unregister_plugin(plugin_id)
+            if package_name and hasattr(self._loader, "_purge_package_modules"):
+                self._loader._purge_package_modules(package_name)
 
     def discover_roots(self) -> list[tuple[str, Path]]:
         def _is_plugin_root(path: Path) -> bool:

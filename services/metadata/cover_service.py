@@ -348,6 +348,8 @@ class CoverService:
         all_results: List[SearchResult] = []
 
         sources = self._get_sources()
+        if not sources:
+            return None
 
         # Parallel search from multiple sources
         with ThreadPoolExecutor(max_workers=len(sources)) as executor:
@@ -408,6 +410,8 @@ class CoverService:
         all_search_results: List[SearchResult] = []
 
         sources = self._get_sources()
+        if not sources:
+            return results
 
         # Parallel search from multiple sources
         with ThreadPoolExecutor(max_workers=len(sources)) as executor:
@@ -558,6 +562,8 @@ class CoverService:
         """
         results = []
         sources = self._get_artist_sources()
+        if not sources:
+            return results
 
         with ThreadPoolExecutor(max_workers=len(sources)) as executor:
             futures = {

@@ -66,3 +66,17 @@ def test_file_organization_service_is_constructed_without_db_manager(monkeypatch
 def test_bootstrap_no_longer_exposes_public_db_property():
     """Database manager should remain an internal bootstrap detail."""
     assert not hasattr(bootstrap_module.Bootstrap, "db")
+
+
+def test_shutdown_database_flushes_playback_queue_before_closing_db():
+    bootstrap = bootstrap_module.Bootstrap(":memory:")
+    write_worker = MagicMock()
+    bootstrap._db = MagicMock(_write_worker=write_worker)
+    bootstrap._playback_service = MagicMock()
+
+    bootstrap.shutdown_database()
+
+    bootstrap._playback_service.begin_shutdown.assert_called_once_with()
+    bootstrap._playback_service.save_queue.assert_called_once_with(force=True)
+    write_worker.wait_idle.assert_called_once_with()
+    bootstrap._db.close.assert_called_once_with()

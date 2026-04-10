@@ -263,12 +263,15 @@ class CloudDownloadService(QObject):
     token_updated = Signal(str)  # new_token
 
     _instance = None
+    _instance_lock = threading.Lock()
 
     @classmethod
     def instance(cls) -> "CloudDownloadService":
         """Get the singleton instance."""
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self, parent=None):
@@ -406,6 +409,8 @@ class CloudDownloadService(QObject):
         download_path = Path(self._download_dir)
         if not download_path.is_absolute():
             download_path = Path.cwd() / download_path
+        if not download_path.exists() or not download_path.is_dir():
+            return None
 
         if cloud_file:
             local_path = build_cloud_cache_path(download_path, cloud_file)

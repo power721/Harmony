@@ -606,6 +606,34 @@ def test_playback_service_restore_queue_batch_lookup_deduplicates_ids():
     assert track_repo.get_by_ids_calls == [[10]]
 
 
+def test_queue_service_restore_logs_invalid_play_mode(caplog):
+    item = PlaylistItem(
+        source=TrackSource.LOCAL,
+        track_id=1,
+        local_path="/tmp/1.mp3",
+        title="one",
+    )
+    service = QueueService(
+        queue_repo=type("Repo", (), {"load": lambda self: [item.to_play_queue_item(0)]})(),
+        config_manager=type(
+            "Cfg",
+            (),
+            {
+                "get": lambda self, key, default=None: {
+                    "queue_current_index": 0,
+                    "queue_play_mode": "broken-mode",
+                }.get(key, default)
+            },
+        )(),
+        engine=FakeRestoreEngine(),
+    )
+
+    restored = service.restore()
+
+    assert restored is True
+    assert "Invalid saved play mode" in caplog.text
+
+
 def test_play_local_library_reads_tracks_in_pages(monkeypatch):
     """Library playback should page through repository reads instead of one unbounded load."""
     pages = [

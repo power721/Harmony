@@ -1,6 +1,7 @@
 """
 Helper utility functions for the music player.
 """
+from bisect import bisect_right
 import re
 import sys
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from system import t
+from utils.file_helpers import sanitize_filename
 
 # Pre-compiled regex patterns for filename metadata parsing
 _RE_ARTIST_TITLE = re.compile(r'^(.+?)\s*-\s*(.+)$')
@@ -93,27 +95,9 @@ def find_lyric_line(lyrics: List[Tuple[float, str]], current_time: float) -> Opt
     if not lyrics:
         return None
 
-    for i, (time, _) in enumerate(lyrics):
-        if time > current_time:
-            return i - 1 if i > 0 else 0
-
-    return len(lyrics) - 1
-
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Sanitize filename by removing invalid characters.
-
-    Args:
-        filename: Original filename
-
-    Returns:
-        Sanitized filename
-    """
-    # Re-export from file_helpers for backward compatibility
-    from utils.file_helpers import sanitize_filename as _sanitize
-    return _sanitize(filename)
-
+    timestamps = [timestamp for timestamp, _text in lyrics]
+    index = bisect_right(timestamps, current_time) - 1
+    return index if index >= 0 else 0
 
 def truncate_text(text: str, max_length: int, suffix: str = '...') -> str:
     """
@@ -223,18 +207,15 @@ def format_relative_time(dt: datetime) -> str:
     if not dt:
         return ""
 
-    # If datetime is timezone-naive, assume it's UTC and add 8 hours for Beijing time
+    local_tz = datetime.now().astimezone().tzinfo
     if dt.tzinfo is None:
-        # UTC to Beijing (UTC+8)
-        dt_local = dt + timedelta(hours=8)
-    else:
-        # If it has timezone, convert to local
         from datetime import timezone
-        local_offset = timedelta(hours=8)  # Beijing timezone
-        dt_local = dt.astimezone(timezone(local_offset))
+        dt_local = dt.replace(tzinfo=timezone.utc).astimezone(local_tz)
+    else:
+        dt_local = dt.astimezone(local_tz)
 
     # Use current time in same timezone
-    now = datetime.utcnow() + timedelta(hours=8)
+    now = datetime.now(local_tz)
     delta = now - dt_local
 
     # Make sure delta is not negative (future time)

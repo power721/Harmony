@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from repositories.playlist_repository import SqlitePlaylistRepository
 from domain.playlist import Playlist
@@ -171,6 +172,19 @@ class TestSqlitePlaylistRepository:
 
         tracks = playlist_repo.get_tracks(playlist_id)
         assert len(tracks) == 1
+
+    def test_add_track_rolls_back_when_insert_fails(self):
+        repo = SqlitePlaylistRepository.__new__(SqlitePlaylistRepository)
+        cursor = Mock()
+        cursor.execute.side_effect = sqlite3.DatabaseError("boom")
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqlitePlaylistRepository.add_track(repo, 1, 1)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     def test_add_multiple_tracks_to_playlist(self, playlist_repo, sample_tracks):
         """Test adding multiple tracks to playlist."""

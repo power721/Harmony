@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 import bisect

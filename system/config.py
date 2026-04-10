@@ -4,6 +4,7 @@ Unified configuration storage using database.
 """
 import base64
 import binascii
+import json
 import logging
 import threading
 from typing import Any, Dict, Optional, TYPE_CHECKING
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+EQ_BANDS_COUNT = 10
 
 
 # Setting key constants
@@ -91,6 +94,16 @@ class SettingKey:
     SEARCH_HISTORY = "search.history"  # JSON array of recent search keywords
 
 
+AUDIO_EFFECT_KEYS = {
+    SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED,
+    SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS,
+    SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST,
+    SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST,
+    SettingKey.PLAYER_AUDIO_EFFECTS_REVERB,
+    SettingKey.PLAYER_AUDIO_EFFECTS_STEREO,
+}
+
+
 class ConfigManager:
     """
     Manage application configuration using database storage.
@@ -114,6 +127,7 @@ class ConfigManager:
         self._secret_store = secret_store or SecretStore.default()
         self._cache: Dict[str, Any] = {}
         self._cache_lock = threading.RLock()
+        self._audio_effects_cache: Optional[Dict[str, Any]] = None
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -144,6 +158,8 @@ class ConfigManager:
         with self._cache_lock:
             self._settings_repo.set(key, value)
             self._cache[key] = value
+            if key in AUDIO_EFFECT_KEYS:
+                self._audio_effects_cache = None
 
     def _get_secret(self, key: str, default: str = "") -> str:
         """Get a sensitive setting and transparently decrypt it."""
@@ -173,6 +189,8 @@ class ConfigManager:
                 for key, value in values.items():
                     self._settings_repo.set(key, value)
             self._cache.update(values)
+            if any(key in AUDIO_EFFECT_KEYS for key in values):
+                self._audio_effects_cache = None
 
     def delete(self, key: str):
         """
@@ -184,6 +202,8 @@ class ConfigManager:
         with self._cache_lock:
             self._settings_repo.delete(key)
             self._cache.pop(key, None)
+            if key in AUDIO_EFFECT_KEYS:
+                self._audio_effects_cache = None
 
     # ===== Player settings =====
 
@@ -221,7 +241,7 @@ class ConfigManager:
         Args:
             volume: Volume level (0-100)
         """
-        self.set(SettingKey.PLAYER_VOLUME, volume)
+        self.set(SettingKey.PLAYER_VOLUME, self._clamp_effect_value(volume))
 
     def get_audio_engine(self) -> str:
         """
@@ -244,19 +264,23 @@ class ConfigManager:
 
     def get_audio_effects(self) -> Dict[str, Any]:
         """Get global audio effects settings."""
-        eq_bands = self.get(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, [0.0] * 10)
+        with self._cache_lock:
+            if self._audio_effects_cache is not None:
+                return self._audio_effects_cache
+
+        eq_bands = self.get(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, [0.0] * EQ_BANDS_COUNT)
         if not isinstance(eq_bands, list):
-            eq_bands = [0.0] * 10
+            eq_bands = [0.0] * EQ_BANDS_COUNT
         normalized_bands = []
-        for band in eq_bands[:10]:
+        for band in eq_bands[:EQ_BANDS_COUNT]:
             try:
                 normalized_bands.append(float(band))
             except (TypeError, ValueError):
                 normalized_bands.append(0.0)
-        if len(normalized_bands) < 10:
-            normalized_bands += [0.0] * (10 - len(normalized_bands))
+        if len(normalized_bands) < EQ_BANDS_COUNT:
+            normalized_bands += [0.0] * (EQ_BANDS_COUNT - len(normalized_bands))
 
-        return {
+        result = {
             "enabled": bool(self.get(SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED, True)),
             "eq_bands": normalized_bands,
             "bass_boost": float(self.get(SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST, 0.0)),
@@ -264,15 +288,49 @@ class ConfigManager:
             "reverb_level": float(self.get(SettingKey.PLAYER_AUDIO_EFFECTS_REVERB, 0.0)),
             "stereo_enhance": float(self.get(SettingKey.PLAYER_AUDIO_EFFECTS_STEREO, 0.0)),
         }
+        with self._cache_lock:
+            self._audio_effects_cache = result
+        return result
 
     def set_audio_effects(self, effects: Dict[str, Any]):
         """Persist global audio effects settings."""
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED, bool(effects.get("enabled", True)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, list(effects.get("eq_bands", [0.0] * 10)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST, float(effects.get("bass_boost", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST, float(effects.get("treble_boost", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_REVERB, float(effects.get("reverb_level", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_STEREO, float(effects.get("stereo_enhance", 0.0)))
+        normalized_bands = []
+        for band in list(effects.get("eq_bands", [0.0] * EQ_BANDS_COUNT))[:EQ_BANDS_COUNT]:
+            try:
+                normalized_bands.append(float(band))
+            except (TypeError, ValueError):
+                normalized_bands.append(0.0)
+        if len(normalized_bands) < EQ_BANDS_COUNT:
+            normalized_bands += [0.0] * (EQ_BANDS_COUNT - len(normalized_bands))
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS,
+            normalized_bands,
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST,
+            self._clamp_effect_value(effects.get("bass_boost", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST,
+            self._clamp_effect_value(effects.get("treble_boost", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_REVERB,
+            self._clamp_effect_value(effects.get("reverb_level", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_STEREO,
+            self._clamp_effect_value(effects.get("stereo_enhance", 0.0)),
+        )
+
+    @staticmethod
+    def _clamp_effect_value(value: Any) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = 0.0
+        return max(0.0, min(100.0, numeric))
 
     def get_playback_source(self) -> str:
         """
@@ -927,7 +985,6 @@ class ConfigManager:
         history = self.get(SettingKey.SEARCH_HISTORY, [])
         if isinstance(history, str):
             try:
-                import json
                 history = json.loads(history)
             except (ValueError, TypeError):
                 history = []

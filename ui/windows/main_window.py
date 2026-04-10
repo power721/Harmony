@@ -447,7 +447,11 @@ class MainWindow(QMainWindow):
         self._resize_grip.setStyleSheet("background: transparent;")
 
         # Apply themed styling
-        self.refresh_theme()
+        self._schedule_initial_theme_refresh()
+
+    def _schedule_initial_theme_refresh(self):
+        """Delay theme application until the widget tree is fully constructed."""
+        QTimer.singleShot(0, self.refresh_theme)
 
     def _create_sidebar(self) -> QWidget:
         """Create the sidebar navigation using Sidebar component."""

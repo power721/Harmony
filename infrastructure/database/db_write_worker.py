@@ -189,7 +189,11 @@ class DBWriteWorker:
                 logger.warning("[DBWriteWorker] Thread not alive, restarting...")
                 self._start()
 
-        self._queue.put((func, args, kwargs, future))
+        try:
+            self._queue.put((func, args, kwargs, future), timeout=5.0)
+        except queue.Full as exc:
+            logger.error("[DBWriteWorker] Queue is full, rejecting write task")
+            future.set_exception(exc)
         return future
 
     def submit_async(self, func: Callable, *args, **kwargs):
@@ -203,7 +207,10 @@ class DBWriteWorker:
             *args: Positional arguments
             **kwargs: Keyword arguments
         """
-        self._queue.put((func, args, kwargs, None))
+        try:
+            self._queue.put((func, args, kwargs, None), timeout=5.0)
+        except queue.Full:
+            logger.error("[DBWriteWorker] Queue is full, dropping async write task")
 
     def stop(self):
         """Stop the worker thread."""

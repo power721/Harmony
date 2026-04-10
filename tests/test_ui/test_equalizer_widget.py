@@ -119,3 +119,14 @@ def test_effects_enabled_label_style_is_emphasized(qapp, mock_theme_config):
 
     style = widget._effects_enabled_checkbox.styleSheet()
     assert "font-weight: 600" in style
+
+
+def test_equalizer_refresh_theme_uses_cached_widget_refs(qapp, mock_theme_config, monkeypatch):
+    ThemeManager.instance(mock_theme_config)
+    widget = EqualizerWidget()
+
+    monkeypatch.setattr(widget, "findChildren", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("findChildren should not be used during theme refresh")
+    ))
+
+    widget.refresh_theme()

@@ -121,6 +121,29 @@ def test_mpris_service_dispatches_window_commands_via_ui_dispatcher(monkeypatch)
     assert window_calls == ["showNormal", "raise_", "activateWindow"]
 
 
+def test_mpris_service_handles_ui_dispatcher_failure(monkeypatch, caplog):
+    mpris = _load_mpris_module(monkeypatch)
+
+    called = []
+
+    class PlaybackService:
+        def play(self):
+            called.append("play")
+
+    def dispatcher(_fn, *_args, **_kwargs):
+        raise RuntimeError("dispatcher failed")
+
+    service = mpris.MPRISService(
+        playback_service=PlaybackService(),
+        ui_dispatcher=dispatcher,
+    )
+
+    service.Play()
+
+    assert called == []
+    assert "UI dispatch failed" in caplog.text
+
+
 def test_mpris_service_returns_player_properties_without_tracklist(monkeypatch):
     mpris = _load_mpris_module(monkeypatch)
 

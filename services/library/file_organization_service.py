@@ -2,6 +2,7 @@
 File organization service for moving music files to structured directories.
 """
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import List, Dict
@@ -77,6 +78,14 @@ class FileOrganizationService:
         if not target_path.exists():
             results['failed'] = len(track_ids)
             results['errors'].append(f"目标目录不存在: {target_dir}")
+            return results
+        if not target_path.is_dir():
+            results['failed'] = len(track_ids)
+            results['errors'].append(f"目标路径不是目录: {target_dir}")
+            return results
+        if not os.access(target_path, os.W_OK):
+            results['failed'] = len(track_ids)
+            results['errors'].append(f"目标目录不可写: {target_dir}")
             return results
 
         # Batch-load all tracks at once

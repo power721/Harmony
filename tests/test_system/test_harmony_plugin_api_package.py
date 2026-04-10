@@ -4,6 +4,7 @@ import ast
 import importlib.util
 from pathlib import Path
 import subprocess
+import tomllib
 
 
 PACKAGE_ROOT = Path("packages/harmony-plugin-api")
@@ -23,9 +24,11 @@ def test_harmony_plugin_api_package_has_standalone_pyproject():
     pyproject = PACKAGE_ROOT / "pyproject.toml"
 
     assert pyproject.exists()
-    content = pyproject.read_text(encoding="utf-8")
-    assert 'name = "harmony-plugin-api"' in content
-    assert 'version = "0.1.0"' in content
+    metadata = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+
+    assert metadata["project"]["name"] == "harmony-plugin-api"
+    assert isinstance(metadata["project"]["version"], str)
+    assert metadata["project"]["version"]
 
 
 def test_harmony_plugin_api_package_excludes_host_runtime_modules():

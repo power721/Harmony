@@ -17,11 +17,13 @@ from PySide6.QtWidgets import (
 
 from domain.album import Album
 from system.i18n import t
+from ui.widgets.cover_loader import CoverLoader
+from ui.widgets.hover_effect_mixin import HoverEffectMixin
 
 logger = logging.getLogger(__name__)
 
 
-class AlbumCard(QWidget):
+class AlbumCard(HoverEffectMixin, QWidget):
     """
     Card widget for displaying album information.
 
@@ -66,7 +68,6 @@ class AlbumCard(QWidget):
         self._is_hovering = False
         self._cover_loaded = False
         self._downloading = False
-        self._cover_executor = None  # ThreadPoolExecutor for async downloads
 
         self._setup_ui()
         # Set default cover immediately, load actual cover lazily
@@ -94,9 +95,9 @@ class AlbumCard(QWidget):
         # Pre-computed stylesheets for hover (H-08 optimization)
         theme = ThemeManager.instance().current_theme
         radius = self.BORDER_RADIUS
-        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
-        self._cover_container.setStyleSheet(self._style_normal)
+        self._set_hover_target(self._cover_container)
+        self._style_normal, self._style_hover = self._build_hover_styles(theme, radius)
+        self._apply_hover_style()
 
         # Cover label
         self._cover_label = QLabel(self._cover_container)
@@ -183,14 +184,9 @@ class AlbumCard(QWidget):
             from infrastructure.cache import ImageCache
             cached_data = ImageCache.get(cover_path)
             if cached_data:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(cached_data):
-                    scaled = pixmap.scaled(
-                        self.COVER_SIZE, self.COVER_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    self._cover_label.setPixmap(scaled)
+                pixmap = CoverLoader.pixmap_from_bytes(cached_data, self.COVER_SIZE, self.COVER_SIZE)
+                if pixmap is not None:
+                    self._cover_label.setPixmap(pixmap)
                     self._cover_loaded = True
                     return
 
@@ -203,14 +199,9 @@ class AlbumCard(QWidget):
         # Local file
         if Path(cover_path).exists():
             try:
-                pixmap = QPixmap(cover_path)
-                if not pixmap.isNull():
-                    scaled = pixmap.scaled(
-                        self.COVER_SIZE, self.COVER_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    self._cover_label.setPixmap(scaled)
+                pixmap = CoverLoader.load_scaled_pixmap(cover_path, self.COVER_SIZE, self.COVER_SIZE)
+                if pixmap is not None:
+                    self._cover_label.setPixmap(pixmap)
                     self._cover_loaded = True
                     return
             except Exception as e:
@@ -218,7 +209,6 @@ class AlbumCard(QWidget):
 
     def _download_cover_async(self, url: str):
         """Download cover image asynchronously with disk caching."""
-        from concurrent.futures import ThreadPoolExecutor
         from infrastructure.cache import ImageCache
         from infrastructure.network import HttpClient
 
@@ -232,25 +222,18 @@ class AlbumCard(QWidget):
                     logger.warning(f"Failed to download cover: {e}")
                     return None
 
-            # Reuse single executor instance
-            if self._cover_executor is None:
-                self._cover_executor = ThreadPoolExecutor(max_workers=1)
-
-            future = self._cover_executor.submit(download)
+            future = CoverLoader.get_download_executor().submit(download)
 
             def check_download():
                 if future.done():
                     image_data = future.result()
                     if image_data:
                         ImageCache.set(url, image_data)
-                        pixmap = QPixmap()
-                        if pixmap.loadFromData(image_data):
-                            scaled = pixmap.scaled(
-                                self.COVER_SIZE, self.COVER_SIZE,
-                                Qt.KeepAspectRatioByExpanding,
-                                Qt.SmoothTransformation
-                            )
-                            self._cover_label.setPixmap(scaled)
+                        pixmap = CoverLoader.pixmap_from_bytes(
+                            image_data, self.COVER_SIZE, self.COVER_SIZE
+                        )
+                        if pixmap is not None:
+                            self._cover_label.setPixmap(pixmap)
                             self._cover_loaded = True
                     self._downloading = False
                 else:
@@ -282,18 +265,6 @@ class AlbumCard(QWidget):
 
         self._cover_label.setPixmap(pixmap)
 
-    def enterEvent(self, event):
-        """Handle mouse enter for hover effect."""
-        self._is_hovering = True
-        self._cover_container.setStyleSheet(self._style_hover)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        """Handle mouse leave for hover effect."""
-        self._is_hovering = False
-        self._cover_container.setStyleSheet(self._style_normal)
-        super().leaveEvent(event)
-
     def mousePressEvent(self, event):
         """Handle mouse click."""
         if event.button() == Qt.LeftButton:
@@ -317,14 +288,8 @@ class AlbumCard(QWidget):
         radius = self.BORDER_RADIUS
 
         # Update pre-computed stylesheets
-        self._style_normal = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; }}"
-        self._style_hover = f"QFrame {{ background-color: {theme.background_hover}; border-radius: {radius}px; border: 2px solid {theme.highlight}; }}"
-
-        # Apply current state
-        if self._is_hovering:
-            self._cover_container.setStyleSheet(self._style_hover)
-        else:
-            self._cover_container.setStyleSheet(self._style_normal)
+        self._style_normal, self._style_hover = self._build_hover_styles(theme, radius)
+        self._apply_hover_style()
 
         # Update text labels
         self._name_label.setStyleSheet(ThemeManager.instance().get_qss("""

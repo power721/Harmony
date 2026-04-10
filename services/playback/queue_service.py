@@ -99,7 +99,7 @@ class QueueService:
             mode = PlayMode(saved_mode)
             self._engine.restore_state(mode, saved_index)
         except ValueError:
-            pass
+            logger.warning("[QueueService] Invalid saved play mode %r, falling back to current engine mode", saved_mode)
 
         # Load track at saved index (but don't play)
         if 0 <= saved_index < len(items):

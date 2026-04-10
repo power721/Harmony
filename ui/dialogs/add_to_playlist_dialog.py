@@ -16,11 +16,13 @@ from PySide6.QtWidgets import (
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
+from ui.dialogs.rounded_mask_debounce_mixin import RoundedMaskDebounceMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.dialogs.message_dialog import MessageDialog, Yes, No
 
 
-class AddToPlaylistDialog(QDialog):
+class AddToPlaylistDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
     """Dialog for selecting a playlist to add tracks to."""
 
     _STYLE_TEMPLATE = """
@@ -203,24 +205,3 @@ class AddToPlaylistDialog(QDialog):
         """Refresh theme when changed."""
         self._apply_style()
         self._title_bar_controller.refresh_theme()
-
-    def resizeEvent(self, event):
-        """Handle resize to apply rounded mask."""
-        path = QPainterPath()
-        path.addRoundedRect(self.rect(), 12, 12)
-        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
-        super().resizeEvent(event)
-
-    def mousePressEvent(self, event):
-        """Handle mouse press for dragging."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        """Handle mouse move for dragging."""
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        """Handle mouse release."""
-        self._drag_pos = None

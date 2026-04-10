@@ -1,4 +1,5 @@
 import inspect
+import queue
 import pytest
 
 import infrastructure.database.db_write_worker as dbw
@@ -56,5 +57,21 @@ def test_write_queue_is_bounded(tmp_path):
 
     try:
         assert worker._queue.maxsize == 1000
+    finally:
+        worker.stop()
+
+
+def test_submit_sets_future_exception_when_queue_is_full(monkeypatch, tmp_path):
+    worker = DBWriteWorker(str(tmp_path / "full.db"))
+
+    def _raise_full(_item, timeout=None):
+        raise queue.Full()
+
+    try:
+        monkeypatch.setattr(worker._queue, "put", _raise_full)
+        future = worker.submit(lambda: "ok")
+
+        with pytest.raises(queue.Full):
+            future.result(timeout=0)
     finally:
         worker.stop()

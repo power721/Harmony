@@ -820,14 +820,16 @@ class QQMusicClient:
     def fav_playlist(self, playlist_id) -> Dict:
         """Favorite a playlist."""
         playlist_tid = int(playlist_id) if str(playlist_id).isdigit() else playlist_id
-        params = {"uin": '', "v_playlistId": [playlist_tid]}
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_tid": [playlist_tid], "opertype": 1}
         return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
 
     def unfav_playlist(self, playlist_id) -> Dict:
         """Unfavorite a playlist."""
         playlist_tid = int(playlist_id) if str(playlist_id).isdigit() else playlist_id
-        params = {"uin": '', "v_playlistId": [playlist_tid]}
-        return self._make_request("music.musicasset.PlaylistFavWrite", "CancelFavPlaylist", params)
+        uin = str(self.credential.get("musicid", "")) if self.credential else ""
+        params = {"uin": uin, "v_tid": [playlist_tid], "opertype": 2}
+        return self._make_request("music.musicasset.PlaylistFavWrite", "FavPlaylist", params)
 
     def make_batch_request(self, requests: Dict[str, Dict]) -> Dict:
         """

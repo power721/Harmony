@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -204,6 +206,64 @@ def test_manager_can_toggle_plugin_enabled_state_without_loading(tmp_path: Path)
     assert enabled_state is not None
     assert enabled_state["enabled"] is True
     assert enabled_state["version"] == "1.0.0"
+
+
+def test_unload_plugin_purges_loader_modules():
+    manager = PluginManager.__new__(PluginManager)
+    manifest = SimpleNamespace(id="qqmusic")
+    plugin = SimpleNamespace(unregister=Mock())
+    context = object()
+    manager._loaded_plugins = {"qqmusic": (manifest, plugin, context)}
+    manager._loaded_plugins_lock = threading.Lock()
+    manager.registry = SimpleNamespace(unregister_plugin=Mock())
+    manager._loader = SimpleNamespace(_purge_package_modules=Mock(), _package_name=Mock(return_value="pkg.qqmusic"))
+
+    manager._unload_plugin("qqmusic")
+
+    plugin.unregister.assert_called_once_with(context)
+    manager.registry.unregister_plugin.assert_called_once_with("qqmusic")
+    manager._loader._package_name.assert_called_once()
+    manager._loader._purge_package_modules.assert_called_once_with("pkg.qqmusic")
+
+
+def test_load_plugin_root_is_thread_safe_for_duplicate_plugin_id():
+    manager = PluginManager.__new__(PluginManager)
+    manifest = SimpleNamespace(id="qqmusic", version="1.0.0")
+    register_calls = []
+
+    class _Plugin:
+        def register(self, context):
+            time.sleep(0.05)
+            register_calls.append(context)
+
+        def unregister(self, context):
+            return None
+
+    manager._loaded_plugins = {}
+    manager._loaded_plugins_lock = threading.Lock()
+    manager._loader = SimpleNamespace(
+        read_manifest=Mock(return_value=manifest),
+        load_plugin=Mock(return_value=(manifest, _Plugin())),
+    )
+    manager._state_store = SimpleNamespace(
+        get=Mock(return_value=None),
+        set_enabled=Mock(),
+    )
+    manager._context_factory = SimpleNamespace(build=Mock(side_effect=lambda _manifest: object()))
+    manager.registry = SimpleNamespace(unregister_plugin=Mock())
+
+    threads = [
+        threading.Thread(target=manager._load_plugin_root, args=("builtin", Path("/tmp/plugin"))),
+        threading.Thread(target=manager._load_plugin_root, args=("builtin", Path("/tmp/plugin"))),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert manager._loader.load_plugin.call_count == 1
+    assert len(register_calls) == 1
+    assert "qqmusic" in manager._loaded_plugins
 
 
 def test_manager_toggle_for_restart_required_plugin_only_updates_state(tmp_path: Path):

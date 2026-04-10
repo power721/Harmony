@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QRunnable, QThreadPool
 from PySide6.QtGui import QColor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QDialog,
@@ -35,6 +35,7 @@ class EditMediaInfoDialog(QDialog):
     """Dialog for editing media information for one or more tracks."""
 
     tracks_updated = Signal(list)  # Emitted when tracks are updated with list of track IDs
+    file_info_loaded = Signal(object, str)
 
     _PROGRESS_STYLE_TEMPLATE = """
         QProgressBar {
@@ -71,6 +72,7 @@ class EditMediaInfoDialog(QDialog):
 
         self._setup_shadow()
         self._setup_ui()
+        self.file_info_loaded.connect(self._on_file_info_loaded)
         ThemeManager.instance().register_widget(self)
 
     def _setup_shadow(self):
@@ -298,44 +300,7 @@ class EditMediaInfoDialog(QDialog):
 
             file_size = track_file.stat().st_size
             file_size_str = self._format_file_size(file_size)
-
-            # Get audio codec info using mutagen
-            import mutagen
-
-            audio_info = mutagen.File(track.path)
-            media_info = []
-
-            if audio_info and hasattr(audio_info, "info"):
-                info = audio_info.info
-                # Bitrate
-                if hasattr(info, "bitrate") and info.bitrate:
-                    media_info.append(f"{info.bitrate // 1000} kbps")
-
-                # Sample rate
-                if hasattr(info, "sample_rate") and info.sample_rate:
-                    media_info.append(f"{info.sample_rate // 1000} kHz")
-
-                # Length/Duration
-                if hasattr(info, "length") and info.length:
-                    minutes = int(info.length // 60)
-                    seconds = int(info.length % 60)
-                    media_info.append(f"{minutes}:{seconds:02d}")
-
-            # Format (codec)
-            if audio_info:
-                mime_type = audio_info.mime if hasattr(audio_info, "mime") else []
-                if mime_type:
-                    format_str = mime_type[0].split("/")[-1].upper()
-                    media_info.append(format_str)
-                else:
-                    # Try to get format from type
-                    if hasattr(audio_info, "type"):
-                        media_info.append(audio_info.type)
-
-            # Create info text
             file_info_text = f"{file_size_str}"
-            if media_info:
-                file_info_text += f" | {' | '.join(media_info)}"
 
             info_label = QLabel(file_info_text)
             theme = ThemeManager.instance().current_theme
@@ -355,6 +320,7 @@ class EditMediaInfoDialog(QDialog):
             info_layout.addWidget(path_label)
 
             form_layout.addRow(t("file") + ":", info_container)
+            self._load_file_info_async(track.path, file_size_str, info_label)
 
         except Exception as e:
             logger.error(f"Error displaying track info: {e}", exc_info=True)
@@ -363,6 +329,53 @@ class EditMediaInfoDialog(QDialog):
             path_label.setStyleSheet(f"color: {ThemeManager.instance().current_theme.text_secondary}; font-size: 11px;")
             path_label.setWordWrap(True)
             form_layout.addRow(t("file") + ":", path_label)
+
+    def _load_file_info_async(self, file_path: str, file_size_str: str, target_label: QLabel):
+        """Load mutagen-backed media details off the UI thread."""
+
+        class _FileInfoWorker(QRunnable):
+            def __init__(self, path: str, base_text: str, signal):
+                super().__init__()
+                self._path = path
+                self._base_text = base_text
+                self._signal = signal
+
+            def run(self):
+                media_info = []
+                try:
+                    import mutagen
+
+                    audio_info = mutagen.File(self._path)
+                    if audio_info and hasattr(audio_info, "info"):
+                        info = audio_info.info
+                        if hasattr(info, "bitrate") and info.bitrate:
+                            media_info.append(f"{info.bitrate // 1000} kbps")
+                        if hasattr(info, "sample_rate") and info.sample_rate:
+                            media_info.append(f"{info.sample_rate // 1000} kHz")
+                        if hasattr(info, "length") and info.length:
+                            minutes = int(info.length // 60)
+                            seconds = int(info.length % 60)
+                            media_info.append(f"{minutes}:{seconds:02d}")
+
+                    if audio_info:
+                        mime_type = audio_info.mime if hasattr(audio_info, "mime") else []
+                        if mime_type:
+                            media_info.append(mime_type[0].split("/")[-1].upper())
+                        elif hasattr(audio_info, "type"):
+                            media_info.append(audio_info.type)
+                except Exception:
+                    logger.debug("Failed to load detailed media info for %s", self._path, exc_info=True)
+
+                file_info_text = self._base_text
+                if media_info:
+                    file_info_text += f" | {' | '.join(media_info)}"
+                self._signal.emit(target_label, file_info_text)
+
+        QThreadPool.globalInstance().start(_FileInfoWorker(file_path, file_size_str, self.file_info_loaded))
+
+    def _on_file_info_loaded(self, label: QLabel, text: str):
+        """Apply asynchronously loaded media details on the UI thread."""
+        label.setText(text)
 
     def _format_file_size(self, size_bytes: int) -> str:
         """Format file size in human-readable format."""

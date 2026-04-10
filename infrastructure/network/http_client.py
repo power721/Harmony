@@ -5,7 +5,9 @@ HTTP client wrapper for network requests.
 import atexit
 from contextlib import contextmanager
 import logging
+import os
 from pathlib import Path
+import tempfile
 import threading
 import time
 from typing import Dict, Any, Optional, Iterator
@@ -278,6 +280,8 @@ class HttpClient:
             True if download successful
         """
         response = None
+        dest = Path(dest_path)
+        temp_path: str | None = None
 
         try:
             with self.stream("GET", url, headers=headers, timeout=self.timeout) as response:
@@ -289,7 +293,9 @@ class HttpClient:
                 last_progress_at: float | None = None
                 last_reported_downloaded = 0
 
-                with open(dest_path, 'wb') as f:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile('wb', delete=False, dir=dest.parent) as f:
+                    temp_path = f.name
                     for chunk in response.iter_content(chunk_size=chunk_size):
                         if chunk:
                             f.write(chunk)
@@ -309,14 +315,39 @@ class HttpClient:
                 if progress_callback and downloaded != last_reported_downloaded:
                     progress_callback(downloaded, total_size)
 
+                os.replace(temp_path, dest_path)
+                temp_path = None
                 return True
 
+        except requests.Timeout as e:
+            logger.error(f"Download timed out: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
+        except requests.ConnectionError as e:
+            logger.error(f"Download connection error: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
+        except requests.HTTPError as e:
+            logger.error(f"Download HTTP error: {e}", exc_info=True)
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass
+            return False
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
-            # Clean up incomplete file on failure
-            if Path(dest_path).exists():
+            if temp_path and Path(temp_path).exists():
                 try:
-                    Path(dest_path).unlink()
+                    Path(temp_path).unlink()
                 except OSError:
                     pass
             return False

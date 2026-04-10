@@ -6,6 +6,7 @@ from typing import List, TYPE_CHECKING
 
 from domain.track import Track, TrackId
 from repositories.base_repository import BaseRepository
+from utils.normalization import normalize_online_provider_id
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -19,13 +20,6 @@ class SqliteFavoriteRepository(BaseRepository):
         # Import here to avoid circular import
         from repositories.track_repository import SqliteTrackRepository
         self._track_repo = SqliteTrackRepository(db_path, db_manager)
-
-    @staticmethod
-    def _normalize_online_provider_id(value: str | None) -> str | None:
-        normalized = str(value or "").strip()
-        if not normalized or normalized.lower() == "online":
-            return None
-        return normalized
 
     def is_favorite(
         self,
@@ -52,7 +46,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            normalized_provider_id = normalize_online_provider_id(online_provider_id)
             if normalized_provider_id is None:
                 cursor.execute(
                     "SELECT 1 FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL LIMIT 1",
@@ -105,7 +99,7 @@ class SqliteFavoriteRepository(BaseRepository):
         if track_id is None and cloud_file_id is None:
             return False
 
-        normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+        normalized_provider_id = normalize_online_provider_id(online_provider_id)
         cursor.execute(
             """
             INSERT OR IGNORE INTO favorites
@@ -118,6 +112,31 @@ class SqliteFavoriteRepository(BaseRepository):
             return False  # Already exists
         conn.commit()
         return True
+
+    def add_favorites(self, track_ids: List[TrackId]) -> int:
+        """Add multiple local tracks to favorites, returning the number of new rows."""
+        normalized_ids = []
+        seen: set[TrackId] = set()
+        for track_id in track_ids:
+            if not track_id or track_id in seen:
+                continue
+            seen.add(track_id)
+            normalized_ids.append(track_id)
+
+        if not normalized_ids:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT OR IGNORE INTO favorites (track_id, cloud_file_id, online_provider_id, cloud_account_id)
+            VALUES (?, NULL, NULL, NULL)
+            """,
+            [(track_id,) for track_id in normalized_ids],
+        )
+        conn.commit()
+        return cursor.rowcount
 
     def remove_favorite(
         self,
@@ -144,7 +163,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            normalized_provider_id = normalize_online_provider_id(online_provider_id)
             if normalized_provider_id is None:
                 cursor.execute(
                     "DELETE FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL",
@@ -160,6 +179,29 @@ class SqliteFavoriteRepository(BaseRepository):
 
         conn.commit()
         return cursor.rowcount > 0
+
+    def remove_favorites(self, track_ids: List[TrackId]) -> int:
+        """Remove multiple local track favorites, returning the number of deleted rows."""
+        normalized_ids = []
+        seen: set[TrackId] = set()
+        for track_id in track_ids:
+            if not track_id or track_id in seen:
+                continue
+            seen.add(track_id)
+            normalized_ids.append(track_id)
+
+        if not normalized_ids:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(normalized_ids))
+        cursor.execute(
+            f"DELETE FROM favorites WHERE track_id IN ({placeholders})",
+            normalized_ids,
+        )
+        conn.commit()
+        return cursor.rowcount
 
     def get_favorites(self) -> List[Track]:
         """

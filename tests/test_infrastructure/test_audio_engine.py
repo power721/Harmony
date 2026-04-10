@@ -49,6 +49,81 @@ def test_update_playlist_item_updates_all_duplicate_cloud_ids():
     assert engine._playlist[1].needs_download is False
 
 
+def test_update_playlist_item_prefers_cloud_id_index_for_primary_match():
+    """Mapped cloud-file index should be used as the primary match before list scanning."""
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._playlist_lock = threading.RLock()
+    engine._playlist = [
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="First",
+            needs_download=True,
+        ),
+        PlaylistItem(
+            source=TrackSource.ONLINE,
+            online_provider_id="qqmusic",
+            cloud_file_id="song_mid_123",
+            title="Second",
+            needs_download=True,
+        ),
+    ]
+    engine._cloud_file_id_to_index = {"song_mid_123": 1}
+
+    updated_index = PlayerEngine.update_playlist_item(
+        engine,
+        cloud_file_id="song_mid_123",
+        local_path="/tmp/downloaded.mp3",
+        needs_download=False,
+    )
+
+    assert updated_index == 1
+    assert engine._playlist[0].local_path == "/tmp/downloaded.mp3"
+    assert engine._playlist[1].local_path == "/tmp/downloaded.mp3"
+
+
+def test_insert_track_rebuilds_cloud_index_when_incremental_update_fails():
+    class _ExplodingIndex(dict):
+        def __init__(self, *args, fail_key=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._fail_key = fail_key
+            self._failed_once = False
+
+        def __setitem__(self, key, value):
+            if key == self._fail_key and not self._failed_once:
+                self._failed_once = True
+                raise RuntimeError("boom")
+            return super().__setitem__(key, value)
+
+    existing = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="old",
+        title="Old",
+    )
+    inserted = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="new",
+        title="New",
+    )
+
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._playlist_lock = threading.RLock()
+    engine._playlist = [existing]
+    engine._original_playlist = [existing]
+    engine._current_index = 0
+    engine._cloud_file_id_to_index = _ExplodingIndex({"old": 0}, fail_key="old")
+    engine.playlist_changed = SimpleNamespace(emit=lambda: None)
+
+    PlayerEngine.insert_track(engine, 0, inserted)
+
+    assert engine._playlist[0] is inserted
+    assert engine._playlist[1] is existing
+    assert engine._cloud_file_id_to_index == {"new": 0, "old": 1}
+
+
 class _FakeBackend:
     def __init__(self):
         self.set_source_calls = []
@@ -174,3 +249,36 @@ def test_explicit_shutdown_cleans_backend_once():
 
     assert engine._backend.cleanup_calls == 1
     assert temp_cleanup_calls == ["cleaned"]
+
+
+def test_add_temp_file_prunes_once_threshold_is_exceeded():
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._temp_files = []
+    cleanup_calls = []
+    engine._cleanup_old_temp_files = lambda: cleanup_calls.append("pruned")
+
+    for index in range(50):
+        PlayerEngine.add_temp_file(engine, f"/tmp/{index}.tmp")
+
+    assert cleanup_calls == []
+
+    PlayerEngine.add_temp_file(engine, "/tmp/50.tmp")
+
+    assert cleanup_calls == ["pruned"]
+
+
+def test_cleanup_old_temp_files_keeps_recent_thirty(tmp_path):
+    engine = PlayerEngine.__new__(PlayerEngine)
+    temp_files = []
+    for index in range(40):
+        path = tmp_path / f"{index}.tmp"
+        path.write_text("x", encoding="utf-8")
+        temp_files.append(str(path))
+    engine._temp_files = temp_files
+
+    PlayerEngine._cleanup_old_temp_files(engine)
+
+    assert len(engine._temp_files) == 30
+    assert engine._temp_files == temp_files[-30:]
+    assert not any((tmp_path / f"{index}.tmp").exists() for index in range(10))
+    assert all((tmp_path / f"{index}.tmp").exists() for index in range(10, 40))

@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import tempfile
+from unittest.mock import Mock
 
 from repositories.genre_repository import SqliteGenreRepository
 
@@ -145,6 +146,89 @@ def test_get_all_cached_query_avoids_order_by_random():
             pass
 
 
+def test_get_all_fallback_query_avoids_correlated_cover_subqueries():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 1", "Rock", 200.0, "/covers/rock1.jpg"),
+                ("/music/c.mp3", "C", "Artist", "Album 2", "Rock", 210.0, "/covers/rock2.jpg"),
+            ],
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            genres = repo.get_all(use_cache=False)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert len(genres) == 1
+        genre_queries = [
+            statement for statement in statements
+            if "WITH TRACK_COVER AS" in statement.upper()
+        ]
+        assert len(genre_queries) == 1
+        query = genre_queries[0].upper()
+        assert "SELECT T2.COVER_PATH" not in query
+        assert "JOIN ALBUMS A ON A.NAME = T3.ALBUM" not in query
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_get_all_cached_query_does_not_probe_cache_table_existence():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', '/covers/rock.jpg', 3, 2, 590.0)
+            """
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            repo.get_all(use_cache=True)
+            repo.get_all(use_cache=True)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        probes = [sql for sql in statements if "SELECT 1 FROM genres LIMIT 1" in sql]
+        assert probes == []
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_refresh_query_avoids_order_by_random():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -185,6 +269,20 @@ def test_refresh_query_avoids_order_by_random():
             pass
 
 
+def test_refresh_rolls_back_when_insert_fails():
+    repo = SqliteGenreRepository.__new__(SqliteGenreRepository)
+    cursor = Mock()
+    cursor.execute.side_effect = [None, sqlite3.DatabaseError("boom")]
+    conn = Mock(cursor=Mock(return_value=cursor))
+    repo._get_connection = lambda: conn
+
+    result = SqliteGenreRepository.refresh(repo)
+
+    assert result is False
+    conn.rollback.assert_called_once_with()
+    conn.commit.assert_not_called()
+
+
 def test_refresh_genre_updates_single_cached_genre():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
@@ -213,6 +311,51 @@ def test_refresh_genre_updates_single_cached_genre():
         assert genres[0].name == "Rock"
         assert genres[0].song_count == 2
         assert genres[0].album_count == 2
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_refresh_genre_uses_upsert_without_delete():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', '/covers/existing.jpg', 1, 1, 180.0)
+            """
+        )
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, ""),
+                ("/music/b.mp3", "B", "Artist", "Album 2", "Rock", 200.0, "/covers/rock.jpg"),
+            ],
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            assert repo.refresh_genre("Rock") is True
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        assert not any("DELETE FROM GENRES" in statement.upper() for statement in statements)
+        assert any("UPDATE GENRES" in statement.upper() or "INSERT INTO GENRES" in statement.upper() for statement in statements)
     finally:
         try:
             os.unlink(db_path)
@@ -290,6 +433,59 @@ def test_update_cover_path_works_without_updated_at_column():
         row = cursor.fetchone()
         conn.close()
         assert row[0] == "/covers/rock-new.jpg"
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_get_by_name_returns_none_for_blank_name_without_querying():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        repo = SqliteGenreRepository(db_path)
+        conn = repo._get_connection()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            genre = repo.get_by_name("   ")
+        finally:
+            conn.set_trace_callback(None)
+
+        assert genre is None
+        assert statements == []
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_get_by_name_falls_back_to_tracks_when_cache_table_is_empty():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tracks (path, title, artist, album, genre, duration, cover_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("/music/a.mp3", "A", "Artist", "Album 1", "Rock", 180.0, "/covers/rock.jpg"),
+        )
+        conn.commit()
+        conn.close()
+
+        repo = SqliteGenreRepository(db_path)
+        genre = repo.get_by_name("Rock")
+
+        assert genre is not None
+        assert genre.name == "Rock"
+        assert genre.cover_path == "/covers/rock.jpg"
     finally:
         try:
             os.unlink(db_path)

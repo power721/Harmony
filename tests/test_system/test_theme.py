@@ -160,6 +160,27 @@ class TestThemeManager:
         result = tm.get_qss(template)
         assert '#FFD700' in result
 
+    def test_get_qss_cache_uses_stable_digest_key(self, mock_config):
+        tm = ThemeManager.instance(mock_config)
+        template = "color: %highlight%;"
+
+        tm.get_qss(template)
+
+        [(cache_key, _value)] = list(tm._qss_cache.items())
+        assert isinstance(cache_key[0], str)
+        assert len(cache_key[0]) == 64
+        assert cache_key[1] == tm.current_theme.name
+
+    def test_get_qss_cache_eviction_is_bounded(self, mock_config, monkeypatch):
+        tm = ThemeManager.instance(mock_config)
+        monkeypatch.setattr("system.theme.QSS_CACHE_MAXSIZE", 2)
+
+        tm.get_qss("a %highlight%")
+        tm.get_qss("b %highlight%")
+        tm.get_qss("c %highlight%")
+
+        assert len(tm._qss_cache) == 2
+
     def test_highlight_color_property(self, mock_config):
         tm = ThemeManager.instance(mock_config)
         assert tm.highlight_color == '#1db954'
@@ -239,6 +260,28 @@ class TestThemeManager:
         tm.register_widget(mock_widget)
 
         assert mock_widget in tm._widgets
+
+    def test_theme_manager_uses_widgets_lock_for_registration_and_broadcast(self, mock_config):
+        class _TrackingLock:
+            def __init__(self):
+                self.enter_count = 0
+
+            def __enter__(self):
+                self.enter_count += 1
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        tm = ThemeManager.instance(mock_config)
+        tm._widgets_lock = _TrackingLock()
+        widget = MagicMock()
+        widget.refresh_theme = MagicMock()
+
+        tm.register_widget(widget)
+        tm._apply_and_broadcast()
+
+        assert tm._widgets_lock.enter_count >= 2
 
     def test_register_multiple_widgets(self, mock_config):
         """Test registering multiple widgets."""

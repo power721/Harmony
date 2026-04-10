@@ -53,6 +53,7 @@ class AlbumView(QWidget):
     open_file_location_requested = Signal(object)  # Track
     remove_from_library_requested = Signal(list)  # list of Track
     delete_file_requested = Signal(list)  # list of Track
+    _DEFAULT_COVER_CACHE: dict[tuple[str, str], QPixmap] = {}
 
     _CONTEXT_MENU_TEMPLATE = """
         QMenu {
@@ -501,6 +502,17 @@ class AlbumView(QWidget):
         """Set default cover."""
         from system.theme import ThemeManager
         theme = ThemeManager.instance().current_theme
+        pixmap = self._get_default_cover_pixmap(theme)
+        self._cover_label.setPixmap(pixmap)
+        self._current_cover_path = None
+
+    @classmethod
+    def _get_default_cover_pixmap(cls, theme) -> QPixmap:
+        """Build or reuse the themed default cover pixmap."""
+        cache_key = (theme.background_hover, theme.text_secondary)
+        cached = cls._DEFAULT_COVER_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
 
         pixmap = QPixmap(200, 200)
         pixmap.fill(QColor(theme.background_hover))
@@ -516,8 +528,8 @@ class AlbumView(QWidget):
         painter.drawText(0, 0, 200, 200, Qt.AlignCenter, "\u266B")
         painter.end()
 
-        self._cover_label.setPixmap(pixmap)
-        self._current_cover_path = None
+        cls._DEFAULT_COVER_CACHE[cache_key] = pixmap
+        return pixmap
 
     def _on_cover_clicked(self):
         """Handle cover art click - show large image dialog."""

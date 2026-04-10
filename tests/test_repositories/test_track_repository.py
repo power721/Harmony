@@ -364,6 +364,38 @@ class TestSqliteTrackRepository:
         assert track.online_provider_id == "qqmusic"
         assert writes == []
 
+    def test_get_all_repairs_legacy_online_provider_ids_in_single_batch(self, track_repo, temp_db):
+        """Bulk reads should repair legacy placeholder provider ids without per-row updates."""
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO tracks (path, title, cloud_file_id, online_provider_id, source)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                ("online://online/track/legacy-a", "Legacy A", "legacy-a", "online", "ONLINE"),
+                ("online://online/track/legacy-b", "Legacy B", "legacy-b", "online", "ONLINE"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        statements = []
+        conn = track_repo._get_connection()
+        conn.set_trace_callback(statements.append)
+        try:
+            tracks = track_repo.get_all()
+        finally:
+            conn.set_trace_callback(None)
+
+        repaired_tracks = {track.cloud_file_id: track for track in tracks}
+        assert repaired_tracks["legacy-a"].online_provider_id is None
+        assert repaired_tracks["legacy-b"].online_provider_id is None
+
+        writes = [sql for sql in statements if sql.strip().upper().startswith("UPDATE TRACKS")]
+        assert len(writes) == 1
+
     def test_get_by_cloud_file_id_matches_legacy_qq_row_without_provider_id(self, track_repo, temp_db):
         """QQ legacy rows without provider id should still resolve for qqmusic lookups."""
         conn = sqlite3.connect(temp_db)

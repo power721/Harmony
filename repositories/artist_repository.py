@@ -2,6 +2,7 @@
 SQLite implementation of ArtistRepository.
 """
 
+import sqlite3
 from typing import List, Optional, TYPE_CHECKING
 
 from domain.artist import Artist
@@ -31,24 +32,23 @@ class SqliteArtistRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use artists table first
-        if use_cache:
-            cursor.execute("SELECT 1 FROM artists LIMIT 1")
-            if cursor.fetchone() is not None:
+        if use_cache and self._table_exists("artists"):
                 cursor.execute("""
                     SELECT name, cover_path, song_count, album_count
                     FROM artists
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()
-                return [
-                    Artist(
-                        name=row["name"] or "",
-                        cover_path=row["cover_path"],
-                        song_count=row["song_count"] or 0,
-                        album_count=row["album_count"] or 0,
-                    )
-                    for row in rows
-                ]
+                if rows:
+                    return [
+                        Artist(
+                            name=row["name"] or "",
+                            cover_path=row["cover_path"],
+                            song_count=row["song_count"] or 0,
+                            album_count=row["album_count"] or 0,
+                        )
+                        for row in rows
+                    ]
 
         # Fallback to direct query with aggregate cover lookup
         cursor.execute("""
@@ -84,12 +84,15 @@ class SqliteArtistRepository(BaseRepository):
         Returns:
             Artist object or None if not found
         """
+        artist_name = str(artist_name or "").strip()
+        if not artist_name:
+            return None
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
         # Try to use artists table first
-        cursor.execute("SELECT 1 FROM artists LIMIT 1")
-        if cursor.fetchone() is not None:
+        if self._table_exists("artists"):
             cursor.execute("""
                 SELECT name, cover_path, song_count, album_count
                 FROM artists
@@ -103,7 +106,6 @@ class SqliteArtistRepository(BaseRepository):
                     song_count=row["song_count"] or 0,
                     album_count=row["album_count"] or 0,
                 )
-            return None
 
         # Fallback to direct query
         cursor.execute("""
@@ -149,77 +151,73 @@ class SqliteArtistRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Load existing cover paths
-        cursor.execute("""
-            SELECT name, cover_path FROM artists
-        """)
-        existing_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
-
-        # Single query to load all track-level artist strings with cover paths.
-        # We must keep track granularity here so song_count remains accurate.
-        cursor.execute("""
-            SELECT artist, cover_path FROM tracks
-            WHERE artist IS NOT NULL AND artist != ''
-        """)
-        rows = cursor.fetchall()
-
-        # Phase 1: Build known artists set using only regex splitting.
-        known_artists = set()
-        for row in rows:
-            for name in split_artists(row["artist"]):
-                known_artists.add(normalize_artist_name(name))
-
-        # Phase 2: Split with known artists awareness
-        artist_data = {}  # name -> {song_count, albums, cover_path}
-        for row in rows:
-            artist_string = row["artist"]
-            track_cover = row["cover_path"]
-            for name in split_artists_aware(artist_string, known_artists):
-                if name not in artist_data:
-                    artist_data[name] = {"songs": 0, "albums": set(), "cover": None}
-                artist_data[name]["songs"] += 1
-                if track_cover and not artist_data[name]["cover"]:
-                    artist_data[name]["cover"] = track_cover
-
-        # Also count distinct albums per artist (second query — can't combine with DISTINCT)
-        cursor.execute("""
-            SELECT artist, album FROM tracks
-            WHERE artist IS NOT NULL AND artist != ''
-              AND album IS NOT NULL AND album != ''
-        """)
-        for row in cursor.fetchall():
-            for name in split_artists_aware(row["artist"], known_artists):
-                if name in artist_data:
-                    artist_data[name]["albums"].add(row["album"])
-
-        # Upsert artists, preserving cover_path for existing ones
-        for name, data in artist_data.items():
-            cover = existing_covers.get(name) or data["cover"]
+        try:
+            # Load existing cover paths
             cursor.execute("""
-                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(name) DO UPDATE SET
-                    cover_path = excluded.cover_path,
-                    song_count = excluded.song_count,
-                    album_count = excluded.album_count,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (
-                name,
-                cover,
-                data["songs"],
-                len(data["albums"]),
-                name.lower(),
-            ))
+                SELECT name, cover_path FROM artists
+            """)
+            existing_covers = {row["name"]: row["cover_path"] for row in cursor.fetchall()}
 
-        # Delete artists that no longer have any tracks
-        if artist_data:
-            placeholders = ",".join("?" for _ in artist_data)
-            cursor.execute(f"""
-                DELETE FROM artists WHERE name NOT IN ({placeholders})
-            """, list(artist_data.keys()))
+            # Single query to load all track-level artist strings with cover paths.
+            # We must keep track granularity here so song_count remains accurate.
+            cursor.execute("""
+                SELECT artist, album, cover_path FROM tracks
+                WHERE artist IS NOT NULL AND artist != ''
+            """)
+            rows = cursor.fetchall()
 
-        conn.commit()
-        return True
+            # Phase 1: Build known artists set using only regex splitting.
+            known_artists = set()
+            for row in rows:
+                for name in split_artists(row["artist"]):
+                    known_artists.add(normalize_artist_name(name))
+
+            # Phase 2: Split with known artists awareness
+            artist_data = {}  # name -> {song_count, albums, cover_path}
+            for row in rows:
+                artist_string = row["artist"]
+                track_cover = row["cover_path"]
+                track_album = row["album"]
+                for name in split_artists_aware(artist_string, known_artists):
+                    if name not in artist_data:
+                        artist_data[name] = {"songs": 0, "albums": set(), "cover": None}
+                    artist_data[name]["songs"] += 1
+                    if track_album:
+                        artist_data[name]["albums"].add(track_album)
+                    if track_cover and not artist_data[name]["cover"]:
+                        artist_data[name]["cover"] = track_cover
+
+            # Upsert artists, preserving cover_path for existing ones
+            for name, data in artist_data.items():
+                cover = existing_covers.get(name) or data["cover"]
+                cursor.execute("""
+                    INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(name) DO UPDATE SET
+                        cover_path = excluded.cover_path,
+                        song_count = excluded.song_count,
+                        album_count = excluded.album_count,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (
+                    name,
+                    cover,
+                    data["songs"],
+                    len(data["albums"]),
+                    name.lower(),
+                ))
+
+            # Delete artists that no longer have any tracks
+            if artist_data:
+                placeholders = ",".join("?" for _ in artist_data)
+                cursor.execute(f"""
+                    DELETE FROM artists WHERE name NOT IN ({placeholders})
+                """, list(artist_data.keys()))
+
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def refresh_artist(self, artist_name: str) -> bool:
         """Refresh a single artist cache row from junction/table state."""
@@ -230,47 +228,51 @@ class SqliteArtistRepository(BaseRepository):
 
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                a.name,
-                a.cover_path AS existing_cover,
-                COUNT(DISTINCT ta.track_id) AS song_count,
-                COUNT(DISTINCT CASE WHEN t.album IS NOT NULL AND t.album != '' THEN t.album END) AS album_count,
-                MAX(CASE WHEN t.cover_path IS NOT NULL AND t.cover_path != '' THEN t.cover_path END) AS track_cover
-            FROM artists a
-            LEFT JOIN track_artists ta ON ta.artist_id = a.id
-            LEFT JOIN tracks t ON t.id = ta.track_id
-            WHERE a.name = ?
-            GROUP BY a.id, a.name, a.cover_path
-            """,
-            (artist_name,),
-        )
-        row = cursor.fetchone()
-        if not row or not row["song_count"]:
-            return False
+        try:
+            cursor.execute(
+                """
+                SELECT
+                    a.name,
+                    a.cover_path AS existing_cover,
+                    COUNT(DISTINCT ta.track_id) AS song_count,
+                    COUNT(DISTINCT CASE WHEN t.album IS NOT NULL AND t.album != '' THEN t.album END) AS album_count,
+                    MAX(CASE WHEN t.cover_path IS NOT NULL AND t.cover_path != '' THEN t.cover_path END) AS track_cover
+                FROM artists a
+                LEFT JOIN track_artists ta ON ta.artist_id = a.id
+                LEFT JOIN tracks t ON t.id = ta.track_id
+                WHERE a.name = ?
+                GROUP BY a.id, a.name, a.cover_path
+                """,
+                (artist_name,),
+            )
+            row = cursor.fetchone()
+            if not row or not row["song_count"]:
+                return False
 
-        cursor.execute(
-            """
-            INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                cover_path = excluded.cover_path,
-                song_count = excluded.song_count,
-                album_count = excluded.album_count,
-                normalized_name = excluded.normalized_name,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                row["name"],
-                row["existing_cover"] or row["track_cover"],
-                row["song_count"] or 0,
-                row["album_count"] or 0,
-                normalize_artist_name(row["name"]),
-            ),
-        )
-        conn.commit()
-        return True
+            cursor.execute(
+                """
+                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    cover_path = excluded.cover_path,
+                    song_count = excluded.song_count,
+                    album_count = excluded.album_count,
+                    normalized_name = excluded.normalized_name,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    row["name"],
+                    row["existing_cover"] or row["track_cover"],
+                    row["song_count"] or 0,
+                    row["album_count"] or 0,
+                    normalize_artist_name(row["name"]),
+                ),
+            )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def delete_if_empty(self, artist_name: str) -> bool:
         """Delete a cached artist row when it no longer has linked tracks."""

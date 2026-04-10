@@ -1750,6 +1750,12 @@ class PlaybackService(QObject):
                 logger.info(f"[PlaybackService] Updated existing track {existing.id} with local path")
                 return existing.id
             except Exception:
+                logger.warning(
+                    "[PlaybackService] Failed to update existing track %s path to %s; trying path reuse fallback",
+                    existing.id,
+                    local_path,
+                    exc_info=True,
+                )
                 existing_by_path = self._track_repo.get_by_path(local_path)
                 if existing_by_path and existing_by_path.id != existing.id:
                     existing_by_path.cloud_file_id = song_mid

@@ -7,6 +7,7 @@ import importlib
 import logging
 import os
 import sys
+import threading
 import weakref
 from pathlib import Path
 
@@ -122,6 +123,7 @@ class MpvAudioBackend(AudioBackend):
         self._last_state = self.STATE_STOPPED
         self._explicit_stop = False
         self._media_ready = False
+        self._media_ready_lock = threading.Lock()
         self._pending_seek_ms: int | None = None
         self._end_notified = False
         self._cleaned_up = False
@@ -149,14 +151,14 @@ class MpvAudioBackend(AudioBackend):
 
     def set_source(self, file_path: str):
         # Check if we're already playing this file to avoid unnecessary reload
-        if file_path and file_path == self._source_path and self._media_ready:
+        if file_path and file_path == self._source_path and self._is_media_ready():
             # Already playing this file, don't reload
             logger.debug(f"[MpvBackend] Already playing {file_path}, skipping reload")
             return
 
         self._source_path = file_path or ""
         self._explicit_stop = False
-        self._media_ready = False
+        self._set_media_ready(False)
         self._pending_seek_ms = None
         self._end_notified = False
         self._set_polling_enabled(False)
@@ -178,7 +180,7 @@ class MpvAudioBackend(AudioBackend):
     def stop(self):
         self._explicit_stop = True
         self._source_path = ""
-        self._media_ready = False
+        self._set_media_ready(False)
         self._pending_seek_ms = None
         self._end_notified = False
         self._set_polling_enabled(False)
@@ -187,9 +189,9 @@ class MpvAudioBackend(AudioBackend):
 
     def seek(self, position_ms: int):
         safe_ms = max(0, int(position_ms))
-        if not self._media_ready and self._can_seek_without_media_loaded():
-            self._media_ready = True
-        if not self._media_ready:
+        if not self._is_media_ready() and self._can_seek_without_media_loaded():
+            self._set_media_ready(True)
+        if not self._is_media_ready():
             self._pending_seek_ms = safe_ms
             return
         self._seek_now(safe_ms)
@@ -366,7 +368,7 @@ class MpvAudioBackend(AudioBackend):
         is_idle = bool(value)
         if not is_idle:
             self._mark_media_ready_if_active()
-        elif is_idle and self._media_ready and not self._explicit_stop:
+        elif is_idle and self._is_media_ready() and not self._explicit_stop:
             # Fallback for environments where eof-reached callback is unreliable.
             # Guard against transient idle transitions by requiring EOF evidence.
             if self._should_treat_idle_as_end():
@@ -405,15 +407,23 @@ class MpvAudioBackend(AudioBackend):
 
     def _mark_media_ready_if_active(self):
         """Mark media ready when mpv is active even if idle transition was missed."""
-        if self._media_ready:
+        if self._is_media_ready():
             return
         if bool(self._safe_get_property("idle-active", True)):
             return
-        self._media_ready = True
+        self._set_media_ready(True)
         if self._pending_seek_ms is not None:
             self._seek_now(self._pending_seek_ms)
             self._pending_seek_ms = None
         self.media_loaded.emit()
+
+    def _is_media_ready(self) -> bool:
+        with self._media_ready_lock:
+            return self._media_ready
+
+    def _set_media_ready(self, ready: bool) -> None:
+        with self._media_ready_lock:
+            self._media_ready = ready
 
     def _should_treat_idle_as_end(self) -> bool:
         """Decide whether an idle transition should be treated as end-of-media."""
@@ -449,8 +459,10 @@ class MpvAudioBackend(AudioBackend):
         return max(0.0, min(100.0, as_float))
 
     def _rebuild_audio_filter_chain(self):
+        target_chain = ""
         if not self._effects_state.enabled:
-            self._player.af = ""
+            if self._player.af != target_chain:
+                self._player.af = target_chain
             return
 
         filters: list[str] = []
@@ -482,4 +494,6 @@ class MpvAudioBackend(AudioBackend):
             width = 1.0 + stereo_level * 0.015
             filters.append(f"lavfi=[extrastereo={width:.2f}]")
 
-        self._player.af = ",".join(filters)
+        target_chain = ",".join(filters)
+        if self._player.af != target_chain:
+            self._player.af = target_chain

@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 
 from domain.track import Track, TrackId, TrackSource
 from repositories.base_repository import BaseRepository
+from utils.normalization import normalize_online_provider_id
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +33,8 @@ class SqliteTrackRepository(BaseRepository):
         super().__init__(db_path, db_manager)
 
     @staticmethod
-    def _normalize_online_provider_id(value):
-        normalized = str(value or "").strip()
-        if not normalized or normalized.lower() == "online":
-            return None
-        return normalized
-
-    @staticmethod
     def _infer_online_provider_id(source_value: str | None, path: str | None, provider_id: str | None):
-        normalized = SqliteTrackRepository._normalize_online_provider_id(provider_id)
+        normalized = normalize_online_provider_id(provider_id)
         if normalized:
             return normalized
         if str(source_value or "").strip().upper() == "QQ":
@@ -68,9 +62,7 @@ class SqliteTrackRepository(BaseRepository):
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM tracks WHERE id = ?", (track_id,))
         row = cursor.fetchone()
-        if row:
-            return self._row_to_track(row)
-        return None
+        return self._track_from_row(row)
 
     def get_by_ids(self, track_ids: List[TrackId]) -> List[Track]:
         """Get multiple tracks by IDs in batch."""
@@ -82,7 +74,7 @@ class SqliteTrackRepository(BaseRepository):
         cursor.execute(f"SELECT * FROM tracks WHERE id IN ({placeholders})", track_ids)
         rows = cursor.fetchall()
         # Return tracks in the order of input IDs
-        track_map = {row["id"]: self._row_to_track(row) for row in rows}
+        track_map = {track.id: track for track in self._tracks_from_rows(rows)}
         return [track_map[tid] for tid in track_ids if tid in track_map]
 
     def get_by_path(self, path: str) -> Optional[Track]:
@@ -91,9 +83,7 @@ class SqliteTrackRepository(BaseRepository):
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM tracks WHERE path = ?", (path,))
         row = cursor.fetchone()
-        if row:
-            return self._row_to_track(row)
-        return None
+        return self._track_from_row(row)
 
     def get_by_paths(self, paths: List[str]) -> Dict[str, Track]:
         """Get multiple tracks by paths in batch. Returns dict mapping path -> Track."""
@@ -104,7 +94,7 @@ class SqliteTrackRepository(BaseRepository):
         placeholders = ",".join("?" * len(paths))
         cursor.execute(f"SELECT * FROM tracks WHERE path IN ({placeholders})", paths)
         rows = cursor.fetchall()
-        return {row["path"]: self._row_to_track(row) for row in rows}
+        return {track.path: track for track in self._tracks_from_rows(rows)}
 
     def get_index_for_paths(self, paths: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
         """Get path fingerprint index for incremental scan comparisons."""
@@ -171,7 +161,8 @@ class SqliteTrackRepository(BaseRepository):
         placeholders = ",".join("?" * len(cloud_file_ids))
         cursor.execute(f"SELECT * FROM tracks WHERE cloud_file_id IN ({placeholders})", cloud_file_ids)
         rows = cursor.fetchall()
-        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
+        tracks = self._tracks_from_rows(rows)
+        return {track.cloud_file_id: track for track in tracks if track.cloud_file_id}
 
     def get_by_non_online_cloud_file_ids(self, cloud_file_ids: List[str]) -> Dict[str, Track]:
         """Get non-online tracks by cloud file IDs, keyed by cloud_file_id."""
@@ -190,7 +181,8 @@ class SqliteTrackRepository(BaseRepository):
             cloud_file_ids,
         )
         rows = cursor.fetchall()
-        return {row["cloud_file_id"]: self._row_to_track(row) for row in rows if row["cloud_file_id"]}
+        tracks = self._tracks_from_rows(rows)
+        return {track.cloud_file_id: track for track in tracks if track.cloud_file_id}
 
     def get_by_online_track_keys(
         self,
@@ -203,7 +195,7 @@ class SqliteTrackRepository(BaseRepository):
 
         seen: set[tuple[str | None, str]] = set()
         for provider_id, cloud_file_id in online_keys:
-            normalized_provider_id = self._normalize_online_provider_id(provider_id)
+            normalized_provider_id = normalize_online_provider_id(provider_id)
             key = (normalized_provider_id, cloud_file_id)
             if not cloud_file_id or key in seen:
                 continue
@@ -249,7 +241,7 @@ class SqliteTrackRepository(BaseRepository):
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        return [self._row_to_track(row) for row in rows]
+        return self._tracks_from_rows(rows)
 
     def get_recently_added(self, limit: int = DEFAULT_PAGE_SIZE) -> List[Track]:
         """Get tracks ordered by newest created_at first."""
@@ -333,7 +325,7 @@ class SqliteTrackRepository(BaseRepository):
             params.extend([limit, offset])
             cursor.execute(sql, params)
             rows = cursor.fetchall()
-            return [self._row_to_track(row) for row in rows]
+            return self._tracks_from_rows(rows)
         except sqlite3.OperationalError:
             # Fallback to LIKE search
             like_query = f"%{query}%"
@@ -350,7 +342,7 @@ class SqliteTrackRepository(BaseRepository):
             params.extend([limit, offset])
             cursor.execute(sql, params)
             rows = cursor.fetchall()
-            return [self._row_to_track(row) for row in rows]
+            return self._tracks_from_rows(rows)
 
     def get_search_count(self, query: str, source: Optional[TrackSource | str] = None) -> int:
         """Count search matches using FTS5 when available, falling back to LIKE."""
@@ -407,7 +399,7 @@ class SqliteTrackRepository(BaseRepository):
                                track.genre, track.duration, track.cover_path,
                                track.cloud_file_id,
                                track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                               self._normalize_online_provider_id(track.online_provider_id),
+                               normalize_online_provider_id(track.online_provider_id),
                            ))
             track_id = cursor.lastrowid
 
@@ -466,7 +458,7 @@ class SqliteTrackRepository(BaseRepository):
                         track.genre, track.duration, track.cover_path,
                         track.cloud_file_id,
                         track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                        self._normalize_online_provider_id(track.online_provider_id),
+                        normalize_online_provider_id(track.online_provider_id),
                     ))
                     track_id = cursor.lastrowid
 
@@ -547,7 +539,7 @@ class SqliteTrackRepository(BaseRepository):
                            track.genre, track.duration, track.cover_path,
                            track.cloud_file_id,
                            track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                           self._normalize_online_provider_id(track.online_provider_id),
+                           normalize_online_provider_id(track.online_provider_id),
                            track.id
                        ))
         conn.commit()
@@ -600,7 +592,7 @@ class SqliteTrackRepository(BaseRepository):
             )
             row = cursor.fetchone()
             if row:
-                return self._row_to_track(row)
+                return self._track_from_row(row)
             cursor.execute(
                 """
                 SELECT * FROM tracks
@@ -619,9 +611,7 @@ class SqliteTrackRepository(BaseRepository):
         else:
             cursor.execute("SELECT * FROM tracks WHERE cloud_file_id = ?", (cloud_file_id,))
         row = cursor.fetchone()
-        if row:
-            return self._row_to_track(row)
-        return None
+        return self._track_from_row(row)
 
     def _row_to_track(self, row: sqlite3.Row) -> Track:
         """Convert a database row to a Track object."""
@@ -634,20 +624,6 @@ class SqliteTrackRepository(BaseRepository):
             row["path"] if "path" in row.keys() else "",
             row["online_provider_id"] if "online_provider_id" in row.keys() else None,
         )
-        if (
-            "online_provider_id" in row.keys()
-            and (
-                online_provider_id != (row["online_provider_id"] if "online_provider_id" in row.keys() else None)
-                or str(source_value or "").strip().upper() == "QQ"
-            )
-        ):
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE tracks SET source = ?, online_provider_id = ? WHERE id = ?",
-                (TrackSource.ONLINE.value, online_provider_id, row["id"]),
-            )
-            conn.commit()
 
         return Track(
             id=row["id"],
@@ -664,6 +640,66 @@ class SqliteTrackRepository(BaseRepository):
             file_size=row["file_size"] if "file_size" in row.keys() else None,
             file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
         )
+
+    def _track_from_row(self, row: sqlite3.Row | None) -> Optional[Track]:
+        """Hydrate a single row after applying any needed legacy repairs."""
+        if row is None:
+            return None
+        return self._tracks_from_rows([row])[0]
+
+    def _tracks_from_rows(self, rows: List[sqlite3.Row]) -> List[Track]:
+        """Hydrate rows after applying batched legacy online-provider repairs."""
+        if not rows:
+            return []
+        self._repair_legacy_online_rows(rows)
+        return [self._row_to_track(row) for row in rows]
+
+    def _repair_legacy_online_rows(self, rows: List[sqlite3.Row]) -> None:
+        """Normalize legacy online provider placeholders with one UPDATE per batch."""
+        from domain.track import TrackSource
+
+        repairs: list[tuple[int, str | None]] = []
+        for row in rows:
+            if "online_provider_id" not in row.keys():
+                continue
+            source_value = row["source"] if "source" in row.keys() else "Local"
+            inferred_provider_id = self._infer_online_provider_id(
+                source_value,
+                row["path"] if "path" in row.keys() else "",
+                row["online_provider_id"],
+            )
+            if (
+                inferred_provider_id != row["online_provider_id"]
+                or str(source_value or "").strip().upper() == "QQ"
+            ):
+                repairs.append((row["id"], inferred_provider_id))
+
+        if not repairs:
+            return
+
+        placeholders = ",".join("?" * len(repairs))
+        source_cases = " ".join("WHEN ? THEN ?" for _ in repairs)
+        provider_cases = " ".join("WHEN ? THEN ?" for _ in repairs)
+        params: list[object] = []
+
+        for track_id, _provider_id in repairs:
+            params.extend([track_id, TrackSource.ONLINE.value])
+        for track_id, provider_id in repairs:
+            params.extend([track_id, provider_id])
+        params.extend(track_id for track_id, _provider_id in repairs)
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            UPDATE tracks
+            SET source = CASE id {source_cases} ELSE source END,
+                online_provider_id = CASE id {provider_cases} ELSE online_provider_id END
+            WHERE id IN ({placeholders})
+            """,
+            params,
+        )
+        conn.commit()
 
     # ===== Album Operations =====
 

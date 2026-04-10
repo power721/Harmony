@@ -2,12 +2,11 @@
 Genre domain model - Aggregated genre entity.
 """
 
-from dataclasses import dataclass
-from functools import cached_property
+from dataclasses import dataclass, field
 from typing import Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class Genre:
     """
     Represents a genre aggregated from tracks.
@@ -20,6 +19,7 @@ class Genre:
     song_count: int = 0
     album_count: int = 0
     duration: float = 0.0  # Total duration in seconds
+    _id_cache: Optional[str] = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def display_name(self) -> str:
@@ -29,14 +29,9 @@ class Genre:
     @property
     def id(self) -> str:
         """Generate a unique ID for the genre based on name."""
-        if self.name:
-            return self._named_id
-        return f"unknown:{id(self)}"
-
-    @cached_property
-    def _named_id(self) -> str:
-        """Cache the normalized ID for named genres."""
-        return self.name.lower()
+        if self._id_cache is None:
+            self._id_cache = self.name.lower() if self.name else f"unknown:{id(self)}"
+        return self._id_cache
 
     def __hash__(self):
         """Make Genre hashable for use in sets."""

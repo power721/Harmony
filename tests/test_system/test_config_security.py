@@ -73,3 +73,61 @@ def test_config_manager_no_longer_exposes_qqmusic_specific_helpers(tmp_path):
     assert not hasattr(config, "set_qqmusic_nick")
     assert not hasattr(config, "get_qqmusic_quality")
     assert not hasattr(config, "set_qqmusic_quality")
+
+
+def test_set_volume_clamps_to_valid_range(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    config.set_volume(150)
+    assert repo.values[SettingKey.PLAYER_VOLUME] == 100
+
+    config.set_volume(-10)
+    assert repo.values[SettingKey.PLAYER_VOLUME] == 0
+
+
+def test_set_audio_effects_clamps_effect_values_and_normalizes_bands(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    config.set_audio_effects(
+        {
+            "enabled": True,
+            "eq_bands": [1, "2.5", "bad"],
+            "bass_boost": 150,
+            "treble_boost": -20,
+            "reverb_level": 75.5,
+            "stereo_enhance": 300,
+        }
+    )
+
+    effects = config.get_audio_effects()
+    assert len(effects["eq_bands"]) == 10
+    assert effects["eq_bands"][:3] == [1.0, 2.5, 0.0]
+    assert effects["bass_boost"] == 100.0
+    assert effects["treble_boost"] == 0.0
+    assert effects["reverb_level"] == 75.5
+    assert effects["stereo_enhance"] == 100.0
+
+
+def test_get_audio_effects_reuses_normalized_cache(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    first = config.get_audio_effects()
+    second = config.get_audio_effects()
+
+    assert first is second
+
+
+def test_set_audio_effects_invalidates_normalized_cache(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    first = config.get_audio_effects()
+    config.set_audio_effects({"enabled": False, "eq_bands": [1.0] * 10})
+    second = config.get_audio_effects()
+
+    assert first is not second
+    assert second["enabled"] is False
+    assert second["eq_bands"][:3] == [1.0, 1.0, 1.0]

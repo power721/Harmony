@@ -62,6 +62,8 @@ class HelpDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._drag_pos = None
+        self._shortcut_key_labels: list[QLabel] = []
+        self._shortcut_action_labels: list[QLabel] = []
 
         # Make dialog frameless
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.FramelessWindowHint)
@@ -118,12 +120,14 @@ class HelpDialog(QDialog):
         info_layout = QVBoxLayout(info_group)
 
         app_name = QLabel("Harmony")
+        self._app_name_label = app_name
         app_name.setStyleSheet(
             f"font-size: 24px; font-weight: bold; color: {ThemeManager.instance().current_theme.highlight};")
         app_name.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(app_name)
 
         version_label = QLabel("v1.0")
+        self._version_label = version_label
         version_label.setStyleSheet(f"font-size: 14px; color: {ThemeManager.instance().current_theme.text_secondary};")
         version_label.setAlignment(Qt.AlignCenter)
         info_layout.addWidget(version_label)
@@ -166,11 +170,13 @@ class HelpDialog(QDialog):
             """)
             key_label.setFixedWidth(100)
             row.addWidget(key_label)
+            self._shortcut_key_labels.append(key_label)
 
             action_label = QLabel(action)
             action_label.setStyleSheet(
                 f"font-size: 13px; color: {ThemeManager.instance().current_theme.text_secondary};")
             row.addWidget(action_label)
+            self._shortcut_action_labels.append(action_label)
             row.addStretch()
 
             shortcuts_layout.addLayout(row)
@@ -201,31 +207,22 @@ class HelpDialog(QDialog):
         # Re-apply inline styles that use theme colors
         theme = ThemeManager.instance().current_theme
 
-        # Find labels by iterating through the widget tree
-        for label in self.findChildren(QLabel):
-            text = label.text()
-            if text == "Harmony":
-                label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {theme.highlight};")
-            elif text == "v1.0":
-                label.setStyleSheet(f"font-size: 14px; color: {theme.text_secondary};")
-            elif label.objectName() != "keyLabel" and text not in ["Harmony", "v1.0"]:
-                # Update shortcut action labels (not key labels which have their own style)
-                # Check if this is in the shortcuts section
-                parent = label.parentWidget()
-                if parent and isinstance(parent.findChild(QGroupBox), QGroupBox):
-                    # This is likely a shortcut action label
-                    label.setStyleSheet(f"font-size: 13px; color: {theme.text_secondary};")
-
-        # Update key labels background
-        for label in self.findChildren(QLabel):
-            if "font-family: monospace" in label.styleSheet():
-                label.setStyleSheet(f"""
-                    background-color: {theme.background_hover};
-                    padding: 4px 10px;
-                    border-radius: 4px;
-                    font-family: monospace;
-                    font-size: 12px;
-                """)
+        self._app_name_label.setStyleSheet(
+            f"font-size: 24px; font-weight: bold; color: {theme.highlight};"
+        )
+        self._version_label.setStyleSheet(
+            f"font-size: 14px; color: {theme.text_secondary};"
+        )
+        for label in self._shortcut_action_labels:
+            label.setStyleSheet(f"font-size: 13px; color: {theme.text_secondary};")
+        for label in self._shortcut_key_labels:
+            label.setStyleSheet(f"""
+                background-color: {theme.background_hover};
+                padding: 4px 10px;
+                border-radius: 4px;
+                font-family: monospace;
+                font-size: 12px;
+            """)
 
     def resizeEvent(self, event):
         """Apply rounded corner mask."""

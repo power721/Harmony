@@ -6,6 +6,7 @@ import logging
 import re
 import sqlite3
 import threading
+import unicodedata
 from concurrent.futures import Future
 from typing import Callable, Dict, Optional
 
@@ -21,6 +22,14 @@ _FTS_UNSAFE_CHARACTERS = re.compile(r"[^\w\s.-]+", re.UNICODE)
 
 class DatabaseManager:
     """Manages SQLite database operations for the music player."""
+
+    @staticmethod
+    def _enable_wal_mode(conn: sqlite3.Connection) -> None:
+        """Enable WAL mode and warn if SQLite keeps a different journal mode."""
+        row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+        journal_mode = str(row[0]).lower() if row else ""
+        if journal_mode != "wal":
+            logger.warning("[DatabaseManager] WAL mode was not applied; current journal_mode=%s", journal_mode or "unknown")
 
     def __init__(self, db_path: str = "Harmony.db"):
         """
@@ -43,7 +52,7 @@ class DatabaseManager:
             self.local.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             self.local.conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrent access
-            self.local.conn.execute("PRAGMA journal_mode=WAL")
+            self._enable_wal_mode(self.local.conn)
             # Set busy timeout for this connection
             self.local.conn.execute("PRAGMA busy_timeout=30000")
             # Performance optimizations
@@ -85,11 +94,13 @@ class DatabaseManager:
     @staticmethod
     def _build_safe_fts_query(query: str) -> Optional[str]:
         """Normalize user input into literal FTS terms and remove FTS operators."""
-        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", query)
+        normalized = unicodedata.normalize("NFKD", query)
+        cleaned = "".join(ch for ch in normalized if not unicodedata.category(ch).startswith("C"))
+        cleaned = _FTS_FIELD_SPECIFIERS.sub(" ", cleaned)
         cleaned = _FTS_BOOLEAN_OPERATORS.sub(" ", cleaned)
         cleaned = cleaned.replace("*", " ")
         cleaned = _FTS_UNSAFE_CHARACTERS.sub(" ", cleaned)
-        terms = [term for term in cleaned.split() if term]
+        terms = [term[:64] for term in cleaned.split() if term]
         if not terms:
             return None
         return " ".join(f'"{term}"' for term in terms)
@@ -296,6 +307,10 @@ class DatabaseManager:
                            ON tracks(album)
                        """)
         cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_path
+                           ON tracks(path)
+                       """)
+        cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_play_history_track
                            ON play_history(track_id)
                        """)
@@ -303,29 +318,6 @@ class DatabaseManager:
                        CREATE INDEX IF NOT EXISTS idx_play_history_played_at
                            ON play_history(played_at DESC)
                        """)
-        # Additional indexes for common queries
-        cursor.execute("PRAGMA table_info(tracks)")
-        track_columns = {col[1] for col in cursor.fetchall()}
-        if "cloud_file_id" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
-                               ON tracks(cloud_file_id)
-                           """)
-        if "source" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_source
-                               ON tracks(source)
-                           """)
-        if "created_at" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_created_at
-                               ON tracks(created_at DESC)
-                           """)
-        if "genre" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_genre
-                               ON tracks(genre)
-                           """)
 
         # H-02: Indexes for favorites table
         cursor.execute("""
@@ -485,6 +477,10 @@ class DatabaseManager:
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_cloud_accounts_provider
                            ON cloud_accounts(provider)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_accounts_is_active
+                           ON cloud_accounts(is_active)
                        """)
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_cloud_files_account
@@ -689,6 +685,19 @@ class DatabaseManager:
 
         # Run migrations for existing databases
         self._run_migrations(conn, cursor)
+
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_unique
+                           ON albums(name, artist)
+                       """)
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_artists_unique
+                           ON artists(name)
+                       """)
+        cursor.execute("""
+                       CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_unique
+                           ON genres(name)
+                       """)
 
         # Create indexes for columns that may be added by migrations.
         cursor.execute("PRAGMA table_info(tracks)")
