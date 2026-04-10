@@ -169,6 +169,22 @@ class TestSqliteFavoriteRepository:
         result = favorite_repo.add_favorite(track_id=1)
         assert result is False
 
+    def test_add_favorites_batch(self, favorite_repo, populated_db):
+        """Batch add should insert all missing local favorites in one call."""
+        added = favorite_repo.add_favorites([1, 2, 3])
+
+        assert added == 3
+        assert favorite_repo.get_all_favorite_track_ids() == {1, 2, 3}
+
+    def test_add_favorites_batch_ignores_duplicates_and_empty_values(self, favorite_repo, populated_db):
+        """Batch add should skip duplicates and falsy ids."""
+        favorite_repo.add_favorite(track_id=1)
+
+        added = favorite_repo.add_favorites([None, 1, 2, 2, 0, 3])
+
+        assert added == 2
+        assert favorite_repo.get_all_favorite_track_ids() == {1, 2, 3}
+
     def test_add_favorite_allows_same_cloud_id_for_different_providers(self, favorite_repo):
         """Online favorites should be distinct per provider."""
         first = favorite_repo.add_favorite(
@@ -216,6 +232,24 @@ class TestSqliteFavoriteRepository:
         """Test removing non-existent favorite returns False."""
         result = favorite_repo.remove_favorite(track_id=999)
         assert result is False
+
+    def test_remove_favorites_batch(self, favorite_repo, populated_db):
+        """Batch remove should delete all matching local favorites in one call."""
+        favorite_repo.add_favorites([1, 2, 3])
+
+        removed = favorite_repo.remove_favorites([1, 3])
+
+        assert removed == 2
+        assert favorite_repo.get_all_favorite_track_ids() == {2}
+
+    def test_remove_favorites_batch_skips_empty_input(self, favorite_repo, populated_db):
+        """Batch remove should be a no-op for empty or falsy ids."""
+        favorite_repo.add_favorites([1, 2])
+
+        removed = favorite_repo.remove_favorites([None, 0])
+
+        assert removed == 0
+        assert favorite_repo.get_all_favorite_track_ids() == {1, 2}
 
     def test_remove_favorite_no_params(self, favorite_repo):
         """Test removing favorite with no parameters returns False."""

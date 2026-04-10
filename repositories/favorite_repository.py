@@ -113,6 +113,31 @@ class SqliteFavoriteRepository(BaseRepository):
         conn.commit()
         return True
 
+    def add_favorites(self, track_ids: List[TrackId]) -> int:
+        """Add multiple local tracks to favorites, returning the number of new rows."""
+        normalized_ids = []
+        seen: set[TrackId] = set()
+        for track_id in track_ids:
+            if not track_id or track_id in seen:
+                continue
+            seen.add(track_id)
+            normalized_ids.append(track_id)
+
+        if not normalized_ids:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT OR IGNORE INTO favorites (track_id, cloud_file_id, online_provider_id, cloud_account_id)
+            VALUES (?, NULL, NULL, NULL)
+            """,
+            [(track_id,) for track_id in normalized_ids],
+        )
+        conn.commit()
+        return cursor.rowcount
+
     def remove_favorite(
         self,
         track_id: TrackId = None,
@@ -154,6 +179,29 @@ class SqliteFavoriteRepository(BaseRepository):
 
         conn.commit()
         return cursor.rowcount > 0
+
+    def remove_favorites(self, track_ids: List[TrackId]) -> int:
+        """Remove multiple local track favorites, returning the number of deleted rows."""
+        normalized_ids = []
+        seen: set[TrackId] = set()
+        for track_id in track_ids:
+            if not track_id or track_id in seen:
+                continue
+            seen.add(track_id)
+            normalized_ids.append(track_id)
+
+        if not normalized_ids:
+            return 0
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(normalized_ids))
+        cursor.execute(
+            f"DELETE FROM favorites WHERE track_id IN ({placeholders})",
+            normalized_ids,
+        )
+        conn.commit()
+        return cursor.rowcount
 
     def get_favorites(self) -> List[Track]:
         """
