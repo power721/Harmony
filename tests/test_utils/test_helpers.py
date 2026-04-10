@@ -105,6 +105,12 @@ class TestFindLyricLine:
         result = find_lyric_line(lyrics, 0.0)
         assert result == 0
 
+    def test_find_line_with_duplicate_timestamps_returns_last_match(self):
+        """Binary-search implementation should still prefer the last timestamp <= current time."""
+        lyrics = [(1.0, "First"), (1.0, "Second"), (2.0, "Third")]
+        result = find_lyric_line(lyrics, 1.0)
+        assert result == 1
+
 
 class TestSanitizeFilename:
     """Test sanitize_filename function."""

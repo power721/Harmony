@@ -1,6 +1,7 @@
 """
 Helper utility functions for the music player.
 """
+from bisect import bisect_right
 import re
 import sys
 from datetime import datetime, timedelta
@@ -93,11 +94,9 @@ def find_lyric_line(lyrics: List[Tuple[float, str]], current_time: float) -> Opt
     if not lyrics:
         return None
 
-    for i, (time, _) in enumerate(lyrics):
-        if time > current_time:
-            return i - 1 if i > 0 else 0
-
-    return len(lyrics) - 1
+    timestamps = [timestamp for timestamp, _text in lyrics]
+    index = bisect_right(timestamps, current_time) - 1
+    return index if index >= 0 else 0
 
 
 def sanitize_filename(filename: str) -> str:
