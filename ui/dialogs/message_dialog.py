@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QMessageBox as _QMB
 
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.draggable_dialog_mixin import DraggableDialogMixin
 from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 from ui.icons import IconName, get_icon
 
@@ -29,7 +30,7 @@ Cancel = _QMB.StandardButton.Cancel
 StandardButton = _QMB.StandardButton
 
 
-class MessageDialog(QDialog):
+class MessageDialog(DraggableDialogMixin, QDialog):
     """Theme-aware frameless message dialog."""
 
     _STYLE_TEMPLATE = """
@@ -147,17 +148,6 @@ class MessageDialog(QDialog):
         super().resizeEvent(event)
 
     # --- Drag to move ---
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-
     # === Static API (drop-in replacement for QMessageBox) ===
 
     @staticmethod
