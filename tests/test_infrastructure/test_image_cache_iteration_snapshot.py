@@ -1,4 +1,5 @@
 import time
+import builtins
 
 from infrastructure.cache.image_cache import ImageCache
 
@@ -81,3 +82,31 @@ def test_enforce_cache_limit_uses_snapshot_when_evicting():
 
     assert deleted == 1
     assert list(cache_dir.entries) == ["b"]
+
+
+def test_enforce_cache_limit_skips_sort_when_under_budget(monkeypatch):
+    cache_dir = _FakeCacheDir()
+    now = time.time()
+    cache_dir.entries = {
+        "a": _FakeFile("a", cache_dir, now, size=2),
+        "b": _FakeFile("b", cache_dir, now, size=2),
+    }
+
+    original_dir = ImageCache.CACHE_DIR
+    original_limit = getattr(ImageCache, "MAX_CACHE_SIZE", None)
+    ImageCache.CACHE_DIR = cache_dir
+    ImageCache.MAX_CACHE_SIZE = 10
+    try:
+        monkeypatch.setattr(
+            builtins,
+            "sorted",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("sorted should not be called")),
+        )
+        deleted = ImageCache._enforce_cache_limit()
+    finally:
+        ImageCache.CACHE_DIR = original_dir
+        if original_limit is not None:
+            ImageCache.MAX_CACHE_SIZE = original_limit
+
+    assert deleted == 0
+    assert list(cache_dir.entries) == ["a", "b"]

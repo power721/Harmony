@@ -129,6 +129,9 @@ class ImageCache:
             entries.append((file_path, stat.st_mtime, stat.st_size))
             total_size += stat.st_size
 
+        if total_size <= cls.MAX_CACHE_SIZE:
+            return 0
+
         deleted = 0
         for file_path, _, file_size in sorted(entries, key=lambda item: item[1]):
             if total_size <= cls.MAX_CACHE_SIZE:
