@@ -174,3 +174,36 @@ def test_explicit_shutdown_cleans_backend_once():
 
     assert engine._backend.cleanup_calls == 1
     assert temp_cleanup_calls == ["cleaned"]
+
+
+def test_add_temp_file_prunes_once_threshold_is_exceeded():
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._temp_files = []
+    cleanup_calls = []
+    engine._cleanup_old_temp_files = lambda: cleanup_calls.append("pruned")
+
+    for index in range(50):
+        PlayerEngine.add_temp_file(engine, f"/tmp/{index}.tmp")
+
+    assert cleanup_calls == []
+
+    PlayerEngine.add_temp_file(engine, "/tmp/50.tmp")
+
+    assert cleanup_calls == ["pruned"]
+
+
+def test_cleanup_old_temp_files_keeps_recent_thirty(tmp_path):
+    engine = PlayerEngine.__new__(PlayerEngine)
+    temp_files = []
+    for index in range(40):
+        path = tmp_path / f"{index}.tmp"
+        path.write_text("x", encoding="utf-8")
+        temp_files.append(str(path))
+    engine._temp_files = temp_files
+
+    PlayerEngine._cleanup_old_temp_files(engine)
+
+    assert len(engine._temp_files) == 30
+    assert engine._temp_files == temp_files[-30:]
+    assert not any((tmp_path / f"{index}.tmp").exists() for index in range(10))
+    assert all((tmp_path / f"{index}.tmp").exists() for index in range(10, 40))

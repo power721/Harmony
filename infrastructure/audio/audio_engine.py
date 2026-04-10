@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _BUNDLED_AUDIO_BACKEND_ALL = "all"
 _BUNDLED_AUDIO_BACKEND_FILE = Path("bundle") / "audio_backend.txt"
+_MAX_TEMP_FILES = 50
+_TEMP_FILES_TO_KEEP = 30
 
 
 def _normalize_bundled_audio_backend_mode(mode: str | None) -> str:
@@ -348,15 +350,15 @@ class PlayerEngine(QObject):
         """
         self._temp_files.append(file_path)
         # Prevent unlimited growth - cleanup old files if list gets too large
-        if len(self._temp_files) > 100:
+        if len(self._temp_files) > _MAX_TEMP_FILES:
             self._cleanup_old_temp_files()
 
     def _cleanup_old_temp_files(self):
         """Clean up old temporary files, keeping only recent ones."""
         import os
-        # Keep only the most recent 50 files
-        files_to_remove = self._temp_files[:-50]
-        self._temp_files = self._temp_files[-50:]
+        # Keep only the most recent tracked temp files.
+        files_to_remove = self._temp_files[:-_TEMP_FILES_TO_KEEP]
+        self._temp_files = self._temp_files[-_TEMP_FILES_TO_KEEP:]
 
         for temp_file in files_to_remove:
             try:
