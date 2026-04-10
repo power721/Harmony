@@ -108,3 +108,26 @@ def test_set_audio_effects_clamps_effect_values_and_normalizes_bands(tmp_path):
     assert effects["treble_boost"] == 0.0
     assert effects["reverb_level"] == 75.5
     assert effects["stereo_enhance"] == 100.0
+
+
+def test_get_audio_effects_reuses_normalized_cache(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    first = config.get_audio_effects()
+    second = config.get_audio_effects()
+
+    assert first is second
+
+
+def test_set_audio_effects_invalidates_normalized_cache(tmp_path):
+    repo = _FakeSettingsRepository()
+    config = ConfigManager(repo, secret_store=SecretStore(tmp_path / "secret.key"))
+
+    first = config.get_audio_effects()
+    config.set_audio_effects({"enabled": False, "eq_bands": [1.0] * 10})
+    second = config.get_audio_effects()
+
+    assert first is not second
+    assert second["enabled"] is False
+    assert second["eq_bands"][:3] == [1.0, 1.0, 1.0]
