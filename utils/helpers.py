@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from system import t
+from utils.file_helpers import sanitize_filename
 
 # Pre-compiled regex patterns for filename metadata parsing
 _RE_ARTIST_TITLE = re.compile(r'^(.+?)\s*-\s*(.+)$')
@@ -97,22 +98,6 @@ def find_lyric_line(lyrics: List[Tuple[float, str]], current_time: float) -> Opt
     timestamps = [timestamp for timestamp, _text in lyrics]
     index = bisect_right(timestamps, current_time) - 1
     return index if index >= 0 else 0
-
-
-def sanitize_filename(filename: str) -> str:
-    """
-    Sanitize filename by removing invalid characters.
-
-    Args:
-        filename: Original filename
-
-    Returns:
-        Sanitized filename
-    """
-    # Re-export from file_helpers for backward compatibility
-    from utils.file_helpers import sanitize_filename as _sanitize
-    return _sanitize(filename)
-
 
 def truncate_text(text: str, max_length: int, suffix: str = '...') -> str:
     """

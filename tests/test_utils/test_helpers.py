@@ -10,6 +10,8 @@ from datetime import datetime as real_datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import utils.helpers as helpers_module
+from utils.file_helpers import sanitize_filename as file_helpers_sanitize_filename
 from utils.helpers import (
     format_duration,
     format_time,
@@ -118,6 +120,9 @@ class TestFindLyricLine:
 
 class TestSanitizeFilename:
     """Test sanitize_filename function."""
+
+    def test_helpers_reexports_file_helpers_sanitize_filename(self):
+        assert helpers_module.sanitize_filename is file_helpers_sanitize_filename
 
     def test_remove_invalid_chars(self):
         """Test removing invalid characters."""
