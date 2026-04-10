@@ -59,6 +59,7 @@ def set_language(lang: str):
         if lang in ("en", "zh"):
             _current_language = lang
         else:
+            logging.warning("Invalid language %r, falling back to 'en'", lang)
             _current_language = "en"
 
 
