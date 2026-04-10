@@ -449,8 +449,10 @@ class MpvAudioBackend(AudioBackend):
         return max(0.0, min(100.0, as_float))
 
     def _rebuild_audio_filter_chain(self):
+        target_chain = ""
         if not self._effects_state.enabled:
-            self._player.af = ""
+            if self._player.af != target_chain:
+                self._player.af = target_chain
             return
 
         filters: list[str] = []
@@ -482,4 +484,6 @@ class MpvAudioBackend(AudioBackend):
             width = 1.0 + stereo_level * 0.015
             filters.append(f"lavfi=[extrastereo={width:.2f}]")
 
-        self._player.af = ",".join(filters)
+        target_chain = ",".join(filters)
+        if self._player.af != target_chain:
+            self._player.af = target_chain

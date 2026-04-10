@@ -41,7 +41,8 @@ class _FakeMPV:
     def __init__(self, **_kwargs):
         self.pause = False
         self.volume = 0
-        self.af = ""
+        self._af = ""
+        self.af_sets = 0
         self._commands = []
         self._observers = {}
         self._props = {
@@ -53,6 +54,15 @@ class _FakeMPV:
             "volume": 0,
         }
         self.terminated = False
+
+    @property
+    def af(self):
+        return self._af
+
+    @af.setter
+    def af(self, value):
+        self._af = value
+        self.af_sets += 1
 
     def observe_property(self, prop, callback):
         self._observers[prop] = callback
@@ -204,6 +214,22 @@ def test_mpv_backend_can_disable_all_audio_effects(monkeypatch):
 
     backend.set_audio_effects(AudioEffectsState(enabled=False))
     assert backend._player.af == ""
+
+
+def test_mpv_backend_skips_reapplying_identical_filter_chain(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    baseline_sets = backend._player.af_sets
+
+    backend.set_eq_bands([3.0] * 10)
+    after_first_apply = backend._player.af_sets
+
+    backend.set_eq_bands([3.0] * 10)
+
+    assert after_first_apply > baseline_sets
+    assert backend._player.af_sets == after_first_apply
 
 
 def test_mpv_backend_idle_fallback_and_play_restart_from_eof(monkeypatch):
