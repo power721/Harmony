@@ -500,6 +500,14 @@ class Bootstrap:
         if db is None:
             return
 
+        playback = self._playback_service
+        if playback is not None:
+            try:
+                playback.begin_shutdown()
+                playback.save_queue(force=True)
+            except Exception:
+                logger.exception("[Bootstrap] Failed flushing playback queue before database shutdown")
+
         write_worker = getattr(db, "_write_worker", None)
         if write_worker is not None:
             try:
