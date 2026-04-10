@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Optional, List
 
 
-@dataclass
+@dataclass(slots=True)
 class OnlineSinger:
     """Singer info in online track."""
 
@@ -16,7 +16,7 @@ class OnlineSinger:
     name: str = ""
 
 
-@dataclass
+@dataclass(slots=True)
 class AlbumInfo:
     """Simple album info in online track."""
 
@@ -24,7 +24,7 @@ class AlbumInfo:
     name: str = ""
 
 
-@dataclass
+@dataclass(slots=True)
 class OnlineTrack:
     """
     Online track from search result.
@@ -63,7 +63,7 @@ class OnlineTrack:
         return self.pay_play == 1
 
 
-@dataclass
+@dataclass(slots=True)
 class OnlineArtist:
     """
     Online artist from search result.
@@ -77,7 +77,7 @@ class OnlineArtist:
     fan_count: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class OnlineAlbum:
     """
     Online album from search result.
@@ -97,7 +97,7 @@ class OnlineAlbum:
     album_type: Optional[str] = None
 
 
-@dataclass
+@dataclass(slots=True)
 class OnlinePlaylist:
     """
     Online playlist from search result.
@@ -112,7 +112,7 @@ class OnlinePlaylist:
     play_count: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class SearchResult:
     """
     Search result container.

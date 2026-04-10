@@ -33,7 +33,7 @@ class TrackSource(str, Enum):
             return cls.LOCAL
 
 
-@dataclass
+@dataclass(slots=True)
 class Track:
     """
     Represents a music track in the library.

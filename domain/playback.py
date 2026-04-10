@@ -25,7 +25,7 @@ class PlaybackState(Enum):
     PAUSED = 2
 
 
-@dataclass
+@dataclass(slots=True)
 class PlayQueueItem:
     """Represents an item in the persistent play queue."""
 

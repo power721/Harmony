@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class PlayHistory:
     """Represents a play history entry."""
 
@@ -21,7 +21,7 @@ class PlayHistory:
             self.played_at = datetime.now()
 
 
-@dataclass
+@dataclass(slots=True)
 class Favorite:
     """Represents a favorite track."""
 

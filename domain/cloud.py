@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class CloudAccount:
     """Represents a cloud storage account (Quark, OneDrive, etc.)"""
 
@@ -34,7 +34,7 @@ class CloudAccount:
             self.updated_at = datetime.now()
 
 
-@dataclass
+@dataclass(slots=True)
 class CloudFile:
     """Cached metadata for cloud drive files"""
 

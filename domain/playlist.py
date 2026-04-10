@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class Playlist:
     """Represents a playlist."""
 

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from domain.playback import PlayQueueItem
 
 
-@dataclass
+@dataclass(slots=True)
 class PlaylistItem:
     """
     Unified playlist item for both local and cloud playback.

@@ -2,12 +2,11 @@
 Album domain model - Aggregated album entity.
 """
 
-from dataclasses import dataclass
-from functools import cached_property
+from dataclasses import dataclass, field
 from typing import Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class Album:
     """
     Represents an album aggregated from tracks.
@@ -21,6 +20,7 @@ class Album:
     song_count: int = 0
     duration: float = 0.0  # Total duration in seconds
     year: Optional[int] = None
+    _id_cache: Optional[str] = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def display_name(self) -> str:
@@ -32,11 +32,12 @@ class Album:
         """Get display artist for the album."""
         return self.artist if self.artist else "Unknown Artist"
 
-    @cached_property
+    @property
     def id(self) -> str:
         """Generate a unique ID for the album based on name and artist."""
-        # Use name + artist as unique identifier
-        return f"{self.artist}:{self.name}".lower()
+        if self._id_cache is None:
+            self._id_cache = f"{self.artist}:{self.name}".lower()
+        return self._id_cache
 
     def __hash__(self):
         """Make Album hashable for use in sets."""
