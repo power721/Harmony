@@ -113,11 +113,15 @@ class SqlitePlaylistRepository(BaseRepository):
                 conn.commit()
                 return cursor.rowcount > 0
             except sqlite3.OperationalError as e:
+                conn.rollback()
                 if "locked" in str(e) and attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    raise
+                    return False
+            except sqlite3.DatabaseError:
+                conn.rollback()
+                return False
         return False
 
     def remove_track(self, playlist_id: int, track_id: TrackId) -> bool:

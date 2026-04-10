@@ -2,6 +2,7 @@
 SQLite implementation of HistoryRepository.
 """
 
+import sqlite3
 from datetime import datetime
 from typing import List, TYPE_CHECKING
 
@@ -35,15 +36,19 @@ class SqliteHistoryRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Single UPSERT: update timestamp if exists, insert if not
-        cursor.execute("""
-            INSERT INTO play_history (track_id, played_at)
-            VALUES (?, CURRENT_TIMESTAMP)
-            ON CONFLICT(track_id) DO UPDATE SET played_at = CURRENT_TIMESTAMP
-        """, (track_id,))
+        try:
+            # Single UPSERT: update timestamp if exists, insert if not
+            cursor.execute("""
+                INSERT INTO play_history (track_id, played_at)
+                VALUES (?, CURRENT_TIMESTAMP)
+                ON CONFLICT(track_id) DO UPDATE SET played_at = CURRENT_TIMESTAMP
+            """, (track_id,))
 
-        conn.commit()
-        return True
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def get_recent(self, limit: int = 50) -> List[PlayHistory]:
         """

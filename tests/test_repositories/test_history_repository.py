@@ -7,6 +7,7 @@ import sqlite3
 import tempfile
 import os
 import time
+from unittest.mock import Mock
 
 from repositories.history_repository import SqliteHistoryRepository
 from domain.history import PlayHistory
@@ -121,6 +122,19 @@ class TestSqliteHistoryRepository:
         # Should only have one entry
         history = history_repo.get_recent(limit=10)
         assert len(history) == 1
+
+    def test_add_rolls_back_when_upsert_fails(self):
+        repo = SqliteHistoryRepository.__new__(SqliteHistoryRepository)
+        cursor = Mock()
+        cursor.execute.side_effect = sqlite3.DatabaseError("boom")
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteHistoryRepository.add(repo, 1)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     # ===== get_recent Tests =====
 

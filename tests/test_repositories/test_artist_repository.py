@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from repositories.artist_repository import SqliteArtistRepository
 from repositories.track_repository import SqliteTrackRepository
@@ -419,6 +420,24 @@ class TestSqliteArtistRepository:
 
         artists = artist_repo.get_all(use_cache=True)
         assert len(artists) == 2
+
+    def test_refresh_rolls_back_when_upsert_fails(self):
+        repo = SqliteArtistRepository.__new__(SqliteArtistRepository)
+        cursor = Mock()
+        cursor.fetchall.side_effect = [
+            [],
+            [{"artist": "Artist A", "cover_path": None}],
+            [{"artist": "Artist A", "album": "Album 1"}],
+        ]
+        cursor.execute.side_effect = [None, None, None, sqlite3.DatabaseError("boom")]
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteArtistRepository.refresh(repo)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     def test_update_cover_path(self, temp_db, populated_db):
         """Test updating cover path for an artist."""

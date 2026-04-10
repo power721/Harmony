@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import tempfile
+from unittest.mock import Mock
 
 from repositories.genre_repository import SqliteGenreRepository
 
@@ -219,6 +220,20 @@ def test_refresh_query_avoids_order_by_random():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_refresh_rolls_back_when_insert_fails():
+    repo = SqliteGenreRepository.__new__(SqliteGenreRepository)
+    cursor = Mock()
+    cursor.execute.side_effect = [None, sqlite3.DatabaseError("boom")]
+    conn = Mock(cursor=Mock(return_value=cursor))
+    repo._get_connection = lambda: conn
+
+    result = SqliteGenreRepository.refresh(repo)
+
+    assert result is False
+    conn.rollback.assert_called_once_with()
+    conn.commit.assert_not_called()
 
 
 def test_refresh_genre_updates_single_cached_genre():

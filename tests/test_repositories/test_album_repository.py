@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from unittest.mock import Mock
 
 from repositories.album_repository import SqliteAlbumRepository
 
@@ -259,6 +260,19 @@ class TestSqliteAlbumRepository:
 
         albums = album_repo.get_all(use_cache=True)
         assert len(albums) == 3  # Album 1 + Album 2 (Artist A) + Album 2 (Artist B)
+
+    def test_refresh_rolls_back_when_insert_fails(self):
+        repo = SqliteAlbumRepository.__new__(SqliteAlbumRepository)
+        cursor = Mock()
+        cursor.execute.side_effect = [None, sqlite3.DatabaseError("boom")]
+        conn = Mock(cursor=Mock(return_value=cursor))
+        repo._get_connection = lambda: conn
+
+        result = SqliteAlbumRepository.refresh(repo)
+
+        assert result is False
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
     def test_refresh_album_updates_single_cached_album(self, populated_db):
         """Targeted album refresh should upsert only the requested aggregate row."""
