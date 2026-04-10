@@ -1378,19 +1378,20 @@ class OnlineMusicView(QWidget):
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
 
-    def _format_login_status_text(self, nick: str) -> str:
+    def _format_login_status_text(self, nick: str, include_theme_style: bool = True) -> str:
         """Format QQ Music login status text, linking only the nickname."""
         if nick:
             safe_nick = html.escape(str(nick))
-            try:
-                theme = current_theme()
-            except RuntimeError:
-                theme = None
-            link_color = getattr(theme, "text", "")
             link_style = ""
-            if link_color:
-                safe_link_color = html.escape(str(link_color), quote=True)
-                link_style = f' style="color: {safe_link_color}; text-decoration: none;"'
+            if include_theme_style:
+                try:
+                    theme = current_theme()
+                except RuntimeError:
+                    theme = None
+                link_color = getattr(theme, "text", "")
+                if link_color:
+                    safe_link_color = html.escape(str(link_color), quote=True)
+                    link_style = f' style="color: {safe_link_color}; text-decoration: none;"'
             return (
                 f'{t("qqmusic_logged_in_as")} '
                 f'<a href="{self._QQMUSIC_PROFILE_URL}"{link_style}>{safe_nick}</a>'
@@ -1415,7 +1416,7 @@ class OnlineMusicView(QWidget):
             else:
                 nick = ""
 
-            self._login_status_label.setText(self._format_login_status_text(nick))
+            self._login_status_label.setText(self._format_login_status_text(nick, include_theme_style=False))
 
             self._login_btn.setText(t("logout"))
 
@@ -1441,7 +1442,7 @@ class OnlineMusicView(QWidget):
             else:
                 nick = ""
 
-            self._login_status_label.setText(self._format_login_status_text(nick))
+            self._login_status_label.setText(self._format_login_status_text(nick, include_theme_style=False))
 
             self._login_btn.setText(t("logout"))
         else:
