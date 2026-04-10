@@ -1,3 +1,4 @@
+import logging
 import hashlib
 import threading
 from pathlib import Path
@@ -8,6 +9,8 @@ from PySide6.QtDBus import QDBusAbstractAdaptor, QDBusConnection, QDBusMessage, 
 
 from app import Bootstrap
 from domain import PlaylistItem
+
+logger = logging.getLogger(__name__)
 
 MPRIS_PATH = "/org/mpris/MediaPlayer2"
 MPRIS_NAME = "org.mpris.MediaPlayer2.musicplayer"
@@ -186,9 +189,15 @@ class MPRISService(QObject):
 
     def _dispatch_to_ui(self, fn, *args, **kwargs):
         if callable(self._ui_dispatcher):
-            self._ui_dispatcher(fn, *args, **kwargs)
+            try:
+                self._ui_dispatcher(fn, *args, **kwargs)
+            except Exception:
+                logger.warning("UI dispatch failed", exc_info=True)
             return
-        fn(*args, **kwargs)
+        try:
+            fn(*args, **kwargs)
+        except Exception:
+            logger.warning("UI dispatch failed", exc_info=True)
 
     def _send_signal(self, interface_name: str, member: str, args: list[Any]):
         if self.bus is None or not hasattr(self.bus, "send"):
