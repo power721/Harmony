@@ -4,6 +4,7 @@ Entities for online music search results.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional, List
 
 
@@ -128,7 +129,7 @@ class SearchResult:
     playlists: List[OnlinePlaylist] = field(default_factory=list)
 
 
-class SearchType:
+class SearchType(str, Enum):
     """Search type constants."""
 
     SONG = "song"

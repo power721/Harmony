@@ -2,6 +2,8 @@
 Tests for Online Music domain models.
 """
 
+from enum import Enum
+
 from domain.online_music import (
     OnlineSinger,
     AlbumInfo,
@@ -304,3 +306,4 @@ class TestSearchType:
         assert SearchType.SINGER == "singer"
         assert SearchType.ALBUM == "album"
         assert SearchType.PLAYLIST == "playlist"
+        assert issubclass(SearchType, Enum)
