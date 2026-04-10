@@ -248,7 +248,8 @@ class AcoustIDService:
             file_path: str,
             api_key: str,
             current_metadata: Optional[Dict[str, Any]] = None,
-            update_file: bool = True
+            update_file: bool = True,
+            metadata_service=None,
     ) -> Optional[Dict[str, str]]:
         """
         Enhance metadata for a track using AcoustID.
@@ -286,8 +287,11 @@ class AcoustIDService:
         # Update file metadata if requested
         if update_file:
             try:
-                from services.metadata.metadata_service import MetadataService
-                MetadataService.save_metadata(
+                service = metadata_service
+                if service is None:
+                    from services.metadata.metadata_service import MetadataService
+                    service = MetadataService
+                service.save_metadata(
                     file_path,
                     title=enhanced['title'],
                     artist=enhanced['artist'],
