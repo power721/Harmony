@@ -68,6 +68,7 @@ def test_close_event_invalidates_cover_saves_settings_and_cleans_lyrics():
     fake = SimpleNamespace(
         _save_window_settings=MagicMock(),
         _invalidate_cover_load=MagicMock(),
+        _disconnect_runtime_signals=MagicMock(),
         _stop_lyrics_thread=MagicMock(),
         closed=SimpleNamespace(emit=MagicMock()),
     )
@@ -76,6 +77,7 @@ def test_close_event_invalidates_cover_saves_settings_and_cleans_lyrics():
 
     fake._save_window_settings.assert_called_once_with()
     fake._invalidate_cover_load.assert_called_once_with()
+    fake._disconnect_runtime_signals.assert_called_once_with()
     fake._stop_lyrics_thread.assert_called_once_with(wait_ms=800, cleanup_signals=True)
     fake.closed.emit.assert_called_once_with()
     event.accept.assert_called_once_with()

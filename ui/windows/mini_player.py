@@ -590,6 +590,22 @@ class MiniPlayer(QWidget):
         self._cover_load_version += 1
         self._cover_thread = None
 
+    def _disconnect_runtime_signals(self):
+        """Disconnect engine signals owned by this window."""
+        engine = getattr(self._player, "engine", None)
+        if engine is None:
+            return
+        with suppress(Exception):
+            engine.state_changed.disconnect(self._on_state_changed)
+        with suppress(Exception):
+            engine.position_changed.disconnect(self._on_position_changed)
+        with suppress(Exception):
+            engine.duration_changed.disconnect(self._on_duration_changed)
+        with suppress(Exception):
+            engine.current_track_changed.disconnect(self._on_track_changed)
+        with suppress(Exception):
+            engine.current_track_pending.disconnect(self._on_pending_track_changed)
+
     def _show_cover(self, cover_path: str):
         """Show cover art (called via signal from background thread)."""
         if cover_path:
@@ -696,6 +712,7 @@ class MiniPlayer(QWidget):
     def closeEvent(self, event):
         """Handle close event."""
         self._invalidate_cover_load()
+        self._disconnect_runtime_signals()
         # Clean up lyrics thread
         self._stop_lyrics_thread(wait_ms=1000, cleanup_signals=True)
 

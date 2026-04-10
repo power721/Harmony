@@ -105,12 +105,13 @@ def test_close_event_invalidates_cover_and_cleans_lyrics():
 
     fake = SimpleNamespace(
         _invalidate_cover_load=_invalidate_cover_load,
+        _disconnect_runtime_signals=lambda: calls.append("disconnect"),
         _stop_lyrics_thread=_stop_lyrics_thread,
         closed=SimpleNamespace(emit=MagicMock()),
     )
 
     MiniPlayer.closeEvent(fake, event)
 
-    assert calls == ["invalidate", "lyrics"]
+    assert calls == ["invalidate", "disconnect", "lyrics"]
     fake.closed.emit.assert_called_once_with()
     event.accept.assert_called_once_with()

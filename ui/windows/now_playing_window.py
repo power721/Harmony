@@ -728,6 +728,28 @@ class NowPlayingWindow(QWidget):
         self._cover_load_version += 1
         self._cover_thread = None
 
+    def _disconnect_runtime_signals(self):
+        """Disconnect engine and event-bus signals owned by this window."""
+        engine = getattr(self._playback, "engine", None)
+        if engine is not None:
+            with suppress(Exception):
+                engine.current_track_changed.disconnect(self._on_track_changed)
+            with suppress(Exception):
+                engine.current_track_pending.disconnect(self._on_pending_track_changed)
+            with suppress(Exception):
+                engine.position_changed.disconnect(self._on_position_changed)
+            with suppress(Exception):
+                engine.duration_changed.disconnect(self._on_duration_changed)
+            with suppress(Exception):
+                engine.state_changed.disconnect(self._on_state_changed)
+            with suppress(Exception):
+                engine.play_mode_changed.disconnect(self._on_play_mode_changed)
+            with suppress(Exception):
+                engine.volume_changed.disconnect(self._on_volume_changed_from_engine)
+
+        with suppress(Exception):
+            EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
+
     def _set_default_cover(self):
         """Set fallback cover when missing."""
         width = max(420, self._cover_label.width() or 420)
@@ -947,6 +969,7 @@ class NowPlayingWindow(QWidget):
         """Cleanup and notify main window to restore."""
         self._save_window_settings()
         self._invalidate_cover_load()
+        self._disconnect_runtime_signals()
 
         self._stop_lyrics_thread(wait_ms=800, cleanup_signals=True)
 
