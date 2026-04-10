@@ -30,6 +30,7 @@ from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
 from ui.icons import IconName, get_icon
+from ui.widgets.cover_loader import CoverLoader
 from ui.widgets.player_controls import PlayerControls
 from ui.widgets.lyrics_widget_pro import LyricsWidget
 from utils import format_time
@@ -692,36 +693,12 @@ class NowPlayingWindow(QWidget):
         version = self._cover_load_version
 
         def load_cover() -> str:
-            cover_path = track_dict.get("cover_path")
-            if cover_path and Path(cover_path).exists():
-                return cover_path
-
-            source = track_dict.get("source", "") or track_dict.get("source_type", "")
-            cloud_file_id = track_dict.get("cloud_file_id", "")
-            provider_id = track_dict.get("online_provider_id")
-            is_online = source in ("online", "ONLINE")
-            if is_online and cloud_file_id and self._playback.cover_service:
-                try:
-                    online_cover = self._playback.cover_service.get_online_cover(
-                        song_mid=cloud_file_id,
-                        album_mid=None,
-                        artist=track_dict.get("artist", ""),
-                        title=track_dict.get("title", ""),
-                        provider_id=provider_id,
-                    )
-                    if online_cover:
-                        return online_cover
-                except Exception as exc:
-                    logger.debug(f"[NowPlayingWindow] Online cover load failed: {exc}")
-
-            path = track_dict.get("path", "")
-            title = track_dict.get("title", "")
-            artist = track_dict.get("artist", "")
-            album = track_dict.get("album", "")
-            needs_download = track_dict.get("needs_download", False)
-            is_cloud = track_dict.get("is_cloud", False)
-            skip_online = needs_download or (is_cloud and not path)
-            return self._playback.get_track_cover(path, title, artist, album, skip_online=skip_online) or ""
+            return CoverLoader.resolve_track_cover_path(
+                track_dict,
+                getattr(self._playback, "cover_service", None),
+                self._playback.get_track_cover,
+                logger,
+            )
 
         def worker():
             self._cover_loaded.emit(load_cover(), version)
@@ -738,8 +715,8 @@ class NowPlayingWindow(QWidget):
         if not cover_path:
             self._set_default_cover()
             return
-        pixmap = QPixmap(cover_path)
-        if pixmap.isNull():
+        pixmap = CoverLoader.load_pixmap(cover_path)
+        if pixmap is None:
             self._set_default_cover()
             return
         self._cover_source_pixmap = pixmap

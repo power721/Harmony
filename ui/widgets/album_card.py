@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from domain.album import Album
 from system.i18n import t
+from ui.widgets.cover_loader import CoverLoader
 from ui.widgets.hover_effect_mixin import HoverEffectMixin
 
 logger = logging.getLogger(__name__)
@@ -184,14 +185,9 @@ class AlbumCard(HoverEffectMixin, QWidget):
             from infrastructure.cache import ImageCache
             cached_data = ImageCache.get(cover_path)
             if cached_data:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(cached_data):
-                    scaled = pixmap.scaled(
-                        self.COVER_SIZE, self.COVER_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    self._cover_label.setPixmap(scaled)
+                pixmap = CoverLoader.pixmap_from_bytes(cached_data, self.COVER_SIZE, self.COVER_SIZE)
+                if pixmap is not None:
+                    self._cover_label.setPixmap(pixmap)
                     self._cover_loaded = True
                     return
 
@@ -204,14 +200,9 @@ class AlbumCard(HoverEffectMixin, QWidget):
         # Local file
         if Path(cover_path).exists():
             try:
-                pixmap = QPixmap(cover_path)
-                if not pixmap.isNull():
-                    scaled = pixmap.scaled(
-                        self.COVER_SIZE, self.COVER_SIZE,
-                        Qt.KeepAspectRatioByExpanding,
-                        Qt.SmoothTransformation
-                    )
-                    self._cover_label.setPixmap(scaled)
+                pixmap = CoverLoader.load_scaled_pixmap(cover_path, self.COVER_SIZE, self.COVER_SIZE)
+                if pixmap is not None:
+                    self._cover_label.setPixmap(pixmap)
                     self._cover_loaded = True
                     return
             except Exception as e:
@@ -244,14 +235,11 @@ class AlbumCard(HoverEffectMixin, QWidget):
                     image_data = future.result()
                     if image_data:
                         ImageCache.set(url, image_data)
-                        pixmap = QPixmap()
-                        if pixmap.loadFromData(image_data):
-                            scaled = pixmap.scaled(
-                                self.COVER_SIZE, self.COVER_SIZE,
-                                Qt.KeepAspectRatioByExpanding,
-                                Qt.SmoothTransformation
-                            )
-                            self._cover_label.setPixmap(scaled)
+                        pixmap = CoverLoader.pixmap_from_bytes(
+                            image_data, self.COVER_SIZE, self.COVER_SIZE
+                        )
+                        if pixmap is not None:
+                            self._cover_label.setPixmap(pixmap)
                             self._cover_loaded = True
                     self._downloading = False
                 else:
