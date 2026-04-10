@@ -4,6 +4,7 @@ Unified configuration storage using database.
 """
 import base64
 import binascii
+import json
 import logging
 import threading
 from typing import Any, Dict, Optional, TYPE_CHECKING
@@ -855,7 +856,6 @@ class ConfigManager:
         history = self.get(SettingKey.SEARCH_HISTORY, [])
         if isinstance(history, str):
             try:
-                import json
                 history = json.loads(history)
             except (ValueError, TypeError):
                 history = []

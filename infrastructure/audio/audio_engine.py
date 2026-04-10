@@ -332,7 +332,6 @@ class PlayerEngine(QObject):
 
     def cleanup_temp_files(self):
         """Clean up temporary files from cloud playback."""
-        import os
         for temp_file in self._temp_files:
             try:
                 if os.path.exists(temp_file):
@@ -355,7 +354,6 @@ class PlayerEngine(QObject):
 
     def _cleanup_old_temp_files(self):
         """Clean up old temporary files, keeping only recent ones."""
-        import os
         # Keep only the most recent tracked temp files.
         files_to_remove = self._temp_files[:-_TEMP_FILES_TO_KEEP]
         self._temp_files = self._temp_files[-_TEMP_FILES_TO_KEEP:]
