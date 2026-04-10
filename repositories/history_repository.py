@@ -37,9 +37,11 @@ class SqliteHistoryRepository(BaseRepository):
 
         # Single UPSERT: update timestamp if exists, insert if not
         cursor.execute("""
-            INSERT INTO play_history (track_id, played_at)
-            VALUES (?, CURRENT_TIMESTAMP)
-            ON CONFLICT(track_id) DO UPDATE SET played_at = CURRENT_TIMESTAMP
+            INSERT INTO play_history (track_id, played_at, play_count)
+            VALUES (?, CURRENT_TIMESTAMP, 1)
+            ON CONFLICT(track_id) DO UPDATE SET
+                played_at = CURRENT_TIMESTAMP,
+                play_count = play_history.play_count + 1
         """, (track_id,))
 
         conn.commit()
@@ -58,7 +60,7 @@ class SqliteHistoryRepository(BaseRepository):
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT ph.id, ph.track_id, ph.played_at
+            SELECT ph.id, ph.track_id, ph.played_at, ph.play_count
             FROM play_history ph
             ORDER BY ph.played_at DESC
             LIMIT ?
@@ -69,7 +71,8 @@ class SqliteHistoryRepository(BaseRepository):
             PlayHistory(
                 id=row["id"],
                 track_id=row["track_id"],
-                played_at=datetime.fromisoformat(row["played_at"]) if row["played_at"] else datetime.now()
+                played_at=datetime.fromisoformat(row["played_at"]) if row["played_at"] else datetime.now(),
+                play_count=row["play_count"] if "play_count" in row.keys() else 1,
             )
             for row in rows
         ]

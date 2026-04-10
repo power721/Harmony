@@ -657,8 +657,39 @@ class GeneralSettingsDialog(QDialog):
 
         appearance_layout.addStretch()
 
+        # Views tab
+        views_tab = QWidget()
+        views_layout = QVBoxLayout(views_tab)
+        views_layout.setSpacing(10)
+
+        views_group = QGroupBox(t("view_settings"))
+        views_group_layout = QVBoxLayout()
+        views_group_layout.setSpacing(8)
+
+        self._show_albums_checkbox = QCheckBox(t("view_show_albums"))
+        self._show_genres_checkbox = QCheckBox(t("view_show_genres"))
+        self._show_cloud_checkbox = QCheckBox(t("view_show_cloud"))
+        self._show_most_played_checkbox = QCheckBox(t("view_show_most_played"))
+        self._show_recently_added_checkbox = QCheckBox(t("view_show_recently_added"))
+
+        views_group_layout.addWidget(self._show_albums_checkbox)
+        views_group_layout.addWidget(self._show_genres_checkbox)
+        views_group_layout.addWidget(self._show_cloud_checkbox)
+        views_group_layout.addWidget(self._show_most_played_checkbox)
+        views_group_layout.addWidget(self._show_recently_added_checkbox)
+
+        views_hint = QLabel(t("view_settings_hint"))
+        views_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
+        views_hint.setWordWrap(True)
+        views_group_layout.addWidget(views_hint)
+
+        views_group.setLayout(views_group_layout)
+        views_layout.addWidget(views_group)
+        views_layout.addStretch()
+
         tab_widget.addTab(playback_tab, t("playback_tab"))
         tab_widget.addTab(appearance_tab, t("theme_tab"))
+        tab_widget.addTab(views_tab, t("views_tab"))
         tab_widget.addTab(cache_tab, t("cache_tab"))
         tab_widget.addTab(covers_tab, t("covers_tab"))
         tab_widget.addTab(repair_tab, t("repair_tab"))
@@ -811,6 +842,13 @@ class GeneralSettingsDialog(QDialog):
         theme_name = self._config.get('ui.theme', 'dark')
         self._select_theme_preset(theme_name, load_only=True)
 
+        # Load view visibility settings
+        self._show_albums_checkbox.setChecked(self._config.get_albums_visible())
+        self._show_genres_checkbox.setChecked(self._config.get_genres_visible())
+        self._show_cloud_checkbox.setChecked(self._config.get_cloud_drive_visible())
+        self._show_most_played_checkbox.setChecked(self._config.get_most_played_visible())
+        self._show_recently_added_checkbox.setChecked(self._config.get_recently_added_visible())
+
     def _save_settings(self):
         """Save settings to config."""
         # AI settings
@@ -902,6 +940,12 @@ class GeneralSettingsDialog(QDialog):
                 theme.set_theme(self._selected_preset_key)
             except Exception as e:
                 logger.warning(f"Failed to apply theme: {e}")
+
+        self._config.set_albums_visible(self._show_albums_checkbox.isChecked())
+        self._config.set_genres_visible(self._show_genres_checkbox.isChecked())
+        self._config.set_cloud_drive_visible(self._show_cloud_checkbox.isChecked())
+        self._config.set_most_played_visible(self._show_most_played_checkbox.isChecked())
+        self._config.set_recently_added_visible(self._show_recently_added_checkbox.isChecked())
 
         MessageDialog.information(self, t("success"), t("ai_settings_saved"))
         self.accept()

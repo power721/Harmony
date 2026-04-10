@@ -84,7 +84,7 @@ class LibraryView(QWidget):
         self._player = player
         self._config = config_manager
         self._cover_service = cover_service
-        self._current_view = "all"  # all, favorites, history
+        self._current_view = "all"  # all, favorites, history, most_played, recently_added
         self._current_playing_track_id = None  # Track currently playing
         self._history_list_view = None  # History list view widget
         self._history_played_at_map = {}  # track_id -> played_at datetime
@@ -92,6 +92,8 @@ class LibraryView(QWidget):
             "all": "",
             "favorites": "",
             "history": "",
+            "most_played": "",
+            "recently_added": "",
         }  # 保存每个视图的搜索文本
         self._all_tracks_total_count = 0
         self._all_tracks_offset = 0
@@ -164,6 +166,14 @@ class LibraryView(QWidget):
         self._history_list_view = HistoryListView()
         self._stacked_widget.addWidget(self._history_list_view)
 
+        # Most played list view
+        self._most_played_list_view = LocalTracksListView(show_index=True, show_source=True)
+        self._stacked_widget.addWidget(self._most_played_list_view)
+
+        # Recently added list view
+        self._recently_added_list_view = LocalTracksListView(show_index=True, show_source=True)
+        self._stacked_widget.addWidget(self._recently_added_list_view)
+
         # Loading indicator
         self._loading_label = QLabel("⏳ " + t("loading"))
         self._loading_label.setAlignment(Qt.AlignCenter)
@@ -231,6 +241,36 @@ class LibraryView(QWidget):
         self._history_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
         self._history_list_view.delete_file_requested.connect(self._on_history_delete_file)
         self._history_list_view.redownload_requested.connect(self._redownload_online_track)
+
+        # Most played list view
+        self._most_played_list_view.track_activated.connect(self._on_most_played_track_activated)
+        self._most_played_list_view.play_requested.connect(self._on_most_played_play_requested)
+        self._most_played_list_view.insert_to_queue_requested.connect(self._on_history_insert_to_queue)
+        self._most_played_list_view.add_to_queue_requested.connect(self._on_history_add_to_queue)
+        self._most_played_list_view.add_to_playlist_requested.connect(self._on_history_add_to_playlist)
+        self._most_played_list_view.favorites_toggle_requested.connect(self._on_history_favorites_toggle)
+        self._most_played_list_view.edit_info_requested.connect(self._on_history_edit_info)
+        self._most_played_list_view.download_cover_requested.connect(self._on_history_download_cover)
+        self._most_played_list_view.organize_files_requested.connect(self._on_history_organize_files)
+        self._most_played_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
+        self._most_played_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
+        self._most_played_list_view.delete_file_requested.connect(self._on_history_delete_file)
+        self._most_played_list_view.redownload_requested.connect(self._redownload_online_track)
+
+        # Recently added list view
+        self._recently_added_list_view.track_activated.connect(self._on_recently_added_track_activated)
+        self._recently_added_list_view.play_requested.connect(self._on_recently_added_play_requested)
+        self._recently_added_list_view.insert_to_queue_requested.connect(self._on_history_insert_to_queue)
+        self._recently_added_list_view.add_to_queue_requested.connect(self._on_history_add_to_queue)
+        self._recently_added_list_view.add_to_playlist_requested.connect(self._on_history_add_to_playlist)
+        self._recently_added_list_view.favorites_toggle_requested.connect(self._on_history_favorites_toggle)
+        self._recently_added_list_view.edit_info_requested.connect(self._on_history_edit_info)
+        self._recently_added_list_view.download_cover_requested.connect(self._on_history_download_cover)
+        self._recently_added_list_view.organize_files_requested.connect(self._on_history_organize_files)
+        self._recently_added_list_view.open_file_location_requested.connect(self._on_history_open_file_location)
+        self._recently_added_list_view.remove_from_library_requested.connect(self._on_history_remove_from_library)
+        self._recently_added_list_view.delete_file_requested.connect(self._on_history_delete_file)
+        self._recently_added_list_view.redownload_requested.connect(self._redownload_online_track)
 
         # Connect to player engine signals
         self._player.engine.current_track_changed.connect(
@@ -311,6 +351,10 @@ class LibraryView(QWidget):
             self._title_label.setText(t("favorites"))
         elif self._current_view == "history":
             self._title_label.setText(t("history"))
+        elif self._current_view == "most_played":
+            self._title_label.setText(t("most_played"))
+        elif self._current_view == "recently_added":
+            self._title_label.setText(t("recently_added"))
 
         # Reload data
         if self._current_view == "all":
@@ -322,6 +366,12 @@ class LibraryView(QWidget):
         elif self._current_view == "history":
             self._stacked_widget.setCurrentWidget(self._history_list_view)
             self._load_history()
+        elif self._current_view == "most_played":
+            self._stacked_widget.setCurrentWidget(self._most_played_list_view)
+            self._load_most_played()
+        elif self._current_view == "recently_added":
+            self._stacked_widget.setCurrentWidget(self._recently_added_list_view)
+            self._load_recently_added()
 
     def get_current_view(self) -> str:
         """Get current view type.
@@ -405,12 +455,50 @@ class LibraryView(QWidget):
             # 否则加载历史记录
             self._load_history()
 
+    def show_most_played(self):
+        """Show most played tracks."""
+        self._view_search_texts[self._current_view] = self._search_input.text()
+
+        self._current_view = "most_played"
+        self._title_label.setText(t("most_played"))
+        self._stacked_widget.setCurrentWidget(self._most_played_list_view)
+        self._source_filter.setVisible(False)
+
+        saved_text = self._view_search_texts.get("most_played", "")
+        self._search_input.setText(saved_text)
+
+        if saved_text:
+            self._on_search(saved_text)
+        else:
+            self._load_most_played()
+
+    def show_recently_added(self):
+        """Show recently added tracks."""
+        self._view_search_texts[self._current_view] = self._search_input.text()
+
+        self._current_view = "recently_added"
+        self._title_label.setText(t("recently_added"))
+        self._stacked_widget.setCurrentWidget(self._recently_added_list_view)
+        self._source_filter.setVisible(False)
+
+        saved_text = self._view_search_texts.get("recently_added", "")
+        self._search_input.setText(saved_text)
+
+        if saved_text:
+            self._on_search(saved_text)
+        else:
+            self._load_recently_added()
+
     def _current_list_view(self):
         """Return the active list view for the current library subview."""
         if self._current_view == "favorites":
             return self._favorites_list_view
         if self._current_view == "history":
             return self._history_list_view
+        if self._current_view == "most_played":
+            return self._most_played_list_view
+        if self._current_view == "recently_added":
+            return self._recently_added_list_view
         return self._all_tracks_list_view
 
     def _reload_current_list_view(self):
@@ -422,6 +510,10 @@ class LibraryView(QWidget):
             self._load_favorites()
         elif self._current_view == "history":
             self._load_history()
+        elif self._current_view == "most_played":
+            self._load_most_played()
+        elif self._current_view == "recently_added":
+            self._load_recently_added()
         else:
             self._load_all_tracks()
 
@@ -552,6 +644,36 @@ class LibraryView(QWidget):
         self._stacked_widget.setVisible(True)
         self._scroll_to_playing_track()
 
+    def _load_most_played(self):
+        """Load most played tracks."""
+        self._loading_label.setVisible(True)
+        self._stacked_widget.setVisible(False)
+
+        tracks = self._play_history_service.get_most_played(limit=100)
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+        self._most_played_list_view.load_tracks(tracks, favorite_ids)
+        self._stacked_widget.setCurrentWidget(self._most_played_list_view)
+        self._status_label.setText(f"{len(tracks)} {t('most_played')}")
+
+        self._loading_label.setVisible(False)
+        self._stacked_widget.setVisible(True)
+        self._scroll_to_playing_track()
+
+    def _load_recently_added(self):
+        """Load recently added tracks."""
+        self._loading_label.setVisible(True)
+        self._stacked_widget.setVisible(False)
+
+        tracks = self._library_service.get_recently_added_tracks(limit=100)
+        favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+        self._recently_added_list_view.load_tracks(tracks, favorite_ids)
+        self._stacked_widget.setCurrentWidget(self._recently_added_list_view)
+        self._status_label.setText(f"{len(tracks)} {t('recently_added')}")
+
+        self._loading_label.setVisible(False)
+        self._stacked_widget.setVisible(True)
+        self._scroll_to_playing_track()
+
     def _filter_tracks_by_query(self, tracks: List[Track], query: str) -> List[Track]:
         """Filter a list of tracks by search query."""
         query_lower = query.lower()
@@ -622,6 +744,18 @@ class LibraryView(QWidget):
             status_text = (
                 f'{len(tracks)} {t("results_for")} "{query}" {t("in_history")}'
             )
+        elif self._current_view == "most_played":
+            all_tracks = self._play_history_service.get_most_played(limit=100)
+            tracks = self._filter_tracks_by_query(all_tracks, query)
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._most_played_list_view.load_tracks(tracks, favorite_ids)
+            status_text = f'{len(tracks)} {t("results_for")} "{query}"'
+        elif self._current_view == "recently_added":
+            all_tracks = self._library_service.get_recently_added_tracks(limit=100)
+            tracks = self._filter_tracks_by_query(all_tracks, query)
+            favorite_ids = self._favorites_service.get_all_favorite_track_ids()
+            self._recently_added_list_view.load_tracks(tracks, favorite_ids)
+            status_text = f'{len(tracks)} {t("results_for")} "{query}"'
         else:
             tracks = []
             status_text = f'0 {t("results_for")} "{query}"'
@@ -718,6 +852,20 @@ class LibraryView(QWidget):
 
         recent_tracks = self._play_history_service.get_history_tracks(limit=100)
         self._play_track_collection(recent_tracks, track.id)
+
+    def _on_most_played_track_activated(self, track: Track):
+        """Handle track activation from most played list view."""
+        if not track or not track.id:
+            return
+        tracks = self._play_history_service.get_most_played(limit=100)
+        self._play_track_collection(tracks, track.id)
+
+    def _on_recently_added_track_activated(self, track: Track):
+        """Handle track activation from recently added list view."""
+        if not track or not track.id:
+            return
+        tracks = self._library_service.get_recently_added_tracks(limit=100)
+        self._play_track_collection(tracks, track.id)
 
     def _on_favorites_track_activated(self, track: Track):
         """Play a track activated from the favorites list."""
@@ -835,6 +983,24 @@ class LibraryView(QWidget):
             else:
                 self._player.engine.load_playlist_items(items)
                 self._player.engine.play()
+
+    def _on_most_played_play_requested(self, tracks: list):
+        """Play requested tracks from most played list view."""
+        if not tracks:
+            return
+        if len(tracks) == 1:
+            self._on_most_played_track_activated(tracks[0])
+            return
+        self._play_track_collection(tracks, tracks[0].id)
+
+    def _on_recently_added_play_requested(self, tracks: list):
+        """Play requested tracks from recently added list view."""
+        if not tracks:
+            return
+        if len(tracks) == 1:
+            self._on_recently_added_track_activated(tracks[0])
+            return
+        self._play_track_collection(tracks, tracks[0].id)
 
     def _on_history_insert_to_queue(self, tracks: list):
         """Insert tracks after current in queue."""

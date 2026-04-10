@@ -46,6 +46,7 @@ def temp_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             track_id INTEGER NOT NULL,
             played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            play_count INTEGER DEFAULT 1,
             FOREIGN KEY (track_id) REFERENCES tracks(id)
         )
     """)
@@ -121,6 +122,18 @@ class TestSqliteHistoryRepository:
         # Should only have one entry
         history = history_repo.get_recent(limit=10)
         assert len(history) == 1
+        assert history[0].play_count == 2
+
+    def test_add_increments_play_count(self, history_repo, populated_db):
+        """Replaying the same track should increment play_count instead of replacing it."""
+        history_repo.add(track_id=1)
+        history_repo.add(track_id=1)
+        history_repo.add(track_id=1)
+
+        history = history_repo.get_recent(limit=10)
+
+        assert len(history) == 1
+        assert history[0].play_count == 3
 
     # ===== get_recent Tests =====
 
@@ -173,6 +186,7 @@ class TestSqliteHistoryRepository:
         assert history[0].track_id == 1
         assert history[0].id is not None
         assert history[0].played_at is not None
+        assert history[0].play_count == 1
 
     # ===== get_recent_tracks Tests =====
 
@@ -222,3 +236,16 @@ class TestSqliteHistoryRepository:
         """Test getting recent tracks when empty."""
         tracks = history_repo.get_recent_tracks()
         assert tracks == []
+
+    def test_get_most_played_orders_by_play_count(self, history_repo, populated_db):
+        """Most played query should rank tracks by accumulated play_count."""
+        history_repo.add(track_id=2)
+        history_repo.add(track_id=1)
+        history_repo.add(track_id=1)
+        history_repo.add(track_id=3)
+        history_repo.add(track_id=1)
+        history_repo.add(track_id=2)
+
+        tracks = history_repo.get_most_played(limit=10)
+
+        assert [track.title for track in tracks[:3]] == ["Song 1", "Song 2", "Song 3"]

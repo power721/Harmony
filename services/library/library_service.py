@@ -145,6 +145,10 @@ class LibraryService:
         """Get tracks in the library with optional pagination and source filtering."""
         return self._track_repo.get_all(limit=limit, offset=offset, source=source)
 
+    def get_recently_added_tracks(self, limit: int = 100) -> List[Track]:
+        """Get recently added tracks ordered by created_at descending."""
+        return self._track_repo.get_recently_added(limit)
+
     def get_track_count(self, source: TrackSource | str | None = None) -> int:
         """Get total track count, optionally filtered by source."""
         return self._track_repo.get_track_count(source=source)

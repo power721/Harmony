@@ -583,6 +583,22 @@ class MainWindow(QMainWindow):
             self._show_favorites()
         elif page_index == Sidebar.PAGE_HISTORY:
             self._show_history()
+        elif page_index == Sidebar.PAGE_MOST_PLAYED:
+            if self._config.get_most_played_visible():
+                self._show_most_played()
+            else:
+                self._show_page(Sidebar.PAGE_LIBRARY)
+        elif page_index == Sidebar.PAGE_RECENTLY_ADDED:
+            if self._config.get_recently_added_visible():
+                self._show_recently_added()
+            else:
+                self._show_page(Sidebar.PAGE_LIBRARY)
+        elif page_index == Sidebar.PAGE_ALBUMS and not self._config.get_albums_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+        elif page_index == Sidebar.PAGE_GENRES and not self._config.get_genres_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+        elif page_index == Sidebar.PAGE_CLOUD and not self._config.get_cloud_drive_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
         else:
             self._show_page(page_index)
 
@@ -802,6 +818,22 @@ class MainWindow(QMainWindow):
         from PySide6.QtCore import QTimer
 
         QTimer.singleShot(50, self._library_view.show_history)
+
+    def _show_most_played(self):
+        """Show most played tracks."""
+        self._stacked_widget.setCurrentIndex(0)
+        self._sidebar.set_current_page(Sidebar.PAGE_MOST_PLAYED)
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(50, self._library_view.show_most_played)
+
+    def _show_recently_added(self):
+        """Show recently added tracks."""
+        self._stacked_widget.setCurrentIndex(0)
+        self._sidebar.set_current_page(Sidebar.PAGE_RECENTLY_ADDED)
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(50, self._library_view.show_recently_added)
 
     def _on_album_clicked(self, album):
         """Handle album card click."""
@@ -1338,6 +1370,27 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             # Update settings button status after settings change
             self._sidebar.update_settings_status(self._config.get_ai_enabled())
+            self._sidebar.refresh_optional_view_visibility()
+            self._ensure_current_view_is_visible()
+
+    def _ensure_current_view_is_visible(self):
+        """Fallback to library when the active view has been disabled in settings."""
+        current_index = self._stacked_widget.currentIndex()
+        if current_index == Sidebar.PAGE_ALBUMS and not self._config.get_albums_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+            return
+        if current_index == Sidebar.PAGE_GENRES and not self._config.get_genres_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+            return
+        if current_index == Sidebar.PAGE_CLOUD and not self._config.get_cloud_drive_visible():
+            self._show_page(Sidebar.PAGE_LIBRARY)
+            return
+        if current_index == Sidebar.PAGE_LIBRARY:
+            current_view = self._library_view.get_current_view()
+            if current_view == "most_played" and not self._config.get_most_played_visible():
+                self._show_page(Sidebar.PAGE_LIBRARY)
+            elif current_view == "recently_added" and not self._config.get_recently_added_visible():
+                self._show_page(Sidebar.PAGE_LIBRARY)
 
     def show_help(self):
         """Show help dialog."""
@@ -2025,7 +2078,7 @@ class MainWindow(QMainWindow):
         # Special handling for library view - check if it's showing favorites or history
         if view_type == "library":
             current_view = self._library_view.get_current_view()
-            if current_view in ("favorites", "history"):
+            if current_view in ("favorites", "history", "most_played", "recently_added"):
                 view_type = current_view
 
         # Save view-specific data
@@ -2101,13 +2154,19 @@ class MainWindow(QMainWindow):
                         self._stacked_widget.setCurrentIndex(6)
                         self._update_nav_buttons_for_detail_view()
             elif view_type == "cloud":
-                self._show_page(1)
+                if self._config.get_cloud_drive_visible():
+                    self._show_page(1)
+                else:
+                    self._show_page(0)
             elif view_type == "playlists":
                 self._show_page(2)
             elif view_type == "queue":
                 self._show_page(3)
             elif view_type == "albums":
-                self._show_page(4)
+                if self._config.get_albums_visible():
+                    self._show_page(4)
+                else:
+                    self._show_page(0)
             elif view_type == "artists":
                 self._show_page(5)
             elif view_type == "online":
@@ -2129,7 +2188,10 @@ class MainWindow(QMainWindow):
                 else:
                     self._show_page(0)
             elif view_type == "genres":
-                self._show_page(8)
+                if self._config.get_genres_visible():
+                    self._show_page(8)
+                else:
+                    self._show_page(0)
             elif view_type == "genre":
                 name = view_data.get("name")
                 if name:
@@ -2146,6 +2208,16 @@ class MainWindow(QMainWindow):
                 self._show_favorites()
             elif view_type == "history":
                 self._show_history()
+            elif view_type == "most_played":
+                if self._config.get_most_played_visible():
+                    self._show_most_played()
+                else:
+                    self._show_page(0)
+            elif view_type == "recently_added":
+                if self._config.get_recently_added_visible():
+                    self._show_recently_added()
+                else:
+                    self._show_page(0)
 
         # Delay to ensure UI is ready
         QTimer.singleShot(100, restore_view)

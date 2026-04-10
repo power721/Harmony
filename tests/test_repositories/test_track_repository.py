@@ -6,6 +6,7 @@ import pytest
 import sqlite3
 import tempfile
 import os
+from datetime import datetime
 
 from repositories.track_repository import SqliteTrackRepository
 from domain.track import Track, TrackSource
@@ -650,6 +651,28 @@ class TestTrackRepositoryBatchOperations:
             "/music/scan/a.mp3": track_id_1,
             "/music/scan/sub/b.flac": track_id_2,
         }
+
+    def test_get_recently_added_returns_newest_created_at_first(self, track_repo):
+        """Recently-added query should sort by created_at descending."""
+        track_repo.add(Track(
+            path="/music/older.mp3",
+            title="Older",
+            created_at=datetime(2026, 4, 1, 8, 0, 0),
+        ))
+        track_repo.add(Track(
+            path="/music/newer.mp3",
+            title="Newer",
+            created_at=datetime(2026, 4, 2, 8, 0, 0),
+        ))
+        track_repo.add(Track(
+            path="/music/newest.mp3",
+            title="Newest",
+            created_at=datetime(2026, 4, 3, 8, 0, 0),
+        ))
+
+        tracks = track_repo.get_recently_added(limit=10)
+
+        assert [track.title for track in tracks[:3]] == ["Newest", "Newer", "Older"]
 
 
 class TestTrackRepositoryAlbumOperations:

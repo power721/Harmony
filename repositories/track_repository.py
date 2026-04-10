@@ -251,6 +251,22 @@ class SqliteTrackRepository(BaseRepository):
         rows = cursor.fetchall()
         return [self._row_to_track(row) for row in rows]
 
+    def get_recently_added(self, limit: int = DEFAULT_PAGE_SIZE) -> List[Track]:
+        """Get tracks ordered by newest created_at first."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM tracks
+            ORDER BY datetime(COALESCE(created_at, CURRENT_TIMESTAMP)) DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        return [self._row_to_track(row) for row in rows]
+
     def get_track_count(self, source: Optional[TrackSource | str] = None) -> int:
         """Get total track count, optionally filtered by source."""
         conn = self._get_connection()

@@ -59,6 +59,11 @@ class SettingKey:
     UI_HIGHLIGHT_COLOR = "ui.highlight_color"  # DEPRECATED: Highlight color (hex format)
     UI_THEME = "ui.theme"  # Theme name: "dark", "gold", "ocean", "purple", "sunset", or "custom"
     UI_THEME_CUSTOM = "ui.theme.custom"  # Custom theme colors dict (only if ui.theme is "custom")
+    UI_SHOW_ALBUMS = "ui.show_albums"
+    UI_SHOW_GENRES = "ui.show_genres"
+    UI_SHOW_CLOUD = "ui.show_cloud"
+    UI_SHOW_MOST_PLAYED = "ui.show_most_played"
+    UI_SHOW_RECENTLY_ADDED = "ui.show_recently_added"
 
     # AI settings
     AI_ENABLED = "ai.enabled"
@@ -584,6 +589,46 @@ class ConfigManager:
             enabled: True to show now playing after launch
         """
         self.set(SettingKey.UI_START_IN_NOW_PLAYING, enabled)
+
+    def get_albums_visible(self) -> bool:
+        """Get whether the Albums sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_ALBUMS, True))
+
+    def set_albums_visible(self, enabled: bool):
+        """Set whether the Albums sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_ALBUMS, enabled)
+
+    def get_genres_visible(self) -> bool:
+        """Get whether the Genres sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_GENRES, False))
+
+    def set_genres_visible(self, enabled: bool):
+        """Set whether the Genres sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_GENRES, enabled)
+
+    def get_cloud_drive_visible(self) -> bool:
+        """Get whether the Cloud Drive sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_CLOUD, True))
+
+    def set_cloud_drive_visible(self, enabled: bool):
+        """Set whether the Cloud Drive sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_CLOUD, enabled)
+
+    def get_most_played_visible(self) -> bool:
+        """Get whether the Most Played sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_MOST_PLAYED, False))
+
+    def set_most_played_visible(self, enabled: bool):
+        """Set whether the Most Played sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_MOST_PLAYED, enabled)
+
+    def get_recently_added_visible(self) -> bool:
+        """Get whether the Recently Added sidebar entry is enabled."""
+        return bool(self.get(SettingKey.UI_SHOW_RECENTLY_ADDED, False))
+
+    def set_recently_added_visible(self, enabled: bool):
+        """Set whether the Recently Added sidebar entry is enabled."""
+        self.set(SettingKey.UI_SHOW_RECENTLY_ADDED, enabled)
 
     def get_highlight_color(self) -> str:
         """

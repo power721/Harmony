@@ -68,6 +68,8 @@ class TestSidebar:
         # Special pages (not in stacked widget)
         assert Sidebar.PAGE_FAVORITES == 100
         assert Sidebar.PAGE_HISTORY == 101
+        assert Sidebar.PAGE_MOST_PLAYED == 102
+        assert Sidebar.PAGE_RECENTLY_ADDED == 103
 
     def test_signals_exist(self, qapp, mock_config):
         """Test that all expected signals exist."""
@@ -860,3 +862,23 @@ class TestSidebarWithConfig:
         sidebar = Sidebar(config_manager=mock_config_ai)
 
         assert "⚙️" in sidebar._settings_btn.text()
+
+    def test_optional_view_buttons_follow_config_visibility(self, qapp, mock_config):
+        """Sidebar should hide optional entries based on the configured view toggles."""
+        ThemeManager.instance(mock_config)
+        config = Mock()
+        config.get_ai_enabled.return_value = False
+        config.get_albums_visible.return_value = True
+        config.get_genres_visible.return_value = False
+        config.get_cloud_drive_visible.return_value = True
+        config.get_most_played_visible.return_value = False
+        config.get_recently_added_visible.return_value = False
+
+        sidebar = Sidebar(config_manager=config)
+        nav_map = {page: btn for page, btn in sidebar._nav_buttons}
+
+        assert not nav_map[Sidebar.PAGE_ALBUMS].isHidden()
+        assert nav_map[Sidebar.PAGE_GENRES].isHidden()
+        assert not nav_map[Sidebar.PAGE_CLOUD].isHidden()
+        assert nav_map[Sidebar.PAGE_MOST_PLAYED].isHidden()
+        assert nav_map[Sidebar.PAGE_RECENTLY_ADDED].isHidden()

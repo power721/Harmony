@@ -69,6 +69,7 @@ def _build_library_view(theme_config, sample_tracks):
     library_service.search_tracks.return_value = sample_tracks
     library_service.get_search_track_count.return_value = len(sample_tracks)
     library_service.get_tracks_by_ids.return_value = sample_tracks
+    library_service.get_recently_added_tracks.return_value = sample_tracks
     library_service.get_track.side_effect = lambda track_id: next(
         (track for track in sample_tracks if track.id == track_id),
         None,
@@ -83,6 +84,7 @@ def _build_library_view(theme_config, sample_tracks):
         PlayHistory(track_id=sample_tracks[0].id, played_at=datetime(2026, 4, 2, 12, 0, 0))
     ]
     history_service.get_history_tracks.return_value = sample_tracks
+    history_service.get_most_played.return_value = sample_tracks
 
     engine = MagicMock()
     engine.current_track_changed = MagicMock()
@@ -140,6 +142,30 @@ def test_library_view_show_history_uses_history_list_view(qapp, mock_theme_confi
     history_service.get_history.assert_called()
     assert view._stacked_widget.currentWidget() is view._history_list_view
     assert view._history_list_view.row_count() == 1
+
+
+def test_library_view_show_most_played_uses_list_view(qapp, mock_theme_config, sample_tracks):
+    view, _, _, history_service = _build_library_view(mock_theme_config, sample_tracks)
+
+    view.show_most_played()
+    qapp.processEvents()
+
+    history_service.get_most_played.assert_called_once_with(limit=100)
+    assert view.get_current_view() == "most_played"
+    assert view._stacked_widget.currentWidget() is view._most_played_list_view
+    assert view._most_played_list_view.row_count() == len(sample_tracks)
+
+
+def test_library_view_show_recently_added_uses_list_view(qapp, mock_theme_config, sample_tracks):
+    view, library_service, _, _ = _build_library_view(mock_theme_config, sample_tracks)
+
+    view.show_recently_added()
+    qapp.processEvents()
+
+    library_service.get_recently_added_tracks.assert_called_once_with(limit=100)
+    assert view.get_current_view() == "recently_added"
+    assert view._stacked_widget.currentWidget() is view._recently_added_list_view
+    assert view._recently_added_list_view.row_count() == len(sample_tracks)
 
 
 def test_favorites_double_click_loads_all_favorites_from_clicked_track(

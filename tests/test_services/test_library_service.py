@@ -749,6 +749,18 @@ class TestLibraryService:
         }
         mock_track_repo.get_local_track_ids_in_directory.assert_called_once_with("/music/scan")
 
+    def test_get_recently_added_tracks(self, library_service, mock_track_repo):
+        """Test getting recently added tracks."""
+        mock_track_repo.get_recently_added.return_value = [
+            Track(id=3, title="Newest"),
+            Track(id=2, title="Newer"),
+        ]
+
+        result = library_service.get_recently_added_tracks(limit=25)
+
+        assert [track.title for track in result] == ["Newest", "Newer"]
+        mock_track_repo.get_recently_added.assert_called_once_with(25)
+
     def test_get_track_by_cloud_file_id(self, library_service, mock_track_repo):
         """Test getting a track by cloud file ID."""
         mock_track = Track(id=1, cloud_file_id="cloud_123")

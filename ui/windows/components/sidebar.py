@@ -46,6 +46,8 @@ class Sidebar(QWidget):
     # Special pages (not in stacked widget, handled specially)
     PAGE_FAVORITES = 100
     PAGE_HISTORY = 101
+    PAGE_MOST_PLAYED = 102
+    PAGE_RECENTLY_ADDED = 103
 
     _NAV_STYLE = """
         QPushButton {
@@ -133,8 +135,11 @@ class Sidebar(QWidget):
             (self.PAGE_QUEUE, IconName.QUEUE, t("queue")),
             (self.PAGE_FAVORITES, IconName.STAR, t("favorites")),
             (self.PAGE_HISTORY, IconName.CLOCK, t("history")),
+            (self.PAGE_MOST_PLAYED, IconName.STAR, t("most_played")),
+            (self.PAGE_RECENTLY_ADDED, IconName.CLOCK, t("recently_added")),
         ]
 
+        self._nav_button_map = {}
         for page_index, icon_name, text in nav_items:
             btn = IconButton(icon_name, text, size=18)
             btn.setCheckable(True)
@@ -142,9 +147,11 @@ class Sidebar(QWidget):
             btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
             layout.addWidget(btn)
             self._nav_buttons.append((page_index, btn))
+            self._nav_button_map[page_index] = btn
 
         # Default to library
         self._nav_buttons[0][1].setChecked(True)
+        self.refresh_optional_view_visibility()
 
         layout.addStretch()
 
@@ -254,23 +261,39 @@ class Sidebar(QWidget):
         lang_text = "EN" if get_language() == "en" else "中文"
         self._language_btn.setText(lang_text)
 
+    def refresh_optional_view_visibility(self):
+        """Apply config-driven visibility for optional navigation entries."""
+        visible_pages = {
+            self.PAGE_ALBUMS: self._config.get_albums_visible() if self._config else True,
+            self.PAGE_GENRES: self._config.get_genres_visible() if self._config else False,
+            self.PAGE_CLOUD: self._config.get_cloud_drive_visible() if self._config else True,
+            self.PAGE_MOST_PLAYED: self._config.get_most_played_visible() if self._config else False,
+            self.PAGE_RECENTLY_ADDED: self._config.get_recently_added_visible() if self._config else False,
+        }
+        for page_index, visible in visible_pages.items():
+            button = self._nav_button_map.get(page_index)
+            if button is not None:
+                button.setHidden(not visible)
+
     def refresh_texts(self):
         """Refresh all button texts with current language."""
-        nav_texts = [
-            t("library"),
-            t("albums"),
-            t("artists"),
-            t("genres"),
-            t("cloud_drive"),
-            t("playlists"),
-            t("queue"),
-            t("favorites"),
-            t("history"),
-        ]
+        nav_texts = {
+            self.PAGE_LIBRARY: t("library"),
+            self.PAGE_ALBUMS: t("albums"),
+            self.PAGE_ARTISTS: t("artists"),
+            self.PAGE_GENRES: t("genres"),
+            self.PAGE_CLOUD: t("cloud_drive"),
+            self.PAGE_PLAYLISTS: t("playlists"),
+            self.PAGE_QUEUE: t("queue"),
+            self.PAGE_FAVORITES: t("favorites"),
+            self.PAGE_HISTORY: t("history"),
+            self.PAGE_MOST_PLAYED: t("most_played"),
+            self.PAGE_RECENTLY_ADDED: t("recently_added"),
+        }
 
-        for i, (idx, btn) in enumerate(self._nav_buttons):
-            if i < len(nav_texts):
-                btn.setText(nav_texts[i])
+        for idx, btn in self._nav_buttons:
+            if idx in nav_texts:
+                btn.setText(nav_texts[idx])
             else:
                 title_provider = btn.property("plugin_title_provider")
                 if callable(title_provider):
@@ -281,3 +304,4 @@ class Sidebar(QWidget):
         self.update_settings_status(
             self._config.get_ai_enabled() if self._config else False
         )
+        self.refresh_optional_view_visibility()
