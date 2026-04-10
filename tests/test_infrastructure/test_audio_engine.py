@@ -83,6 +83,47 @@ def test_update_playlist_item_prefers_cloud_id_index_for_primary_match():
     assert engine._playlist[1].local_path == "/tmp/downloaded.mp3"
 
 
+def test_insert_track_rebuilds_cloud_index_when_incremental_update_fails():
+    class _ExplodingIndex(dict):
+        def __init__(self, *args, fail_key=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._fail_key = fail_key
+            self._failed_once = False
+
+        def __setitem__(self, key, value):
+            if key == self._fail_key and not self._failed_once:
+                self._failed_once = True
+                raise RuntimeError("boom")
+            return super().__setitem__(key, value)
+
+    existing = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="old",
+        title="Old",
+    )
+    inserted = PlaylistItem(
+        source=TrackSource.ONLINE,
+        online_provider_id="qqmusic",
+        cloud_file_id="new",
+        title="New",
+    )
+
+    engine = PlayerEngine.__new__(PlayerEngine)
+    engine._playlist_lock = threading.RLock()
+    engine._playlist = [existing]
+    engine._original_playlist = [existing]
+    engine._current_index = 0
+    engine._cloud_file_id_to_index = _ExplodingIndex({"old": 0}, fail_key="old")
+    engine.playlist_changed = SimpleNamespace(emit=lambda: None)
+
+    PlayerEngine.insert_track(engine, 0, inserted)
+
+    assert engine._playlist[0] is inserted
+    assert engine._playlist[1] is existing
+    assert engine._cloud_file_id_to_index == {"new": 0, "old": 1}
+
+
 class _FakeBackend:
     def __init__(self):
         self.set_source_calls = []

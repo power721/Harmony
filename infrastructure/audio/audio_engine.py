@@ -399,13 +399,16 @@ class PlayerEngine(QObject):
                 self._playlist.insert(index, item)
                 if self._current_index >= index:
                     self._current_index += 1
-                # Incremental index update - shift all indices >= index by 1
-                for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
-                    if idx >= index:
-                        self._cloud_file_id_to_index[cloud_id] = idx + 1
-                # Add new item's cloud_file_id if present
-                if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
-                    self._cloud_file_id_to_index[item.cloud_file_id] = index
+                try:
+                    # Incremental index update - shift all indices >= index by 1
+                    for cloud_id, idx in list(self._cloud_file_id_to_index.items()):
+                        if idx >= index:
+                            self._cloud_file_id_to_index[cloud_id] = idx + 1
+                    # Add new item's cloud_file_id if present
+                    if item.cloud_file_id and item.cloud_file_id not in self._cloud_file_id_to_index:
+                        self._cloud_file_id_to_index[item.cloud_file_id] = index
+                except Exception:
+                    self._rebuild_cloud_file_id_index()
         self.playlist_changed.emit()
 
     def move_track(self, from_index: int, to_index: int):
