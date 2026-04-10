@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Icons directory path
 ICONS_DIR = Path(__file__).parent.parent / "icons"
 
-# Icon cache: key = f"{icon_name}_{color}_{size}", value = QIcon
+# Icon cache: key = (icon_name, color, size), value = QIcon
 _ICON_CACHE: dict = {}
 _PATH_ICON_CACHE: dict = {}
 
@@ -150,7 +150,7 @@ def get_icon(icon_name: str, color: str | None = IconColor.DEFAULT, size: int = 
         QIcon object, or empty QIcon if file not found
     """
     # Check cache first
-    cache_key = f"{icon_name}_{color}_{size}"
+    cache_key = (icon_name, color, size)
     if cache_key in _ICON_CACHE:
         return _ICON_CACHE[cache_key]
 
@@ -189,7 +189,7 @@ def get_icon(icon_name: str, color: str | None = IconColor.DEFAULT, size: int = 
 
 
 def get_icon_from_path(icon_path: str, color: str | None = IconColor.DEFAULT, size: int = 24) -> QIcon:
-    cache_key = f"{icon_path}_{color}_{size}"
+    cache_key = (icon_path, color, size)
     if cache_key in _PATH_ICON_CACHE:
         return _PATH_ICON_CACHE[cache_key]
 
