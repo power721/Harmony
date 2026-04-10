@@ -1,6 +1,7 @@
 """Tests for MpvAudioBackend with a mocked python-mpv module."""
 
 import sys
+import threading
 
 from infrastructure.audio import mpv_backend
 from infrastructure.audio.audio_backend import AudioEffectsState
@@ -35,6 +36,21 @@ class _FakeTimer:
 
     def isActive(self):
         return self.started
+
+
+class _TrackingLock:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.enter_count = 0
+
+    def __enter__(self):
+        self.enter_count += 1
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._lock.release()
+        return False
 
 
 class _FakeMPV:
@@ -338,6 +354,25 @@ def test_mpv_seek_does_not_use_stale_timeline_when_idle_active(monkeypatch):
     assert backend._pending_seek_ms == 1500
     seek_calls = [c for c in player._commands if c and c[0] == "seek"]
     assert seek_calls == []
+
+
+def test_mpv_backend_guards_media_ready_with_lock(monkeypatch):
+    monkeypatch.setattr(mpv_backend, "QTimer", _FakeTimer)
+    monkeypatch.setitem(sys.modules, "mpv", _FakeMPVModule())
+
+    backend = mpv_backend.MpvAudioBackend()
+    player = backend._player
+    tracking_lock = _TrackingLock()
+    backend._media_ready_lock = tracking_lock
+
+    backend._media_ready = False
+    player._props["idle-active"] = False
+    player._props["duration"] = 180.0
+
+    backend.seek(92000)
+    player.trigger("duration", 181.0)
+
+    assert tracking_lock.enter_count >= 2
 
 
 def test_mpv_backend_ignores_eof_signal_when_not_near_end(monkeypatch):
