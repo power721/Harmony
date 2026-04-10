@@ -421,15 +421,36 @@ class TestSqliteArtistRepository:
         artists = artist_repo.get_all(use_cache=True)
         assert len(artists) == 2
 
+    def test_refresh_uses_single_tracks_query(self, populated_db):
+        """Artist refresh should gather track data with one scan of the tracks table."""
+        conn = sqlite3.connect(populated_db)
+        conn.row_factory = sqlite3.Row
+        statements = []
+        conn.set_trace_callback(statements.append)
+
+        repo = SqliteArtistRepository(populated_db)
+        repo._get_connection = lambda: conn
+        try:
+            assert repo.refresh() is True
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        track_selects = [
+            statement for statement in statements
+            if statement.lstrip().upper().startswith("SELECT")
+            and "FROM TRACKS" in statement.upper()
+        ]
+        assert len(track_selects) == 1
+
     def test_refresh_rolls_back_when_upsert_fails(self):
         repo = SqliteArtistRepository.__new__(SqliteArtistRepository)
         cursor = Mock()
         cursor.fetchall.side_effect = [
             [],
-            [{"artist": "Artist A", "cover_path": None}],
-            [{"artist": "Artist A", "album": "Album 1"}],
+            [{"artist": "Artist A", "album": "Album 1", "cover_path": None}],
         ]
-        cursor.execute.side_effect = [None, None, None, sqlite3.DatabaseError("boom")]
+        cursor.execute.side_effect = [None, None, sqlite3.DatabaseError("boom")]
         conn = Mock(cursor=Mock(return_value=cursor))
         repo._get_connection = lambda: conn
 

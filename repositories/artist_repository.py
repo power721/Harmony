@@ -161,7 +161,7 @@ class SqliteArtistRepository(BaseRepository):
             # Single query to load all track-level artist strings with cover paths.
             # We must keep track granularity here so song_count remains accurate.
             cursor.execute("""
-                SELECT artist, cover_path FROM tracks
+                SELECT artist, album, cover_path FROM tracks
                 WHERE artist IS NOT NULL AND artist != ''
             """)
             rows = cursor.fetchall()
@@ -177,23 +177,15 @@ class SqliteArtistRepository(BaseRepository):
             for row in rows:
                 artist_string = row["artist"]
                 track_cover = row["cover_path"]
+                track_album = row["album"]
                 for name in split_artists_aware(artist_string, known_artists):
                     if name not in artist_data:
                         artist_data[name] = {"songs": 0, "albums": set(), "cover": None}
                     artist_data[name]["songs"] += 1
+                    if track_album:
+                        artist_data[name]["albums"].add(track_album)
                     if track_cover and not artist_data[name]["cover"]:
                         artist_data[name]["cover"] = track_cover
-
-            # Also count distinct albums per artist (second query — can't combine with DISTINCT)
-            cursor.execute("""
-                SELECT artist, album FROM tracks
-                WHERE artist IS NOT NULL AND artist != ''
-                  AND album IS NOT NULL AND album != ''
-            """)
-            for row in cursor.fetchall():
-                for name in split_artists_aware(row["artist"], known_artists):
-                    if name in artist_data:
-                        artist_data[name]["albums"].add(row["album"])
 
             # Upsert artists, preserving cover_path for existing ones
             for name, data in artist_data.items():
