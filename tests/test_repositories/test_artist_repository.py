@@ -224,6 +224,66 @@ class TestSqliteArtistRepository:
         # Cleanup
         os.unlink(db_path)
 
+    def test_get_all_cached_query_does_not_probe_cache_table_existence(self, temp_db):
+        """Cache-backed artist reads should not re-run table existence probes on every call."""
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE tracks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT UNIQUE NOT NULL,
+                    title TEXT,
+                    artist TEXT,
+                    album TEXT,
+                    genre TEXT,
+                    duration REAL,
+                    cover_path TEXT,
+                    cloud_file_id TEXT,
+                    source TEXT DEFAULT 'Local'
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE artists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    cover_path TEXT,
+                    song_count INTEGER,
+                    album_count INTEGER,
+                    normalized_name TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO artists (name, cover_path, song_count, album_count, normalized_name)
+                VALUES ('Artist X', '/covers/x.jpg', 10, 3, 'artist x')
+                """
+            )
+            conn.commit()
+
+            statements = []
+            conn.set_trace_callback(statements.append)
+            repo = SqliteArtistRepository(db_path)
+            repo._get_connection = lambda: conn
+            try:
+                repo.get_all(use_cache=True)
+                repo.get_all(use_cache=True)
+            finally:
+                conn.set_trace_callback(None)
+                conn.close()
+
+            probes = [sql for sql in statements if "SELECT 1 FROM artists LIMIT 1" in sql]
+            assert probes == []
+        finally:
+            os.unlink(db_path)
+
     def test_get_all_order_by_song_count(self, artist_repo, populated_db):
         """Test that artists are ordered by song count descending."""
         artists = artist_repo.get_all(use_cache=False)

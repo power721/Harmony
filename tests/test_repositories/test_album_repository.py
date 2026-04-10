@@ -132,6 +132,33 @@ class TestSqliteAlbumRepository:
         assert albums[0].name == "Cached Album"
         assert albums[0].song_count == 5
 
+    def test_get_all_cached_query_does_not_probe_cache_table_existence(self, temp_db, populated_db):
+        """Cache-backed album reads should not re-run table existence probes on every call."""
+        conn = sqlite3.connect(populated_db)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO albums (name, artist, cover_path, song_count, total_duration)
+            VALUES ('Cached Album', 'Cached Artist', '/cache/cover.jpg', 5, 900.0)
+            """
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteAlbumRepository(temp_db)
+        repo._get_connection = lambda: conn
+        try:
+            repo.get_all(use_cache=True)
+            repo.get_all(use_cache=True)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        probes = [sql for sql in statements if "SELECT 1 FROM albums LIMIT 1" in sql]
+        assert probes == []
+
     def test_get_by_name(self, album_repo, populated_db):
         """Test getting album by name."""
         album = album_repo.get_by_name("Album 1")

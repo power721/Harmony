@@ -31,25 +31,24 @@ class SqliteAlbumRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use albums table first
-        if use_cache:
-            cursor.execute("SELECT 1 FROM albums LIMIT 1")
-            if cursor.fetchone() is not None:
+        if use_cache and self._table_exists("albums"):
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
                     FROM albums
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()
-                return [
-                    Album(
-                        name=row["name"] or "",
-                        artist=row["artist"] or "",
-                        cover_path=row["cover_path"],
-                        song_count=row["song_count"] or 0,
-                        duration=row["total_duration"] or 0.0,
-                    )
-                    for row in rows
-                ]
+                if rows:
+                    return [
+                        Album(
+                            name=row["name"] or "",
+                            artist=row["artist"] or "",
+                            cover_path=row["cover_path"],
+                            song_count=row["song_count"] or 0,
+                            duration=row["total_duration"] or 0.0,
+                        )
+                        for row in rows
+                    ]
 
         # Fallback to direct query (slower)
         cursor.execute("""
@@ -97,8 +96,7 @@ class SqliteAlbumRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use albums table first
-        cursor.execute("SELECT 1 FROM albums LIMIT 1")
-        if cursor.fetchone() is not None:
+        if self._table_exists("albums"):
             if artist:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration

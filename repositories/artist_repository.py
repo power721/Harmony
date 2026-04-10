@@ -31,24 +31,23 @@ class SqliteArtistRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use artists table first
-        if use_cache:
-            cursor.execute("SELECT 1 FROM artists LIMIT 1")
-            if cursor.fetchone() is not None:
+        if use_cache and self._table_exists("artists"):
                 cursor.execute("""
                     SELECT name, cover_path, song_count, album_count
                     FROM artists
                     ORDER BY song_count DESC
                 """)
                 rows = cursor.fetchall()
-                return [
-                    Artist(
-                        name=row["name"] or "",
-                        cover_path=row["cover_path"],
-                        song_count=row["song_count"] or 0,
-                        album_count=row["album_count"] or 0,
-                    )
-                    for row in rows
-                ]
+                if rows:
+                    return [
+                        Artist(
+                            name=row["name"] or "",
+                            cover_path=row["cover_path"],
+                            song_count=row["song_count"] or 0,
+                            album_count=row["album_count"] or 0,
+                        )
+                        for row in rows
+                    ]
 
         # Fallback to direct query with aggregate cover lookup
         cursor.execute("""
@@ -92,8 +91,7 @@ class SqliteArtistRepository(BaseRepository):
         cursor = conn.cursor()
 
         # Try to use artists table first
-        cursor.execute("SELECT 1 FROM artists LIMIT 1")
-        if cursor.fetchone() is not None:
+        if self._table_exists("artists"):
             cursor.execute("""
                 SELECT name, cover_path, song_count, album_count
                 FROM artists

@@ -145,6 +145,42 @@ def test_get_all_cached_query_avoids_order_by_random():
             pass
 
 
+def test_get_all_cached_query_does_not_probe_cache_table_existence():
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        _create_schema(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO genres (name, cover_path, song_count, album_count, total_duration)
+            VALUES ('Rock', '/covers/rock.jpg', 3, 2, 590.0)
+            """
+        )
+        conn.commit()
+
+        statements = []
+        conn.set_trace_callback(statements.append)
+        repo = SqliteGenreRepository(db_path)
+        repo._get_connection = lambda: conn
+        try:
+            repo.get_all(use_cache=True)
+            repo.get_all(use_cache=True)
+        finally:
+            conn.set_trace_callback(None)
+            conn.close()
+
+        probes = [sql for sql in statements if "SELECT 1 FROM genres LIMIT 1" in sql]
+        assert probes == []
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_refresh_query_avoids_order_by_random():
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
