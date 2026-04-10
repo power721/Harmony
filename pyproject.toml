@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "certifi>=2024.0.0",
-    "harmony-plugin-api>=0.1.2",
+    "harmony-plugin-api>=0.1.3",
     "lxml>=6.0.2",
     "mpv>=1.0.0",
     "mutagen>=1.47.0",
@@ -38,3 +38,6 @@ dev = [
     "pyinstaller>=6.19.0",
     "pytest-qt>=4.5.0",
 ]
+
+[tool.uv.sources]
+harmony-plugin-api = { path = "packages/harmony-plugin-api", editable = true }

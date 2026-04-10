@@ -26,5 +26,5 @@ def test_netease_lyrics_search_handles_missing_id_and_empty_artists():
     results = source.search("Song 1", "Singer 1")
 
     assert len(results) == 1
-    assert results[0].song_id == ""
+    assert results[0].id == ""
     assert results[0].artist == ""

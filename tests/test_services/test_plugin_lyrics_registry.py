@@ -9,7 +9,7 @@ def test_lyrics_service_merges_plugin_sources(monkeypatch):
         display_name="LRCLIB",
         search=lambda *_args, **_kwargs: [
             PluginLyricsResult(
-                song_id="song-1",
+                id="song-1",
                 title="Song 1",
                 artist="Singer 1",
                 source="lrclib",

@@ -33,7 +33,7 @@ class LRCLIBPluginSource:
             return []
         return [
             PluginLyricsResult(
-                song_id=str(item.get("id", "")),
+                id=str(item.get("id", "")),
                 title=item.get("trackName", ""),
                 artist=item.get("artistName", ""),
                 album=item.get("albumName", ""),

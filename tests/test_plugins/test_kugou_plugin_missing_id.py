@@ -22,5 +22,5 @@ def test_kugou_search_handles_candidates_without_id():
     results = source.search("Song 1", "Singer 1")
 
     assert len(results) == 1
-    assert results[0].song_id == ""
+    assert results[0].id == ""
     assert results[0].title == "Song 1"

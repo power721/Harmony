@@ -30,7 +30,7 @@ class KugouLyricsPluginSource:
             payload = response.json()
             return [
                 PluginLyricsResult(
-                    song_id=str(item.get("id", "")),
+                    id=str(item.get("id", "")),
                     title=item.get("name", item.get("song", "")),
                     artist=item.get("singer", ""),
                     source="kugou",
@@ -44,10 +44,11 @@ class KugouLyricsPluginSource:
 
     def get_lyrics(self, result: PluginLyricsResult) -> str | None:
         try:
+            song_id = getattr(result, "id", getattr(result, "song_id", ""))
             response = self._http_client.get(
                 "https://lyrics.kugou.com/download",
                 params={
-                    "id": result.song_id,
+                    "id": song_id,
                     "accesskey": result.accesskey,
                     "fmt": "krc",
                     "charset": "utf8",

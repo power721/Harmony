@@ -6,7 +6,7 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class PluginLyricsResult:
-    song_id: str
+    id: str
     title: str
     artist: str
     album: str = ""
@@ -16,6 +16,11 @@ class PluginLyricsResult:
     lyrics: str | None = None
     accesskey: str | None = None
     supports_yrc: bool = False
+
+    @property
+    def song_id(self) -> str:
+        """Backward-compatible alias for pre-id plugin implementations."""
+        return self.id
 
 
 class PluginLyricsSource(Protocol):

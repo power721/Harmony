@@ -52,7 +52,7 @@ def test_netease_lyrics_plugin_source_search_maps_results():
     results = source.search("Song 1", "Singer 1")
 
     assert len(results) == 1
-    assert results[0].song_id == "1"
+    assert results[0].id == "1"
     assert results[0].title == "Song 1"
     assert results[0].artist == "Singer 1"
     assert results[0].album == "Album 1"
@@ -77,7 +77,7 @@ def test_netease_lyrics_plugin_source_prefers_yrc_then_falls_back_to_lrc():
         SimpleNamespace(get=lambda *_args, **_kwargs: responses.pop(0))
     )
 
-    lyrics = source.get_lyrics(SimpleNamespace(song_id="1"))
+    lyrics = source.get_lyrics(SimpleNamespace(id="1"))
 
     assert lyrics == "[00:01.00]line"
 
@@ -94,6 +94,6 @@ def test_netease_lyrics_plugin_source_uses_lrc_fallback_request_when_first_call_
         SimpleNamespace(get=lambda *_args, **_kwargs: responses.pop(0))
     )
 
-    lyrics = source.get_lyrics(SimpleNamespace(song_id="1"))
+    lyrics = source.get_lyrics(SimpleNamespace(id="1"))
 
     assert lyrics == "[00:02.00]fallback"

@@ -19,6 +19,6 @@ def download_online_lyrics(song_id: str, provider_id: str) -> str:
             return source.get_lyrics_by_song_id(song_id) or ""
         if hasattr(source, "get_lyrics"):
             return source.get_lyrics(
-                PluginLyricsResult(song_id=song_id, title="", artist="", source=normalized)
+                PluginLyricsResult(id=song_id, title="", artist="", source=normalized)
             ) or ""
     return ""

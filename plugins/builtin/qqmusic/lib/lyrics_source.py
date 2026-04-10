@@ -30,7 +30,7 @@ class QQMusicLyricsPluginSource:
             )
             return [
                 PluginLyricsResult(
-                    song_id=item.get("mid", ""),
+                    id=item.get("mid", ""),
                     title=item.get("title", "") or item.get("name", ""),
                     artist=item.get("artist", "") or item.get("singer", ""),
                     album=item.get("album", ""),
@@ -45,13 +45,14 @@ class QQMusicLyricsPluginSource:
 
     def get_lyrics(self, result: PluginLyricsResult) -> str | None:
         try:
-            return self._provider.get_lyrics(result.song_id)
+            song_id = getattr(result, "id", getattr(result, "song_id", ""))
+            return self._provider.get_lyrics(song_id)
         except Exception:
             return None
 
     def get_lyrics_by_song_id(self, song_id: str) -> str | None:
         return self.get_lyrics(
-            PluginLyricsResult(song_id=song_id, title="", artist="", source="qqmusic")
+            PluginLyricsResult(id=song_id, title="", artist="", source="qqmusic")
         )
 
     def is_available(self) -> bool:

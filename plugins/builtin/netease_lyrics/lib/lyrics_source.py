@@ -47,7 +47,7 @@ class NetEaseLyricsPluginSource:
 
             results.append(
                 PluginLyricsResult(
-                    song_id=str(song.get("id", "")),
+                    id=str(song.get("id", "")),
                     title=song.get("name", ""),
                     artist=artist_name,
                     album=album.get("name", ""),
@@ -61,8 +61,9 @@ class NetEaseLyricsPluginSource:
 
     def get_lyrics(self, result: PluginLyricsResult) -> str | None:
         try:
+            song_id = getattr(result, "id", getattr(result, "song_id", ""))
             response = self._http_client.get(
-                f"https://music.163.com/api/song/lyric?id={result.song_id}&lv=1&kv=0&tv=0&yv=0",
+                f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=0&tv=0&yv=0",
                 headers=netease_headers(),
                 timeout=3,
             )
@@ -77,7 +78,7 @@ class NetEaseLyricsPluginSource:
                         return lrc
 
             fallback = self._http_client.get(
-                f"https://music.163.com/api/song/lyric?id={result.song_id}&lv=1&kv=1&tv=-1",
+                f"https://music.163.com/api/song/lyric?id={song_id}&lv=1&kv=1&tv=-1",
                 headers=netease_headers(),
                 timeout=3,
             )

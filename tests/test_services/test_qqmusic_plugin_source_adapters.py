@@ -247,7 +247,7 @@ def test_qqmusic_lyrics_source_search_reads_tracks_payload(monkeypatch):
         "page_size": 7,
     }
     assert len(results) == 1
-    assert results[0].song_id == "song-1"
+    assert results[0].id == "song-1"
     assert results[0].title == "Song 1"
     assert results[0].artist == "Singer 1"
     assert results[0].album == "Album 1"

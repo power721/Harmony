@@ -86,4 +86,8 @@ def test_runtime_import_resolves_to_installed_harmony_plugin_api():
 
     assert spec is not None
     assert spec.origin is not None
-    assert "site-packages/harmony_plugin_api/__init__.py" in spec.origin
+    assert spec.origin.endswith("harmony_plugin_api/__init__.py")
+    assert (
+        "site-packages/harmony_plugin_api/__init__.py" in spec.origin
+        or "packages/harmony-plugin-api/src/harmony_plugin_api/__init__.py" in spec.origin
+    )

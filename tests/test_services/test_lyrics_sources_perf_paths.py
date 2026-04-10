@@ -33,5 +33,5 @@ def test_qqmusic_lyrics_source_search_builds_results(monkeypatch):
     results = source.search("Song 1", "Singer 1")
 
     assert len(results) == 1
-    assert results[0].song_id == "song-1"
+    assert results[0].id == "song-1"
     assert results[0].title == "Song 1"
