@@ -22,8 +22,11 @@ def test_click_outside_search_input_clears_focus(qtbot):
         view._top_lists_loaded = True  # Avoid loading top list workers in this test.
         qtbot.addWidget(view)
         view.show()
+        view.raise_()
+        view.activateWindow()
+        qtbot.waitExposed(view)
 
-        view._search_input.setFocus()
+        view._search_input.setFocus(Qt.OtherFocusReason)
         qtbot.waitUntil(lambda: view._search_input.hasFocus())
 
         qtbot.mouseClick(view._stack, Qt.LeftButton)
