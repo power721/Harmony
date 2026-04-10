@@ -322,6 +322,31 @@ class TestDownload:
         assert Path(dest).read_bytes() == b'chunk1_datachunk2_data'
         mock_response.close.assert_called_once()
 
+    @patch('infrastructure.network.http_client.os.replace', create=True)
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_download_uses_atomic_replace(self, mock_session_class, mock_replace, tmp_path):
+        """Successful downloads should move a completed temp file into place atomically."""
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'content-length': '4'}
+        mock_response.raise_for_status = Mock()
+        mock_response.iter_content.return_value = [b'data']
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        dest = str(tmp_path / "downloaded_file.bin")
+
+        client = HttpClient()
+        result = client.download("http://example.com/file", dest)
+
+        assert result is True
+        mock_replace.assert_called_once()
+        replace_src, replace_dest = mock_replace.call_args[0]
+        assert Path(replace_src).parent == tmp_path
+        assert replace_dest == dest
+
     @patch('infrastructure.network.http_client.requests.Session')
     def test_download_with_progress_callback(self, mock_session_class, tmp_path):
         """Test download calls progress callback."""
@@ -422,6 +447,31 @@ class TestDownload:
 
         assert result is False
         # File should be cleaned up even if partially written
+        assert not Path(dest).exists()
+
+    @patch('infrastructure.network.http_client.requests.Session')
+    def test_download_failure_does_not_leave_partial_destination(self, mock_session_class, tmp_path):
+        """Streaming failures should not write partial bytes to the final destination path."""
+        mock_session = MagicMock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'content-length': '1024'}
+        mock_response.raise_for_status = Mock()
+        def _iter_content(*_args, **_kwargs):
+            yield b'partial'
+            raise Exception("Network error")
+
+        mock_response.iter_content.side_effect = _iter_content
+        mock_response.close = Mock()
+        mock_session.get.return_value = mock_response
+        mock_session_class.return_value = mock_session
+
+        dest = str(tmp_path / "partial.bin")
+
+        client = HttpClient()
+        result = client.download("http://example.com/file", dest)
+
+        assert result is False
         assert not Path(dest).exists()
 
     @patch('infrastructure.network.http_client.requests.Session')
