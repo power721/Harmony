@@ -3,7 +3,10 @@ Tests for helper utility functions.
 """
 
 import builtins
+import os
 import sys
+import time
+from datetime import datetime as real_datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -15,6 +18,7 @@ from utils.helpers import (
     truncate_text,
     format_count_message,
     get_cache_dir,
+    format_relative_time,
 )
 
 
@@ -298,3 +302,33 @@ class TestGetCacheDir:
         with patch.object(sys, 'frozen', False, create=True):
             result = get_cache_dir()
         assert isinstance(result, Path)
+
+
+class TestFormatRelativeTime:
+    """Test format_relative_time function."""
+
+    def test_format_relative_time_uses_system_timezone_for_old_dates(self, monkeypatch):
+        import utils.helpers as helpers_module
+
+        class _FakeDateTime:
+            @staticmethod
+            def now(tz=None):
+                base = real_datetime(2026, 1, 10, 12, 0, tzinfo=timezone.utc)
+                return base.astimezone(tz) if tz is not None else base
+
+        old_tz = os.environ.get("TZ")
+        monkeypatch.setenv("TZ", "UTC")
+        if hasattr(time, "tzset"):
+            time.tzset()
+        monkeypatch.setattr(helpers_module, "datetime", _FakeDateTime)
+
+        try:
+            dt = real_datetime(2024, 3, 30, 23, 30, tzinfo=timezone.utc)
+            assert format_relative_time(dt) == "2024-03-30"
+        finally:
+            if old_tz is None:
+                monkeypatch.delenv("TZ", raising=False)
+            else:
+                monkeypatch.setenv("TZ", old_tz)
+            if hasattr(time, "tzset"):
+                time.tzset()

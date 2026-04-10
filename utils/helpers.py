@@ -222,18 +222,15 @@ def format_relative_time(dt: datetime) -> str:
     if not dt:
         return ""
 
-    # If datetime is timezone-naive, assume it's UTC and add 8 hours for Beijing time
+    local_tz = datetime.now().astimezone().tzinfo
     if dt.tzinfo is None:
-        # UTC to Beijing (UTC+8)
-        dt_local = dt + timedelta(hours=8)
-    else:
-        # If it has timezone, convert to local
         from datetime import timezone
-        local_offset = timedelta(hours=8)  # Beijing timezone
-        dt_local = dt.astimezone(timezone(local_offset))
+        dt_local = dt.replace(tzinfo=timezone.utc).astimezone(local_tz)
+    else:
+        dt_local = dt.astimezone(local_tz)
 
     # Use current time in same timezone
-    now = datetime.utcnow() + timedelta(hours=8)
+    now = datetime.now(local_tz)
     delta = now - dt_local
 
     # Make sure delta is not negative (future time)
