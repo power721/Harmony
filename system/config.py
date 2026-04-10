@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 # Configure logging
 logger = logging.getLogger(__name__)
 
+EQ_BANDS_COUNT = 10
+
 
 # Setting key constants
 class SettingKey:
@@ -237,17 +239,17 @@ class ConfigManager:
 
     def get_audio_effects(self) -> Dict[str, Any]:
         """Get global audio effects settings."""
-        eq_bands = self.get(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, [0.0] * 10)
+        eq_bands = self.get(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, [0.0] * EQ_BANDS_COUNT)
         if not isinstance(eq_bands, list):
-            eq_bands = [0.0] * 10
+            eq_bands = [0.0] * EQ_BANDS_COUNT
         normalized_bands = []
-        for band in eq_bands[:10]:
+        for band in eq_bands[:EQ_BANDS_COUNT]:
             try:
                 normalized_bands.append(float(band))
             except (TypeError, ValueError):
                 normalized_bands.append(0.0)
-        if len(normalized_bands) < 10:
-            normalized_bands += [0.0] * (10 - len(normalized_bands))
+        if len(normalized_bands) < EQ_BANDS_COUNT:
+            normalized_bands += [0.0] * (EQ_BANDS_COUNT - len(normalized_bands))
 
         return {
             "enabled": bool(self.get(SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED, True)),
@@ -261,7 +263,10 @@ class ConfigManager:
     def set_audio_effects(self, effects: Dict[str, Any]):
         """Persist global audio effects settings."""
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED, bool(effects.get("enabled", True)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS, list(effects.get("eq_bands", [0.0] * 10)))
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS,
+            list(effects.get("eq_bands", [0.0] * EQ_BANDS_COUNT)),
+        )
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST, float(effects.get("bass_boost", 0.0)))
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST, float(effects.get("treble_boost", 0.0)))
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_REVERB, float(effects.get("reverb_level", 0.0)))
