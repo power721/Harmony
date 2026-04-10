@@ -190,9 +190,8 @@ def setup_media_key_handler(player: "PlaybackService") -> bool:
         return False
 
 
-def _setup_linux_media_keys(player: "PlaybackService") -> bool:
+def _setup_linux_media_keys(_player: "PlaybackService") -> bool:
     """Use the MPRIS runtime as the Linux system media-key integration path."""
-    del player
     try:
         from app import Bootstrap
 
@@ -208,9 +207,8 @@ def _setup_linux_media_keys(player: "PlaybackService") -> bool:
         return False
 
 
-def _setup_macos_media_keys(player: "PlaybackService") -> bool:
+def _setup_macos_media_keys(_player: "PlaybackService") -> bool:
     """Setup media keys on macOS."""
-    del player
     # Requires pyobjc and CGEvent tap
     # Leave graceful fallback to in-app shortcuts until a native backend exists.
     logger.info("macOS global media keys are not implemented; falling back to focused shortcuts")

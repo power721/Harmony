@@ -11,9 +11,6 @@ _RE_PATH_SEP = re.compile(r'[\\/]')
 _RE_INVALID_CHARS = re.compile(r'[<>:"|?*]')
 _RE_WHITESPACE = re.compile(r'\s+')
 
-# 跨平台非法字符
-INVALID_CHARS = r'[<>:"/\\|?*]'
-
 
 def sanitize_filename(name: str) -> str:
     """

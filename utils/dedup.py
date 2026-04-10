@@ -413,11 +413,11 @@ def get_version_summary(items: List[PlaylistItem]) -> dict:
         "groups": 0,
     }
 
-    groups = set()
+    group_keys = set()
 
     for item in items:
         key = get_track_key(item)
-        groups.add(key)
+        group_keys.add(key)
 
         version_info = _extract_item_version_info(item)
         score = version_info.priority_score
@@ -433,5 +433,5 @@ def get_version_summary(items: List[PlaylistItem]) -> dict:
         elif score == 20:
             stats["harmony"] += 1
 
-    stats["groups"] = len(groups)
+    stats["groups"] = len(group_keys)
     return stats
