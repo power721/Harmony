@@ -409,6 +409,8 @@ class CloudDownloadService(QObject):
         download_path = Path(self._download_dir)
         if not download_path.is_absolute():
             download_path = Path.cwd() / download_path
+        if not download_path.exists() or not download_path.is_dir():
+            return None
 
         if cloud_file:
             local_path = build_cloud_cache_path(download_path, cloud_file)

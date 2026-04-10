@@ -43,6 +43,16 @@ def test_get_cached_path_does_not_reuse_same_name_cache_for_different_file_ids(t
     assert service.get_cached_path(second_file.file_id, second_file) is None
 
 
+def test_get_cached_path_returns_none_when_download_dir_missing(tmp_path):
+    """Missing download directories should be treated as a cache miss."""
+    service = CloudDownloadService()
+    service.set_download_dir(str(tmp_path / "missing"))
+
+    cloud_file = CloudFile(file_id="fid-1", name="song.mp3", size=4)
+
+    assert service.get_cached_path(cloud_file.file_id, cloud_file) is None
+
+
 def test_cleanup_stops_active_download_workers():
     """Cleanup must stop outstanding worker threads before the service is destroyed."""
     service = CloudDownloadService()
