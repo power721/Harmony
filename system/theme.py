@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QWidget, QApplication
 from shiboken6 import isValid
 
 logger = logging.getLogger(__name__)
+QSS_CACHE_MAXSIZE = 128
 
 
 @dataclass
@@ -333,6 +334,8 @@ class ThemeManager(QObject):
         for token, color in tokens.items():
             result = result.replace(token, color)
 
+        if len(self._qss_cache) >= QSS_CACHE_MAXSIZE:
+            self._qss_cache.pop(next(iter(self._qss_cache)))
         self._qss_cache[cache_key] = result
         return result
 

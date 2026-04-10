@@ -171,6 +171,16 @@ class TestThemeManager:
         assert len(cache_key[0]) == 64
         assert cache_key[1] == tm.current_theme.name
 
+    def test_get_qss_cache_eviction_is_bounded(self, mock_config, monkeypatch):
+        tm = ThemeManager.instance(mock_config)
+        monkeypatch.setattr("system.theme.QSS_CACHE_MAXSIZE", 2)
+
+        tm.get_qss("a %highlight%")
+        tm.get_qss("b %highlight%")
+        tm.get_qss("c %highlight%")
+
+        assert len(tm._qss_cache) == 2
+
     def test_highlight_color_property(self, mock_config):
         tm = ThemeManager.instance(mock_config)
         assert tm.highlight_color == '#1db954'
