@@ -315,29 +315,6 @@ class DatabaseManager:
                        CREATE INDEX IF NOT EXISTS idx_play_history_played_at
                            ON play_history(played_at DESC)
                        """)
-        # Additional indexes for common queries
-        cursor.execute("PRAGMA table_info(tracks)")
-        track_columns = {col[1] for col in cursor.fetchall()}
-        if "cloud_file_id" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id
-                               ON tracks(cloud_file_id)
-                           """)
-        if "source" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_source
-                               ON tracks(source)
-                           """)
-        if "created_at" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_created_at
-                               ON tracks(created_at DESC)
-                           """)
-        if "genre" in track_columns:
-            cursor.execute("""
-                           CREATE INDEX IF NOT EXISTS idx_tracks_genre
-                               ON tracks(genre)
-                           """)
 
         # H-02: Indexes for favorites table
         cursor.execute("""

@@ -3,8 +3,10 @@
 import os
 import sqlite3
 import tempfile
+from unittest.mock import Mock
 
 from infrastructure.database.sqlite_manager import DatabaseManager
+import infrastructure.database.sqlite_manager as sqlite_manager_module
 
 
 def test_init_database_handles_legacy_tracks_without_genre_column():
@@ -208,3 +210,33 @@ def test_init_database_migrates_legacy_qq_online_provider_rows():
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_init_database_does_not_create_track_indexes_twice(monkeypatch):
+    """Fresh database init should not emit duplicate CREATE INDEX statements for migrated track columns."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    statements = []
+    real_connect = sqlite3.connect
+
+    def _tracking_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(sqlite_manager_module, "get_write_worker", lambda _db_path: Mock(stop=Mock()))
+    monkeypatch.setattr(sqlite_manager_module.sqlite3, "connect", _tracking_connect)
+
+    try:
+        db = DatabaseManager(db_path)
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+    cloud_file_index_statements = [
+        statement for statement in statements if "CREATE INDEX IF NOT EXISTS idx_tracks_cloud_file_id" in statement
+    ]
+    assert len(cloud_file_index_statements) == 1
