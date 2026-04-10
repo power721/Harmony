@@ -216,7 +216,7 @@ class ConfigManager:
         Args:
             volume: Volume level (0-100)
         """
-        self.set(SettingKey.PLAYER_VOLUME, volume)
+        self.set(SettingKey.PLAYER_VOLUME, self._clamp_effect_value(volume))
 
     def get_audio_engine(self) -> str:
         """
@@ -263,14 +263,42 @@ class ConfigManager:
     def set_audio_effects(self, effects: Dict[str, Any]):
         """Persist global audio effects settings."""
         self.set(SettingKey.PLAYER_AUDIO_EFFECTS_ENABLED, bool(effects.get("enabled", True)))
+        normalized_bands = []
+        for band in list(effects.get("eq_bands", [0.0] * EQ_BANDS_COUNT))[:EQ_BANDS_COUNT]:
+            try:
+                normalized_bands.append(float(band))
+            except (TypeError, ValueError):
+                normalized_bands.append(0.0)
+        if len(normalized_bands) < EQ_BANDS_COUNT:
+            normalized_bands += [0.0] * (EQ_BANDS_COUNT - len(normalized_bands))
         self.set(
             SettingKey.PLAYER_AUDIO_EFFECTS_EQ_BANDS,
-            list(effects.get("eq_bands", [0.0] * EQ_BANDS_COUNT)),
+            normalized_bands,
         )
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST, float(effects.get("bass_boost", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST, float(effects.get("treble_boost", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_REVERB, float(effects.get("reverb_level", 0.0)))
-        self.set(SettingKey.PLAYER_AUDIO_EFFECTS_STEREO, float(effects.get("stereo_enhance", 0.0)))
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_BASS_BOOST,
+            self._clamp_effect_value(effects.get("bass_boost", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_TREBLE_BOOST,
+            self._clamp_effect_value(effects.get("treble_boost", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_REVERB,
+            self._clamp_effect_value(effects.get("reverb_level", 0.0)),
+        )
+        self.set(
+            SettingKey.PLAYER_AUDIO_EFFECTS_STEREO,
+            self._clamp_effect_value(effects.get("stereo_enhance", 0.0)),
+        )
+
+    @staticmethod
+    def _clamp_effect_value(value: Any) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            numeric = 0.0
+        return max(0.0, min(100.0, numeric))
 
     def get_playback_source(self) -> str:
         """
