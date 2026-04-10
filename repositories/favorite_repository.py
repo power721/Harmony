@@ -6,6 +6,7 @@ from typing import List, TYPE_CHECKING
 
 from domain.track import Track, TrackId
 from repositories.base_repository import BaseRepository
+from utils.normalization import normalize_online_provider_id
 
 if TYPE_CHECKING:
     from infrastructure.database import DatabaseManager
@@ -19,13 +20,6 @@ class SqliteFavoriteRepository(BaseRepository):
         # Import here to avoid circular import
         from repositories.track_repository import SqliteTrackRepository
         self._track_repo = SqliteTrackRepository(db_path, db_manager)
-
-    @staticmethod
-    def _normalize_online_provider_id(value: str | None) -> str | None:
-        normalized = str(value or "").strip()
-        if not normalized or normalized.lower() == "online":
-            return None
-        return normalized
 
     def is_favorite(
         self,
@@ -52,7 +46,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            normalized_provider_id = normalize_online_provider_id(online_provider_id)
             if normalized_provider_id is None:
                 cursor.execute(
                     "SELECT 1 FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL LIMIT 1",
@@ -105,7 +99,7 @@ class SqliteFavoriteRepository(BaseRepository):
         if track_id is None and cloud_file_id is None:
             return False
 
-        normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+        normalized_provider_id = normalize_online_provider_id(online_provider_id)
         cursor.execute(
             """
             INSERT OR IGNORE INTO favorites
@@ -144,7 +138,7 @@ class SqliteFavoriteRepository(BaseRepository):
                 (track_id,)
             )
         elif cloud_file_id is not None:
-            normalized_provider_id = self._normalize_online_provider_id(online_provider_id)
+            normalized_provider_id = normalize_online_provider_id(online_provider_id)
             if normalized_provider_id is None:
                 cursor.execute(
                     "DELETE FROM favorites WHERE cloud_file_id = ? AND online_provider_id IS NULL",

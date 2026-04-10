@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 
 from domain.track import Track, TrackId, TrackSource
 from repositories.base_repository import BaseRepository
+from utils.normalization import normalize_online_provider_id
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +32,8 @@ class SqliteTrackRepository(BaseRepository):
         super().__init__(db_path, db_manager)
 
     @staticmethod
-    def _normalize_online_provider_id(value):
-        normalized = str(value or "").strip()
-        if not normalized or normalized.lower() == "online":
-            return None
-        return normalized
-
-    @staticmethod
     def _infer_online_provider_id(source_value: str | None, path: str | None, provider_id: str | None):
-        normalized = SqliteTrackRepository._normalize_online_provider_id(provider_id)
+        normalized = normalize_online_provider_id(provider_id)
         if normalized:
             return normalized
         if str(source_value or "").strip().upper() == "QQ":
@@ -170,7 +164,7 @@ class SqliteTrackRepository(BaseRepository):
 
         seen: set[tuple[str | None, str]] = set()
         for provider_id, cloud_file_id in online_keys:
-            normalized_provider_id = self._normalize_online_provider_id(provider_id)
+            normalized_provider_id = normalize_online_provider_id(provider_id)
             key = (normalized_provider_id, cloud_file_id)
             if not cloud_file_id or key in seen:
                 continue
@@ -358,7 +352,7 @@ class SqliteTrackRepository(BaseRepository):
                                track.genre, track.duration, track.cover_path,
                                track.cloud_file_id,
                                track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                               self._normalize_online_provider_id(track.online_provider_id),
+                               normalize_online_provider_id(track.online_provider_id),
                            ))
             track_id = cursor.lastrowid
 
@@ -417,7 +411,7 @@ class SqliteTrackRepository(BaseRepository):
                         track.genre, track.duration, track.cover_path,
                         track.cloud_file_id,
                         track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                        self._normalize_online_provider_id(track.online_provider_id),
+                        normalize_online_provider_id(track.online_provider_id),
                     ))
                     track_id = cursor.lastrowid
 
@@ -498,7 +492,7 @@ class SqliteTrackRepository(BaseRepository):
                            track.genre, track.duration, track.cover_path,
                            track.cloud_file_id,
                            track.source.value if hasattr(track, 'source') and track.source else 'Local',
-                           self._normalize_online_provider_id(track.online_provider_id),
+                           normalize_online_provider_id(track.online_provider_id),
                            track.id
                        ))
         conn.commit()
