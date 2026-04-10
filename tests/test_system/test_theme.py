@@ -261,6 +261,28 @@ class TestThemeManager:
 
         assert mock_widget in tm._widgets
 
+    def test_theme_manager_uses_widgets_lock_for_registration_and_broadcast(self, mock_config):
+        class _TrackingLock:
+            def __init__(self):
+                self.enter_count = 0
+
+            def __enter__(self):
+                self.enter_count += 1
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        tm = ThemeManager.instance(mock_config)
+        tm._widgets_lock = _TrackingLock()
+        widget = MagicMock()
+        widget.refresh_theme = MagicMock()
+
+        tm.register_widget(widget)
+        tm._apply_and_broadcast()
+
+        assert tm._widgets_lock.enter_count >= 2
+
     def test_register_multiple_widgets(self, mock_config):
         """Test registering multiple widgets."""
         tm = ThemeManager.instance(mock_config)

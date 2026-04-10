@@ -169,6 +169,7 @@ class ThemeManager(QObject):
         self._config = config
         self._current_theme = self._load_theme()
         self._widgets: WeakSet[QWidget] = WeakSet()
+        self._widgets_lock = threading.Lock()
         self._qss_cache: dict = {}
         self._global_qss_template: str | None = None
         logger.info(f"ThemeManager initialized with theme: {self._current_theme.name}")
@@ -272,9 +273,12 @@ class ThemeManager(QObject):
         self.theme_changed.emit(self._current_theme)
 
         # Refresh all registered widgets
-        for widget in list(self._widgets):
+        with self._widgets_lock:
+            widgets = list(self._widgets)
+        for widget in widgets:
             if not self._is_widget_valid(widget):
-                self._widgets.discard(widget)
+                with self._widgets_lock:
+                    self._widgets.discard(widget)
                 continue
             if hasattr(widget, 'refresh_theme'):
                 try:
@@ -289,7 +293,8 @@ class ThemeManager(QObject):
         Args:
             widget: QWidget instance to register
         """
-        self._widgets.add(widget)
+        with self._widgets_lock:
+            self._widgets.add(widget)
 
     @staticmethod
     def _is_widget_valid(widget) -> bool:
