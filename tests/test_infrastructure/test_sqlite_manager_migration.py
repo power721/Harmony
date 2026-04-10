@@ -53,6 +53,34 @@ def test_init_database_handles_legacy_tracks_without_genre_column():
             pass
 
 
+def test_init_database_creates_missing_filter_indexes():
+    """Database init should create the still-missing lookup indexes used by filters."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        db = DatabaseManager(db_path)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA index_list(tracks)")
+        track_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_tracks_path" in track_indexes
+
+        cursor.execute("PRAGMA index_list(cloud_accounts)")
+        account_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_cloud_accounts_is_active" in account_indexes
+
+        conn.close()
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_init_database_migrates_legacy_qq_online_provider_rows():
     """Database init should repair legacy QQ online provider ids in tracks and queue."""
     fd, db_path = tempfile.mkstemp(suffix=".db")

@@ -304,6 +304,10 @@ class DatabaseManager:
                            ON tracks(album)
                        """)
         cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_tracks_path
+                           ON tracks(path)
+                       """)
+        cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_play_history_track
                            ON play_history(track_id)
                        """)
@@ -493,6 +497,10 @@ class DatabaseManager:
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_cloud_accounts_provider
                            ON cloud_accounts(provider)
+                       """)
+        cursor.execute("""
+                       CREATE INDEX IF NOT EXISTS idx_cloud_accounts_is_active
+                           ON cloud_accounts(is_active)
                        """)
         cursor.execute("""
                        CREATE INDEX IF NOT EXISTS idx_cloud_files_account
