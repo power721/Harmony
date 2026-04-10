@@ -145,6 +145,15 @@ class TestLyricsPanel:
         # Should not raise any exceptions
 
 
+def test_main_window_schedules_initial_theme_refresh():
+    fake = SimpleNamespace(refresh_theme=Mock())
+
+    with patch("ui.windows.main_window.QTimer.singleShot") as single_shot:
+        MainWindow._schedule_initial_theme_refresh(fake)
+
+    single_shot.assert_called_once_with(0, fake.refresh_theme)
+
+
 class TestOnlineMusicHandler:
     """Tests for OnlineMusicHandler."""
 
