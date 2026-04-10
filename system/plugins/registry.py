@@ -39,24 +39,14 @@ class PluginRegistry:
 
     def unregister_plugin(self, plugin_id: str) -> None:
         owned_ids = {id(value) for _kind, value in self._owned.pop(plugin_id, [])}
-        self._sidebar_entries = [
-            item for item in self._sidebar_entries if id(item) not in owned_ids
-        ]
-        self._settings_tabs = [
-            item for item in self._settings_tabs if id(item) not in owned_ids
-        ]
-        self._lyrics_sources = [
-            item for item in self._lyrics_sources if id(item) not in owned_ids
-        ]
-        self._cover_sources = [
-            item for item in self._cover_sources if id(item) not in owned_ids
-        ]
-        self._artist_cover_sources = [
+        self._sidebar_entries[:] = [item for item in self._sidebar_entries if id(item) not in owned_ids]
+        self._settings_tabs[:] = [item for item in self._settings_tabs if id(item) not in owned_ids]
+        self._lyrics_sources[:] = [item for item in self._lyrics_sources if id(item) not in owned_ids]
+        self._cover_sources[:] = [item for item in self._cover_sources if id(item) not in owned_ids]
+        self._artist_cover_sources[:] = [
             item for item in self._artist_cover_sources if id(item) not in owned_ids
         ]
-        self._online_providers = [
-            item for item in self._online_providers if id(item) not in owned_ids
-        ]
+        self._online_providers[:] = [item for item in self._online_providers if id(item) not in owned_ids]
 
     def sidebar_entries(self) -> list:
         return sorted(self._sidebar_entries, key=lambda item: item.order)
