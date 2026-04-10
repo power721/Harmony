@@ -33,6 +33,7 @@ from services.library import LibraryService
 from services.metadata import CoverService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.widgets.cover_loader import CoverLoader
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,6 @@ class AlbumDelegate(QStyledItemDelegate):
         self._cover_cache = OrderedDict()  # LRU cache for loaded covers
         self._cache_max_size = 500
         self._pending_downloads = set()  # Track URLs being downloaded
-        self._executor = None  # ThreadPoolExecutor for async downloads
         self._default_cover = self._create_default_cover()
 
     def _create_default_cover(self) -> QPixmap:
@@ -177,7 +177,6 @@ class AlbumDelegate(QStyledItemDelegate):
 
     def _download_cover_async(self, url: str):
         """Download cover image asynchronously with disk caching."""
-        from concurrent.futures import ThreadPoolExecutor
         from infrastructure.cache import ImageCache
         from infrastructure.network import HttpClient
 
@@ -191,11 +190,7 @@ class AlbumDelegate(QStyledItemDelegate):
                     logger.warning(f"Failed to download cover: {e}")
                     return None
 
-            # Reuse single executor instance
-            if self._executor is None:
-                self._executor = ThreadPoolExecutor(max_workers=1)
-
-            future = self._executor.submit(download)
+            future = CoverLoader.get_download_executor().submit(download)
 
             def check_download():
                 if future.done():
@@ -305,9 +300,6 @@ class AlbumDelegate(QStyledItemDelegate):
         """Clear cover cache."""
         self._cover_cache.clear()
         self._pending_downloads.clear()
-        if self._executor:
-            self._executor.shutdown(wait=False)
-            self._executor = None
 
     def refresh_theme(self):
         """Refresh default cover when theme changes."""

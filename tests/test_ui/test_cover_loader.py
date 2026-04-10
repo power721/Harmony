@@ -62,3 +62,10 @@ def test_cover_loader_pixmap_from_bytes_scales_to_requested_size(tmp_path):
     assert scaled is not None
     assert scaled.width() == 16
     assert scaled.height() == 16
+
+
+def test_cover_loader_reuses_shared_download_executor():
+    first = CoverLoader.get_download_executor()
+    second = CoverLoader.get_download_executor()
+
+    assert first is second

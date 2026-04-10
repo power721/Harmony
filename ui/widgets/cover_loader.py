@@ -1,14 +1,27 @@
 """Reusable cover loading helpers for widgets and windows."""
 
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from pathlib import Path
+import threading
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
+_cover_executor_lock = threading.Lock()
+_cover_executor: ThreadPoolExecutor | None = None
+
 
 class CoverLoader:
     """Shared helpers for resolving cover paths and loading scaled pixmaps."""
+
+    @staticmethod
+    def get_download_executor() -> ThreadPoolExecutor:
+        global _cover_executor
+        with _cover_executor_lock:
+            if _cover_executor is None:
+                _cover_executor = ThreadPoolExecutor(max_workers=2)
+            return _cover_executor
 
     @staticmethod
     def resolve_track_cover_path(track_dict: dict, cover_service, fallback_loader, logger=None) -> str:

@@ -68,7 +68,6 @@ class AlbumCard(HoverEffectMixin, QWidget):
         self._is_hovering = False
         self._cover_loaded = False
         self._downloading = False
-        self._cover_executor = None  # ThreadPoolExecutor for async downloads
 
         self._setup_ui()
         # Set default cover immediately, load actual cover lazily
@@ -210,7 +209,6 @@ class AlbumCard(HoverEffectMixin, QWidget):
 
     def _download_cover_async(self, url: str):
         """Download cover image asynchronously with disk caching."""
-        from concurrent.futures import ThreadPoolExecutor
         from infrastructure.cache import ImageCache
         from infrastructure.network import HttpClient
 
@@ -224,11 +222,7 @@ class AlbumCard(HoverEffectMixin, QWidget):
                     logger.warning(f"Failed to download cover: {e}")
                     return None
 
-            # Reuse single executor instance
-            if self._cover_executor is None:
-                self._cover_executor = ThreadPoolExecutor(max_workers=1)
-
-            future = self._cover_executor.submit(download)
+            future = CoverLoader.get_download_executor().submit(download)
 
             def check_download():
                 if future.done():
