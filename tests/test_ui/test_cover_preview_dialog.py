@@ -9,7 +9,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from system.theme import ThemeManager
-from ui.dialogs.cover_preview_dialog import CoverPreviewDialog
+from ui.dialogs.cover_preview_dialog import CoverPreviewDialog, show_cover_preview
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -209,3 +209,23 @@ def test_cover_preview_window_does_not_exceed_800_pixels(qapp, theme_config, tmp
 
     assert dialog.width() <= 800
     assert dialog.height() <= 800
+
+
+def test_show_cover_preview_uses_top_level_window_parent_for_child_widgets(
+    qapp,
+    theme_config,
+    tmp_path,
+):
+    ThemeManager.instance(theme_config)
+
+    image_path = tmp_path / "cover.png"
+    image_path.write_bytes(_make_png_bytes())
+
+    host_window = QWidget()
+    child_view = QWidget(host_window)
+    child_view.setStyleSheet("QPushButton { background: red; border: 1px solid red; }")
+
+    dialog = show_cover_preview(child_view, str(image_path), title="Album")
+    qapp.processEvents()
+
+    assert dialog.parentWidget() is host_window

@@ -201,11 +201,19 @@ def show_cover_preview(
     request_headers: dict | None = None,
 ):
     """Show a shared cover preview dialog and return it for lifecycle tracking."""
+    dialog_parent = parent
+    if parent is not None:
+        window_getter = getattr(parent, "window", None)
+        if callable(window_getter):
+            top_level_parent = window_getter()
+            if top_level_parent is not None:
+                dialog_parent = top_level_parent
+
     dialog = CoverPreviewDialog(
         image_source=image_source,
         title=title,
         request_headers=request_headers,
-        parent=parent,
+        parent=dialog_parent,
     )
     dialog.show()
     return dialog
