@@ -44,7 +44,7 @@ Built-in plugins are loaded from [`plugins/builtin`](plugins/builtin). External 
 ## Quick Start
 
 ```bash
-git clone https://github.com/power721/music-player.git
+git clone https://github.com/power721/Harmony.git
 cd music-player
 
 # Runtime dependencies
