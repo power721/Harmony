@@ -142,3 +142,30 @@ def test_artist_follow_button_visible_when_logged_in():
 
     assert view._follow_btn.isVisibleTo(view)
     assert view._fav_btn.isHidden()
+
+
+def test_online_detail_view_cover_click_uses_shared_preview(monkeypatch):
+    """Cover clicks should use the shared preview dialog with upgraded QQ cover URLs."""
+    calls = []
+
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_detail_view.show_cover_preview",
+        lambda parent, image_source, title="", request_headers=None: calls.append(
+            (parent, image_source, title, request_headers)
+        ),
+    )
+
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    view._cover_url = "https://y.gtimg.cn/music/photo_new/T002R300x300M000albummid.jpg"
+    view._name_label = SimpleNamespace(text=lambda: "Album Name")
+
+    OnlineDetailView._on_cover_clicked(view, None)
+
+    assert calls == [
+        (
+            view,
+            "https://y.gtimg.cn/music/photo_new/T002R800x800M000albummid.jpg",
+            "Album Name",
+            None,
+        )
+    ]

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from ui.dialogs.cover_preview_dialog import show_cover_preview
 from .i18n import t
 from .models import OnlineTrack, OnlineAlbum, OnlineSinger, AlbumInfo
 from .runtime_bridge import (
@@ -1393,7 +1394,7 @@ class OnlineDetailView(QWidget):
         self._cover_loader.start()
 
     def _on_cover_clicked(self, event):
-        """Handle cover click to show full size image."""
+        """Handle cover click with the shared preview dialog."""
         if not self._cover_url:
             return
 
@@ -1407,94 +1408,11 @@ class OnlineDetailView(QWidget):
         # For qpic.y.qq.com (playlist covers), use original URL as-is
         # The /600 suffix is already a reasonable size
 
-        self._show_cover_dialog_async(cover_url)
-
-    def _show_cover_dialog_async(self, url: str):
-        """Show cover image in a dialog (async loading)."""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
-        from PySide6.QtGui import QPixmap
-
-        # Create dialog first
-        dialog = QDialog(self)
-        dialog.setWindowTitle(self._name_label.text() or t("cover"))
-        dialog.setWindowFlags(dialog.windowFlags() | Qt.FramelessWindowHint)
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # Image label with loading state
-        image_label = QLabel()
-        image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet(f"background: {current_theme().background_alt};")
-        image_label.setText(t("loading"))
-        image_label.setMinimumSize(200, 200)
-
-        # Close on click
-        dialog.mousePressEvent = lambda e: dialog.close()
-
-        layout.addWidget(image_label)
-
-        # Async load
-        class FullCoverLoader(QThread):
-            loaded = Signal(QPixmap)
-
-            def __init__(self, url):
-                super().__init__()
-                self.url = url
-
-            def run(self):
-                try:
-                    import requests
-                    # Check disk cache first
-                    image_data = image_cache_get(self.url)
-                    if not image_data:
-                        response = requests.get(self.url, timeout=10)
-                        response.raise_for_status()
-                        image_data = response.content
-                        image_cache_set(self.url, image_data)
-                    pixmap = QPixmap()
-                    if pixmap.loadFromData(image_data):
-                        self.loaded.emit(pixmap)
-                except Exception as e:
-                    logger.debug(f"Failed to load cover for dialog: {e}")
-
-        def on_cover_loaded(pixmap):
-            if dialog.isVisible():
-                # Scale to fit screen
-                screen = self.screen() if self.screen() else None
-                max_size = 600
-                if screen:
-                    max_size = min(screen.availableGeometry().width() - 100,
-                                   screen.availableGeometry().height() - 100,
-                                   600)
-
-                if pixmap.width() > max_size or pixmap.height() > max_size:
-                    pixmap = pixmap.scaled(max_size, max_size,
-                                           Qt.KeepAspectRatio,
-                                           Qt.SmoothTransformation)
-
-                image_label.setPixmap(pixmap)
-                image_label.setMinimumSize(pixmap.size())
-                dialog.setFixedSize(pixmap.size())
-
-        self._stop_full_cover_loader()
-
-        self._full_cover_loader = FullCoverLoader(url)
-        self._full_cover_loader.loaded.connect(on_cover_loaded)
-        self._full_cover_loader.start()
-
-        dialog.exec()
-
-    def _stop_full_cover_loader(self):
-        """Stop full-cover loader thread cooperatively."""
-        loader = getattr(self, "_full_cover_loader", None)
-        if not loader or not isValid(loader):
-            self._full_cover_loader = None
-            return
-        if loader.isRunning():
-            loader.requestInterruption()
-            loader.quit()
-            if not loader.wait(1000):
-                logger.warning("[OnlineDetailView] Full cover loader did not stop in time")
+        self._cover_preview_dialog = show_cover_preview(
+            self,
+            cover_url,
+            title=self._name_label.text() or t("cover"),
+        )
 
     def _display_album_detail(self, data: Dict):
         """Display album detail."""

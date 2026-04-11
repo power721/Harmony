@@ -158,3 +158,15 @@ def test_cover_preview_stops_loader_on_close(qapp, theme_config, monkeypatch):
     qapp.processEvents()
 
     assert dialog._loader.called == ["requestInterruption", "quit", ("wait", 1000)]
+
+
+def test_cover_preview_close_event_ignores_missing_loader(qapp, theme_config):
+    ThemeManager.instance(theme_config)
+
+    dialog = CoverPreviewDialog("/tmp/missing-cover.png", title="Any")
+    dialog._loader = None
+
+    dialog.close()
+    qapp.processEvents()
+
+    assert not dialog.isVisible()
