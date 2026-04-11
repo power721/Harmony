@@ -184,7 +184,16 @@ class QQMusicClient:
 
         return params
 
-    def _make_request(self, module: str, method: str, params: Dict, _retry: bool = False, use_sign: bool = False) -> Dict:
+    def _make_request(
+        self,
+        module: str,
+        method: str,
+        params: Dict,
+        _retry: bool = False,
+        use_sign: bool = False,
+        comm: Optional[Dict[str, Any]] = None,
+        platform: Optional[str] = None,
+    ) -> Dict:
         """
         Make API request.
 
@@ -199,6 +208,17 @@ class QQMusicClient:
             Response data
         """
         common = self._build_common_params()
+        if comm:
+            common.update(comm)
+        if platform == "android":
+            common.update(
+                {
+                    "ct": "11",
+                    "cv": APIConfig.VERSION_CODE,
+                    "v": APIConfig.VERSION_CODE,
+                    "tmeAppID": "qqmusic",
+                }
+            )
 
         request_data = {
             'comm': common,
@@ -273,6 +293,47 @@ class QQMusicClient:
             return {}
 
         return result.get('data', result)
+
+    def send_phone_auth_code(self, phone: str, country_code: int = 86) -> Dict[str, Any]:
+        """Send a phone verification code for mainland China login."""
+        return self._make_request(
+            "music.login.LoginServer",
+            "SendPhoneAuthCode",
+            {
+                "tmeAppid": "qqmusic",
+                "phoneNo": str(phone),
+                "areaCode": str(country_code),
+            },
+            comm={"tmeLoginMethod": 3},
+            platform="android",
+        )
+
+    def phone_authorize(self, phone: str, auth_code: str, country_code: int = 86) -> Dict[str, Any]:
+        """Authorize login with phone verification code."""
+        result = self._make_request(
+            "music.login.LoginServer",
+            "Login",
+            {
+                "code": str(auth_code),
+                "phoneNo": str(phone),
+                "areaCode": str(country_code),
+                "loginMode": 1,
+            },
+            comm={"tmeLoginMethod": 3, "tmeLoginType": 0},
+            platform="android",
+        )
+        if not result:
+            return {}
+
+        normalized = {
+            **result,
+            "musicid": str(result.get("musicid", "") or ""),
+        }
+        if "encryptUin" in result and "encrypt_uin" not in normalized:
+            normalized["encrypt_uin"] = result["encryptUin"]
+        if "loginType" in result and "login_type" not in normalized:
+            normalized["login_type"] = result["loginType"]
+        return normalized
 
     def _try_refresh_credential(self) -> bool:
         """
