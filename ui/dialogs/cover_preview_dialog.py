@@ -70,8 +70,9 @@ class CoverPreviewDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setMinimumSize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
         self.setMaximumSize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
-        self.resize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
+        self.setFixedSize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
 
         self._build_ui()
         self._load_image()
@@ -164,11 +165,6 @@ class CoverPreviewDialog(QDialog):
         self._image_label.setText("")
         self._image_label.setPixmap(scaled)
         self._content_frame.setFixedSize(scaled.size())
-        self.adjustSize()
-        self.setFixedSize(
-            min(self.width(), self.MAX_WINDOW_WIDTH),
-            min(self.height(), self.MAX_WINDOW_HEIGHT),
-        )
 
     def keyPressEvent(self, event):
         """Close the preview on Escape."""

@@ -195,7 +195,7 @@ def test_cover_preview_close_event_ignores_missing_loader(qapp, theme_config):
     assert not dialog.isVisible()
 
 
-def test_cover_preview_window_does_not_exceed_800_pixels(qapp, theme_config, tmp_path):
+def test_cover_preview_window_is_fixed_at_800_pixels(qapp, theme_config, tmp_path):
     ThemeManager.instance(theme_config)
 
     pixmap = QPixmap(1600, 1200)
@@ -207,8 +207,22 @@ def test_cover_preview_window_does_not_exceed_800_pixels(qapp, theme_config, tmp
     dialog.show()
     qapp.processEvents()
 
-    assert dialog.width() <= 800
-    assert dialog.height() <= 800
+    assert dialog.width() == 800
+    assert dialog.height() == 800
+
+
+def test_cover_preview_small_image_still_uses_fixed_800_window(qapp, theme_config, tmp_path):
+    ThemeManager.instance(theme_config)
+
+    image_path = tmp_path / "small-cover.png"
+    image_path.write_bytes(_make_png_bytes())
+
+    dialog = CoverPreviewDialog(str(image_path), title="Small Cover")
+    dialog.show()
+    qapp.processEvents()
+
+    assert dialog.width() == 800
+    assert dialog.height() == 800
 
 
 def test_show_cover_preview_uses_top_level_window_parent_for_child_widgets(
