@@ -598,7 +598,7 @@ class QQMusicService:
 
             playlist_result = {
                 'id': dirinfo.get('id', '') if dirinfo else (
-                            req_1_data.get('tid', '') or req_1_data.get('dissid', '') or str(playlist_id)),
+                        req_1_data.get('tid', '') or req_1_data.get('dissid', '') or str(playlist_id)),
                 'name': name,
                 'creator': creator,
                 'cover': cover,
@@ -705,7 +705,7 @@ class QQMusicService:
 
             return {
                 'id': dirinfo.get('id', '') if dirinfo else (
-                            result.get('tid', '') or result.get('dissid', '') or str(playlist_id)),
+                        result.get('tid', '') or result.get('dissid', '') or str(playlist_id)),
                 'name': name,
                 'creator': creator,
                 'cover': cover,
@@ -822,7 +822,12 @@ class QQMusicService:
                     "module": "music.musichallSinger.SingerInfoInter",
                     "method": "GetSingerDetail",
                     "param": {
-                        "singer_mids": [singer_mid]
+                        "singer_mids": [singer_mid],
+                        "ex_singer": 1,
+                        "wiki_singer": 0,
+                        "group_singer": 0,
+                        "pic": 1,
+                        "photos": 0
                     }
                 },
                 "req_2": {
@@ -900,6 +905,7 @@ class QQMusicService:
                     avatar = f"http://y.gtimg.cn/music/photo_new/T001R300x300M000{singer_mid_from_info}_{has_photo}.jpg"
 
             singer_name = basic_info.get('name', '')
+            foreign_name = ex_info.get('foreign_name', '')
             desc = ex_info.get('desc', '')
 
             # Parse songs from req_2
@@ -948,6 +954,7 @@ class QQMusicService:
             return {
                 'mid': basic_info.get('singer_mid', singer_mid),
                 'name': singer_name,
+                'foreign_name': foreign_name,
                 'desc': desc,
                 'avatar': avatar,
                 'album_count': total_albums,
@@ -1252,10 +1259,10 @@ class QQMusicService:
             if not result:
                 return []
             singers = (
-                result.get("List", [])
-                or result.get("list", [])
-                or result.get("singerList", [])
-                or []
+                    result.get("List", [])
+                    or result.get("list", [])
+                    or result.get("singerList", [])
+                    or []
             )
             items = []
             for singer in singers:

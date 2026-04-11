@@ -1253,7 +1253,7 @@ class OnlineDetailView(QWidget):
     def _display_artist_detail(self, data: Dict):
         """Display artist detail."""
         self._name_label.setText(data.get("name", ""))
-        self._secondary_label.setText(data.get("desc", "")[:100] + "..." if data.get("desc") else "")
+        self._secondary_label.setText(data.get("foreign_name", ""))
         self._extra_label.setText("")
         self._set_description(data.get("desc", ""))
 

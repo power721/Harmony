@@ -323,6 +323,7 @@ class QQMusicPluginClient:
                 return {
                     "title": detail.get("name", ""),
                     "description": detail.get("desc", ""),
+                    "foreign_name": detail.get("foreign_name", ""),
                     "songs": [normalize_detail_song(item) for item in detail.get("songs", [])],
                     "follow_status": bool(detail.get("follow_status", False)),
                 }
