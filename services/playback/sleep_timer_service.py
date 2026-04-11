@@ -200,8 +200,21 @@ class SleepTimerService(QObject):
             logger.info("Sleep timer: stopped playback")
         elif action == 'quit':
             logger.info("Sleep timer: quitting application")
-            from PySide6.QtWidgets import QApplication
-            QApplication.instance().quit()
+            try:
+                from app.application import Application
+
+                app = Application.instance()
+                main_window = getattr(app, "main_window", None)
+                if main_window and hasattr(main_window, "request_quit"):
+                    main_window.request_quit()
+                else:
+                    app.quit()
+            except Exception:
+                from PySide6.QtWidgets import QApplication
+
+                qt_app = QApplication.instance()
+                if qt_app:
+                    qt_app.quit()
         elif action == 'shutdown':
             logger.info("Sleep timer: shutting down system")
             self._shutdown_system()

@@ -535,3 +535,25 @@ class TestSleepTimerService:
         # Volume should be restored before stopping
         # Last set_volume call should restore original volume
         assert mock_playback_service.set_volume.call_args_list[-1][0][0] == 80
+
+    def test_execute_action_quit_prefers_main_window_request_quit(self, sleep_timer_service, mock_playback_service):
+        """Quit action should route through MainWindow so playback cleanup still runs."""
+        config = SleepTimerConfig(
+            mode='time',
+            value=1,
+            action='quit',
+            fade_out=False
+        )
+        sleep_timer_service._config = config
+        fake_main_window = Mock()
+        fake_application = Mock(main_window=fake_main_window)
+
+        with patch(
+            "app.application.Application.instance",
+            return_value=fake_application,
+        ):
+            sleep_timer_service._execute_action()
+
+        mock_playback_service.stop.assert_called_once_with()
+        fake_main_window.request_quit.assert_called_once_with()
+        fake_application.quit.assert_not_called()

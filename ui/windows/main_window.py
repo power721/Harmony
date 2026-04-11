@@ -2490,12 +2490,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error saving playback state: {e}")
 
-        if self._force_quit_requested:
-            event.accept()
-            app = QApplication.instance()
-            if app:
-                app.quit()
-            return
+        should_quit_app = self._force_quit_requested
 
         # Stop playback AFTER saving state and explicitly shutdown backend resources.
         try:
@@ -2549,3 +2544,7 @@ class MainWindow(QMainWindow):
         self._bootstrap.shutdown_database()
 
         event.accept()
+        if should_quit_app:
+            app = QApplication.instance()
+            if app:
+                app.quit()
