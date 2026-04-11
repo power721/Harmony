@@ -169,3 +169,43 @@ def test_online_detail_view_cover_click_uses_shared_preview(monkeypatch):
             None,
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("source_url", "expected_url"),
+    [
+        (
+            "https://y.gtimg.cn/music/photo_new/T002R500x500M000albummid.jpg",
+            "https://y.gtimg.cn/music/photo_new/T002R800x800M000albummid.jpg",
+        ),
+        (
+            "https://y.qq.com/music/photo_new/T002R300x300M000albummid.jpg",
+            "https://y.qq.com/music/photo_new/T002R800x800M000albummid.jpg",
+        ),
+    ],
+)
+def test_online_detail_view_cover_click_upgrades_more_qq_cover_url_variants(
+    monkeypatch,
+    source_url,
+    expected_url,
+):
+    """QQ cover clicks should normalize multiple photo_new URL variants to 800px previews."""
+    calls = []
+
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_detail_view.show_cover_preview",
+        lambda parent, image_source, title="", request_headers=None: calls.append(
+            (parent, image_source, title, request_headers)
+        ),
+    )
+
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    view._cover_url = source_url
+    view._name_label = SimpleNamespace(text=lambda: "Album Name")
+
+    OnlineDetailView._on_cover_clicked(view, None)
+
+    assert len(calls) == 1
+    assert calls[0][1] == expected_url
+    assert calls[0][2] == "Album Name"
+    assert calls[0][3] is None

@@ -4,6 +4,7 @@ Shows details for artist, album, or playlist.
 """
 
 import logging
+import re
 from typing import Optional, List, Dict, Any
 
 from PySide6.QtCore import Qt, Signal, QThread, QRect, QTimer
@@ -43,6 +44,7 @@ from .runtime_bridge import (
 )
 
 logger = logging.getLogger(__name__)
+_QQ_PREVIEW_SIZE_PATTERN = re.compile(r"R\d+x\d+")
 
 
 class DetailWorker(QThread):
@@ -1398,21 +1400,20 @@ class OnlineDetailView(QWidget):
         if not self._cover_url:
             return
 
-        cover_url = self._cover_url
-
-        # Try to get high-res version for y.gtimg.cn URLs
-        if "y.gtimg.cn" in cover_url:
-            if "R300x300" in cover_url:
-                cover_url = cover_url.replace("R300x300", "R800x800")
-
-        # For qpic.y.qq.com (playlist covers), use original URL as-is
-        # The /600 suffix is already a reasonable size
+        cover_url = self._build_preview_cover_url(self._cover_url)
 
         self._cover_preview_dialog = show_cover_preview(
             self,
             cover_url,
             title=self._name_label.text() or t("cover"),
         )
+
+    @staticmethod
+    def _build_preview_cover_url(cover_url: str) -> str:
+        """Upgrade QQ photo_new covers to the 800px preview variant when possible."""
+        if "music/photo_new/" not in cover_url:
+            return cover_url
+        return _QQ_PREVIEW_SIZE_PATTERN.sub("R800x800", cover_url, count=1)
 
     def _display_album_detail(self, data: Dict):
         """Display album detail."""
