@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from system.theme import ThemeManager
 from ui.dialogs.cover_preview_dialog import CoverPreviewDialog
@@ -58,7 +58,7 @@ def _make_png_bytes() -> bytes:
     return bytes(ba)
 
 
-def test_cover_preview_closes_when_clicking_overlay(qapp, theme_config, tmp_path):
+def test_cover_preview_clicking_outside_content_does_not_close(qapp, theme_config, tmp_path):
     ThemeManager.instance(theme_config)
     image_path = tmp_path / "cover.png"
     image_path.write_bytes(_make_png_bytes())
@@ -72,7 +72,7 @@ def test_cover_preview_closes_when_clicking_overlay(qapp, theme_config, tmp_path
     QTest.mouseClick(dialog, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(5, 5))
     qapp.processEvents()
 
-    assert not dialog.isVisible()
+    assert dialog.isVisible()
 
 
 def test_cover_preview_closes_on_escape(qapp, theme_config, tmp_path):
@@ -90,7 +90,20 @@ def test_cover_preview_closes_on_escape(qapp, theme_config, tmp_path):
     assert not dialog.isVisible()
 
 
-def test_cover_preview_drags_from_content(qapp, theme_config, tmp_path):
+def test_cover_preview_shows_title_bar_and_close_button(qapp, theme_config, tmp_path):
+    ThemeManager.instance(theme_config)
+    image_path = tmp_path / "cover.png"
+    image_path.write_bytes(_make_png_bytes())
+
+    dialog = CoverPreviewDialog(str(image_path), title="Album")
+    dialog.show()
+    qapp.processEvents()
+
+    assert dialog.findChild(QWidget, "dialogTitleBar") is not None
+    assert dialog.findChild(QPushButton, "dialogCloseBtn") is not None
+
+
+def test_cover_preview_drags_from_title_bar(qapp, theme_config, tmp_path):
     ThemeManager.instance(theme_config)
     image_path = tmp_path / "cover.png"
     image_path.write_bytes(_make_png_bytes())
@@ -101,13 +114,14 @@ def test_cover_preview_drags_from_content(qapp, theme_config, tmp_path):
     dialog.move(100, 120)
     qapp.processEvents()
 
-    content = dialog._content_frame
-    start = content.rect().center()
+    title_bar = dialog.findChild(QWidget, "dialogTitleBar")
+    assert title_bar is not None
+    start = title_bar.rect().center()
 
     press = QMouseEvent(
         QMouseEvent.Type.MouseButtonPress,
         QPointF(start),
-        QPointF(content.mapToGlobal(start)),
+        QPointF(title_bar.mapToGlobal(start)),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
@@ -115,7 +129,7 @@ def test_cover_preview_drags_from_content(qapp, theme_config, tmp_path):
     move = QMouseEvent(
         QMouseEvent.Type.MouseMove,
         QPointF(start + QPoint(40, 35)),
-        QPointF(content.mapToGlobal(start + QPoint(40, 35))),
+        QPointF(title_bar.mapToGlobal(start + QPoint(40, 35))),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
@@ -123,15 +137,15 @@ def test_cover_preview_drags_from_content(qapp, theme_config, tmp_path):
     release = QMouseEvent(
         QMouseEvent.Type.MouseButtonRelease,
         QPointF(start + QPoint(40, 35)),
-        QPointF(content.mapToGlobal(start + QPoint(40, 35))),
+        QPointF(title_bar.mapToGlobal(start + QPoint(40, 35))),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.NoModifier,
     )
 
-    QApplication.sendEvent(content, press)
-    QApplication.sendEvent(content, move)
-    QApplication.sendEvent(content, release)
+    QApplication.sendEvent(title_bar, press)
+    QApplication.sendEvent(title_bar, move)
+    QApplication.sendEvent(title_bar, release)
     qapp.processEvents()
 
     assert dialog.pos() != QPoint(100, 120)
@@ -181,10 +195,10 @@ def test_cover_preview_close_event_ignores_missing_loader(qapp, theme_config):
     assert not dialog.isVisible()
 
 
-def test_cover_preview_window_does_not_exceed_500_pixels(qapp, theme_config, tmp_path):
+def test_cover_preview_window_does_not_exceed_800_pixels(qapp, theme_config, tmp_path):
     ThemeManager.instance(theme_config)
 
-    pixmap = QPixmap(1200, 900)
+    pixmap = QPixmap(1600, 1200)
     pixmap.fill(Qt.GlobalColor.blue)
     image_path = tmp_path / "large-cover.png"
     pixmap.save(str(image_path), "PNG")
@@ -193,5 +207,5 @@ def test_cover_preview_window_does_not_exceed_500_pixels(qapp, theme_config, tmp
     dialog.show()
     qapp.processEvents()
 
-    assert dialog.width() <= 500
-    assert dialog.height() <= 500
+    assert dialog.width() <= 800
+    assert dialog.height() <= 800

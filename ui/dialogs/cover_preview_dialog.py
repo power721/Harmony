@@ -1,4 +1,4 @@
-"""Shared frameless cover preview dialog."""
+"""Shared cover preview dialog with a themed title bar."""
 
 from __future__ import annotations
 
@@ -7,12 +7,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QDialog, QFrame, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QFrame, QLabel, QVBoxLayout, QWidget
 
 from infrastructure.cache.image_cache import ImageCache
 from infrastructure.network.http_client import HttpClient
 from system.i18n import t
 from system.theme import ThemeManager
+from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,12 @@ class CoverPreviewLoader(QThread):
 
 
 class CoverPreviewDialog(QDialog):
-    """Frameless cover preview with outside-click close and drag-to-move."""
+    """Frameless cover preview with shared title bar chrome."""
 
-    MAX_WINDOW_WIDTH = 500
-    MAX_WINDOW_HEIGHT = 500
-    OUTER_MARGIN = 24
+    MAX_WINDOW_WIDTH = 800
+    MAX_WINDOW_HEIGHT = 800
+    CONTENT_MARGINS = (24, 20, 24, 24)
+    MAX_CONTENT_HEIGHT_PADDING = 120
 
     def __init__(
         self,
@@ -73,41 +75,45 @@ class CoverPreviewDialog(QDialog):
 
         self._build_ui()
         self._load_image()
+        ThemeManager.instance().register_widget(self)
 
     def _build_ui(self):
-        """Create overlay and centered content frame."""
+        """Create the shared title-bar layout and centered image area."""
         theme = ThemeManager.instance().current_theme
 
         self.setStyleSheet(
-            f"QDialog {{ background-color: rgba(0, 0, 0, 180); }}"
-            f"QFrame#coverPreviewContent {{ background-color: {theme.background_alt}; border-radius: 12px; }}"
-            f"QLabel {{ color: {theme.text_secondary}; background-color: transparent; }}"
+            f"QFrame#coverPreviewContent {{ background-color: transparent; }}"
+            f"QLabel#coverPreviewImage {{ color: {theme.text_secondary}; background-color: transparent; }}"
         )
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(
-            self.OUTER_MARGIN,
-            self.OUTER_MARGIN,
-            self.OUTER_MARGIN,
-            self.OUTER_MARGIN,
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        container = QWidget(self)
+        container.setObjectName("dialogContainer")
+        outer.addWidget(container)
+
+        container_layout = QVBoxLayout(container)
+        self._content_layout, self._title_bar_controller = setup_equalizer_title_layout(
+            self,
+            container_layout,
+            self.windowTitle(),
+            content_margins=self.CONTENT_MARGINS,
+            content_spacing=0,
         )
 
-        self._content_frame = QFrame(self)
+        self._content_frame = QFrame(container)
         self._content_frame.setObjectName("coverPreviewContent")
-        self._content_frame.setMinimumSize(200, 200)
 
         content_layout = QVBoxLayout(self._content_frame)
         content_layout.setContentsMargins(0, 0, 0, 0)
 
         self._image_label = QLabel(t("loading"))
+        self._image_label.setObjectName("coverPreviewImage")
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         content_layout.addWidget(self._image_label)
 
-        layout.addWidget(self._content_frame, 0, Qt.AlignmentFlag.AlignCenter)
-
-        self._content_frame.mousePressEvent = self._on_content_press
-        self._content_frame.mouseMoveEvent = self._on_content_move
-        self._content_frame.mouseReleaseEvent = self._on_content_release
+        self._content_layout.addWidget(self._content_frame, 0, Qt.AlignmentFlag.AlignCenter)
 
     def _is_url(self) -> bool:
         """Return whether the source should be fetched remotely."""
@@ -145,9 +151,10 @@ class CoverPreviewDialog(QDialog):
         self._image_label.setText(t("cover_load_failed"))
 
     def _set_pixmap(self, pixmap: QPixmap):
-        """Scale the pixmap to the available screen size and display it."""
-        max_content_width = self.MAX_WINDOW_WIDTH - (self.OUTER_MARGIN * 2)
-        max_content_height = self.MAX_WINDOW_HEIGHT - (self.OUTER_MARGIN * 2)
+        """Scale the pixmap to the dialog bounds and display it."""
+        horizontal_padding = self.CONTENT_MARGINS[0] + self.CONTENT_MARGINS[2]
+        max_content_width = self.MAX_WINDOW_WIDTH - horizontal_padding
+        max_content_height = self.MAX_WINDOW_HEIGHT - self.MAX_CONTENT_HEIGHT_PADDING
         scaled = pixmap.scaled(
             max(1, max_content_width),
             max(1, max_content_height),
@@ -163,37 +170,20 @@ class CoverPreviewDialog(QDialog):
             min(self.height(), self.MAX_WINDOW_HEIGHT),
         )
 
-    def _on_content_press(self, event):
-        """Record the initial drag offset when dragging starts."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def _on_content_move(self, event):
-        """Move the dialog while the image container is being dragged."""
-        if self._drag_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
-
-    def _on_content_release(self, event):
-        """Clear drag state after releasing the mouse."""
-        self._drag_pos = None
-        event.accept()
-
-    def mousePressEvent(self, event):
-        """Close when clicking the overlay outside the content frame."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            if not self._content_frame.geometry().contains(event.position().toPoint()):
-                self.close()
-                return
-        super().mousePressEvent(event)
-
     def keyPressEvent(self, event):
         """Close the preview on Escape."""
         if event.key() == Qt.Key.Key_Escape:
             self.close()
             return
         super().keyPressEvent(event)
+
+    def refresh_theme(self):
+        """Refresh dialog styling after a theme change."""
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
+        self._title_bar_controller.refresh_theme()
 
     def closeEvent(self, event):
         """Stop any running loader thread before closing."""
