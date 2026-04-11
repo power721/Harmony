@@ -5,6 +5,7 @@ from .album_rename_dialog import AlbumRenameDialog
 from .artist_rename_dialog import ArtistRenameDialog
 from .base_cover_download_dialog import BaseCoverDownloadDialog
 from .cloud_login_dialog import CloudLoginDialog
+from .cover_preview_dialog import CoverPreviewDialog, show_cover_preview
 from .edit_media_info_dialog import EditMediaInfoDialog
 from .help_dialog import HelpDialog
 from .input_dialog import InputDialog
@@ -26,6 +27,7 @@ __all__ = [
     'ArtistCoverDownloadDialog',
     'BaseCoverDownloadDialog',
     'CloudLoginDialog',
+    'CoverPreviewDialog',
     'ProviderSelectDialog',
     'HelpDialog',
     'OrganizeFilesDialog',
@@ -37,4 +39,5 @@ __all__ = [
     'EditMediaInfoDialog',
     'InputDialog',
     'WelcomeDialog',
+    'show_cover_preview',
 ]
