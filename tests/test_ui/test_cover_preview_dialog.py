@@ -179,3 +179,19 @@ def test_cover_preview_close_event_ignores_missing_loader(qapp, theme_config):
     qapp.processEvents()
 
     assert not dialog.isVisible()
+
+
+def test_cover_preview_window_does_not_exceed_500_pixels(qapp, theme_config, tmp_path):
+    ThemeManager.instance(theme_config)
+
+    pixmap = QPixmap(1200, 900)
+    pixmap.fill(Qt.GlobalColor.blue)
+    image_path = tmp_path / "large-cover.png"
+    pixmap.save(str(image_path), "PNG")
+
+    dialog = CoverPreviewDialog(str(image_path), title="Large Cover")
+    dialog.show()
+    qapp.processEvents()
+
+    assert dialog.width() <= 500
+    assert dialog.height() <= 500
