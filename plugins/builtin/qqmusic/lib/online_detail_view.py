@@ -1254,7 +1254,7 @@ class OnlineDetailView(QWidget):
         """Display artist detail."""
         self._name_label.setText(data.get("name", ""))
         self._secondary_label.setText(data.get("foreign_name", ""))
-        self._extra_label.setText("")
+        self._extra_label.setText(data.get("birthday", ""))
         self._set_description(data.get("desc", ""))
 
         # Load artist cover

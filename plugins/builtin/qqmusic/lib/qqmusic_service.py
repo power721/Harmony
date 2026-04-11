@@ -906,6 +906,7 @@ class QQMusicService:
 
             singer_name = basic_info.get('name', '')
             foreign_name = ex_info.get('foreign_name', '')
+            birthday = ex_info.get('birthday', '')
             desc = ex_info.get('desc', '')
 
             # Parse songs from req_2
@@ -955,6 +956,7 @@ class QQMusicService:
                 'mid': basic_info.get('singer_mid', singer_mid),
                 'name': singer_name,
                 'foreign_name': foreign_name,
+                'birthday': birthday,
                 'desc': desc,
                 'avatar': avatar,
                 'album_count': total_albums,
