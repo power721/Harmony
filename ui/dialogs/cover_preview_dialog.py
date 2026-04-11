@@ -47,6 +47,10 @@ class CoverPreviewLoader(QThread):
 class CoverPreviewDialog(QDialog):
     """Frameless cover preview with outside-click close and drag-to-move."""
 
+    MAX_WINDOW_WIDTH = 500
+    MAX_WINDOW_HEIGHT = 500
+    OUTER_MARGIN = 24
+
     def __init__(
         self,
         image_source: str,
@@ -64,7 +68,8 @@ class CoverPreviewDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.resize(900, 700)
+        self.setMaximumSize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
+        self.resize(self.MAX_WINDOW_WIDTH, self.MAX_WINDOW_HEIGHT)
 
         self._build_ui()
         self._load_image()
@@ -80,7 +85,12 @@ class CoverPreviewDialog(QDialog):
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(
+            self.OUTER_MARGIN,
+            self.OUTER_MARGIN,
+            self.OUTER_MARGIN,
+            self.OUTER_MARGIN,
+        )
 
         self._content_frame = QFrame(self)
         self._content_frame.setObjectName("coverPreviewContent")
@@ -136,17 +146,22 @@ class CoverPreviewDialog(QDialog):
 
     def _set_pixmap(self, pixmap: QPixmap):
         """Scale the pixmap to the available screen size and display it."""
-        screen = self.screen()
-        available = screen.availableGeometry().size() if screen else self.size()
+        max_content_width = self.MAX_WINDOW_WIDTH - (self.OUTER_MARGIN * 2)
+        max_content_height = self.MAX_WINDOW_HEIGHT - (self.OUTER_MARGIN * 2)
         scaled = pixmap.scaled(
-            max(200, available.width() - 160),
-            max(200, available.height() - 160),
+            max(1, max_content_width),
+            max(1, max_content_height),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         self._image_label.setText("")
         self._image_label.setPixmap(scaled)
         self._content_frame.setFixedSize(scaled.size())
+        self.adjustSize()
+        self.setFixedSize(
+            min(self.width(), self.MAX_WINDOW_WIDTH),
+            min(self.height(), self.MAX_WINDOW_HEIGHT),
+        )
 
     def _on_content_press(self, event):
         """Record the initial drag offset when dragging starts."""
