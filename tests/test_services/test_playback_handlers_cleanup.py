@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import services.playback.handlers as handlers_module
+from domain.track import TrackSource
 from services.playback.handlers import CloudTrackHandler, LocalTrackHandler, OnlineTrackHandler
 
 
@@ -98,3 +99,53 @@ def test_cloud_handler_cleanup_joins_and_clears_metadata_threads():
 
     assert thread.join_calls == [1.5]
     assert len(fake_handler._metadata_threads) == 0
+
+
+def test_cloud_handler_save_to_library_uses_provider_aware_lookup_for_online_source(monkeypatch):
+    """Online-source fallback inside cloud save path should keep provider context."""
+    from services.metadata import metadata_service
+
+    monkeypatch.setattr(
+        metadata_service.MetadataService,
+        "extract_metadata",
+        staticmethod(lambda _path: {"title": "Song", "artist": "Artist", "album": "", "duration": 1}),
+    )
+
+    fake_track_repo = SimpleNamespace(
+        get_by_cloud_file_id=MagicMock(
+            return_value=SimpleNamespace(
+                id=1,
+                path="/tmp/song.mp3",
+                title="Song",
+                artist="Artist",
+                cover_path="",
+            )
+        ),
+        update_path=MagicMock(),
+    )
+    fake_handler = SimpleNamespace(
+        _cloud_account=None,
+        _engine=SimpleNamespace(
+            current_playlist_item=SimpleNamespace(
+                cloud_file_id="song-1",
+                source=TrackSource.ONLINE,
+                is_online=True,
+                online_provider_id="qqmusic",
+            )
+        ),
+        _track_repo=fake_track_repo,
+        _update_track_fields=MagicMock(),
+        _cover_service=None,
+    )
+
+    CloudTrackHandler._save_to_library(
+        fake_handler,
+        "song-1",
+        "/tmp/song.mp3",
+        source=TrackSource.ONLINE,
+    )
+
+    fake_track_repo.get_by_cloud_file_id.assert_called_once_with(
+        "song-1",
+        provider_id="qqmusic",
+    )

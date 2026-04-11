@@ -622,7 +622,13 @@ class CloudTrackHandler:
         new_duration = metadata.get("duration", 0)
 
         # Check if track already exists
-        existing = self._track_repo.get_by_cloud_file_id(file_id)
+        provider_id = None
+        if source == TrackSource.ONLINE:
+            current_item = self._engine.current_playlist_item
+            if current_item and current_item.cloud_file_id == file_id and current_item.is_online:
+                provider_id = current_item.online_provider_id
+
+        existing = self._track_repo.get_by_cloud_file_id(file_id, provider_id=provider_id)
         if existing:
             if not existing.path or existing.path != local_path:
                 self._track_repo.update_path(existing.id, local_path)

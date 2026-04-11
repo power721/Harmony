@@ -1431,7 +1431,10 @@ class PlaybackService(QObject):
             elif item.is_cloud and item.local_path:
                 track = self._track_repo.get_by_path(item.local_path)
                 if not track:
-                    track = self._track_repo.get_by_cloud_file_id(item.cloud_file_id)
+                    track = self._track_repo.get_by_cloud_file_id(
+                        item.cloud_file_id,
+                        provider_id=item.online_provider_id if item.is_online else None,
+                    )
 
                 if track and track.id:
                     self._history_repo.add(track.id)

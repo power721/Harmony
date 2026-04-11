@@ -2,6 +2,7 @@
 Tests for queue service edge cases and regressions.
 """
 
+from unittest.mock import Mock
 
 from domain.playback import PlayMode, PlaybackState
 from domain.playlist_item import PlaylistItem
@@ -402,6 +403,37 @@ def test_playback_service_on_track_changed_skips_save_when_stopped():
 
     assert service._schedule_save_queue_called == 0
     assert service._schedule_next_track_preload_called == 1
+
+
+def test_playback_service_on_track_changed_uses_provider_aware_online_lookup():
+    """Online history sync should not match a different provider that shares the same song id."""
+    service = PlaybackService.__new__(PlaybackService)
+    service._engine = type("Engine", (), {})()
+    service._engine.current_playlist_item = PlaylistItem(
+        source=TrackSource.ONLINE,
+        cloud_file_id="song-42",
+        online_provider_id="qqmusic",
+        local_path="/tmp/song-42.mp3",
+        title="demo",
+    )
+    service._engine.state = PlaybackState.PLAYING
+    service._event_bus = type("Bus", (), {"emit_track_change": lambda *args, **kwargs: None})()
+    service._history_repo = type("History", (), {"add": lambda *args, **kwargs: None})()
+    service._track_repo = type("Repo", (), {})()
+    service._track_repo.get_by_path = Mock(return_value=None)
+    service._track_repo.get_by_cloud_file_id = Mock(
+        return_value=type("Track", (), {"id": 9})()
+    )
+    service.save_queue = Mock()
+    service._schedule_next_track_preload = lambda: None
+    service._schedule_save_queue = lambda: None
+
+    PlaybackService._on_track_changed(service, {"id": None})
+
+    service._track_repo.get_by_cloud_file_id.assert_called_once_with(
+        "song-42",
+        provider_id="qqmusic",
+    )
 
 
 def test_playback_service_save_queue_persists_current_track_identity():
