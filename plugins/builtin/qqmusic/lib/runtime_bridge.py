@@ -73,6 +73,15 @@ def show_warning(parent, title: str, message: str) -> None:
     _require_context().ui.dialogs.warning(parent, title, message)
 
 
+def show_cover_preview(parent, image_source: str, title: str = "", request_headers: dict[str, str] | None = None):
+    return _require_context().ui.dialogs.show_cover_preview(
+        parent,
+        image_source,
+        title=title,
+        request_headers=request_headers,
+    )
+
+
 def create_online_music_service(*, config_manager=None, credential_provider=None):
     from .plugin_online_music_service import PluginOnlineMusicService
 

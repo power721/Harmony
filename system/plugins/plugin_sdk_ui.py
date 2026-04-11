@@ -70,6 +70,22 @@ class PluginDialogBridgeImpl:
             return MessageDialog.critical(parent, title, message)
         return MessageDialog.critical(parent, title, message, buttons, default_button)
 
+    def show_cover_preview(
+        self,
+        parent,
+        image_source: str,
+        title: str = "",
+        request_headers: dict | None = None,
+    ):
+        from ui.dialogs.cover_preview_dialog import show_cover_preview
+
+        return show_cover_preview(
+            parent,
+            image_source,
+            title=title,
+            request_headers=request_headers,
+        )
+
     def setup_title_bar(self, dialog, container_layout, title: str, **kwargs):
         from ui.dialogs.dialog_title_bar import setup_equalizer_title_layout
 
@@ -110,6 +126,15 @@ def question(parent, title: str, message: str, buttons, default_button):
 
 def critical(parent, title: str, message: str, buttons=None, default_button=None):
     return PluginDialogBridgeImpl().critical(parent, title, message, buttons, default_button)
+
+
+def show_cover_preview(parent, image_source: str, title: str = "", request_headers: dict | None = None):
+    return PluginDialogBridgeImpl().show_cover_preview(
+        parent,
+        image_source,
+        title=title,
+        request_headers=request_headers,
+    )
 
 
 def setup_title_bar(dialog, container_layout, title: str, **kwargs):

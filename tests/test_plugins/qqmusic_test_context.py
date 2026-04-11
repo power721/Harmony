@@ -81,6 +81,9 @@ class _DialogBridge:
     def critical(self, *_args, **_kwargs):
         return None
 
+    def show_cover_preview(self, *_args, **_kwargs):
+        return None
+
     def setup_title_bar(self, *_args, **_kwargs):
         return None
 

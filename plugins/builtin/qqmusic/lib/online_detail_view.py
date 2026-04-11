@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from ui.dialogs.cover_preview_dialog import show_cover_preview
 from .i18n import t
 from .models import OnlineTrack, OnlineAlbum, OnlineSinger, AlbumInfo
 from .runtime_bridge import (
@@ -39,6 +38,7 @@ from .runtime_bridge import (
     image_cache_get,
     image_cache_set,
     register_themed_widget,
+    show_cover_preview,
     show_information,
 )
 
