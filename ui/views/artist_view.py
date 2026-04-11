@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QCursor, QMouseEvent, QScreen
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QPushButton,
     QProgressBar,
-    QDialog,
     QTabWidget,
 )
 
@@ -30,6 +29,7 @@ from services.metadata import CoverService
 from services.playback import PlaybackService
 from system.event_bus import EventBus
 from system.i18n import t
+from ui.dialogs.cover_preview_dialog import show_cover_preview
 from ui.views.local_tracks_list_view import LocalTracksListView
 from ui.widgets import AlbumCard
 
@@ -676,14 +676,16 @@ class ArtistView(QWidget):
         self._current_cover_path = None
 
     def _on_cover_clicked(self):
-        """Handle cover art click - show large image dialog."""
-        if self._current_cover_path:
-            try:
-                artist_name = self._artist.display_name if self._artist else ""
-                dialog = ArtistCoverDialog(self._current_cover_path, artist_name, self)
-                dialog.exec()
-            except Exception as e:
-                logger.error(f"Error showing cover dialog: {e}")
+        """Handle cover art click with the shared preview dialog."""
+        if not self._current_cover_path:
+            return
+
+        artist_name = self._artist.display_name if self._artist else ""
+        self._cover_preview_dialog = show_cover_preview(
+            self,
+            self._current_cover_path,
+            title=artist_name,
+        )
 
     def _render_albums(self):
         """Render album cards with lazy loading."""
@@ -852,77 +854,3 @@ class ClickableLabel(QLabel):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
-
-
-class ArtistCoverDialog(QDialog):
-    """Dialog to display large artist cover."""
-
-    def __init__(self, cover_path: str, artist_name: str = "", parent=None):
-        """
-        Initialize cover dialog.
-
-        Args:
-            cover_path: Path to the cover image
-            artist_name: Artist name for window title
-            parent: Parent widget
-        """
-        super().__init__(parent)
-        self._cover_path = cover_path
-        self._artist_name = artist_name
-        self._setup_ui()
-
-    def _setup_ui(self):
-        """Setup the dialog UI."""
-        self.setWindowTitle(self._artist_name or t("artist_cover"))
-        self.setModal(True)
-
-        # Get screen size
-        screen = QScreen.availableGeometry(self.screen())
-        screen_width = screen.width()
-        screen_height = screen.height()
-
-        # Set dialog size to 80% of screen, max 800x800
-        dialog_width = min(int(screen_width * 0.8), 800)
-        dialog_height = min(int(screen_height * 0.8), 800)
-        self.setFixedSize(dialog_width, dialog_height)
-
-        from system.theme import ThemeManager
-        theme = ThemeManager.instance().current_theme
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        # Image label
-        image_label = QLabel()
-        image_label.setAlignment(Qt.AlignCenter)
-        image_label.setStyleSheet(f"background-color: {theme.background_alt};")
-
-        # Load and scale image to fit dialog
-        pixmap = QPixmap(self._cover_path)
-        if not pixmap.isNull():
-            # Scale image to fit within dialog while maintaining aspect ratio
-            scaled = pixmap.scaled(
-                dialog_width - 20,
-                dialog_height - 20,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            image_label.setPixmap(scaled)
-        else:
-            image_label.setText(t("cover_load_failed"))
-
-        layout.addWidget(image_label)
-
-        # Apply dialog style
-        self.setStyleSheet(f"""
-            QDialog {{
-                background-color: {theme.background};
-            }}
-        """)
-
-    def keyPressEvent(self, event):
-        """Handle key press - close on Escape."""
-        if event.key() == Qt.Key_Escape:
-            self.accept()
-        else:
-            super().keyPressEvent(event)

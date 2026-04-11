@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List
 
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -25,6 +25,7 @@ from services.library import LibraryService
 from services.metadata import CoverService
 from services.playback import PlaybackService
 from system.i18n import t
+from ui.dialogs.cover_preview_dialog import show_cover_preview
 from ui.views.local_tracks_list_view import LocalTracksListView
 
 logger = logging.getLogger(__name__)
@@ -157,7 +158,7 @@ class GenreView(QWidget):
         layout.setSpacing(30)
 
         # Genre cover
-        self._cover_label = QLabel()
+        self._cover_label = ClickableLabel()
         self._cover_label.setFixedSize(200, 200)
         self._cover_label.setStyleSheet(f"""
             QLabel {{
@@ -165,6 +166,7 @@ class GenreView(QWidget):
                 border-radius: 8px;
             }}
         """)
+        self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label, 0, Qt.AlignVCenter)
 
         # Genre info
@@ -555,6 +557,18 @@ class GenreView(QWidget):
                 break
         self.play_tracks.emit(self._tracks, start_index)
 
+    def _on_cover_clicked(self):
+        """Handle genre cover click with the shared preview dialog."""
+        if not self._current_cover_path:
+            return
+
+        genre_name = self._genre.display_name if self._genre else ""
+        self._cover_preview_dialog = show_cover_preview(
+            self,
+            self._current_cover_path,
+            title=genre_name,
+        )
+
     def refresh_theme(self):
         """Refresh theme colors when theme changes."""
         from system.theme import ThemeManager
@@ -728,3 +742,19 @@ class GenreView(QWidget):
                     albums=self._genre.album_count
                 )
             )
+
+
+class ClickableLabel(QLabel):
+    """A QLabel that emits a signal when clicked."""
+
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press event."""
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)

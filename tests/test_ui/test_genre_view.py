@@ -140,3 +140,11 @@ def test_genre_view_forwards_all_context_menu_signals(qapp, mock_theme_config):
     assert captured["remove"] == tracks
     assert captured["delete"] == tracks
     assert captured["redownload"] is track
+
+
+def test_genre_view_cover_is_clickable(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+
+    view = GenreView(library_service=Mock())
+
+    assert view._cover_label.cursor().shape() == Qt.CursorShape.PointingHandCursor
