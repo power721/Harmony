@@ -216,6 +216,45 @@ def test_install_zip_does_not_execute_plugin_top_level_code(tmp_path: Path):
     ).exists()
 
 
+def test_install_zip_accepts_single_wrapping_directory(tmp_path: Path):
+    installer = PluginInstaller(
+        external_root=tmp_path / "external",
+        temp_root=tmp_path / "temp",
+    )
+    plugin_zip = _build_plugin_zip(
+        tmp_path,
+        "wrapped_plugin.zip",
+        {
+            "wrapped/plugin.json": json.dumps(
+                {
+                    "id": "wrapped-plugin",
+                    "name": "Wrapped Plugin",
+                    "version": "1.0.0",
+                    "api_version": "1",
+                    "entrypoint": "plugin_main.py",
+                    "entry_class": "WrappedPlugin",
+                    "capabilities": ["sidebar"],
+                    "min_app_version": "0.1.0",
+                }
+            ),
+            "wrapped/plugin_main.py": (
+                "class WrappedPlugin:\n"
+                "    plugin_id = 'wrapped-plugin'\n"
+                "    def register(self, context):\n"
+                "        pass\n"
+                "    def unregister(self, context):\n"
+                "        pass\n"
+            ),
+        },
+    )
+
+    installed_root = installer.install_zip(plugin_zip)
+
+    assert installed_root == tmp_path / "external" / "wrapped-plugin"
+    assert (installed_root / "plugin.json").exists()
+    assert (installed_root / "plugin_main.py").exists()
+
+
 def test_install_zip_rejects_path_traversal_entries(tmp_path: Path):
     installer = PluginInstaller(
         external_root=tmp_path / "external",

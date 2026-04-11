@@ -84,6 +84,21 @@ class PluginInstaller:
         raw = manifest_path.read_text(encoding="utf-8")
         return PluginManifest.from_dict(json.loads(raw))
 
+    def _resolve_plugin_root(self, extract_root: Path) -> Path:
+        """Support archives that either unpack directly or under a single wrapper directory."""
+        if (extract_root / "plugin.json").exists():
+            return extract_root
+
+        child_dirs = [
+            path
+            for path in extract_root.iterdir()
+            if path.is_dir() and path.name != "__MACOSX"
+        ]
+        if len(child_dirs) == 1 and (child_dirs[0] / "plugin.json").exists():
+            return child_dirs[0]
+
+        return extract_root
+
     def _validate_archive_entries(
         self,
         archive: zipfile.ZipFile,
@@ -151,10 +166,11 @@ class PluginInstaller:
                 self._validate_archive_entries(archive, extract_root)
                 archive.extractall(extract_root)
 
-            audit_plugin_imports(extract_root)
-            manifest = self._load_manifest(extract_root)
+            plugin_root = self._resolve_plugin_root(extract_root)
+            audit_plugin_imports(plugin_root)
+            manifest = self._load_manifest(plugin_root)
             self._validate_plugin_id(manifest.id)
-            self._validate_entrypoint_structure(extract_root, manifest)
+            self._validate_entrypoint_structure(plugin_root, manifest)
 
             self._external_root.mkdir(parents=True, exist_ok=True)
             final_root = self._external_root / manifest.id
@@ -166,7 +182,7 @@ class PluginInstaller:
             if backup_root.exists():
                 shutil.rmtree(backup_root)
 
-            shutil.copytree(extract_root, staging_root)
+            shutil.copytree(plugin_root, staging_root)
 
             had_existing = final_root.exists()
             if had_existing:
