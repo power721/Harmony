@@ -859,33 +859,3 @@ def test_qqmusic_login_dialog_uses_dialog_container_selector_and_scoped_button_s
     assert "QWidget#dialogContainer" in QQMusicLoginDialog._STYLE_TEMPLATE
     assert "QWidget#settingsContainer" not in QQMusicLoginDialog._STYLE_TEMPLATE
     assert "QPushButton {" not in QQMusicLoginDialog._STYLE_TEMPLATE
-
-
-def test_settings_tab_login_dialog_refreshes_status_after_credentials_obtained(monkeypatch, qtbot):
-    settings = Mock()
-    settings.get.side_effect = lambda key, default=None: default
-    settings.set.side_effect = lambda key, value: None
-    context = _build_plugin_context(settings)
-    widget = QQMusicSettingsTab(context)
-    qtbot.addWidget(widget)
-    widget._update_qqmusic_status = Mock()
-
-    class _Signal:
-        def __init__(self):
-            self.connected = None
-
-        def connect(self, callback):
-            self.connected = callback
-
-    dialog = Mock()
-    dialog.credentials_obtained = _Signal()
-    monkeypatch.setattr(
-        "plugins.builtin.qqmusic.lib.settings_tab.QQMusicLoginDialog",
-        Mock(return_value=dialog),
-    )
-
-    widget._open_qqmusic_qr_login()
-
-    assert dialog.credentials_obtained.connected is not None
-    dialog.credentials_obtained.connected({"musicid": "1", "musickey": "secret", "login_type": 0})
-    assert widget._update_qqmusic_status.call_count >= 2

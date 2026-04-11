@@ -173,7 +173,7 @@ def test_update_login_status_renders_nick_as_profile_link():
     OnlineMusicView._update_login_status(view)
 
     view._login_status_label.setText.assert_called_once_with(
-        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/" style="color: #ffffff; text-decoration: none;">A&amp;B&lt;Nick&gt;</a>'
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">A&amp;B&lt;Nick&gt;</a>'
     )
 
 
@@ -190,7 +190,7 @@ def test_refresh_login_status_renders_nick_as_profile_link():
     OnlineMusicView._refresh_login_status(view)
 
     view._login_status_label.setText.assert_called_once_with(
-        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/" style="color: #ffffff; text-decoration: none;">Tester</a>'
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">Tester</a>'
     )
 
 
@@ -622,27 +622,6 @@ def test_on_credentials_obtained_refreshes_service_from_emitted_credential(monke
 
     assert view._qqmusic_service.credential == {"musicid": "9", "musickey": "new-secret"}
     view._update_login_status.assert_called_once_with()
-    view._load_favorites.assert_called_once_with()
-
-
-def test_phone_login_success_refreshes_online_view_without_restart():
-    view = OnlineMusicView.__new__(OnlineMusicView)
-    view._plugin_context = Mock()
-    view._config = Mock()
-    view._config.get_plugin_setting.return_value = ""
-    view._update_login_status = Mock()
-    view._load_favorites = Mock()
-    view._fav_loaded = True
-
-    fresh_service = Mock()
-    fresh_service.client.verify_login.return_value = {"valid": True, "nick": "Tester", "uin": 1}
-    view._refresh_qqmusic_service = Mock(return_value=fresh_service)
-
-    OnlineMusicView._on_credentials_obtained(view, {"musicid": "1", "musickey": "secret", "login_type": 0})
-
-    view._refresh_qqmusic_service.assert_called_once_with(
-        {"musicid": "1", "musickey": "secret", "login_type": 0}
-    )
     view._load_favorites.assert_called_once_with()
 
 

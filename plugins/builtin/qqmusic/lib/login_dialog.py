@@ -5,7 +5,6 @@ Uses local implementation without qqmusic_api dependency.
 from __future__ import annotations
 
 import logging
-import re
 import time
 from io import BytesIO
 from typing import Optional
@@ -14,13 +13,12 @@ from PySide6.QtCore import Qt, Signal, QThread, Slot
 from PySide6.QtGui import QColor, QPainterPath, QRegion, QPixmap, QImage
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QButtonGroup, QRadioButton, QProgressBar, QWidget, QLineEdit,
+    QButtonGroup, QRadioButton, QProgressBar, QWidget,
     QGraphicsDropShadowEffect,
 )
 
 from .dialog_title_bar import setup_dialog_title_layout
 from .i18n import get_language, set_language, t
-from .qqmusic_client import QQMusicClient
 from .qr_login import QQMusicQRLogin, QRLoginType, QRCodeLoginEvents
 from .runtime_bridge import (
     bind_context,
@@ -283,9 +281,7 @@ class QQMusicLoginDialog(QDialog):
 
         self._login_thread: Optional[QRLoginThread] = None
         self._retired_login_threads: list[QRLoginThread] = []
-        self._login_mode = "qr"
         self._login_type = 'wx'  # default to WeChat
-        self._phone_client = QQMusicClient(http_client=getattr(self._context, "http", None))
         self._language_connected = False
 
         self._setup_ui()
@@ -322,35 +318,10 @@ class QQMusicLoginDialog(QDialog):
             content_spacing=2,
         )
 
-        theme = current_theme()
-
-        # Login mode selection
-        mode_layout = QHBoxLayout()
-        mode_label = QLabel(t("qqmusic_login_method"))
-        mode_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {theme.text};")
-        self._qr_mode_btn = QRadioButton(t("qqmusic_mode_qr"))
-        self._phone_mode_btn = QRadioButton(t("qqmusic_mode_phone"))
-        self._qr_mode_btn.setChecked(True)
-        self._qr_mode_btn.toggled.connect(self._on_login_mode_changed)
-        self._phone_mode_btn.toggled.connect(self._on_login_mode_changed)
-
-        mode_group = QButtonGroup(self)
-        mode_group.addButton(self._qr_mode_btn)
-        mode_group.addButton(self._phone_mode_btn)
-
-        mode_layout.addWidget(mode_label)
-        mode_layout.addWidget(self._qr_mode_btn)
-        mode_layout.addWidget(self._phone_mode_btn)
-        mode_layout.addStretch()
-        layout.addLayout(mode_layout)
-
-        self._qr_panel = QWidget()
-        qr_panel_layout = QVBoxLayout(self._qr_panel)
-        qr_panel_layout.setContentsMargins(0, 0, 0, 0)
-
         # Login type selection
         type_layout = QHBoxLayout()
         type_label = QLabel(t("qqmusic_login_method"))
+        theme = current_theme()
         type_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {theme.text};")
         self._qq_radio = QRadioButton(t("qqmusic_qq_login"))
         self._wx_radio = QRadioButton(t("qqmusic_wx_login"))
@@ -367,14 +338,14 @@ class QQMusicLoginDialog(QDialog):
         type_layout.addWidget(self._wx_radio)
         type_layout.addStretch()
 
-        qr_panel_layout.addLayout(type_layout)
+        layout.addLayout(type_layout)
 
         # Status label (above QR code)
         self._status_label = QLabel(t("qqmusic_loading_qr"))
         self._status_label.setAlignment(Qt.AlignCenter)
         self._status_label.setWordWrap(True)
         self._status_label.setStyleSheet(f"font-size: 14px; color: {theme.highlight}; padding: 8px; font-weight: bold;")
-        qr_panel_layout.addWidget(self._status_label)
+        layout.addWidget(self._status_label)
 
         # QR code container
         qr_container = QWidget()
@@ -390,7 +361,7 @@ class QQMusicLoginDialog(QDialog):
             f"border: 2px solid {theme.background_hover}; border-radius: 8px; background: #ffffff;")
         qr_layout.addWidget(self._qr_label)
 
-        qr_panel_layout.addWidget(qr_container, alignment=Qt.AlignCenter)
+        layout.addWidget(qr_container, alignment=Qt.AlignCenter)
 
         # Progress bar
         self._progress_bar = QProgressBar()
@@ -398,14 +369,14 @@ class QQMusicLoginDialog(QDialog):
         self._progress_bar.setRange(0, 0)  # Indeterminate progress
         self._progress_bar.setMaximumHeight(4)
         self._progress_bar.hide()
-        qr_panel_layout.addWidget(self._progress_bar)
+        layout.addWidget(self._progress_bar)
 
         # Instructions
         self._instructions_label = QLabel()
         self._instructions_label.setAlignment(Qt.AlignCenter)
         self._instructions_label.setStyleSheet(f"color: {theme.text_secondary}; font-size: 12px;")
         self._update_instructions()
-        qr_panel_layout.addWidget(self._instructions_label)
+        layout.addWidget(self._instructions_label)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -416,49 +387,14 @@ class QQMusicLoginDialog(QDialog):
         self._refresh_button.clicked.connect(self._refresh_qr)
         self._refresh_button.setEnabled(False)
         button_layout.addWidget(self._refresh_button)
-        qr_panel_layout.addLayout(button_layout)
-        layout.addWidget(self._qr_panel)
 
-        self._phone_panel = QWidget()
-        phone_panel_layout = QVBoxLayout(self._phone_panel)
-        phone_panel_layout.setContentsMargins(0, 0, 0, 0)
-
-        self._country_code_label = QLabel("+86")
-        self._phone_input = QLineEdit()
-        self._phone_code_input = QLineEdit()
-        self._phone_status_label = QLabel("")
-        self._phone_status_label.setWordWrap(True)
-        self._phone_status_label.setStyleSheet(f"font-size: 12px; color: {theme.text_secondary};")
-        self._phone_send_code_btn = QPushButton(t("qqmusic_send_code"))
-        self._phone_submit_btn = QPushButton(t("qqmusic_login"))
-        self._phone_send_code_btn.clicked.connect(self._send_phone_auth_code)
-        self._phone_submit_btn.clicked.connect(self._submit_phone_login)
-
-        phone_input_layout = QHBoxLayout()
-        phone_input_layout.addWidget(self._country_code_label)
-        phone_input_layout.addWidget(self._phone_input)
-        phone_panel_layout.addWidget(QLabel(t("qqmusic_phone_number")))
-        phone_panel_layout.addLayout(phone_input_layout)
-        phone_panel_layout.addWidget(QLabel(t("qqmusic_phone_code")))
-        phone_panel_layout.addWidget(self._phone_code_input)
-
-        phone_button_layout = QHBoxLayout()
-        phone_button_layout.addWidget(self._phone_send_code_btn)
-        phone_button_layout.addWidget(self._phone_submit_btn)
-        phone_panel_layout.addLayout(phone_button_layout)
-        phone_panel_layout.addWidget(self._phone_status_label)
-        phone_panel_layout.addWidget(QLabel(t("qqmusic_phone_hint")))
-        layout.addWidget(self._phone_panel)
-        self._phone_panel.hide()
-
-        footer_layout = QHBoxLayout()
-        footer_layout.addStretch()
         self._cancel_button = QPushButton(t("cancel"))
         self._cancel_button.setProperty("role", "cancel")
         self._cancel_button.setCursor(Qt.PointingHandCursor)
         self._cancel_button.clicked.connect(self._cancel_login)
-        footer_layout.addWidget(self._cancel_button)
-        layout.addLayout(footer_layout)
+        button_layout.addWidget(self._cancel_button)
+
+        layout.addLayout(button_layout)
 
     def _connect_language_events(self) -> None:
         events = getattr(self._context, "events", None) if self._context is not None else None
@@ -482,21 +418,6 @@ class QQMusicLoginDialog(QDialog):
             set_language(language)
         self._language_connected = True
 
-    def _stop_qr_login_thread(self):
-        if self._login_thread:
-            self._login_thread.stop()
-            self._retire_login_thread(self._login_thread)
-            self._login_thread = None
-
-    def _on_login_mode_changed(self):
-        self._login_mode = "phone" if self._phone_mode_btn.isChecked() else "qr"
-        self._qr_panel.setVisible(self._login_mode == "qr")
-        self._phone_panel.setVisible(self._login_mode == "phone")
-        if self._login_mode == "qr":
-            self._restart_login()
-        else:
-            self._stop_qr_login_thread()
-
     def _on_login_type_changed(self):
         """Handle login type radio button change."""
         if self._qq_radio.isChecked():
@@ -507,40 +428,7 @@ class QQMusicLoginDialog(QDialog):
         # Update instructions text
         self._update_instructions()
         # Restart login with new type
-        if self._login_mode == "qr":
-            self._restart_login()
-
-    def _set_phone_status(self, message: str, *, error: bool = False):
-        theme = current_theme()
-        color = "#ff6b6b" if error else theme.text_secondary
-        self._phone_status_label.setStyleSheet(f"font-size: 12px; color: {color};")
-        self._phone_status_label.setText(message)
-
-    def _validate_phone_number(self) -> bool:
-        phone = str(self._phone_input.text() or "").strip()
-        if not re.fullmatch(r"1\d{10}", phone):
-            self._set_phone_status(t("qqmusic_phone_invalid"), error=True)
-            return False
-        return True
-
-    def _validate_auth_code(self) -> bool:
-        code = str(self._phone_code_input.text() or "").strip()
-        if not re.fullmatch(r"\d{4,6}", code):
-            self._set_phone_status(t("qqmusic_code_invalid"), error=True)
-            return False
-        return True
-
-    def _map_phone_login_error(self, exc: Exception) -> str:
-        message = str(exc)
-        if "20276" in message:
-            return t("qqmusic_phone_frequency")
-        if "20274" in message:
-            return t("qqmusic_phone_device_limit")
-        if "20271" in message:
-            return t("qqmusic_phone_code_error")
-        if "captcha" in message.lower() or "verify" in message.lower():
-            return t("qqmusic_phone_captcha_required")
-        return f"{t('qqmusic_login_failed')}: {message}" if message else t("qqmusic_login_failed")
+        self._restart_login()
 
     def _update_instructions(self):
         """Update instructions based on login type."""
@@ -638,56 +526,6 @@ class QQMusicLoginDialog(QDialog):
         self._refresh_button.setEnabled(False)
         self._restart_login()
 
-    def _send_phone_auth_code(self):
-        if not self._validate_phone_number():
-            return
-        try:
-            self._phone_client.send_phone_auth_code(self._phone_input.text().strip(), 86)
-        except Exception as exc:
-            self._set_phone_status(self._map_phone_login_error(exc), error=True)
-            return
-        self._set_phone_status(t("qqmusic_code_sent"))
-
-    def _finish_login_success(self, credential: dict):
-        self._context.settings.set("credential", credential)
-
-        nick = credential.get("nick") or credential.get("nickname") or ""
-        if not nick:
-            try:
-                from .qqmusic_service import QQMusicService
-                service = QQMusicService(credential, http_client=getattr(self._context, "http", None))
-                verify_result = service.client.verify_login()
-                if isinstance(verify_result, dict) and verify_result.get("valid"):
-                    nick = str(verify_result.get("nick", "") or "")
-            except Exception as exc:
-                logger.warning(f"Failed to get QQ Music nickname: {exc}")
-        if nick:
-            self._context.settings.set("nick", nick)
-            logger.info(f"Got QQ Music nickname: {nick}")
-
-        show_information(
-            self,
-            t("success"),
-            t("qqmusic_login_success")
-        )
-
-        self.credentials_obtained.emit(credential)
-        self.accept()
-
-    def _submit_phone_login(self):
-        if not self._validate_phone_number() or not self._validate_auth_code():
-            return
-        try:
-            credential = self._phone_client.phone_authorize(
-                self._phone_input.text().strip(),
-                self._phone_code_input.text().strip(),
-                86,
-            )
-        except Exception as exc:
-            self._set_phone_status(self._map_phone_login_error(exc), error=True)
-            return
-        self._finish_login_success(credential)
-
     def _cancel_login(self):
         """Cancel login and close dialog."""
         if self._login_thread:
@@ -762,7 +600,33 @@ class QQMusicLoginDialog(QDialog):
             t("qqmusic_login_success") if t('language') != '中文' else "登录成功！正在保存凭证...")
 
         try:
-            self._finish_login_success(credential)
+            # Save credentials (full credential dict)
+            self._context.settings.set("credential", credential)
+
+            # Get user nickname
+            nick = credential.get("nick") or credential.get("nickname") or ""
+            if not nick:
+                try:
+                    from .qqmusic_service import QQMusicService
+                    service = QQMusicService(credential, http_client=self._context.http)
+                    verify_result = service.client.verify_login()
+                    if isinstance(verify_result, dict) and verify_result.get("valid"):
+                        nick = str(verify_result.get("nick", "") or "")
+                except Exception as e:
+                    logger.warning(f"Failed to get QQ Music nickname: {e}")
+            if nick:
+                self._context.settings.set("nick", nick)
+                logger.info(f"Got QQ Music nickname: {nick}")
+
+            show_information(
+                self,
+                t("success"),
+                t("qqmusic_login_success")
+            )
+
+            self.credentials_obtained.emit(credential)
+            self.accept()
+
         except Exception as e:
             logger.error(f"Failed to save credentials: {e}")
             show_warning(
