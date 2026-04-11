@@ -29,6 +29,15 @@ def reset_theme_singleton():
     ThemeManager._instance = None
 
 
+@pytest.fixture(autouse=True)
+def cleanup_widgets(qapp):
+    yield
+    for widget in qapp.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    qapp.processEvents()
+
+
 @pytest.fixture
 def theme_config():
     class _Config:
