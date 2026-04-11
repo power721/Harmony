@@ -45,7 +45,7 @@ Built-in plugins are loaded from [`plugins/builtin`](plugins/builtin). External 
 
 ```bash
 git clone https://github.com/power721/Harmony.git
-cd music-player
+cd Harmony
 
 # Runtime dependencies
 uv sync
