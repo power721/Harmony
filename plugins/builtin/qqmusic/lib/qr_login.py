@@ -140,6 +140,23 @@ class QQMusicQRLogin:
             return self._get_wx_qr()
         return self._get_qq_qr()
 
+    @staticmethod
+    def _merge_cookies(target: Dict[str, str], source) -> None:
+        if not source:
+            return
+        if hasattr(source, "items"):
+            for key, value in source.items():
+                if key and value is not None:
+                    target[str(key)] = str(value)
+
+    def _collect_login_cookies(self, response) -> Dict[str, str]:
+        cookies: Dict[str, str] = {}
+        self._merge_cookies(cookies, getattr(self._session, "cookies", None))
+        for history_response in getattr(response, "history", []) or []:
+            self._merge_cookies(cookies, getattr(history_response, "cookies", None))
+        self._merge_cookies(cookies, getattr(response, "cookies", None))
+        return cookies
+
     def _get_qq_qr(self) -> Optional[QR]:
         try:
             response = self._session.get(
@@ -309,17 +326,16 @@ class QQMusicQRLogin:
             allow_redirects=True,
             timeout=10,
         )
-        p_skey = self._session.cookies.get("p_skey") or response.cookies.get("p_skey")
+        login_cookies = self._collect_login_cookies(response)
+        p_skey = login_cookies.get("p_skey")
         if not p_skey and hasattr(response, "history"):
             for hist_response in response.history:
-                if "p_skey" in hist_response.cookies:
-                    p_skey = hist_response.cookies.get("p_skey")
-                    break
                 set_cookie = hist_response.headers.get("Set-Cookie", "")
                 if "p_skey=" in set_cookie:
                     match = re.search(r"p_skey=([^;]+)", set_cookie)
                     if match:
                         p_skey = match.group(1)
+                        login_cookies["p_skey"] = p_skey
                         break
         if not p_skey:
             raise ValueError("Failed to get p_skey")
@@ -340,6 +356,7 @@ class QQMusicQRLogin:
                 "auth_time": str(int(time.time()) * 1000),
                 "ui": str(random.randint(100000, 999999)),
             },
+            cookies=login_cookies,
             allow_redirects=False,
             timeout=10,
         )

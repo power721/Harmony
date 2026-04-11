@@ -1350,16 +1350,18 @@ class OnlineMusicView(QWidget):
         if self._hotkey_popup:
             self._hotkey_popup.refresh_theme()
 
-    def _refresh_qqmusic_service(self):
-        """Refresh QQ Music service with current credentials."""
+    def _refresh_qqmusic_service(self, credential: dict | None = None):
+        """Refresh QQ Music service with current or provided credentials."""
         import json
 
-        if self._config and hasattr(self._config, "get_plugin_secret"):
-            qqmusic_credential = self._config.get_plugin_secret("qqmusic", "credential", "")
-        elif self._config:
-            qqmusic_credential = self._config.get("qqmusic.credential")
-        else:
-            qqmusic_credential = None
+        qqmusic_credential = credential
+        if qqmusic_credential is None:
+            if self._config and hasattr(self._config, "get_plugin_secret"):
+                qqmusic_credential = self._config.get_plugin_secret("qqmusic", "credential", "")
+            elif self._config:
+                qqmusic_credential = self._config.get("qqmusic.credential")
+            else:
+                qqmusic_credential = None
         if qqmusic_credential:
             try:
                 cred_dict = json.loads(qqmusic_credential) if isinstance(qqmusic_credential,
@@ -1375,8 +1377,10 @@ class OnlineMusicView(QWidget):
                     self._detail_view._download_service._provider = self._qqmusic_service
                 logger.info(f"QQ Music service refreshed, musicid={cred_dict.get('musicid')}, "
                             f"has_refresh_key={bool(cred_dict.get('refresh_key'))}")
+                return self._qqmusic_service
             except Exception as e:
                 logger.error(f"Failed to refresh QQ Music service: {e}")
+        return None
 
     def _format_login_status_text(self, nick: str) -> str:
         """Format QQ Music login status text, linking only the nickname."""
@@ -1471,18 +1475,18 @@ class OnlineMusicView(QWidget):
     def _on_credentials_obtained(self, credential: dict):
         """Handle credentials obtained from login dialog."""
         logger.info("QQ Music credentials obtained, refreshing service...")
+        refreshed_service = self._refresh_qqmusic_service(credential)
         if self._config and hasattr(self._config, "get_plugin_setting") and hasattr(self._config, "set_plugin_setting"):
             nick = self._config.get_plugin_setting("qqmusic", "nick", "")
-            if not nick:
+            if not nick and refreshed_service:
                 try:
-                    verify_result = self._service.client.verify_login()
+                    verify_result = refreshed_service.client.verify_login()
                     if isinstance(verify_result, dict) and verify_result.get("valid"):
                         fetched_nick = str(verify_result.get("nick", "") or "")
                         if fetched_nick:
                             self._config.set_plugin_setting("qqmusic", "nick", fetched_nick)
                 except Exception as exc:
                     logger.warning("Failed to refresh QQ Music nick after login: %s", exc)
-        self._refresh_qqmusic_service()
         self._update_login_status()
         # Reload favorites with new credentials
         self._fav_loaded = False

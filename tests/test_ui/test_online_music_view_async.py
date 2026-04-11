@@ -578,18 +578,49 @@ def test_on_credentials_obtained_fetches_missing_nick_from_service():
     view._plugin_context = Mock()
     view._config = Mock()
     view._config.get_plugin_setting.return_value = ""
-    view._refresh_qqmusic_service = Mock()
     view._update_login_status = Mock()
     view._load_favorites = Mock()
-    view._service = Mock()
-    view._service.client.verify_login.return_value = {"valid": True, "nick": "Tester", "uin": 1}
     view._fav_loaded = True
+
+    fresh_service = Mock()
+    fresh_service.client.verify_login.return_value = {"valid": True, "nick": "Tester", "uin": 1}
+    view._refresh_qqmusic_service = Mock(return_value=fresh_service)
 
     OnlineMusicView._on_credentials_obtained(view, {"musicid": "1", "musickey": "secret"})
 
     view._config.set_plugin_setting.assert_any_call("qqmusic", "nick", "Tester")
     assert view._fav_loaded is False
-    view._refresh_qqmusic_service.assert_called_once_with()
+    view._refresh_qqmusic_service.assert_called_once_with({"musicid": "1", "musickey": "secret"})
+    view._update_login_status.assert_called_once_with()
+    view._load_favorites.assert_called_once_with()
+
+
+def test_on_credentials_obtained_refreshes_service_from_emitted_credential(monkeypatch):
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._plugin_context = Mock()
+    view._config = Mock()
+    view._config.get_plugin_setting.return_value = "Existing Nick"
+    view._config.get_plugin_secret.return_value = ""
+    view._service = Mock()
+    view._download_service = Mock()
+    view._detail_view = None
+    view._update_login_status = Mock()
+    view._load_favorites = Mock()
+    view._fav_loaded = True
+
+    class _FakeQQMusicService:
+        def __init__(self, credential):
+            self.credential = credential
+            self.client = Mock()
+
+    monkeypatch.setattr(
+        "plugins.builtin.qqmusic.lib.online_music_view.create_qqmusic_service",
+        lambda credential: _FakeQQMusicService(credential),
+    )
+
+    OnlineMusicView._on_credentials_obtained(view, {"musicid": "9", "musickey": "new-secret"})
+
+    assert view._qqmusic_service.credential == {"musicid": "9", "musickey": "new-secret"}
     view._update_login_status.assert_called_once_with()
     view._load_favorites.assert_called_once_with()
 

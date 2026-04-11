@@ -9,7 +9,11 @@ from typing import Optional, Dict, List, Any, TYPE_CHECKING
 
 from .media_helpers import build_album_cover_url
 from .qqmusic_client import QQMusicClient
-from .search_normalizers import normalize_detail_song, normalize_top_list_track
+from .search_normalizers import (
+    normalize_artist_item,
+    normalize_detail_song,
+    normalize_top_list_track,
+)
 
 if TYPE_CHECKING:
     pass
@@ -1241,24 +1245,34 @@ class QQMusicService:
     def get_followed_singers(self, page: int = 1, size: int = 10) -> List[Dict[str, Any]]:
         """Get current user's followed singers."""
         try:
-            euin = self._get_euin()
-            if not euin:
+            uin = self._get_uin()
+            if not uin:
                 return []
-            result = self.client.get_followed_singers(euin, from_idx=(page - 1) * size, size=size)
+            result = self.client.get_followed_singers(uin, from_idx=(page - 1) * size, size=size)
             if not result:
                 return []
-            singers = result.get("List", []) or []
+            singers = (
+                result.get("List", [])
+                or result.get("list", [])
+                or result.get("singerList", [])
+                or []
+            )
             items = []
             for singer in singers:
                 if not isinstance(singer, dict):
                     continue
-                mid = singer.get("MID", "")
+                normalized = normalize_artist_item(
+                    {
+                        **singer,
+                        "cover_url": singer.get("AvatarUrl", "") or singer.get("cover_url", ""),
+                    }
+                )
                 items.append({
-                    "mid": mid,
-                    "name": singer.get("Name", ""),
-                    "desc": singer.get("Desc", ""),
-                    "cover_url": singer.get("AvatarUrl", ""),
-                    "fan_count": singer.get("FanNum", 0),
+                    "mid": normalized["mid"] or singer.get("MID", ""),
+                    "name": normalized["name"] or singer.get("Name", ""),
+                    "desc": singer.get("desc", "") or singer.get("Desc", ""),
+                    "cover_url": normalized["avatar_url"] or singer.get("AvatarUrl", ""),
+                    "fan_count": normalized["fan_count"],
                 })
             return items
         except Exception as e:

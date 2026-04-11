@@ -165,3 +165,50 @@ def test_get_my_fav_songs_preserves_song_id_for_unfavorite_actions():
             "cover_url": "https://y.gtimg.cn/music/photo_new/T002R300x300M000album-1.jpg",
         }
     ]
+
+
+def test_get_followed_singers_uses_plain_uin_for_relation_list_request():
+    captured = {}
+    service = QQMusicService({"musicid": "12345", "encrypt_uin": "enc-12345", "musickey": "secret"})
+
+    def fake_get_followed_singers(host_uin, from_idx=0, size=10):
+        captured["host_uin"] = host_uin
+        captured["from_idx"] = from_idx
+        captured["size"] = size
+        return {"List": []}
+
+    service.client = SimpleNamespace(get_followed_singers=fake_get_followed_singers)
+
+    assert service.get_followed_singers(page=2, size=30) == []
+    assert captured == {
+        "host_uin": "12345",
+        "from_idx": 30,
+        "size": 30,
+    }
+
+
+def test_get_followed_singers_normalizes_list_payload_variants():
+    service = QQMusicService({"musicid": "12345", "musickey": "secret"})
+    service.client = SimpleNamespace(
+        get_followed_singers=lambda *_args, **_kwargs: {
+            "list": [
+                {
+                    "singerMID": "artist-1",
+                    "singerName": "Singer 1",
+                    "singerPic": "https://img.example/artist-1.jpg",
+                    "fansNum": 99,
+                    "desc": "desc 1",
+                }
+            ]
+        }
+    )
+
+    assert service.get_followed_singers() == [
+        {
+            "mid": "artist-1",
+            "name": "Singer 1",
+            "desc": "desc 1",
+            "cover_url": "https://img.example/artist-1.jpg",
+            "fan_count": 99,
+        }
+    ]

@@ -114,84 +114,42 @@ class QQMusicClient:
 
         logger.info("Attempting to refresh QQ Music credential...")
 
-        # Build refresh request
         params = {
+            'openid': self.credential.get('openid', ''),
+            'access_token': self.credential.get('access_token', ''),
+            'unionid': self.credential.get('unionid', ''),
             'refresh_key': refresh_key,
             'refresh_token': refresh_token,
             'musickey': self.credential.get('musickey', ''),
             'musicid': int(self.credential.get('musicid', 0) or 0),
-        }
-
-        # Build common params with login_type
-        common = self._build_common_params()
-        common['tmeLoginType'] = str(self.credential.get('login_type', 2))
-
-        request_data = {
-            'comm': common,
-            'music.login.LoginServer.Login': {
-                'module': 'music.login.LoginServer',
-                'method': 'Login',
-                'param': params,
-            }
+            'loginMode': 2,
         }
 
         try:
-            # Use same JSON serialization for both sign and request body
-            json_str = json.dumps(request_data, separators=(',', ':'), ensure_ascii=False)
-            signature = generate_sign(request_data)
-            url = f"{APIConfig.ENDPOINT}?sign={signature}"
-
-            response = self._http_post(
-                url,
-                data=json_str.encode('utf-8'),
-                headers={
-                    'Content-Type': 'application/json',
-                    'Referer': 'https://y.qq.com/',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Origin': 'https://y.qq.com',
-                    'Cookie': self._build_cookie_header(),
-                },
-                timeout=30
+            new_data = self._make_request(
+                'music.login.LoginServer',
+                'Login',
+                params,
             )
-            response.raise_for_status()
-
-            data = response.json()
-            result = data.get('music.login.LoginServer.Login')
-
-            if not result or result.get('code') != 0:
-                code = result.get('code') if result else -1
-                error_msgs = {
-                    10006: "refresh_token invalid or expired",
-                    1000: "credential expired",
-                    2000: "invalid signature",
-                }
-                msg = error_msgs.get(code, f"unknown error code {code}")
-                logger.error(f"Credential refresh failed: {msg}")
-                return None
-
-            # Extract new credential data
-            new_data = result.get('data', {})
             if not new_data:
-                logger.error("No data in refresh response")
+                logger.error("Credential refresh failed: empty response")
                 return None
 
-            # Update credential
             now = int(time.time())
             updated = {
                 **self.credential,
-                'musickey': new_data.get('musickey', self.credential.get('musickey')),
-                'musicid': new_data.get('musicid', self.credential.get('musicid')),
-                'refresh_key': new_data.get('refresh_key', refresh_key),
-                'refresh_token': new_data.get('refresh_token', refresh_token),
+                **new_data,
                 'musickey_createtime': now,
                 'key_expires_in': new_data.get('keyExpiresIn', 259200),
             }
+            if 'encryptUin' in new_data and 'encrypt_uin' not in updated:
+                updated['encrypt_uin'] = new_data['encryptUin']
+            if 'loginType' in new_data and 'login_type' not in updated:
+                updated['login_type'] = new_data['loginType']
 
-            # Update internal credential
             self.credential = updated
             self._set_credential_headers()
 
-            # Notify callback if set
             if self._on_credential_updated:
                 try:
                     self._on_credential_updated(updated)
