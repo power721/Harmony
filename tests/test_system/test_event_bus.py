@@ -160,6 +160,18 @@ class TestEventBus:
         mock_deleted.assert_called_once_with(2)
         mock_modified.assert_called_once_with(3)
 
+    def test_playlist_structure_changed_signal(self):
+        """Test playlist structure changed signal emission."""
+        from system.event_bus import EventBus
+
+        bus = EventBus.instance()
+        mock_handler = Mock()
+        bus.playlist_structure_changed.connect(mock_handler)
+
+        bus.playlist_structure_changed.emit()
+
+        mock_handler.assert_called_once_with()
+
     def test_download_signals(self):
         """Test download-related signals."""
         from system.event_bus import EventBus

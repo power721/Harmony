@@ -6,6 +6,7 @@ import logging
 from typing import List, Optional
 
 from domain.playlist import Playlist
+from domain.playlist_folder import PlaylistTree
 from domain.track import Track, TrackId
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
@@ -61,6 +62,10 @@ class PlaylistService:
         """
         return self._playlist_repo.get_by_id(playlist_id)
 
+    def get_playlist_tree(self) -> PlaylistTree:
+        """Get the playlist tree grouped by root playlists and folders."""
+        return self._playlist_repo.get_playlist_tree()
+
     def create_playlist(self, playlist: Playlist) -> int:
         """
         Create a new playlist.
@@ -103,6 +108,60 @@ class PlaylistService:
         result = self._playlist_repo.delete(playlist_id)
         if result:
             logger.info(f"Deleted playlist (ID: {playlist_id})")
+        return result
+
+    @staticmethod
+    def _normalize_folder_name(name: str) -> str:
+        """Normalize user-provided folder names."""
+        normalized = str(name or "").strip()
+        if not normalized:
+            raise ValueError("folder name cannot be blank")
+        return normalized
+
+    def create_folder(self, name: str) -> int:
+        """Create a playlist folder."""
+        normalized = self._normalize_folder_name(name)
+        if self._playlist_repo.get_folder_by_name(normalized) is not None:
+            raise ValueError("folder already exists")
+
+        folder_id = self._playlist_repo.create_folder(normalized)
+        self._event_bus.playlist_structure_changed.emit()
+        return folder_id
+
+    def rename_folder(self, folder_id: int, name: str) -> bool:
+        """Rename an existing playlist folder."""
+        normalized = self._normalize_folder_name(name)
+        existing = self._playlist_repo.get_folder_by_name(normalized)
+        if existing is not None and existing.id != folder_id:
+            raise ValueError("folder already exists")
+
+        result = self._playlist_repo.rename_folder(folder_id, normalized)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def delete_folder(self, folder_id: int) -> bool:
+        """Delete a folder and keep contained playlists."""
+        result = self._playlist_repo.delete_folder(folder_id)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def move_playlist_to_folder(self, playlist_id: int, folder_id: int) -> bool:
+        """Move a playlist into a folder."""
+        if self._playlist_repo.get_folder(folder_id) is None:
+            raise ValueError("folder does not exist")
+
+        result = self._playlist_repo.move_playlist_to_folder(playlist_id, folder_id)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def move_playlist_to_root(self, playlist_id: int) -> bool:
+        """Move a playlist back to the root container."""
+        result = self._playlist_repo.move_playlist_to_root(playlist_id)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
         return result
 
     def get_playlist_tracks(self, playlist_id: int) -> List[Track]:
