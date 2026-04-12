@@ -286,3 +286,38 @@ class TestSqlitePlaylistRepository:
 
         assert folder is not None
         assert folder.name == "Workout"
+
+    def test_delete_folder_moves_playlists_back_to_root(self, playlist_repo):
+        """Deleting a folder should move nested playlists back to the root container."""
+        folder_id = playlist_repo.create_folder("Temp")
+        playlist_repo.add(Playlist(name="A", folder_id=folder_id, position=0))
+        playlist_repo.add(Playlist(name="B", folder_id=folder_id, position=1))
+
+        assert playlist_repo.delete_folder(folder_id) is True
+
+        tree = playlist_repo.get_playlist_tree()
+        assert tree.folders == []
+        assert [p.name for p in tree.root_playlists] == ["A", "B"]
+        assert [p.position for p in tree.root_playlists] == [0, 1]
+
+    def test_move_playlist_to_folder_and_back_to_root(self, playlist_repo):
+        """A playlist can be moved into a folder and restored to the root."""
+        playlist_id = playlist_repo.add(Playlist(name="Inbox", position=0))
+        folder_id = playlist_repo.create_folder("Archive")
+
+        assert playlist_repo.move_playlist_to_folder(playlist_id, folder_id) is True
+        assert playlist_repo.get_playlist(playlist_id).folder_id == folder_id
+
+        assert playlist_repo.move_playlist_to_root(playlist_id) is True
+        assert playlist_repo.get_playlist(playlist_id).folder_id is None
+
+    def test_reorder_root_playlists_updates_position(self, playlist_repo):
+        """Root playlist reordering should persist position values."""
+        first = playlist_repo.add(Playlist(name="One", position=0))
+        second = playlist_repo.add(Playlist(name="Two", position=1))
+
+        assert playlist_repo.reorder_root_playlists([second, first]) is True
+
+        tree = playlist_repo.get_playlist_tree()
+        assert [p.name for p in tree.root_playlists] == ["Two", "One"]
+        assert [p.position for p in tree.root_playlists] == [0, 1]

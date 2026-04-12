@@ -143,6 +143,10 @@ class SqlitePlaylistRepository(BaseRepository):
         conn.commit()
         return cursor.rowcount > 0
 
+    def get_playlist(self, playlist_id: int) -> Optional[Playlist]:
+        """Compatibility wrapper for playlist lookup."""
+        return self.get_by_id(playlist_id)
+
     def get_playlist_tree(self) -> PlaylistTree:
         """Load folders and root playlists as a tree."""
         conn = self._get_connection()
@@ -170,6 +174,125 @@ class SqlitePlaylistRepository(BaseRepository):
                 folder_map[playlist.folder_id].playlists.append(playlist)
 
         return PlaylistTree(root_playlists=root_playlists, folders=folders)
+
+    def _next_playlist_position(self, cursor, folder_id: int | None) -> int:
+        """Return the next available position inside the target container."""
+        if folder_id is None:
+            cursor.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM playlists WHERE folder_id IS NULL"
+            )
+        else:
+            cursor.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM playlists WHERE folder_id = ?",
+                (folder_id,),
+            )
+        return int(cursor.fetchone()[0])
+
+    def delete_folder(self, folder_id: int) -> bool:
+        """Delete a folder and move contained playlists back to the root."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id FROM playlists WHERE folder_id = ? ORDER BY position, id",
+                (folder_id,),
+            )
+            playlist_ids = [row["id"] if hasattr(row, "keys") else row[0] for row in cursor.fetchall()]
+            next_root_position = self._next_playlist_position(cursor, None)
+
+            for offset, playlist_id in enumerate(playlist_ids):
+                cursor.execute(
+                    "UPDATE playlists SET folder_id = NULL, position = ? WHERE id = ?",
+                    (next_root_position + offset, playlist_id),
+                )
+
+            cursor.execute("DELETE FROM playlist_folders WHERE id = ?", (folder_id,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            return deleted
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
+
+    def move_playlist_to_folder(self, playlist_id: int, folder_id: int) -> bool:
+        """Move a playlist into a folder."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            new_position = self._next_playlist_position(cursor, folder_id)
+            cursor.execute(
+                "UPDATE playlists SET folder_id = ?, position = ? WHERE id = ?",
+                (folder_id, new_position, playlist_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
+
+    def move_playlist_to_root(self, playlist_id: int) -> bool:
+        """Move a playlist back to the root container."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            new_position = self._next_playlist_position(cursor, None)
+            cursor.execute(
+                "UPDATE playlists SET folder_id = NULL, position = ? WHERE id = ?",
+                (new_position, playlist_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
+
+    def reorder_root_playlists(self, playlist_ids: list[int]) -> bool:
+        """Persist a root-playlist order."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            for position, playlist_id in enumerate(playlist_ids):
+                cursor.execute(
+                    "UPDATE playlists SET folder_id = NULL, position = ? WHERE id = ?",
+                    (position, playlist_id),
+                )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
+
+    def reorder_folder_playlists(self, folder_id: int, playlist_ids: list[int]) -> bool:
+        """Persist the order of playlists within a folder."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            for position, playlist_id in enumerate(playlist_ids):
+                cursor.execute(
+                    "UPDATE playlists SET folder_id = ?, position = ? WHERE id = ?",
+                    (folder_id, position, playlist_id),
+                )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
+
+    def reorder_folders(self, folder_ids: list[int]) -> bool:
+        """Persist top-level folder ordering."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            for position, folder_id in enumerate(folder_ids):
+                cursor.execute(
+                    "UPDATE playlist_folders SET position = ? WHERE id = ?",
+                    (position, folder_id),
+                )
+            conn.commit()
+            return True
+        except sqlite3.DatabaseError:
+            conn.rollback()
+            return False
 
     def delete(self, playlist_id: int) -> bool:
         """Delete a playlist by ID."""
