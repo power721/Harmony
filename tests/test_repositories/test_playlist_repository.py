@@ -8,6 +8,7 @@ import tempfile
 import os
 from unittest.mock import Mock
 
+from domain.playlist_folder import PlaylistTree
 from repositories.playlist_repository import SqlitePlaylistRepository
 from domain.playlist import Playlist
 
@@ -44,6 +45,17 @@ def temp_db():
         CREATE TABLE playlists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            folder_id INTEGER,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE playlist_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            position INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -236,3 +248,41 @@ class TestSqlitePlaylistRepository:
         # Verify items are gone (by checking a new playlist with same ID doesn't exist)
         retrieved = playlist_repo.get_by_id(playlist_id)
         assert retrieved is None
+
+    def test_create_folder_and_get_all_folders(self, playlist_repo):
+        """Test creating and listing playlist folders."""
+        folder_id = playlist_repo.create_folder("Workout")
+        folders = playlist_repo.get_all_folders()
+
+        assert folder_id > 0
+        assert [folder.name for folder in folders] == ["Workout"]
+        assert folders[0].position == 0
+
+    def test_get_playlist_tree_groups_root_and_folder_playlists(self, playlist_repo):
+        """Test loading the playlist tree with root and folder playlists."""
+        playlist_repo.add(Playlist(name="Root", position=0))
+        folder_id = playlist_repo.create_folder("Mood")
+        playlist_repo.add(Playlist(name="Chill", folder_id=folder_id, position=0))
+
+        tree = playlist_repo.get_playlist_tree()
+
+        assert isinstance(tree, PlaylistTree)
+        assert [p.name for p in tree.root_playlists] == ["Root"]
+        assert [group.folder.name for group in tree.folders] == ["Mood"]
+        assert [p.name for p in tree.folders[0].playlists] == ["Chill"]
+
+    def test_rename_folder_updates_name(self, playlist_repo):
+        """Test renaming a folder."""
+        folder_id = playlist_repo.create_folder("Old Name")
+
+        assert playlist_repo.rename_folder(folder_id, "New Name") is True
+        assert [folder.name for folder in playlist_repo.get_all_folders()] == ["New Name"]
+
+    def test_get_folder_by_name_is_case_insensitive(self, playlist_repo):
+        """Test case-insensitive folder lookup."""
+        playlist_repo.create_folder("Workout")
+
+        folder = playlist_repo.get_folder_by_name("workout")
+
+        assert folder is not None
+        assert folder.name == "Workout"
