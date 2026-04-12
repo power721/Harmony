@@ -207,7 +207,7 @@ class LyricsService:
 
         if hasattr(lyrics_source, "display_name"):
             result = PluginLyricsResult(
-                song_id=song_id,
+                id=song_id,
                 title="",
                 artist="",
                 source=source,

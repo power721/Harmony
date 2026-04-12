@@ -94,3 +94,23 @@ def test_get_online_lyrics_accepts_plugin_song_id_results(monkeypatch):
     lyrics = LyricsService._get_online_lyrics("Song 1", "Singer 1")
 
     assert lyrics == "qqmusic:song-1"
+
+
+def test_download_lyrics_by_id_builds_plugin_results_with_id(monkeypatch):
+    seen = {}
+
+    def get_lyrics(result):
+        seen["id"] = result.id
+        seen["song_id"] = result.song_id
+        return f"lyrics:{result.id}"
+
+    fake_source = SimpleNamespace(
+        display_name="QQMusic",
+        get_lyrics=get_lyrics,
+    )
+    monkeypatch.setattr(LyricsService, "_get_sources", classmethod(lambda cls: [fake_source]))
+
+    lyrics = LyricsService.download_lyrics_by_id("song-1", "QQMusic")
+
+    assert lyrics == "lyrics:song-1"
+    assert seen == {"id": "song-1", "song_id": "song-1"}
