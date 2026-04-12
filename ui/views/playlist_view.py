@@ -4,7 +4,7 @@ Playlist view widget for managing playlists.
 
 from typing import TYPE_CHECKING, List, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -289,11 +289,26 @@ class PlaylistView(QWidget):
         # _rename_playlist_btn already connected in _create_playlist_content
         self._playlist_tree.itemClicked.connect(self._on_tree_item_clicked)
         self._playlist_tree.itemDoubleClicked.connect(self._on_tree_item_double_clicked)
-        self._playlist_tree.move_to_folder_requested.connect(self._on_move_playlist_to_folder)
-        self._playlist_tree.move_to_root_requested.connect(self._on_move_playlist_to_root)
-        self._playlist_tree.reorder_root_requested.connect(self._on_reorder_root_playlists)
-        self._playlist_tree.reorder_folder_requested.connect(self._on_reorder_folder_playlists)
-        self._playlist_tree.reorder_folders_requested.connect(self._on_reorder_folders)
+        self._playlist_tree.move_to_folder_requested.connect(
+            self._on_move_playlist_to_folder,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._playlist_tree.move_to_root_requested.connect(
+            self._on_move_playlist_to_root,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._playlist_tree.reorder_root_requested.connect(
+            self._on_reorder_root_playlists,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._playlist_tree.reorder_folder_requested.connect(
+            self._on_reorder_folder_playlists,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._playlist_tree.reorder_folders_requested.connect(
+            self._on_reorder_folders,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._playlist_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._playlist_tree.customContextMenuRequested.connect(self._show_tree_context_menu)
         self._tracks_list_view.track_activated.connect(self._on_track_activated)
@@ -474,7 +489,7 @@ class PlaylistView(QWidget):
             if chosen == rename_action:
                 self._rename_folder(node_id)
             elif chosen == delete_action:
-                self._confirm_delete_folder(node_id)
+                self._defer_tree_action(self._confirm_delete_folder, node_id)
             return
 
         if node_kind != PlaylistTreeWidget.PLAYLIST_NODE or node_id is None:
@@ -484,7 +499,7 @@ class PlaylistView(QWidget):
             remove_action = menu.addAction(t("remove_from_folder"))
             chosen = menu.exec(self._playlist_tree.viewport().mapToGlobal(position))
             if chosen == remove_action:
-                self._on_move_playlist_to_root(node_id)
+                self._defer_tree_action(self._on_move_playlist_to_root, node_id)
             return
 
         folders = self._playlist_service.get_all_folders()
@@ -500,7 +515,12 @@ class PlaylistView(QWidget):
         chosen = menu.exec(self._playlist_tree.viewport().mapToGlobal(position))
         folder_id = action_map.get(chosen)
         if folder_id is not None:
-            self._on_move_playlist_to_folder(node_id, folder_id)
+            self._defer_tree_action(self._on_move_playlist_to_folder, node_id, folder_id)
+
+    @staticmethod
+    def _defer_tree_action(action, *args):
+        """Run tree mutations after the current Qt event stack unwinds."""
+        QTimer.singleShot(0, lambda: action(*args))
 
     def _rename_folder(self, folder_id: int):
         """Rename an existing folder."""

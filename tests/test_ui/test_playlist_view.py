@@ -119,7 +119,7 @@ def test_playlist_view_renders_folder_and_root_nodes(qapp, mock_theme_config):
     )
 
     assert view._playlist_tree.topLevelItemCount() == 2
-    assert view._playlist_tree.topLevelItem(0).text(0) == "Gym"
+    assert view._playlist_tree.topLevelItem(0).text(0) == "📁 Gym"
     assert view._playlist_tree.topLevelItem(1).text(0) == "Inbox"
 
 
@@ -259,3 +259,94 @@ def test_playlist_view_folder_context_actions_refresh_tree(qapp, mock_theme_conf
 
     assert view._playlist_tree.topLevelItemCount() == 1
     assert view._playlist_tree.topLevelItem(0).text(0) == "Run"
+
+
+def test_playlist_view_defers_move_to_folder_signal_handling(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    playlist = Playlist(id=2, name="Run", position=0)
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=PlaylistTree(
+            root_playlists=[playlist],
+            folders=[PlaylistFolderGroup(folder=folder, playlists=[])],
+        ),
+    )
+    playlist_service.move_playlist_to_folder.return_value = True
+
+    view._playlist_tree.move_to_folder_requested.emit(2, 10)
+
+    playlist_service.move_playlist_to_folder.assert_not_called()
+    qapp.processEvents()
+    playlist_service.move_playlist_to_folder.assert_called_once_with(2, 10)
+
+
+def test_playlist_view_defers_reorder_folder_signal_handling(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    playlist = Playlist(id=2, name="Run", folder_id=10, position=0)
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=PlaylistTree(
+            root_playlists=[],
+            folders=[PlaylistFolderGroup(folder=folder, playlists=[playlist])],
+        ),
+    )
+    playlist_service.reorder_folder_playlists.return_value = True
+
+    view._playlist_tree.reorder_folder_requested.emit(10, [2])
+
+    playlist_service.reorder_folder_playlists.assert_not_called()
+    qapp.processEvents()
+    playlist_service.reorder_folder_playlists.assert_called_once_with(10, [2])
+
+
+def test_playlist_view_defers_context_menu_move_to_folder(qapp, mock_theme_config, monkeypatch):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    playlist = Playlist(id=2, name="Run", position=0)
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=PlaylistTree(
+            root_playlists=[playlist],
+            folders=[PlaylistFolderGroup(folder=folder, playlists=[])],
+        ),
+    )
+    playlist_service.get_all_folders.return_value = [folder]
+    playlist_service.move_playlist_to_folder.return_value = True
+
+    class _FakeAction:
+        pass
+
+    class _FakeSubMenu:
+        def __init__(self):
+            self._actions = []
+
+        def addAction(self, text):
+            action = _FakeAction()
+            self._actions.append(action)
+            return action
+
+    class _FakeMenu:
+        last_submenu = None
+
+        def __init__(self, parent=None):
+            self._submenu = None
+
+        def addAction(self, text):
+            return _FakeAction()
+
+        def addMenu(self, text):
+            self._submenu = _FakeSubMenu()
+            _FakeMenu.last_submenu = self._submenu
+            return self._submenu
+
+        def exec(self, *args, **kwargs):
+            return self._submenu._actions[0]
+
+    monkeypatch.setattr("ui.views.playlist_view.QMenu", _FakeMenu)
+
+    item = view._playlist_tree.topLevelItem(1)
+    rect = view._playlist_tree.visualItemRect(item)
+    view._show_tree_context_menu(rect.center())
+
+    playlist_service.move_playlist_to_folder.assert_not_called()
+    qapp.processEvents()
+    playlist_service.move_playlist_to_folder.assert_called_once_with(2, 10)

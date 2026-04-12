@@ -17,6 +17,8 @@ from domain.playlist_folder import PlaylistTree
 class PlaylistTreeWidget(QTreeWidget):
     """Tree widget that renders playlist folders and root playlists."""
 
+    FOLDER_PREFIX = "📁 "
+
     move_to_folder_requested = Signal(int, int)
     move_to_root_requested = Signal(int)
     reorder_root_requested = Signal(list)
@@ -51,7 +53,7 @@ class PlaylistTreeWidget(QTreeWidget):
         self.clear()
 
         for group in tree.folders:
-            folder_item = QTreeWidgetItem([group.folder.name])
+            folder_item = QTreeWidgetItem([self._format_folder_label(group.folder.name)])
             folder_item.setData(0, self.NODE_KIND_ROLE, self.FOLDER_NODE)
             folder_item.setData(0, self.NODE_ID_ROLE, group.folder.id)
             folder_item.setChildIndicatorPolicy(
@@ -69,6 +71,11 @@ class PlaylistTreeWidget(QTreeWidget):
             item.setData(0, self.NODE_KIND_ROLE, self.PLAYLIST_NODE)
             item.setData(0, self.NODE_ID_ROLE, playlist.id)
             self.addTopLevelItem(item)
+
+    @classmethod
+    def _format_folder_label(cls, name: str) -> str:
+        """Return the display label for a folder node."""
+        return f"{cls.FOLDER_PREFIX}{name}"
 
     def first_playlist_item(self) -> QTreeWidgetItem | None:
         """Return the first playlist item in tree order."""
