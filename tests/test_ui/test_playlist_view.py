@@ -11,6 +11,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
 from domain.playlist import Playlist
+from domain.playlist_folder import PlaylistFolder, PlaylistFolderGroup, PlaylistTree
 from domain.track import Track, TrackSource
 from system.event_bus import EventBus
 from system.theme import ThemeManager
@@ -41,7 +42,12 @@ def mock_theme_config():
     return config
 
 
-def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
+def _build_playlist_view(
+    mock_theme_config,
+    *,
+    tree: PlaylistTree | None = None,
+    tree_side_effect=None,
+):
     ThemeManager.instance(mock_theme_config)
 
     playlist_service = MagicMock()
@@ -50,7 +56,29 @@ def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
     player = MagicMock()
     player.engine = MagicMock()
 
+    if tree_side_effect is not None:
+        playlist_service.get_playlist_tree.side_effect = tree_side_effect
+    else:
+        playlist_service.get_playlist_tree.return_value = (
+            tree if tree is not None else PlaylistTree(root_playlists=[], folders=[])
+        )
+    favorite_service.get_all_favorite_track_ids.return_value = set()
+
+    view = PlaylistView(
+        playlist_service=playlist_service,
+        favorite_service=favorite_service,
+        library_service=library_service,
+        player=player,
+    )
+    return view, playlist_service, favorite_service, library_service, player
+
+
+def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
     playlist = Playlist(id=1, name="My Playlist")
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=PlaylistTree(root_playlists=[playlist], folders=[]),
+    )
     tracks = [
         Track(id=1, path="/music/1.mp3", title="One", source=TrackSource.LOCAL),
         Track(
@@ -63,23 +91,54 @@ def test_playlist_view_loads_tracks_into_list_view(qapp, mock_theme_config):
         ),
     ]
 
-    playlist_service.get_all_playlists.return_value = [playlist]
     playlist_service.get_playlist.return_value = playlist
     playlist_service.get_playlist_tracks.return_value = tracks
     favorite_service.get_all_favorite_track_ids.return_value = {1}
-
-    view = PlaylistView(
-        playlist_service=playlist_service,
-        favorite_service=favorite_service,
-        library_service=library_service,
-        player=player,
-    )
 
     view._load_playlist(playlist.id)
     qapp.processEvents()
 
     assert hasattr(view, "_tracks_list_view")
     assert view._tracks_list_view.row_count() == 2
+
+
+def test_playlist_view_renders_folder_and_root_nodes(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    tree = PlaylistTree(
+        root_playlists=[Playlist(id=1, name="Inbox", position=0)],
+        folders=[
+            PlaylistFolderGroup(
+                folder=folder,
+                playlists=[Playlist(id=2, name="Run", folder_id=10, position=0)],
+            )
+        ],
+    )
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=tree,
+    )
+
+    assert view._playlist_tree.topLevelItemCount() == 2
+    assert view._playlist_tree.topLevelItem(0).text(0) == "Gym"
+    assert view._playlist_tree.topLevelItem(1).text(0) == "Inbox"
+
+
+def test_clicking_folder_only_toggles_expansion(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    tree = PlaylistTree(
+        root_playlists=[],
+        folders=[PlaylistFolderGroup(folder=folder, playlists=[])],
+    )
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree=tree,
+    )
+    item = view._playlist_tree.topLevelItem(0)
+
+    view._on_tree_item_clicked(item, 0)
+
+    assert view._current_playlist_id is None
+    assert item.isExpanded() is True
 
 
 class _FakeSignal:
@@ -103,6 +162,7 @@ def test_playlist_view_close_event_disconnects_event_bus(qapp, mock_theme_config
         cover_updated=_FakeSignal(),
         playlist_created=_FakeSignal(),
         playlist_modified=_FakeSignal(),
+        playlist_structure_changed=_FakeSignal(),
     )
     monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
 
@@ -112,7 +172,7 @@ def test_playlist_view_close_event_disconnects_event_bus(qapp, mock_theme_config
     player = MagicMock()
     player.engine = MagicMock()
 
-    playlist_service.get_all_playlists.return_value = []
+    playlist_service.get_playlist_tree.return_value = PlaylistTree(root_playlists=[], folders=[])
     favorite_service.get_all_favorite_track_ids.return_value = set()
 
     view = PlaylistView(
@@ -129,3 +189,73 @@ def test_playlist_view_close_event_disconnects_event_bus(qapp, mock_theme_config
 
     assert view._on_playlist_created not in fake_bus.playlist_created.connected
     assert view._on_playlist_modified not in fake_bus.playlist_modified.connected
+
+
+def test_playlist_view_subscribes_to_structure_signal(qapp, mock_theme_config, monkeypatch):
+    ThemeManager.instance(mock_theme_config)
+
+    fake_bus = SimpleNamespace(
+        favorite_changed=_FakeSignal(),
+        track_changed=_FakeSignal(),
+        playback_state_changed=_FakeSignal(),
+        cover_updated=_FakeSignal(),
+        playlist_created=_FakeSignal(),
+        playlist_modified=_FakeSignal(),
+        playlist_structure_changed=_FakeSignal(),
+    )
+    monkeypatch.setattr(EventBus, "instance", classmethod(lambda cls: fake_bus))
+
+    playlist_service = MagicMock()
+    favorite_service = MagicMock()
+    library_service = MagicMock()
+    player = MagicMock()
+    player.engine = MagicMock()
+    playlist_service.get_playlist_tree.return_value = PlaylistTree(root_playlists=[], folders=[])
+    favorite_service.get_all_favorite_track_ids.return_value = set()
+
+    view = PlaylistView(playlist_service, favorite_service, library_service, player)
+
+    assert view._on_playlist_structure_changed in fake_bus.playlist_structure_changed.connected
+
+
+def test_delete_folder_keeps_current_playlist_selected(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    moved_playlist = Playlist(id=2, name="Run", folder_id=10, position=0)
+    first_tree = PlaylistTree(
+        root_playlists=[],
+        folders=[PlaylistFolderGroup(folder=folder, playlists=[moved_playlist])],
+    )
+    second_tree = PlaylistTree(root_playlists=[moved_playlist], folders=[])
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree_side_effect=[first_tree, second_tree],
+    )
+    playlist_service.get_playlist.return_value = moved_playlist
+    playlist_service.get_playlist_tracks.return_value = []
+    playlist_service.delete_folder.return_value = True
+    view._load_playlist(2)
+
+    view._on_delete_folder_requested(10)
+
+    assert view._current_playlist_id == 2
+
+
+def test_playlist_view_folder_context_actions_refresh_tree(qapp, mock_theme_config):
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    playlist = Playlist(id=2, name="Run", folder_id=10, position=0)
+    view, playlist_service, favorite_service, library_service, player = _build_playlist_view(
+        mock_theme_config,
+        tree_side_effect=[
+            PlaylistTree(
+                root_playlists=[],
+                folders=[PlaylistFolderGroup(folder=folder, playlists=[playlist])],
+            ),
+            PlaylistTree(root_playlists=[playlist], folders=[]),
+        ],
+    )
+    playlist_service.delete_folder.return_value = True
+
+    view._on_delete_folder_requested(10)
+
+    assert view._playlist_tree.topLevelItemCount() == 1
+    assert view._playlist_tree.topLevelItem(0).text(0) == "Run"

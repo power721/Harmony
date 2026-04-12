@@ -122,6 +122,9 @@ class EventBus(QObject):
     # Emitted when a playlist is deleted (playlist_id)
     playlist_deleted = Signal(int)
 
+    # Emitted when the playlist tree structure changes
+    playlist_structure_changed = Signal()
+
     # Emitted when favorite status changes (id, is_favorite, is_cloud)
     # id: track_id (int) for local tracks, cloud_file_id (str) for cloud files
     favorite_changed = Signal(object, bool, bool)

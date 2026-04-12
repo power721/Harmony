@@ -83,6 +83,39 @@ def test_init_database_creates_missing_filter_indexes():
             pass
 
 
+def test_init_database_creates_playlist_folder_schema():
+    """Database init should create playlist folder tables and columns."""
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    try:
+        db = DatabaseManager(db_path)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("PRAGMA table_info(playlists)")
+        playlist_columns = {row[1] for row in cursor.fetchall()}
+        assert "folder_id" in playlist_columns
+        assert "position" in playlist_columns
+
+        cursor.execute("PRAGMA table_info(playlist_folders)")
+        folder_columns = {row[1] for row in cursor.fetchall()}
+        assert {"id", "name", "position", "created_at"} <= folder_columns
+
+        cursor.execute("PRAGMA index_list(playlist_folders)")
+        folder_indexes = {row[1] for row in cursor.fetchall()}
+        assert "idx_playlist_folders_name_nocase" in folder_indexes
+
+        conn.close()
+        db.close()
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
 def test_init_database_migrates_legacy_qq_online_provider_rows():
     """Database init should repair legacy QQ online provider ids in tracks and queue."""
     fd, db_path = tempfile.mkstemp(suffix=".db")

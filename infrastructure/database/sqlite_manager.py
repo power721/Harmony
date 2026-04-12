@@ -728,7 +728,7 @@ class DatabaseManager:
     def _run_migrations(self, conn, cursor):
         """Run database migrations for schema updates."""
         # Current schema version - increment when making schema changes
-        CURRENT_SCHEMA_VERSION = 12
+        CURRENT_SCHEMA_VERSION = 13
 
         # Create db_meta table for schema version tracking
         cursor.execute("""
@@ -1141,6 +1141,50 @@ class DatabaseManager:
                     WHERE cloud_file_id IS NOT NULL
             """)
             logger.info("[Database] Made online favorites provider-aware")
+
+        # Migration 12: Add playlist folder support.
+        if stored_version < 13:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_folders_name_nocase
+                    ON playlist_folders(name COLLATE NOCASE)
+            """)
+
+            cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'playlists'"
+            )
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(playlists)")
+                playlist_columns = {col[1] for col in cursor.fetchall()}
+                added_position = False
+                if "folder_id" not in playlist_columns:
+                    cursor.execute("ALTER TABLE playlists ADD COLUMN folder_id INTEGER")
+                if "position" not in playlist_columns:
+                    cursor.execute("ALTER TABLE playlists ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+                    added_position = True
+
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_playlists_folder_position
+                        ON playlists(folder_id, position)
+                """)
+
+                if added_position:
+                    cursor.execute("SELECT id FROM playlists ORDER BY id")
+                    playlist_ids = [row[0] for row in cursor.fetchall()]
+                    for position, playlist_id in enumerate(playlist_ids):
+                        cursor.execute(
+                            "UPDATE playlists SET position = ? WHERE id = ?",
+                            (position, playlist_id),
+                        )
+
+            logger.info("[Database] Added playlist folder schema")
 
         # Update schema version after all migrations complete
         if schema_changed:

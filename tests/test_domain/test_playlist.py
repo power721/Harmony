@@ -41,3 +41,10 @@ class TestPlaylist:
         playlist = Playlist(name="Favorites")
         assert playlist.name == "Favorites"
         assert isinstance(playlist.created_at, datetime)
+
+    def test_playlist_supports_folder_and_position(self):
+        """Test playlist folder assignment and ordering fields."""
+        playlist = Playlist(name="Road Trip", folder_id=7, position=3)
+
+        assert playlist.folder_id == 7
+        assert playlist.position == 3

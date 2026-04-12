@@ -8,6 +8,7 @@ import tempfile
 import os
 from unittest.mock import Mock
 
+from domain.playlist_folder import PlaylistTree
 from repositories.playlist_repository import SqlitePlaylistRepository
 from domain.playlist import Playlist
 
@@ -44,6 +45,17 @@ def temp_db():
         CREATE TABLE playlists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            folder_id INTEGER,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE playlist_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            position INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -236,3 +248,76 @@ class TestSqlitePlaylistRepository:
         # Verify items are gone (by checking a new playlist with same ID doesn't exist)
         retrieved = playlist_repo.get_by_id(playlist_id)
         assert retrieved is None
+
+    def test_create_folder_and_get_all_folders(self, playlist_repo):
+        """Test creating and listing playlist folders."""
+        folder_id = playlist_repo.create_folder("Workout")
+        folders = playlist_repo.get_all_folders()
+
+        assert folder_id > 0
+        assert [folder.name for folder in folders] == ["Workout"]
+        assert folders[0].position == 0
+
+    def test_get_playlist_tree_groups_root_and_folder_playlists(self, playlist_repo):
+        """Test loading the playlist tree with root and folder playlists."""
+        playlist_repo.add(Playlist(name="Root", position=0))
+        folder_id = playlist_repo.create_folder("Mood")
+        playlist_repo.add(Playlist(name="Chill", folder_id=folder_id, position=0))
+
+        tree = playlist_repo.get_playlist_tree()
+
+        assert isinstance(tree, PlaylistTree)
+        assert [p.name for p in tree.root_playlists] == ["Root"]
+        assert [group.folder.name for group in tree.folders] == ["Mood"]
+        assert [p.name for p in tree.folders[0].playlists] == ["Chill"]
+
+    def test_rename_folder_updates_name(self, playlist_repo):
+        """Test renaming a folder."""
+        folder_id = playlist_repo.create_folder("Old Name")
+
+        assert playlist_repo.rename_folder(folder_id, "New Name") is True
+        assert [folder.name for folder in playlist_repo.get_all_folders()] == ["New Name"]
+
+    def test_get_folder_by_name_is_case_insensitive(self, playlist_repo):
+        """Test case-insensitive folder lookup."""
+        playlist_repo.create_folder("Workout")
+
+        folder = playlist_repo.get_folder_by_name("workout")
+
+        assert folder is not None
+        assert folder.name == "Workout"
+
+    def test_delete_folder_moves_playlists_back_to_root(self, playlist_repo):
+        """Deleting a folder should move nested playlists back to the root container."""
+        folder_id = playlist_repo.create_folder("Temp")
+        playlist_repo.add(Playlist(name="A", folder_id=folder_id, position=0))
+        playlist_repo.add(Playlist(name="B", folder_id=folder_id, position=1))
+
+        assert playlist_repo.delete_folder(folder_id) is True
+
+        tree = playlist_repo.get_playlist_tree()
+        assert tree.folders == []
+        assert [p.name for p in tree.root_playlists] == ["A", "B"]
+        assert [p.position for p in tree.root_playlists] == [0, 1]
+
+    def test_move_playlist_to_folder_and_back_to_root(self, playlist_repo):
+        """A playlist can be moved into a folder and restored to the root."""
+        playlist_id = playlist_repo.add(Playlist(name="Inbox", position=0))
+        folder_id = playlist_repo.create_folder("Archive")
+
+        assert playlist_repo.move_playlist_to_folder(playlist_id, folder_id) is True
+        assert playlist_repo.get_playlist(playlist_id).folder_id == folder_id
+
+        assert playlist_repo.move_playlist_to_root(playlist_id) is True
+        assert playlist_repo.get_playlist(playlist_id).folder_id is None
+
+    def test_reorder_root_playlists_updates_position(self, playlist_repo):
+        """Root playlist reordering should persist position values."""
+        first = playlist_repo.add(Playlist(name="One", position=0))
+        second = playlist_repo.add(Playlist(name="Two", position=1))
+
+        assert playlist_repo.reorder_root_playlists([second, first]) is True
+
+        tree = playlist_repo.get_playlist_tree()
+        assert [p.name for p in tree.root_playlists] == ["Two", "One"]
+        assert [p.position for p in tree.root_playlists] == [0, 1]
