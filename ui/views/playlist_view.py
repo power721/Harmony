@@ -9,12 +9,11 @@ from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QSplitter,
     QLabel,
     QFileDialog,
+    QTreeWidgetItem,
 )
 
 from domain.playlist import Playlist
@@ -26,6 +25,7 @@ from ui.dialogs.edit_media_info_dialog import EditMediaInfoDialog
 from ui.dialogs.input_dialog import InputDialog
 from ui.dialogs.message_dialog import MessageDialog, Yes
 from ui.views.playlist_tracks_list_view import PlaylistTracksListView
+from ui.widgets.playlist_tree_widget import PlaylistTreeWidget
 
 if TYPE_CHECKING:
     from services.library import FavoritesService, LibraryService, PlaylistService
@@ -72,26 +72,26 @@ class PlaylistView(QWidget):
             border-color: %background_hover%;
             color: %border%;
         }
-        QListWidget#playlistList {
+        QTreeWidget#playlistTree {
             background: transparent;
             border: none;
         }
-        QListWidget#playlistList::item {
+        QTreeWidget#playlistTree::item {
             padding: 12px;
             color: %text_secondary%;
             border-radius: 8px;
             margin: 2px 0px;
         }
-        QListWidget#playlistList::item:selected {
+        QTreeWidget#playlistTree::item:selected {
             background-color: %highlight%;
             color: %background%;
             font-weight: bold;
         }
-        QListWidget#playlistList::item:hover {
+        QTreeWidget#playlistTree::item:hover {
             background-color: %background_hover%;
             color: %highlight%;
         }
-        QListWidget#playlistList::item:selected:hover {
+        QTreeWidget#playlistTree::item:selected:hover {
             background-color: %highlight_hover%;
             color: %background%;
         }
@@ -204,12 +204,17 @@ class PlaylistView(QWidget):
         self._new_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self._new_playlist_btn)
 
-        # Playlist list
-        self._playlist_list = QListWidget()
-        self._playlist_list.setObjectName("playlistList")
-        self._playlist_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._playlist_list.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout.addWidget(self._playlist_list)
+        self._new_folder_btn = QPushButton(t("new_folder"))
+        self._new_folder_btn.setObjectName("playlistActionBtn")
+        self._new_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(self._new_folder_btn)
+
+        # Playlist tree
+        self._playlist_tree = PlaylistTreeWidget()
+        self._playlist_tree.setObjectName("playlistTree")
+        self._playlist_tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._playlist_tree.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(self._playlist_tree)
 
         return widget
 
@@ -278,10 +283,11 @@ class PlaylistView(QWidget):
     def _setup_connections(self):
         """Setup signal connections."""
         self._new_playlist_btn.clicked.connect(self._create_playlist)
+        self._new_folder_btn.clicked.connect(self._create_folder)
         self._delete_playlist_btn.clicked.connect(self._delete_playlist)
         # _rename_playlist_btn already connected in _create_playlist_content
-        self._playlist_list.itemClicked.connect(self._on_playlist_selected)
-        self._playlist_list.itemDoubleClicked.connect(self._on_playlist_double_clicked)
+        self._playlist_tree.itemClicked.connect(self._on_tree_item_clicked)
+        self._playlist_tree.itemDoubleClicked.connect(self._on_tree_item_double_clicked)
         self._tracks_list_view.track_activated.connect(self._on_track_activated)
         self._tracks_list_view.play_requested.connect(self._on_ctx_play)
         self._tracks_list_view.insert_to_queue_requested.connect(self._on_ctx_insert_to_queue)
@@ -297,8 +303,10 @@ class PlaylistView(QWidget):
         self._tracks_list_view.remove_from_playlist_requested.connect(self._on_ctx_remove_from_playlist)
 
         # Listen for playlist events from other views
-        EventBus.instance().playlist_created.connect(self._on_playlist_created)
-        EventBus.instance().playlist_modified.connect(self._on_playlist_modified)
+        event_bus = EventBus.instance()
+        event_bus.playlist_created.connect(self._on_playlist_created)
+        event_bus.playlist_modified.connect(self._on_playlist_modified)
+        event_bus.playlist_structure_changed.connect(self._on_playlist_structure_changed)
 
     @staticmethod
     def _disconnect_signal(signal, slot):
@@ -313,17 +321,15 @@ class PlaylistView(QWidget):
         event_bus = EventBus.instance()
         self._disconnect_signal(event_bus.playlist_created, self._on_playlist_created)
         self._disconnect_signal(event_bus.playlist_modified, self._on_playlist_modified)
+        self._disconnect_signal(
+            event_bus.playlist_structure_changed, self._on_playlist_structure_changed
+        )
         super().closeEvent(event)
 
     def _refresh_playlists(self):
         """Refresh the playlist list."""
-        self._playlist_list.clear()
-
-        playlists = self._playlist_service.get_all_playlists()
-        for playlist in playlists:
-            item = QListWidgetItem(playlist.name)
-            item.setData(Qt.ItemDataRole.UserRole, playlist.id)
-            self._playlist_list.addItem(item)
+        tree = self._playlist_service.get_playlist_tree()
+        self._playlist_tree.populate(tree)
 
         # Update UI texts
         self._update_ui_texts()
@@ -336,12 +342,11 @@ class PlaylistView(QWidget):
         """Select and load the first playlist if none is currently selected."""
         if self._current_playlist_id is not None:
             return
-        if self._playlist_list.count() <= 0:
+        first_item = self._playlist_tree.first_playlist_item()
+        if first_item is None:
             return
-        self._playlist_list.setCurrentRow(0)
-        first_item = self._playlist_list.item(0)
-        if first_item:
-            self._load_playlist(first_item.data(Qt.ItemDataRole.UserRole))
+        self._playlist_tree.setCurrentItem(first_item)
+        self._load_playlist(first_item.data(0, PlaylistTreeWidget.NODE_ID_ROLE))
 
     def _update_ui_texts(self):
         """Update UI texts after language change."""
@@ -354,6 +359,7 @@ class PlaylistView(QWidget):
 
         # Update button texts
         self._new_playlist_btn.setText(t("new_playlist"))
+        self._new_folder_btn.setText(t("new_folder"))
         self._play_playlist_btn.setText(t("play"))
         self._rename_playlist_btn.setText(t("rename"))
         self._delete_playlist_btn.setText("🗑️ " + t("delete_playlist"))
@@ -370,14 +376,16 @@ class PlaylistView(QWidget):
             playlist = Playlist(name=name)
             playlist_id = self._playlist_service.create_playlist(playlist)
             self._refresh_playlists()
+            if self._playlist_tree.restore_playlist_selection(playlist_id):
+                self._load_playlist(playlist_id)
 
-            # Select the new playlist
-            for i in range(self._playlist_list.count()):
-                item = self._playlist_list.item(i)
-                if item.data(Qt.ItemDataRole.UserRole) == playlist_id:
-                    self._playlist_list.setCurrentItem(item)
-                    self._load_playlist(playlist_id)
-                    break
+    def _create_folder(self):
+        """Create a new folder in the playlist tree."""
+        name, ok = InputDialog.getText(
+            self, t("create_folder"), t("enter_folder_name")
+        )
+        if ok and name:
+            self._playlist_service.create_folder(name)
 
     def _delete_playlist(self):
         """Delete the current playlist."""
@@ -418,21 +426,11 @@ class PlaylistView(QWidget):
             self._playlist_title.setText(new_name)
             self._refresh_playlists()
 
-    def _on_playlist_selected(self, item: QListWidgetItem):
-        """Handle playlist selection."""
-        playlist_id = item.data(Qt.ItemDataRole.UserRole)
-        self._load_playlist(playlist_id)
-
     def _on_playlist_created(self, playlist_id: int):
         """Handle playlist created event from other views."""
         self._refresh_playlists()
-        # Select and load the new playlist
-        for i in range(self._playlist_list.count()):
-            item = self._playlist_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == playlist_id:
-                self._playlist_list.setCurrentItem(item)
-                self._load_playlist(playlist_id)
-                break
+        if self._playlist_tree.restore_playlist_selection(playlist_id):
+            self._load_playlist(playlist_id)
 
     def _on_playlist_modified(self, playlist_id: int):
         """Handle playlist modified event from other views."""
@@ -440,9 +438,28 @@ class PlaylistView(QWidget):
         if self._current_playlist_id == playlist_id:
             self._load_playlist(playlist_id)
 
-    def _on_playlist_double_clicked(self, item: QListWidgetItem):
+    def _on_playlist_structure_changed(self):
+        """Refresh tree data after structure changes."""
+        self._refresh_playlists()
+
+    def _on_tree_item_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle clicks on folder and playlist nodes."""
+        del column
+        node_kind = item.data(0, PlaylistTreeWidget.NODE_KIND_ROLE)
+        if node_kind == PlaylistTreeWidget.FOLDER_NODE:
+            item.setExpanded(not item.isExpanded())
+            return
+
+        playlist_id = item.data(0, PlaylistTreeWidget.NODE_ID_ROLE)
+        self._load_playlist(playlist_id)
+
+    def _on_tree_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle playlist double click - load and play."""
-        playlist_id = item.data(Qt.ItemDataRole.UserRole)
+        del column
+        if item.data(0, PlaylistTreeWidget.NODE_KIND_ROLE) != PlaylistTreeWidget.PLAYLIST_NODE:
+            return
+
+        playlist_id = item.data(0, PlaylistTreeWidget.NODE_ID_ROLE)
         self._load_playlist(playlist_id)
         self._player.load_playlist(playlist_id)
 
@@ -651,16 +668,11 @@ class PlaylistView(QWidget):
             imported = self._playlist_service.import_m3u(file_path, playlist_name)
             if imported > 0:
                 self._refresh_playlists()
-                # Select the new playlist
-                playlists = self._playlist_service.get_all_playlists()
-                for p in playlists:
-                    if p.name == playlist_name:
-                        for i in range(self._playlist_list.count()):
-                            item = self._playlist_list.item(i)
-                            if p.id is not None and item.data(Qt.ItemDataRole.UserRole) == p.id:
-                                self._playlist_list.setCurrentItem(item)
-                                self._load_playlist(p.id)
-                                break
+                tree = self._playlist_service.get_playlist_tree()
+                for p in tree.root_playlists:
+                    if p.name == playlist_name and p.id is not None:
+                        if self._playlist_tree.restore_playlist_selection(p.id):
+                            self._load_playlist(p.id)
                         break
                 MessageDialog.information(
                     self, t("import_playlist"),
