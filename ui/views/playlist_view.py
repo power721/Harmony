@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QLabel,
     QFileDialog,
+    QMenu,
     QTreeWidgetItem,
 )
 
@@ -288,6 +289,13 @@ class PlaylistView(QWidget):
         # _rename_playlist_btn already connected in _create_playlist_content
         self._playlist_tree.itemClicked.connect(self._on_tree_item_clicked)
         self._playlist_tree.itemDoubleClicked.connect(self._on_tree_item_double_clicked)
+        self._playlist_tree.move_to_folder_requested.connect(self._on_move_playlist_to_folder)
+        self._playlist_tree.move_to_root_requested.connect(self._on_move_playlist_to_root)
+        self._playlist_tree.reorder_root_requested.connect(self._on_reorder_root_playlists)
+        self._playlist_tree.reorder_folder_requested.connect(self._on_reorder_folder_playlists)
+        self._playlist_tree.reorder_folders_requested.connect(self._on_reorder_folders)
+        self._playlist_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._playlist_tree.customContextMenuRequested.connect(self._show_tree_context_menu)
         self._tracks_list_view.track_activated.connect(self._on_track_activated)
         self._tracks_list_view.play_requested.connect(self._on_ctx_play)
         self._tracks_list_view.insert_to_queue_requested.connect(self._on_ctx_insert_to_queue)
@@ -328,8 +336,11 @@ class PlaylistView(QWidget):
 
     def _refresh_playlists(self):
         """Refresh the playlist list."""
+        selected_playlist_id = self._current_playlist_id
         tree = self._playlist_service.get_playlist_tree()
         self._playlist_tree.populate(tree)
+        if selected_playlist_id is not None:
+            self._playlist_tree.restore_playlist_selection(selected_playlist_id)
 
         # Update UI texts
         self._update_ui_texts()
@@ -385,7 +396,10 @@ class PlaylistView(QWidget):
             self, t("create_folder"), t("enter_folder_name")
         )
         if ok and name:
-            self._playlist_service.create_folder(name)
+            try:
+                self._playlist_service.create_folder(name)
+            except ValueError:
+                MessageDialog.warning(self, t("create_folder"), t("folder_name_conflict"))
 
     def _delete_playlist(self):
         """Delete the current playlist."""
@@ -442,6 +456,77 @@ class PlaylistView(QWidget):
         """Refresh tree data after structure changes."""
         self._refresh_playlists()
 
+    def _show_tree_context_menu(self, position):
+        """Show folder or playlist actions for the selected tree item."""
+        item = self._playlist_tree.itemAt(position)
+        if item is None:
+            return
+
+        self._playlist_tree.setCurrentItem(item)
+        menu = QMenu(self)
+        node_kind = item.data(0, PlaylistTreeWidget.NODE_KIND_ROLE)
+        node_id = item.data(0, PlaylistTreeWidget.NODE_ID_ROLE)
+
+        if node_kind == PlaylistTreeWidget.FOLDER_NODE and node_id is not None:
+            rename_action = menu.addAction(t("rename_folder"))
+            delete_action = menu.addAction(t("delete_folder"))
+            chosen = menu.exec(self._playlist_tree.viewport().mapToGlobal(position))
+            if chosen == rename_action:
+                self._rename_folder(node_id)
+            elif chosen == delete_action:
+                self._confirm_delete_folder(node_id)
+            return
+
+        if node_kind != PlaylistTreeWidget.PLAYLIST_NODE or node_id is None:
+            return
+
+        if item.parent() is not None:
+            remove_action = menu.addAction(t("remove_from_folder"))
+            chosen = menu.exec(self._playlist_tree.viewport().mapToGlobal(position))
+            if chosen == remove_action:
+                self._on_move_playlist_to_root(node_id)
+            return
+
+        folders = self._playlist_service.get_all_folders()
+        if not folders:
+            return
+
+        move_menu = menu.addMenu(t("move_to_folder"))
+        action_map = {}
+        for folder in folders:
+            action = move_menu.addAction(folder.name)
+            action_map[action] = folder.id
+
+        chosen = menu.exec(self._playlist_tree.viewport().mapToGlobal(position))
+        folder_id = action_map.get(chosen)
+        if folder_id is not None:
+            self._on_move_playlist_to_folder(node_id, folder_id)
+
+    def _rename_folder(self, folder_id: int):
+        """Rename an existing folder."""
+        folder = self._playlist_service.get_folder(folder_id)
+        if folder is None:
+            return
+
+        new_name, ok = InputDialog.getText(
+            self, t("rename_folder"), t("enter_folder_name"), text=folder.name
+        )
+        if not ok or not new_name:
+            return
+
+        try:
+            self._playlist_service.rename_folder(folder_id, new_name)
+        except ValueError:
+            MessageDialog.warning(self, t("rename_folder"), t("folder_name_conflict"))
+
+    def _confirm_delete_folder(self, folder_id: int):
+        """Ask for confirmation before deleting a folder."""
+        reply = MessageDialog.question(
+            self, t("delete_folder"), t("delete_folder_confirm")
+        )
+        if reply == Yes:
+            self._on_delete_folder_requested(folder_id)
+
     def _on_tree_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle clicks on folder and playlist nodes."""
         del column
@@ -466,6 +551,41 @@ class PlaylistView(QWidget):
         # Start playing if there are tracks
         if self._player.engine.playlist:
             self._player.engine.play()
+
+    def _on_delete_folder_requested(self, folder_id: int):
+        """Delete a folder and refresh the tree."""
+        if self._playlist_service.delete_folder(folder_id):
+            self._refresh_playlists()
+
+    def _on_move_playlist_to_folder(self, playlist_id: int, folder_id: int):
+        """Move a playlist into a folder."""
+        try:
+            result = self._playlist_service.move_playlist_to_folder(playlist_id, folder_id)
+        except ValueError:
+            MessageDialog.warning(self, t("move_to_folder"), t("folder_move_failed"))
+            return
+        if result:
+            self._refresh_playlists()
+
+    def _on_move_playlist_to_root(self, playlist_id: int):
+        """Move a playlist back to the root level."""
+        if self._playlist_service.move_playlist_to_root(playlist_id):
+            self._refresh_playlists()
+
+    def _on_reorder_folders(self, folder_ids: list[int]):
+        """Persist folder ordering after drag and drop."""
+        if self._playlist_service.reorder_folders(folder_ids):
+            self._refresh_playlists()
+
+    def _on_reorder_root_playlists(self, playlist_ids: list[int]):
+        """Persist root playlist ordering after drag and drop."""
+        if self._playlist_service.reorder_root_playlists(playlist_ids):
+            self._refresh_playlists()
+
+    def _on_reorder_folder_playlists(self, folder_id: int, playlist_ids: list[int]):
+        """Persist playlist ordering inside a folder after drag and drop."""
+        if self._playlist_service.reorder_folder_playlists(folder_id, playlist_ids):
+            self._refresh_playlists()
 
     def _load_playlist(self, playlist_id: int):
         """Load a playlist's content."""

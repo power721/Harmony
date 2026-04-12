@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional
 
 from domain.playlist import Playlist
-from domain.playlist_folder import PlaylistTree
+from domain.playlist_folder import PlaylistFolder, PlaylistTree
 from domain.track import Track, TrackId
 from repositories.playlist_repository import SqlitePlaylistRepository
 from repositories.track_repository import SqliteTrackRepository
@@ -65,6 +65,14 @@ class PlaylistService:
     def get_playlist_tree(self) -> PlaylistTree:
         """Get the playlist tree grouped by root playlists and folders."""
         return self._playlist_repo.get_playlist_tree()
+
+    def get_all_folders(self) -> list[PlaylistFolder]:
+        """Get all playlist folders."""
+        return self._playlist_repo.get_all_folders()
+
+    def get_folder(self, folder_id: int) -> Optional[PlaylistFolder]:
+        """Get a folder by id."""
+        return self._playlist_repo.get_folder(folder_id)
 
     def create_playlist(self, playlist: Playlist) -> int:
         """
@@ -160,6 +168,27 @@ class PlaylistService:
     def move_playlist_to_root(self, playlist_id: int) -> bool:
         """Move a playlist back to the root container."""
         result = self._playlist_repo.move_playlist_to_root(playlist_id)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def reorder_root_playlists(self, playlist_ids: list[int]) -> bool:
+        """Persist root playlist ordering."""
+        result = self._playlist_repo.reorder_root_playlists(playlist_ids)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def reorder_folder_playlists(self, folder_id: int, playlist_ids: list[int]) -> bool:
+        """Persist playlist ordering within a folder."""
+        result = self._playlist_repo.reorder_folder_playlists(folder_id, playlist_ids)
+        if result:
+            self._event_bus.playlist_structure_changed.emit()
+        return result
+
+    def reorder_folders(self, folder_ids: list[int]) -> bool:
+        """Persist folder ordering."""
+        result = self._playlist_repo.reorder_folders(folder_ids)
         if result:
             self._event_bus.playlist_structure_changed.emit()
         return result

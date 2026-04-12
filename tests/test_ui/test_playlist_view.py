@@ -213,3 +213,33 @@ def test_playlist_view_subscribes_to_structure_signal(qapp, mock_theme_config, m
     view = PlaylistView(playlist_service, favorite_service, library_service, player)
 
     assert view._on_playlist_structure_changed in fake_bus.playlist_structure_changed.connected
+
+
+def test_delete_folder_keeps_current_playlist_selected(qapp, mock_theme_config):
+    ThemeManager.instance(mock_theme_config)
+
+    playlist_service = MagicMock()
+    favorite_service = MagicMock()
+    library_service = MagicMock()
+    player = MagicMock()
+    player.engine = MagicMock()
+
+    folder = PlaylistFolder(id=10, name="Gym", position=0)
+    moved_playlist = Playlist(id=2, name="Run", folder_id=10, position=0)
+    first_tree = PlaylistTree(
+        root_playlists=[],
+        folders=[PlaylistFolderGroup(folder=folder, playlists=[moved_playlist])],
+    )
+    second_tree = PlaylistTree(root_playlists=[moved_playlist], folders=[])
+    playlist_service.get_playlist_tree.side_effect = [first_tree, second_tree]
+    playlist_service.get_playlist.return_value = moved_playlist
+    playlist_service.get_playlist_tracks.return_value = []
+    playlist_service.delete_folder.return_value = True
+    favorite_service.get_all_favorite_track_ids.return_value = set()
+
+    view = PlaylistView(playlist_service, favorite_service, library_service, player)
+    view._load_playlist(2)
+
+    view._on_delete_folder_requested(10)
+
+    assert view._current_playlist_id == 2
