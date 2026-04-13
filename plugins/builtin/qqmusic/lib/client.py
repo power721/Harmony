@@ -135,7 +135,7 @@ class QQMusicPluginClient:
 
         if search_type == "singer":
             singer_section = root.get("singer", {}) if isinstance(root, dict) else {}
-            items = singer_section.get("list", [])
+            items = self._extract_legacy_section_items(root, "singer")
             total = self._extract_total(meta) or self._extract_total(singer_section) or len(items)
             return {
                 "artists": [
@@ -151,16 +151,11 @@ class QQMusicPluginClient:
 
         if search_type == "album":
             album_section = root.get("album", {}) if isinstance(root, dict) else {}
-            items = album_section.get("list", [])
+            items = self._extract_legacy_section_items(root, "album", fallback_item_key="item_album")
             total = self._extract_total(meta) or self._extract_total(album_section) or len(items)
             return {
                 "albums": [
-                    {
-                        **normalize_album_item(item),
-                        "mid": str(item.get("albumMID", "") or item.get("mid", "")),
-                        "artist": str(item.get("singerName", "") or item.get("artist", "")),
-                        "cover_url": item.get("albumPic", "") or item.get("cover_url", ""),
-                    }
+                    self._normalize_legacy_album_item(item)
                     for item in items
                     if isinstance(item, dict)
                 ],
@@ -169,20 +164,11 @@ class QQMusicPluginClient:
 
         if search_type == "playlist":
             playlist_section = root.get("songlist", {}) if isinstance(root, dict) else {}
-            items = playlist_section.get("list", [])
+            items = self._extract_legacy_section_items(root, "songlist", fallback_item_key="item_songlist")
             total = self._extract_total(meta) or self._extract_total(playlist_section) or len(items)
             return {
                 "playlists": [
-                    {
-                        **normalize_playlist_item(item),
-                        "title": str(item.get("dissname", "") or item.get("title", "")),
-                        "creator": str(
-                            item.get("creator", {}).get("name", "")
-                            if isinstance(item.get("creator"), dict)
-                            else item.get("creator", "")
-                        ),
-                        "cover_url": item.get("imgurl", "") or item.get("cover_url", ""),
-                    }
+                    self._normalize_legacy_playlist_item(item)
                     for item in items
                     if isinstance(item, dict)
                 ],
@@ -216,10 +202,57 @@ class QQMusicPluginClient:
         return items if isinstance(items, list) else []
 
     @staticmethod
+    def _extract_legacy_section_items(
+        root: dict[str, Any],
+        section_key: str,
+        fallback_item_key: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(root, dict):
+            return []
+
+        section = root.get(section_key, {})
+        if isinstance(section, list):
+            return section
+        if isinstance(section, dict):
+            items = section.get("list", [])
+            if isinstance(items, list) and items:
+                return items
+
+        if fallback_item_key:
+            items = root.get(fallback_item_key, [])
+            if isinstance(items, list):
+                return items
+
+        return []
+
+    @staticmethod
     def _normalize_legacy_song_item(item: dict[str, Any]) -> dict[str, Any]:
         if any(key in item for key in ("songmid", "songname", "albumname")):
             return normalize_song_item(item)
         return normalize_detail_song(item)
+
+    @staticmethod
+    def _normalize_legacy_album_item(item: dict[str, Any]) -> dict[str, Any]:
+        normalized = normalize_album_item(item)
+        return {
+            **normalized,
+            "mid": str(item.get("albumMID", "") or item.get("mid", "") or normalized.get("mid", "")),
+            "artist": str(item.get("singerName", "") or item.get("artist", "") or normalized.get("singer_name", "")),
+            "cover_url": item.get("albumPic", "") or item.get("cover_url", "") or normalized.get("cover_url", ""),
+        }
+
+    @staticmethod
+    def _normalize_legacy_playlist_item(item: dict[str, Any]) -> dict[str, Any]:
+        normalized = normalize_playlist_item(item)
+        creator = item.get("creator", "")
+        if isinstance(creator, dict):
+            creator = creator.get("name", "")
+        return {
+            **normalized,
+            "title": str(item.get("dissname", "") or item.get("title", "") or normalized.get("title", "")),
+            "creator": str(creator or normalized.get("creator", "")),
+            "cover_url": item.get("imgurl", "") or item.get("cover_url", "") or normalized.get("cover_url", ""),
+        }
 
     @staticmethod
     def _extract_total(container: Any) -> int | None:

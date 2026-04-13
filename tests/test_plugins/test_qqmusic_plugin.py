@@ -675,6 +675,120 @@ def test_plugin_client_search_uses_top_level_body_from_legacy_payload(monkeypatc
     api.search.assert_not_called()
 
 
+def test_plugin_client_normalizes_legacy_singer_payload_with_direct_list():
+    client = QQMusicPluginClient(Mock())
+
+    result = client._normalize_legacy_search_payload(
+        {
+            "body": {
+                "singer": [
+                    {
+                        "singerMID": "0025NhlN2yWrP4",
+                        "singerName": "周杰伦",
+                        "singerPic": "http://y.gtimg.cn/music/photo_new/T001R150x150M0000025NhlN2yWrP4_11.jpg",
+                        "songNum": 1011,
+                        "albumNum": 43,
+                    }
+                ]
+            },
+            "meta": {"sum": 12},
+        },
+        "singer",
+    )
+
+    assert result == {
+        "artists": [
+            {
+                "mid": "0025NhlN2yWrP4",
+                "name": "周杰伦",
+                "avatar_url": "http://y.gtimg.cn/music/photo_new/T001R150x150M0000025NhlN2yWrP4_11.jpg",
+                "song_count": 1011,
+                "album_count": 43,
+                "fan_count": 0,
+                "pic_url": "",
+            }
+        ],
+        "total": 12,
+    }
+
+
+def test_plugin_client_normalizes_legacy_album_payload_from_item_album():
+    client = QQMusicPluginClient(Mock())
+
+    result = client._normalize_legacy_search_payload(
+        {
+            "body": {
+                "item_album": [
+                    {
+                        "albummid": "0041WVfh2vtlJE",
+                        "name": "太阳之子",
+                        "singer": "周杰伦",
+                        "singer_list": [{"id": 4558, "name": "周杰伦"}],
+                        "pic": "http://y.gtimg.cn/music/photo_new/T002R180x180M0000041WVfh2vtlJE_1.jpg",
+                        "publish_date": "2026-03-25",
+                        "song_num": 13,
+                    }
+                ]
+            },
+            "meta": {"sum": 1},
+        },
+        "album",
+    )
+
+    assert result == {
+        "albums": [
+            {
+                "mid": "0041WVfh2vtlJE",
+                "name": "太阳之子",
+                "singer_name": "周杰伦",
+                "cover_url": "http://y.gtimg.cn/music/photo_new/T002R180x180M0000041WVfh2vtlJE_1.jpg",
+                "song_count": 13,
+                "publish_date": "2026-03-25",
+                "artist": "周杰伦",
+            }
+        ],
+        "total": 1,
+    }
+
+
+def test_plugin_client_normalizes_legacy_playlist_payload_from_item_songlist():
+    client = QQMusicPluginClient(Mock())
+
+    result = client._normalize_legacy_search_payload(
+        {
+            "body": {
+                "item_songlist": [
+                    {
+                        "dissid": "7039749142",
+                        "dissname": "百听不厌的<em>周杰伦</em>",
+                        "logo": "http://qpic.y.qq.com/music_cover/cover123/300?n=1",
+                        "nickname": "今晚月色很美",
+                        "songnum": 99,
+                        "listennum": 395084961,
+                    }
+                ]
+            },
+            "meta": {"sum": 9},
+        },
+        "playlist",
+    )
+
+    assert result == {
+        "playlists": [
+            {
+                "id": "7039749142",
+                "mid": "",
+                "title": "百听不厌的<em>周杰伦</em>",
+                "creator": "今晚月色很美",
+                "cover_url": "http://qpic.y.qq.com/music_cover/cover123/300?n=1",
+                "song_count": 99,
+                "play_count": 395084961,
+            }
+        ],
+        "total": 9,
+    }
+
+
 def test_plugin_online_music_service_converts_singer_payload_to_models(monkeypatch):
     context = Mock()
     context.settings = Mock()
