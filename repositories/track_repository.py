@@ -29,7 +29,7 @@ class SqliteTrackRepository(BaseRepository):
 
     DEFAULT_PAGE_SIZE = 500
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
 
     @staticmethod
@@ -401,7 +401,7 @@ class SqliteTrackRepository(BaseRepository):
                                track.source.value if hasattr(track, 'source') and track.source else 'Local',
                                normalize_online_provider_id(track.online_provider_id),
                            ))
-            track_id = cursor.lastrowid
+            track_id = self._require_lastrowid(cursor)
 
             # Create artist entries and junction records
             if track.artist:
@@ -460,7 +460,7 @@ class SqliteTrackRepository(BaseRepository):
                         track.source.value if hasattr(track, 'source') and track.source else 'Local',
                         normalize_online_provider_id(track.online_provider_id),
                     ))
-                    track_id = cursor.lastrowid
+                    track_id = self._require_lastrowid(cursor)
 
                     if track.artist:
                         artist_names = split_artists_aware(track.artist, known_artists)
@@ -762,7 +762,7 @@ class SqliteTrackRepository(BaseRepository):
                 duration=row["total_duration"] or 0.0,
             ) for row in rows]
 
-    def get_album_tracks(self, album_name: str, artist: str = None) -> List[Track]:
+    def get_album_tracks(self, album_name: str, artist: str | None = None) -> List[Track]:
         """
         Get all tracks for a specific album.
 
@@ -1001,7 +1001,7 @@ class SqliteTrackRepository(BaseRepository):
             for row in rows
         ]
 
-    def get_album_by_name(self, album_name: str, artist: str = None) -> Optional['Album']:
+    def get_album_by_name(self, album_name: str, artist: str | None = None) -> Optional['Album']:
         """
         Get a specific album by name and optionally artist.
 
@@ -1102,7 +1102,7 @@ class SqliteTrackRepository(BaseRepository):
         conn.commit()
         return cursor.rowcount > 0
 
-    def update_cover_path(self, track_id: TrackId, cover_path: str) -> bool:
+    def update_cover_path(self, track_id: TrackId, cover_path: str | None) -> bool:
         """Update a track's cover path."""
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -1111,8 +1111,12 @@ class SqliteTrackRepository(BaseRepository):
         return cursor.rowcount > 0
 
     def update_fields(
-        self, track_id: TrackId, title: str = None, artist: str = None,
-        album: str = None, cloud_file_id: str = None
+        self,
+        track_id: TrackId,
+        title: str | None = None,
+        artist: str | None = None,
+        album: str | None = None,
+        cloud_file_id: str | None = None,
     ) -> bool:
         """
         Update specific track fields.

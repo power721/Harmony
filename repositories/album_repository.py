@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class SqliteAlbumRepository(BaseRepository):
     """SQLite implementation of AlbumRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
 
     def get_all(self, use_cache: bool = True) -> List[Album]:
@@ -77,7 +77,7 @@ class SqliteAlbumRepository(BaseRepository):
             for row in rows
         ]
 
-    def get_by_name(self, album_name: str, artist: str = None) -> Optional[Album]:
+    def get_by_name(self, album_name: str, artist: str | None = None) -> Optional[Album]:
         """
         Get a specific album by name and optionally artist.
 
@@ -89,7 +89,7 @@ class SqliteAlbumRepository(BaseRepository):
             Album object or None if not found
         """
         album_name = str(album_name or "").strip()
-        artist = str(artist or "").strip() or None
+        normalized_artist = str(artist or "").strip() or None
         if not album_name:
             return None
 
@@ -98,12 +98,12 @@ class SqliteAlbumRepository(BaseRepository):
 
         # Try to use albums table first
         if self._table_exists("albums"):
-            if artist:
+            if normalized_artist:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
                     FROM albums
                     WHERE name = ? AND artist = ?
-                """, (album_name, artist))
+                """, (album_name, normalized_artist))
             else:
                 cursor.execute("""
                     SELECT name, artist, cover_path, song_count, total_duration
@@ -121,7 +121,7 @@ class SqliteAlbumRepository(BaseRepository):
                 )
 
         # Fallback to direct query
-        if artist:
+        if normalized_artist:
             cursor.execute("""
                 SELECT
                     album as name,
@@ -132,7 +132,7 @@ class SqliteAlbumRepository(BaseRepository):
                 FROM tracks
                 WHERE album = ? AND artist = ?
                 GROUP BY album, artist
-            """, (album_name, artist))
+            """, (album_name, normalized_artist))
         else:
             cursor.execute("""
                 SELECT

@@ -20,7 +20,7 @@ class SqliteCloudRepository(BaseRepository):
     def __init__(
         self,
         db_path: str = "Harmony.db",
-        db_manager: "DatabaseManager" = None,
+        db_manager: "DatabaseManager | None" = None,
         secret_store: Optional[SecretStore] = None,
     ):
         super().__init__(db_path, db_manager)
@@ -38,7 +38,7 @@ class SqliteCloudRepository(BaseRepository):
             return self._row_to_account(row)
         return None
 
-    def get_all_accounts(self, provider: str = None) -> List[CloudAccount]:
+    def get_all_accounts(self, provider: str | None = None) -> List[CloudAccount]:
         """Get all cloud accounts, optionally filtered by provider."""
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -92,7 +92,7 @@ class SqliteCloudRepository(BaseRepository):
         )
 
         conn.commit()
-        return cursor.lastrowid
+        return self._require_lastrowid(cursor)
 
     def add_account(self, account: CloudAccount) -> int:
         """Add a new cloud account."""
@@ -112,7 +112,7 @@ class SqliteCloudRepository(BaseRepository):
                            account.last_playing_fid, account.last_position, account.last_playing_local_path
                        ))
         conn.commit()
-        return cursor.lastrowid
+        return self._require_lastrowid(cursor)
 
     def update_account(self, account: CloudAccount) -> bool:
         """Update a cloud account."""
@@ -148,7 +148,7 @@ class SqliteCloudRepository(BaseRepository):
         return cursor.rowcount > 0
 
     def update_account_token(
-        self, account_id: int, access_token: str, refresh_token: str = None
+        self, account_id: int, access_token: str, refresh_token: str | None = None
     ) -> bool:
         """Update account tokens."""
         conn = self._get_connection()
@@ -205,7 +205,11 @@ class SqliteCloudRepository(BaseRepository):
         return cursor.rowcount > 0
 
     def update_account_playing_state(
-        self, account_id: int, playing_fid: str = None, position: float = None, local_path: str = None
+        self,
+        account_id: int,
+        playing_fid: str | None = None,
+        position: float | None = None,
+        local_path: str | None = None,
     ) -> bool:
         """Update the last playing file and position for an account."""
         conn = self._get_connection()
@@ -410,7 +414,7 @@ class SqliteCloudRepository(BaseRepository):
                            file.metadata, file.local_path
                        ))
         conn.commit()
-        return cursor.lastrowid
+        return self._require_lastrowid(cursor)
 
     def cache_files(
         self,

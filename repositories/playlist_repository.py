@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class SqlitePlaylistRepository(BaseRepository):
     """SQLite implementation of PlaylistRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
         # Import here to avoid circular import
         from repositories.track_repository import SqliteTrackRepository
@@ -84,7 +84,7 @@ class SqlitePlaylistRepository(BaseRepository):
             (playlist.name, playlist.folder_id, playlist.position),
         )
         conn.commit()
-        return cursor.lastrowid
+        return self._require_lastrowid(cursor)
 
     def update(self, playlist: Playlist) -> bool:
         """Update an existing playlist."""
@@ -107,7 +107,7 @@ class SqlitePlaylistRepository(BaseRepository):
             (name, position),
         )
         conn.commit()
-        return cursor.lastrowid
+        return self._require_lastrowid(cursor)
 
     def get_folder(self, folder_id: int) -> Optional[PlaylistFolder]:
         """Get a folder by ID."""
@@ -316,6 +316,7 @@ class SqlitePlaylistRepository(BaseRepository):
         """
         max_retries = 3
         retry_delay = 0.1
+        conn: sqlite3.Connection | None = None
 
         for attempt in range(max_retries):
             try:
@@ -331,14 +332,16 @@ class SqlitePlaylistRepository(BaseRepository):
                 conn.commit()
                 return cursor.rowcount > 0
             except sqlite3.OperationalError as e:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
                 if "locked" in str(e) and attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
                     return False
             except sqlite3.DatabaseError:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
                 return False
         return False
 

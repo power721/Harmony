@@ -48,7 +48,7 @@ class SecretStore:
         key = self._get_or_create_key()
         cipher = AES.new(key, AES.MODE_GCM)
         ciphertext, tag = cipher.encrypt_and_digest(str(plaintext).encode("utf-8"))
-        payload = cipher.nonce + tag + ciphertext
+        payload = bytes(cipher.nonce) + tag + ciphertext
         encoded = base64.urlsafe_b64encode(payload).decode("ascii")
         return f"{self.PREFIX}{encoded}"
 

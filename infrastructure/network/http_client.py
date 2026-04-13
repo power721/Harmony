@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 import threading
 import time
-from typing import Dict, Any, Optional, Iterator
+from typing import Any, Iterator, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -38,7 +38,7 @@ class HttpClient:
 
     def __init__(
         self,
-        default_headers: Dict[str, str] = None,
+        default_headers: dict[str, str] | None = None,
         timeout: int = DEFAULT_TIMEOUT,
         pool_connections: int = DEFAULT_POOL_CONNECTIONS,
         pool_maxsize: int = DEFAULT_POOL_MAXSIZE,
@@ -63,7 +63,7 @@ class HttpClient:
     @classmethod
     def _create_session(
         cls,
-        default_headers: Dict[str, str],
+        default_headers: dict[str, str],
         pool_connections: int,
         pool_maxsize: int,
         pool_block: bool,
@@ -92,7 +92,7 @@ class HttpClient:
     @classmethod
     def shared(
         cls,
-        default_headers: Dict[str, str] = None,
+        default_headers: dict[str, str] | None = None,
         timeout: int = DEFAULT_TIMEOUT,
         pool_connections: int = DEFAULT_POOL_CONNECTIONS,
         pool_maxsize: int = DEFAULT_POOL_MAXSIZE,
@@ -134,11 +134,11 @@ class HttpClient:
         self,
         method: str,
         url: str,
-        params: Dict = None,
+        params: dict[str, Any] | None = None,
         json: Any = None,
         data: Any = None,
-        headers: Dict = None,
-        timeout: int = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
         stream: bool = False,
         **request_kwargs,
     ) -> requests.Response:
@@ -180,8 +180,14 @@ class HttpClient:
             **request_kwargs,
         )
 
-    def get(self, url: str, params: Dict = None, headers: Dict = None,
-            timeout: int = None, **request_kwargs) -> requests.Response:
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
+        **request_kwargs,
+    ) -> requests.Response:
         """
         Make a GET request.
 
@@ -201,11 +207,11 @@ class HttpClient:
         self,
         method: str,
         url: str,
-        params: Dict = None,
+        params: dict[str, Any] | None = None,
         json: Any = None,
         data: Any = None,
-        headers: Dict = None,
-        timeout: int = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
         **request_kwargs,
     ) -> Iterator[requests.Response]:
         """Open a streamed response and always close it after use."""
@@ -226,8 +232,13 @@ class HttpClient:
         finally:
             response.close()
 
-    def get_content(self, url: str, params: Dict = None, headers: Dict = None,
-                    timeout: int = None) -> Optional[bytes]:
+    def get_content(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
+    ) -> Optional[bytes]:
         """
         Make a GET request and return content as bytes.
 
@@ -247,8 +258,15 @@ class HttpClient:
             logger.error(f"GET content failed for {url}: {e}")
             return None
 
-    def post(self, url: str, json: Any = None, data: Any = None,
-             headers: Dict = None, timeout: int = None, **request_kwargs) -> requests.Response:
+    def post(
+        self,
+        url: str,
+        json: Any = None,
+        data: Any = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
+        **request_kwargs,
+    ) -> requests.Response:
         """
         Make a POST request.
 
@@ -264,7 +282,7 @@ class HttpClient:
         """
         return self.request("POST", url, json=json, data=data, headers=headers, timeout=timeout, **request_kwargs)
 
-    def download(self, url: str, dest_path: str, headers: Dict = None,
+    def download(self, url: str, dest_path: str, headers: dict[str, str] | None = None,
                  chunk_size: int = 8192, progress_callback=None) -> bool:
         """
         Download a file.

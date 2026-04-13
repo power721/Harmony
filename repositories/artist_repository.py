@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class SqliteArtistRepository(BaseRepository):
     """SQLite implementation of ArtistRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
 
     def get_all(self, use_cache: bool = True) -> List[Artist]:

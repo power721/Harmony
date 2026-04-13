@@ -1,9 +1,17 @@
 {
+  "include": [
+    "domain",
+    "repositories",
+    "infrastructure/cache",
+    "infrastructure/network",
+    "infrastructure/security"
+  ],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",
   "pythonPlatform": "Linux",
   "exclude": [
+    "**/.venv",
     "**/__pycache__",
     ".venv",
     "build",

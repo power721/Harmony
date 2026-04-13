@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class SqliteFavoriteRepository(BaseRepository):
     """SQLite implementation of FavoriteRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
         # Import here to avoid circular import
         from repositories.track_repository import SqliteTrackRepository
@@ -23,8 +23,8 @@ class SqliteFavoriteRepository(BaseRepository):
 
     def is_favorite(
         self,
-        track_id: TrackId = None,
-        cloud_file_id: str = None,
+        track_id: TrackId | None = None,
+        cloud_file_id: str | None = None,
         online_provider_id: str | None = None,
     ) -> bool:
         """
@@ -76,9 +76,9 @@ class SqliteFavoriteRepository(BaseRepository):
 
     def add_favorite(
         self,
-        track_id: TrackId = None,
-        cloud_file_id: str = None,
-        cloud_account_id: int = None,
+        track_id: TrackId | None = None,
+        cloud_file_id: str | None = None,
+        cloud_account_id: int | None = None,
         online_provider_id: str | None = None,
     ) -> bool:
         """
@@ -140,8 +140,8 @@ class SqliteFavoriteRepository(BaseRepository):
 
     def remove_favorite(
         self,
-        track_id: TrackId = None,
-        cloud_file_id: str = None,
+        track_id: TrackId | None = None,
+        cloud_file_id: str | None = None,
         online_provider_id: str | None = None,
     ) -> bool:
         """

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class SqliteHistoryRepository(BaseRepository):
     """SQLite implementation of HistoryRepository."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         super().__init__(db_path, db_manager)
         # Import here to avoid circular import
         from repositories.track_repository import SqliteTrackRepository

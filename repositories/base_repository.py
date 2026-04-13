@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class BaseRepository:
     """Base class for SQLite repositories with common connection handling."""
 
-    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager" = None):
+    def __init__(self, db_path: str = "Harmony.db", db_manager: "DatabaseManager | None" = None):
         self.db_path = db_path
         self._db_manager = db_manager
         self.local = threading.local()
@@ -51,6 +51,14 @@ class BaseRepository:
             except Exception:
                 logger.debug("[BaseRepository] Failed to close connection for %s", self.db_path, exc_info=True)
             self.local.conn = None
+
+    @staticmethod
+    def _require_lastrowid(cursor: sqlite3.Cursor) -> int:
+        """Return a concrete lastrowid after a successful insert."""
+        lastrowid = cursor.lastrowid
+        if lastrowid is None:
+            raise RuntimeError("SQLite cursor.lastrowid was unexpectedly None")
+        return int(lastrowid)
 
     def _table_exists(self, table_name: str) -> bool:
         """Return whether a table exists, caching the schema lookup per repository instance."""
