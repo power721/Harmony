@@ -215,6 +215,7 @@ class NowPlayingWindow(QWidget):
         self._cover_mode = "square"  # square | circle_rotate
         self._cover_angle = 0.0
         self._cover_source_pixmap: Optional[QPixmap] = None
+        self._runtime_signals_connected = False
         self._cover_anim_timer = QTimer(self)
         self._cover_anim_timer.setInterval(33)
         self._cover_anim_timer.timeout.connect(self._update_cover_rotation)
@@ -339,17 +340,7 @@ class NowPlayingWindow(QWidget):
         self._lyrics_widget.seekRequested.connect(self._playback.seek)
         self._setup_shortcuts()
         self._player_controls.queue_requested.connect(self._show_playlist_dialog)
-
-        engine = self._playback.engine
-        engine.current_track_changed.connect(self._on_track_changed)
-        engine.current_track_pending.connect(self._on_pending_track_changed)
-        engine.position_changed.connect(self._on_position_changed)
-        engine.duration_changed.connect(self._on_duration_changed)
-        engine.state_changed.connect(self._on_state_changed)
-        engine.play_mode_changed.connect(self._on_play_mode_changed)
-        engine.volume_changed.connect(self._on_volume_changed_from_engine)
-
-        EventBus.instance().favorite_changed.connect(self._on_favorite_changed)
+        self._connect_runtime_signals()
 
     def _add_shortcut(self, key: str | int, callback):
         shortcut = QShortcut(QKeySequence(key), self)
@@ -728,8 +719,31 @@ class NowPlayingWindow(QWidget):
         self._cover_load_version += 1
         self._cover_thread = None
 
+    def _connect_runtime_signals(self):
+        """Connect engine and event-bus signals owned by this window once."""
+        if getattr(self, "_runtime_signals_connected", False):
+            return
+
+        engine = getattr(self._playback, "engine", None)
+        if engine is None:
+            return
+
+        engine.current_track_changed.connect(self._on_track_changed)
+        engine.current_track_pending.connect(self._on_pending_track_changed)
+        engine.position_changed.connect(self._on_position_changed)
+        engine.duration_changed.connect(self._on_duration_changed)
+        engine.state_changed.connect(self._on_state_changed)
+        engine.play_mode_changed.connect(self._on_play_mode_changed)
+        engine.volume_changed.connect(self._on_volume_changed_from_engine)
+
+        EventBus.instance().favorite_changed.connect(self._on_favorite_changed)
+        self._runtime_signals_connected = True
+
     def _disconnect_runtime_signals(self):
         """Disconnect engine and event-bus signals owned by this window."""
+        if not getattr(self, "_runtime_signals_connected", False):
+            return
+
         engine = getattr(self._playback, "engine", None)
         if engine is not None:
             with suppress(Exception):
@@ -749,6 +763,7 @@ class NowPlayingWindow(QWidget):
 
         with suppress(Exception):
             EventBus.instance().favorite_changed.disconnect(self._on_favorite_changed)
+        self._runtime_signals_connected = False
 
     def _set_default_cover(self):
         """Set fallback cover when missing."""
@@ -964,6 +979,14 @@ class NowPlayingWindow(QWidget):
         if hasattr(self, "_resize_grip") and self._resize_grip:
             self._resize_grip.move(self.width() - 16, self.height() - 16)
         self._render_cover()
+
+    def showEvent(self, event):
+        """Reconnect runtime subscriptions when the hidden window is shown again."""
+        was_connected = getattr(self, "_runtime_signals_connected", False)
+        self._connect_runtime_signals()
+        if not was_connected:
+            self._initialize_from_current_track()
+        super().showEvent(event)
 
     def closeEvent(self, event):
         """Cleanup and notify main window to restore."""
