@@ -416,7 +416,7 @@ class CloudDriveView(QWidget):
         # Add account button
         self._add_account_btn = QPushButton(t("add_account"))
         self._add_account_btn.setObjectName("addAccountBtn")
-        self._add_account_btn.setCursor(Qt.PointingHandCursor)
+        self._add_account_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_account_btn.clicked.connect(self._add_account)
         layout.addWidget(self._add_account_btn)
 
@@ -425,7 +425,7 @@ class CloudDriveView(QWidget):
         self._account_list.setObjectName("accountList")
         self._account_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self._account_list.setFocusPolicy(Qt.NoFocus)
-        self._account_list.setCursor(Qt.PointingHandCursor)
+        self._account_list.setCursor(Qt.CursorShape.PointingHandCursor)
         self._account_list.itemClicked.connect(self._on_account_selected)
         self._account_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._account_list.customContextMenuRequested.connect(
@@ -460,13 +460,13 @@ class CloudDriveView(QWidget):
         search_layout.addWidget(self._share_search_input)
 
         self._share_search_btn = QPushButton(t("search"))
-        self._share_search_btn.setCursor(Qt.PointingHandCursor)
+        self._share_search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_search_btn.setFixedHeight(50)
         self._share_search_btn.clicked.connect(self._search_shares)
         search_layout.addWidget(self._share_search_btn)
 
         self._share_prev_btn = QPushButton("◀")
-        self._share_prev_btn.setCursor(Qt.PointingHandCursor)
+        self._share_prev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_prev_btn.setEnabled(False)
         self._share_prev_btn.setVisible(False)
         self._share_prev_btn.clicked.connect(self._go_share_prev_page)
@@ -478,7 +478,7 @@ class CloudDriveView(QWidget):
         search_layout.addWidget(self._share_page_label)
 
         self._share_next_btn = QPushButton("▶")
-        self._share_next_btn.setCursor(Qt.PointingHandCursor)
+        self._share_next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_next_btn.setEnabled(False)
         self._share_next_btn.setVisible(False)
         self._share_next_btn.clicked.connect(self._go_share_next_page)
@@ -498,7 +498,7 @@ class CloudDriveView(QWidget):
 
         self._batch_download_btn = QPushButton(t("batch_download"))
         self._batch_download_btn.setObjectName("batchDownloadBtn")
-        self._batch_download_btn.setCursor(Qt.PointingHandCursor)
+        self._batch_download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._batch_download_btn.clicked.connect(self._download_selected_files)
         self._batch_download_btn.setVisible(False)
         self._batch_download_btn.setEnabled(False)
@@ -506,14 +506,14 @@ class CloudDriveView(QWidget):
 
         self._cancel_downloads_btn = QPushButton(t("cancel_downloads"))
         self._cancel_downloads_btn.setObjectName("cancelDownloadsBtn")
-        self._cancel_downloads_btn.setCursor(Qt.PointingHandCursor)
+        self._cancel_downloads_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cancel_downloads_btn.clicked.connect(self._cancel_downloads)
         self._cancel_downloads_btn.setVisible(False)
         toolbar_layout.addWidget(self._cancel_downloads_btn)
 
         self._share_save_selected_btn = QPushButton(t("save_selected_to_cloud"))
         self._share_save_selected_btn.setObjectName("batchDownloadBtn")
-        self._share_save_selected_btn.setCursor(Qt.PointingHandCursor)
+        self._share_save_selected_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._share_save_selected_btn.clicked.connect(self._save_selected_share_items)
         self._share_save_selected_btn.setVisible(False)
         self._share_save_selected_btn.setEnabled(False)
@@ -524,7 +524,7 @@ class CloudDriveView(QWidget):
         # Navigation button
         self._back_btn = QPushButton("← " + t("back"))
         self._back_btn.setObjectName("backBtn")
-        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._back_btn.setEnabled(False)
         self._back_btn.clicked.connect(self._navigate_back)
         toolbar_layout.addWidget(self._back_btn)

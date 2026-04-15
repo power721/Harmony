@@ -259,7 +259,7 @@ class NowPlayingWindow(QWidget):
         self._max_btn.setFixedSize(34, 34)
         self._max_btn.setIcon(get_icon(IconName.MAXIMIZE, None))
         self._max_btn.setIconSize(QSize(16, 16))
-        self._max_btn.setCursor(Qt.PointingHandCursor)
+        self._max_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         header.addWidget(self._max_btn)
 
         self._close_btn = QPushButton()
@@ -267,7 +267,7 @@ class NowPlayingWindow(QWidget):
         self._close_btn.setFixedSize(34, 34)
         self._close_btn.setIcon(get_icon(IconName.TIMES, None))
         self._close_btn.setIconSize(QSize(18, 18))
-        self._close_btn.setCursor(Qt.PointingHandCursor)
+        self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         header.addWidget(self._close_btn)
         root.addLayout(header)
 
@@ -289,7 +289,7 @@ class NowPlayingWindow(QWidget):
         self._cover_label.setMinimumSize(420, 420)
         self._cover_label.setMaximumSize(560, 560)
         self._cover_label.setAlignment(Qt.AlignCenter)
-        self._cover_label.setCursor(Qt.PointingHandCursor)
+        self._cover_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cover_label.installEventFilter(self)
         self._cover_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         body.addWidget(self._cover_label, 0, Qt.AlignVCenter)
@@ -627,7 +627,7 @@ class NowPlayingWindow(QWidget):
         close_btn = QPushButton()
         close_btn.setObjectName("queueDialogClose")
         close_btn.setFixedSize(28, 28)
-        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setIcon(get_icon(IconName.TIMES, None, 16))
         close_btn.setIconSize(QSize(16, 16))
         close_btn.clicked.connect(dialog.reject)
@@ -635,7 +635,7 @@ class NowPlayingWindow(QWidget):
         layout.addLayout(header)
 
         queue_list = QListWidget(dialog)
-        queue_list.setCursor(Qt.PointingHandCursor)
+        queue_list.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(queue_list)
 
         items = self._playback.engine.playlist_items

@@ -147,14 +147,14 @@ class BaseRenameDialog(RoundedMaskDebounceMixin, DraggableDialogMixin, QDialog):
         button_layout.addStretch()
 
         self._cancel_btn = QPushButton(t("cancel"))
-        self._cancel_btn.setCursor(Qt.PointingHandCursor)
+        self._cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cancel_btn.setProperty("role", "cancel")
         self._cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(self._cancel_btn)
 
         self._rename_btn = QPushButton(t("rename"))
         self._rename_btn.setProperty("role", "primary")
-        self._rename_btn.setCursor(Qt.PointingHandCursor)
+        self._rename_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rename_btn.clicked.connect(self._on_rename_clicked)
         button_layout.addWidget(self._rename_btn)
 

@@ -130,19 +130,19 @@ class RedownloadDialog(QDialog):
         if self._quality_options:
             cancel_btn = QPushButton(t("cancel"))
             cancel_btn.setProperty("role", "cancel")
-            cancel_btn.setCursor(Qt.PointingHandCursor)
+            cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             cancel_btn.clicked.connect(self.reject)
             button_layout.addWidget(cancel_btn)
 
             ok_btn = QPushButton(t("ok"))
             ok_btn.setProperty("role", "primary")
-            ok_btn.setCursor(Qt.PointingHandCursor)
+            ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             ok_btn.clicked.connect(self.accept)
             button_layout.addWidget(ok_btn)
         else:
             close_btn = QPushButton(t("ok"))
             close_btn.setProperty("role", "primary")
-            close_btn.setCursor(Qt.PointingHandCursor)
+            close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             close_btn.clicked.connect(self.reject)
             button_layout.addWidget(close_btn)
         layout.addLayout(button_layout)

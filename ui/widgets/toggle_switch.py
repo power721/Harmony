@@ -39,7 +39,7 @@ class ToggleSwitch(QWidget):
         shadow.setOffset(0, 2)
         self.setGraphicsEffect(shadow)
 
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     # ========= Property =========
     def get_circle_pos(self):

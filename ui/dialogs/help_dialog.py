@@ -193,7 +193,7 @@ class HelpDialog(QDialog):
         close_btn.setProperty("role", "primary")
         close_btn.clicked.connect(self.accept)
         close_btn.setFixedWidth(100)
-        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_layout = QHBoxLayout()
         close_layout.addStretch()
         close_layout.addWidget(close_btn)

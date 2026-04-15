@@ -128,7 +128,7 @@ class OrganizeFilesDialog(QDialog):
         dir_layout.addWidget(self.dir_edit, 1)
 
         self.browse_btn = QPushButton(t("browse"))
-        self.browse_btn.setCursor(Qt.PointingHandCursor)
+        self.browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.browse_btn.clicked.connect(self._select_directory)
         dir_layout.addWidget(self.browse_btn)
 
@@ -182,14 +182,14 @@ class OrganizeFilesDialog(QDialog):
 
         self.organize_btn = QPushButton(t("organize"))
         self.organize_btn.setProperty("role", "primary")
-        self.organize_btn.setCursor(Qt.PointingHandCursor)
+        self.organize_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.organize_btn.setEnabled(False)
         self.organize_btn.clicked.connect(self._organize_files)
         button_layout.addWidget(self.organize_btn)
 
         close_btn = QPushButton(t("cancel"))
         close_btn.setProperty("role", "cancel")
-        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.clicked.connect(self.reject)
         button_layout.addWidget(close_btn)
 

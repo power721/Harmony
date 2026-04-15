@@ -341,7 +341,7 @@ class LyricsWidget(QWidget):
 
             if rect.contains(e.pos()):
                 self.hover_index = i
-                self.setCursor(Qt.PointingHandCursor)
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
 
                 self.update()
                 return

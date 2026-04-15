@@ -231,7 +231,7 @@ class MiniPlayer(QWidget):
         # Close button
         self._close_btn = QPushButton()
         self._close_btn.setFixedSize(26, 26)
-        self._close_btn.setCursor(Qt.PointingHandCursor)
+        self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._close_btn.setIcon(get_icon(IconName.TIMES, None))
         top_layout.addWidget(self._close_btn)
 
@@ -246,7 +246,7 @@ class MiniPlayer(QWidget):
         self._progress_slider = ClickableSlider(Qt.Horizontal)
         self._progress_slider.setRange(0, 1000)
         self._progress_slider.setValue(0)
-        self._progress_slider.setCursor(Qt.PointingHandCursor)
+        self._progress_slider.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self._progress_slider)
 
         # Bottom row - controls and time
@@ -300,7 +300,7 @@ class MiniPlayer(QWidget):
         """Create a control button with SVG icon."""
         btn = QPushButton()
         btn.setFixedSize(size, size)
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setIcon(get_icon(icon_name, color, 16))
         btn.setIconSize(QSize(16, 16))
         return btn

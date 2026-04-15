@@ -95,7 +95,7 @@ class LyricsPanel(QWidget):
         self._download_btn = QPushButton(t("download"))
         self._download_btn.setObjectName("downloadLyricsBtn")
         self._download_btn.setFixedHeight(28)
-        self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self._download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._download_btn.clicked.connect(self.download_requested)
         title_layout.addWidget(self._download_btn)
 

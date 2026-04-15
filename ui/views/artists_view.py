@@ -534,7 +534,7 @@ class ArtistsView(QWidget):
 
     def _on_item_entered(self, index):
         """Handle item entered for hover effect."""
-        self._list_view.viewport().setCursor(Qt.PointingHandCursor)
+        self._list_view.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
 
     def _show_context_menu(self, pos):
         """Show context menu for artist."""

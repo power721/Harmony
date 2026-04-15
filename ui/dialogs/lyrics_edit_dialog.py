@@ -134,13 +134,13 @@ class LyricsEditDialog(QDialog):
 
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
-        cancel_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
 
         save_btn = QPushButton(t("save"))
         save_btn.setProperty("role", "primary")
-        save_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        save_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         save_btn.clicked.connect(self._save_lyrics)
         btn_layout.addWidget(save_btn)
 

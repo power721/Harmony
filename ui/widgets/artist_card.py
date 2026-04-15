@@ -77,7 +77,7 @@ class ArtistCard(HoverEffectMixin, QWidget):
         from system.theme import ThemeManager
 
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 

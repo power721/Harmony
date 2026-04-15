@@ -275,7 +275,7 @@ class PlayerControls(QWidget):
         self._cover_label.setObjectName("coverArt")
         # Enable mouse tracking and click events
         self._cover_label.setMouseTracking(True)
-        self._cover_label.setCursor(QCursor(Qt.PointingHandCursor))
+        self._cover_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._cover_label.clicked.connect(self._on_cover_clicked)
         layout.addWidget(self._cover_label)
 
@@ -297,7 +297,7 @@ class PlayerControls(QWidget):
 
         self._album_label = ClickableLabel()
         self._album_label.setObjectName("trackAlbum")
-        self._album_label.setCursor(QCursor(Qt.PointingHandCursor))
+        self._album_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._album_label.clicked.connect(self._on_album_label_clicked)
 
         info_layout.addWidget(self._title_label)
@@ -314,7 +314,7 @@ class PlayerControls(QWidget):
         self._favorite_btn.setIconSize(QSize(24, 24))
         self._favorite_btn.setObjectName("favoriteBtn")
         self._favorite_btn.setFixedSize(40, 40)
-        self._favorite_btn.setCursor(Qt.PointingHandCursor)
+        self._favorite_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._favorite_btn.setToolTip(t("favorite"))
         layout.addWidget(self._favorite_btn)
 
@@ -339,7 +339,7 @@ class PlayerControls(QWidget):
         self._progress_slider.setObjectName("progressSlider")
         self._progress_slider.setRange(0, 1000)
         self._progress_slider.setValue(0)
-        self._progress_slider.setCursor(Qt.PointingHandCursor)
+        self._progress_slider.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._total_time_label = QLabel("0:00")
         self._total_time_label.setObjectName("timeLabel")
@@ -353,7 +353,7 @@ class PlayerControls(QWidget):
         self._queue_progress_btn.setIcon(get_icon(IconName.LIST, None))
         self._queue_progress_btn.setIconSize(QSize(18, 18))
         self._queue_progress_btn.setFixedSize(30, 30)
-        self._queue_progress_btn.setCursor(Qt.PointingHandCursor)
+        self._queue_progress_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._queue_progress_btn.setToolTip(t("queue"))
         self._queue_progress_btn.setVisible(False)
         progress_layout.addWidget(self._queue_progress_btn)
@@ -416,7 +416,7 @@ class PlayerControls(QWidget):
         self._sleep_timer_btn.setIconSize(QSize(20, 20))
         self._sleep_timer_btn.setObjectName("controlBtn")
         self._sleep_timer_btn.setFixedSize(35, 35)
-        self._sleep_timer_btn.setCursor(Qt.PointingHandCursor)
+        self._sleep_timer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._sleep_timer_btn.setToolTip(t("sleep_timer"))
         self._sleep_timer_btn.clicked.connect(self._show_sleep_timer)
         sleep_timer.addWidget(self._sleep_timer_btn)
@@ -443,7 +443,7 @@ class PlayerControls(QWidget):
         self._volume_btn.setIconSize(QSize(20, 20))
         self._volume_btn.setObjectName("volumeBtn")
         self._volume_btn.setFixedSize(35, 35)
-        self._volume_btn.setCursor(Qt.PointingHandCursor)
+        self._volume_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._volume_btn.setToolTip(t("volume"))
         layout.addWidget(self._volume_btn)
 
@@ -452,7 +452,7 @@ class PlayerControls(QWidget):
         self._volume_slider.setRange(0, 100)
         self._volume_slider.setValue(70)
         self._volume_slider.setFixedWidth(100)
-        self._volume_slider.setCursor(Qt.PointingHandCursor)
+        self._volume_slider.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self._volume_slider)
 
         # Equalizer button
@@ -461,7 +461,7 @@ class PlayerControls(QWidget):
         self._eq_btn.setIcon(get_icon(IconName.EQUALIZER, None))
         self._eq_btn.setIconSize(QSize(20, 20))
         self._eq_btn.setFixedSize(35, 35)
-        self._eq_btn.setCursor(Qt.PointingHandCursor)
+        self._eq_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._eq_btn.setToolTip(t("equalizer"))
         layout.addWidget(self._eq_btn)
 
@@ -470,7 +470,7 @@ class PlayerControls(QWidget):
         self._queue_btn.setIcon(get_icon(IconName.LIST, None))
         self._queue_btn.setIconSize(QSize(28, 28))
         self._queue_btn.setFixedSize(35, 35)
-        self._queue_btn.setCursor(Qt.PointingHandCursor)
+        self._queue_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._queue_btn.setToolTip(t("queue"))
         self._queue_btn.setVisible(False)
         layout.addWidget(self._queue_btn)
@@ -481,7 +481,7 @@ class PlayerControls(QWidget):
         """Create a control button with SVG icon."""
         btn = QPushButton()
         btn.setObjectName("controlBtn")
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setIcon(get_icon(icon_name, color, size))
         btn.setIconSize(QSize(size, size))
 
@@ -1599,7 +1599,7 @@ class MultiArtistWidget(QWidget):
 
             label = ClickableLabel(artist_name)
             label.setStyleSheet(tm.get_qss(self._STYLE_ARTIST))
-            label.setCursor(QCursor(Qt.PointingHandCursor))
+            label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             label.clicked.connect(lambda name=artist_name: self.artist_clicked.emit(name))
             self._layout.addWidget(label)
 

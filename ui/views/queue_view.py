@@ -925,21 +925,21 @@ class QueueView(QWidget):
         # Create playlist button
         self._create_playlist_btn = QPushButton(t("create_playlist"))
         self._create_playlist_btn.setObjectName("queueActionBtn")
-        self._create_playlist_btn.setCursor(Qt.PointingHandCursor)
+        self._create_playlist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._create_playlist_btn.clicked.connect(self._create_playlist_from_queue)
         header_layout.addWidget(self._create_playlist_btn)
 
         # Smart deduplicate button
         self._dedup_btn = QPushButton(t("smart_deduplicate"))
         self._dedup_btn.setObjectName("queueActionBtn")
-        self._dedup_btn.setCursor(Qt.PointingHandCursor)
+        self._dedup_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._dedup_btn.clicked.connect(self._deduplicate_queue)
         header_layout.addWidget(self._dedup_btn)
 
         # Clear button
         self._clear_btn = QPushButton(t("clear_queue"))
         self._clear_btn.setObjectName("queueActionBtn")
-        self._clear_btn.setCursor(Qt.PointingHandCursor)
+        self._clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._clear_btn.clicked.connect(self._clear_queue)
         header_layout.addWidget(self._clear_btn)
 
@@ -960,7 +960,7 @@ class QueueView(QWidget):
         self._list_view = QListView(list_container)
         self._list_view.setObjectName("queueList")
         self._list_view.setMouseTracking(True)
-        self._list_view.viewport().setCursor(Qt.PointingHandCursor)
+        self._list_view.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         self._list_view.viewport().installEventFilter(self)
         self._model = QueueTrackModel(self)
         self._delegate = QueueItemDelegate(self)

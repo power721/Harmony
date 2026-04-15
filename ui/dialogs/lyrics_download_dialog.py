@@ -205,13 +205,13 @@ class LyricsDownloadDialog(QDialog):
 
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
-        cancel_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         cancel_btn.clicked.connect(self._on_cancel_clicked)
 
         self._download_btn = QPushButton(t("download"))
         self._download_btn.setProperty("role", "primary")
         self._download_btn.setEnabled(False)  # Disabled until search completes and selection made
-        self._download_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self._download_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._download_btn.clicked.connect(self.accept)
 
         button_layout.addWidget(cancel_btn)

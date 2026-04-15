@@ -143,7 +143,7 @@ class Sidebar(QWidget):
         for page_index, icon_name, text in nav_items:
             btn = IconButton(icon_name, text, size=18)
             btn.setCheckable(True)
-            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))
             layout.addWidget(btn)
             self._nav_buttons.append((page_index, btn))
@@ -159,7 +159,7 @@ class Sidebar(QWidget):
         lang_text = "EN" if get_language() == "en" else "中文"
         self._language_btn = IconButton(IconName.GLOBE, lang_text, size=16)
         self._language_btn.setObjectName("languageBtn")
-        self._language_btn.setCursor(Qt.PointingHandCursor)
+        self._language_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._language_btn.setFixedHeight(32)
         self._language_btn.clicked.connect(self.language_toggled)
         layout.addWidget(self._language_btn)
@@ -168,7 +168,7 @@ class Sidebar(QWidget):
         settings_status = "✅" if self._config and self._config.get_ai_enabled() else "⚙️"
         self._settings_btn = QPushButton(f"⚙️ {t('settings')} {settings_status}")
         self._settings_btn.setObjectName("settingsBtn")
-        self._settings_btn.setCursor(Qt.PointingHandCursor)
+        self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._settings_btn.setFixedHeight(32)
         self._settings_btn.clicked.connect(self.settings_requested)
         layout.addWidget(self._settings_btn)
@@ -176,7 +176,7 @@ class Sidebar(QWidget):
         # Add music button
         self._add_music_btn = QPushButton(t("add_music"))
         self._add_music_btn.setObjectName("addMusicBtn")
-        self._add_music_btn.setCursor(Qt.PointingHandCursor)
+        self._add_music_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_music_btn.clicked.connect(self.add_music_requested)
         layout.addWidget(self._add_music_btn)
 
@@ -217,7 +217,7 @@ class Sidebar(QWidget):
             resolved_icon = getattr(IconName, icon_name, IconName.GLOBE) if icon_name else IconName.GLOBE
             btn = IconButton(resolved_icon, title, size=18)
         btn.setCheckable(True)
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setProperty("plugin_title_provider", title_provider)
         btn.setProperty("plugin_icon_path", icon_path)
         btn.clicked.connect(lambda checked, idx=page_index: self._on_nav_clicked(idx))

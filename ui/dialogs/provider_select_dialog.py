@@ -66,7 +66,7 @@ class ProviderSelectDialog(QDialog):
         self._quark_btn = QPushButton(t("quark_drive"))
         self._quark_btn.setProperty("role", "primary")
         self._quark_btn.setMinimumHeight(56)
-        self._quark_btn.setCursor(Qt.PointingHandCursor)
+        self._quark_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._quark_btn.clicked.connect(lambda: self._select_provider("quark"))
         provider_layout.addWidget(self._quark_btn)
 
@@ -74,7 +74,7 @@ class ProviderSelectDialog(QDialog):
         self._baidu_btn = QPushButton(t("baidu_drive"))
         self._baidu_btn.setProperty("role", "primary")
         self._baidu_btn.setMinimumHeight(56)
-        self._baidu_btn.setCursor(Qt.PointingHandCursor)
+        self._baidu_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._baidu_btn.clicked.connect(lambda: self._select_provider("baidu"))
         provider_layout.addWidget(self._baidu_btn)
 
@@ -86,7 +86,7 @@ class ProviderSelectDialog(QDialog):
 
         cancel_btn = QPushButton(t("cancel"))
         cancel_btn.setProperty("role", "cancel")
-        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         cancel_layout.addWidget(cancel_btn)
         cancel_layout.addStretch()

@@ -289,7 +289,7 @@ class ArtistView(QWidget):
 
         # Update detail tabs
         if hasattr(self, '_tab_widget'):
-            self._tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
+            self._tab_widget.tabBar().setCursor(Qt.CursorShape.PointingHandCursor)
             self._tab_widget.setStyleSheet(f"""
                 QTabWidget::pane {{
                     border: none;
@@ -387,7 +387,7 @@ class ArtistView(QWidget):
 
         self._play_btn = QPushButton(t("play_all"))
         self._play_btn.setFixedSize(130, 36)
-        self._play_btn.setCursor(Qt.PointingHandCursor)
+        self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._play_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.highlight};
@@ -406,7 +406,7 @@ class ArtistView(QWidget):
 
         self._shuffle_btn = QPushButton(t("shuffle"))
         self._shuffle_btn.setFixedSize(100, 36)
-        self._shuffle_btn.setCursor(Qt.PointingHandCursor)
+        self._shuffle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._shuffle_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -425,7 +425,7 @@ class ArtistView(QWidget):
 
         self._back_btn = QPushButton(t("back"))
         self._back_btn.setFixedSize(80, 36)
-        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._back_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -507,7 +507,7 @@ class ArtistView(QWidget):
 
         tab_widget = QTabWidget()
         tab_widget.setDocumentMode(True)
-        tab_widget.tabBar().setCursor(Qt.PointingHandCursor)
+        tab_widget.tabBar().setCursor(Qt.CursorShape.PointingHandCursor)
         tab_widget.setStyleSheet(f"""
             QTabWidget::pane {{
                 border: none;
@@ -847,7 +847,7 @@ class ClickableLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
-        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press event."""

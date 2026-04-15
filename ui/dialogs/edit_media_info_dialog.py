@@ -226,10 +226,10 @@ class EditMediaInfoDialog(QDialog):
         self._ok_button = QPushButton(t("save"))
         self._ok_button.setObjectName("saveBtn")
         self._ok_button.setProperty("role", "primary")
-        self._ok_button.setCursor(Qt.PointingHandCursor)
+        self._ok_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._ok_button.setEnabled(self._can_save)
         cancel_button = QPushButton(t("cancel"))
-        cancel_button.setCursor(Qt.PointingHandCursor)
+        cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_button.setProperty("role", "cancel")
 
         buttons.addButton(self._ok_button, QDialogButtonBox.AcceptRole)

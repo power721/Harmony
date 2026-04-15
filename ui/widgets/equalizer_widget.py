@@ -595,7 +595,7 @@ class EqualizerDialog:
         close_btn = QPushButton()
         close_btn.setObjectName("dialogCloseBtn")
         close_btn.setFixedSize(28, 28)
-        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setIcon(get_icon(IconName.TIMES, None, 14))
         close_btn.setIconSize(QSize(14, 14))
         close_btn.clicked.connect(dialog.close)

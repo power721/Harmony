@@ -237,7 +237,7 @@ class AlbumView(QWidget):
 
         self._play_btn = QPushButton(t("play_all"))
         self._play_btn.setFixedSize(130, 36)
-        self._play_btn.setCursor(Qt.PointingHandCursor)
+        self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._play_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.highlight};
@@ -256,7 +256,7 @@ class AlbumView(QWidget):
 
         self._shuffle_btn = QPushButton(t("shuffle"))
         self._shuffle_btn.setFixedSize(100, 36)
-        self._shuffle_btn.setCursor(Qt.PointingHandCursor)
+        self._shuffle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._shuffle_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -275,7 +275,7 @@ class AlbumView(QWidget):
 
         self._back_btn = QPushButton(t("back"))
         self._back_btn.setFixedSize(80, 36)
-        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._back_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
@@ -782,7 +782,7 @@ class ClickableLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
-        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press event."""

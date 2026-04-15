@@ -166,7 +166,7 @@ class SleepTimerDialog(QDialog):
         for minutes, label in presets:
             btn = QPushButton(label)
             btn.setObjectName("presetBtn")
-            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedWidth(80)  # 与输入框相同宽度
             btn.clicked.connect(lambda checked, m=minutes: self._set_preset_time(m))
             preset_row.addWidget(btn)
@@ -243,13 +243,13 @@ class SleepTimerDialog(QDialog):
 
         self._start_btn = QPushButton(t("start"))
         self._start_btn.setProperty("role", "primary")
-        self._start_btn.setCursor(Qt.PointingHandCursor)
+        self._start_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cancel_btn = QPushButton(t("cancel_timer"))
         self._cancel_btn.setProperty("role", "cancel")
-        self._cancel_btn.setCursor(Qt.PointingHandCursor)
+        self._cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._close_btn = QPushButton(t("close"))
         self._close_btn.setProperty("role", "cancel")
-        self._close_btn.setCursor(Qt.PointingHandCursor)
+        self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._cancel_btn.setVisible(False)
         layout.addStretch()

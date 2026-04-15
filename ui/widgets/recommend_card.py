@@ -104,7 +104,7 @@ class RecommendCard(QWidget):
         from system.theme import ThemeManager
 
         self.setFixedSize(self.CARD_WIDTH, self.CARD_HEIGHT)
-        self.setCursor(Qt.ArrowCursor if self._is_placeholder else Qt.PointingHandCursor)
+        self.setCursor(Qt.ArrowCursor if self._is_placeholder else Qt.CursorShape.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
