@@ -2,6 +2,7 @@
 Player controls widget for playback control.
 """
 import logging
+from typing import Callable
 
 from PySide6.QtCore import Qt, Signal, QTimer, QSize, QRunnable, QThreadPool
 from PySide6.QtGui import QPixmap, QCursor, QMouseEvent, QScreen
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStyleOptionSlider,
     QStyle,
+    QToolTip,
 )
 
 from domain.playback import PlaybackState, PlayMode
@@ -340,6 +342,7 @@ class PlayerControls(QWidget):
         self._progress_slider.setRange(0, 1000)
         self._progress_slider.setValue(0)
         self._progress_slider.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._progress_slider.set_hover_tooltip_formatter(self._format_progress_hover_tooltip)
 
         self._total_time_label = QLabel("0:00")
         self._total_time_label.setObjectName("timeLabel")
@@ -453,6 +456,7 @@ class PlayerControls(QWidget):
         self._volume_slider.setValue(70)
         self._volume_slider.setFixedWidth(100)
         self._volume_slider.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._volume_slider.set_hover_tooltip_formatter(self._format_volume_hover_tooltip)
         layout.addWidget(self._volume_slider)
 
         # Equalizer button
@@ -808,6 +812,18 @@ class PlayerControls(QWidget):
             # Calculate position in milliseconds
             position_ms = int((value / 1000) * duration_s * 1000)
             self._player.engine.seek(position_ms)
+
+    def _format_progress_hover_tooltip(self, value: int) -> str:
+        """Format progress hover tooltip text from the hovered slider value."""
+        duration_s = self._get_effective_duration_s()
+        if duration_s <= 0:
+            return ""
+        position_s = (value / 1000) * duration_s
+        return format_time(position_s)
+
+    def _format_volume_hover_tooltip(self, value: int) -> str:
+        """Format volume hover tooltip text."""
+        return f"{value}%"
 
     def _get_effective_duration_s(self) -> float:
         """
@@ -1481,6 +1497,10 @@ class ClickableSlider(QSlider):
 
     clicked_value = Signal(int)  # Emits the value at click position
 
+    def __init__(self, orientation: Qt.Orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._hover_tooltip_formatter: Callable[[int], str] | None = None
+
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press - jump to click position."""
         if event.button() == Qt.LeftButton:
@@ -1507,6 +1527,21 @@ class ClickableSlider(QSlider):
 
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Update hover tooltip while the cursor moves over the slider."""
+        self._show_hover_tooltip(event)
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        """Hide hover tooltip when the cursor leaves the slider."""
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def set_hover_tooltip_formatter(self, formatter: Callable[[int], str] | None) -> None:
+        """Set the formatter used to render hover tooltip text."""
+        self._hover_tooltip_formatter = formatter
+        self.setMouseTracking(formatter is not None)
+
     def _pixel_pos_to_value(self, pos: int) -> int:
         """Convert pixel position to slider value."""
         groove_rect = self.rect()
@@ -1525,6 +1560,17 @@ class ClickableSlider(QSlider):
         value_range = self.maximum() - self.minimum()
         value = self.minimum() + int((adjusted_pos / available_width) * value_range)
         return value
+
+    def _show_hover_tooltip(self, event: QMouseEvent) -> None:
+        """Render hover tooltip text for the current cursor position."""
+        if self._hover_tooltip_formatter is None:
+            return
+        value = self._pixel_pos_to_value(int(event.position().x()))
+        text = self._hover_tooltip_formatter(value)
+        if text:
+            QToolTip.showText(event.globalPosition().toPoint(), text, self)
+        else:
+            QToolTip.hideText()
 
 
 class ClickableLabel(QLabel):

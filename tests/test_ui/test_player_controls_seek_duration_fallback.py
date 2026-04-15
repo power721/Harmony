@@ -73,3 +73,24 @@ def test_seek_end_uses_track_duration_when_engine_duration_is_zero():
     controls._on_seek_end()
 
     assert seek_calls == [90_000]
+
+
+def test_progress_hover_tooltip_formats_target_time_from_effective_duration():
+    """Progress hover tooltip should preview the target playback time."""
+    controls, _ = _make_controls(slider_value=500, duration_ms=200_000)
+
+    assert controls._format_progress_hover_tooltip(250) == "0:50"
+
+
+def test_progress_hover_tooltip_hides_when_duration_is_unknown():
+    """Progress hover tooltip should stay hidden until duration is known."""
+    controls, _ = _make_controls(slider_value=500, duration_ms=0)
+
+    assert controls._format_progress_hover_tooltip(250) == ""
+
+
+def test_volume_hover_tooltip_formats_percentage():
+    """Volume hover tooltip should display percentage text."""
+    controls = PlayerControls.__new__(PlayerControls)
+
+    assert controls._format_volume_hover_tooltip(35) == "35%"
