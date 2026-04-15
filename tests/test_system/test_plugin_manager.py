@@ -1,8 +1,9 @@
 import json
+import sys
 import threading
 import time
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 import zipfile
 
@@ -1061,6 +1062,84 @@ def test_manager_loads_real_builtin_plugins_from_repository(tmp_path: Path):
     loaded_ids = set(manager._loaded_plugins)
     assert "lrclib" in loaded_ids
     assert "qqmusic" in loaded_ids
+
+
+def test_real_builtin_qqmusic_plugin_loads_without_des3_available(
+    tmp_path: Path,
+    monkeypatch,
+):
+    crypto_package = ModuleType("Crypto")
+    crypto_package.__path__ = []
+    cipher_module = ModuleType("Crypto.Cipher")
+    monkeypatch.setitem(sys.modules, "Crypto", crypto_package)
+    monkeypatch.setitem(sys.modules, "Crypto.Cipher", cipher_module)
+
+    class _UiBridge:
+        def __init__(self):
+            self.sidebar_entries = []
+            self.settings_tabs = []
+
+        def register_sidebar_entry(self, spec):
+            self.sidebar_entries.append(spec)
+
+        def register_settings_tab(self, spec):
+            self.settings_tabs.append(spec)
+
+    class _ServiceBridge:
+        def __init__(self):
+            self.lyrics_sources = []
+            self.cover_sources = []
+            self.artist_cover_sources = []
+            self.online_providers = []
+            self.media = object()
+
+        def register_lyrics_source(self, source):
+            self.lyrics_sources.append(source)
+
+        def register_cover_source(self, source):
+            self.cover_sources.append(source)
+
+        def register_artist_cover_source(self, source):
+            self.artist_cover_sources.append(source)
+
+        def register_online_music_provider(self, provider):
+            self.online_providers.append(provider)
+
+    class _BuiltinContextFactory:
+        def __init__(self):
+            self.ui = _UiBridge()
+            self.services = _ServiceBridge()
+
+        def build(self, manifest):
+            return SimpleNamespace(
+                plugin_id=manifest.id,
+                manifest=manifest,
+                logger=object(),
+                http=SimpleNamespace(get=lambda *_args, **_kwargs: None),
+                events=object(),
+                settings=SimpleNamespace(
+                    get=lambda *_args, **_kwargs: None,
+                    set=lambda *_args, **_kwargs: None,
+                ),
+                storage=SimpleNamespace(),
+                ui=self.ui,
+                services=self.services,
+            )
+
+    root = Path(__file__).resolve().parents[2]
+    store = PluginStateStore(tmp_path / "state.json")
+    context_factory = _BuiltinContextFactory()
+    manager = PluginManager(
+        builtin_root=root / "plugins" / "builtin",
+        external_root=tmp_path / "external",
+        state_store=store,
+        context_factory=context_factory,
+    )
+
+    manager.load_enabled_plugins()
+
+    assert "qqmusic" in manager._loaded_plugins
+    assert store.get("qqmusic")["load_error"] is None
 
 
 def test_external_plugin_overrides_builtin_with_same_id(tmp_path: Path):

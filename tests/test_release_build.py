@@ -207,3 +207,38 @@ def test_collect_data_files_includes_builtin_plugins(tmp_path, monkeypatch):
     data_files = build.collect_data_files()
 
     assert (str(repo_root / "plugins" / "builtin"), "plugins/builtin") in data_files
+
+
+def test_build_executable_collects_crypto_for_builtin_plugins(monkeypatch, tmp_path):
+    """Generic PyInstaller builds must bundle Crypto for data-only builtin plugins."""
+    captured = {}
+
+    monkeypatch.setattr(build, "check_pyinstaller", lambda: True)
+    monkeypatch.setattr(build, "get_platform_info", lambda _platform: {"system": "Linux", "extension": "", "onefile_options": [], "onedir_options": []})
+    monkeypatch.setattr(build, "find_icon", lambda _platform: None)
+    monkeypatch.setattr(build, "collect_data_files", lambda: [])
+    monkeypatch.setattr(build, "create_audio_backend_bundle_file", lambda _bundle: tmp_path / "audio_backend.txt")
+    monkeypatch.setattr(build, "collect_hidden_imports", lambda _bundle: [])
+    monkeypatch.setattr(build, "collect_ssl_certificates", lambda: [])
+    monkeypatch.setattr(build, "find_openssl_libs", lambda: [])
+    monkeypatch.setattr(build, "find_qt_plugins", lambda _bundle: [])
+    monkeypatch.setattr(build, "find_ffmpeg_libs", lambda: [])
+    monkeypatch.setattr(build, "find_libmpv", lambda _bundle: [])
+    monkeypatch.setattr(build, "find_gstreamer_plugins", lambda: ([], []))
+    monkeypatch.setattr(build, "create_version_file", lambda: None)
+    monkeypatch.setattr(build, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(build, "BUILD_DIR", tmp_path / "build")
+    monkeypatch.setattr(build, "DIST_DIR", tmp_path / "dist")
+
+    def _capture_run(cmd, cwd=None, check=None):
+        captured["cmd"] = cmd
+        return None
+
+    monkeypatch.setattr(build.subprocess, "run", _capture_run)
+
+    assert build.build_executable(platform_name="linux", one_file=False, clean=False)
+
+    cmd = captured["cmd"]
+    assert "--collect-all" in cmd
+    collect_all_index = cmd.index("--collect-all")
+    assert cmd[collect_all_index + 1] == "Crypto"

@@ -5,13 +5,7 @@ Ported from https://github.com/ygkth/qq-music-api
 
 import hashlib
 import base64
-import zlib
 import json
-import logging
-
-from Crypto.Cipher import DES3
-
-logger = logging.getLogger(__name__)
 
 
 def generate_sign(request_data: dict) -> str:
@@ -55,7 +49,7 @@ def generate_sign(request_data: dict) -> str:
 
 def qrc_decrypt(encrypted_qrc_hex: str) -> str:
     """
-    Decrypt QRC (encrypted lyrics) using TripleDES and zlib decompression.
+    Decrypt QRC (encrypted lyrics) using the bundled TripleDES implementation.
 
     Args:
         encrypted_qrc_hex: Encrypted QRC data as hex string
@@ -63,37 +57,9 @@ def qrc_decrypt(encrypted_qrc_hex: str) -> str:
     Returns:
         Decrypted and decompressed lyrics string
     """
-    if not encrypted_qrc_hex:
-        return ""
+    from .tripledes import qrc_decrypt as _qrc_decrypt
 
-    try:
-        # Convert hex to bytes
-        encrypted_qrc = bytes.fromhex(encrypted_qrc_hex)
-
-        # TripleDES key
-        key = b"!@#)(*$%123ZXC!@!@#)(NHL"
-
-        # Create cipher
-        cipher = DES3.new(key, DES3.MODE_ECB)
-
-        # Decrypt in 8-byte blocks
-        decrypted = bytearray()
-        for i in range(0, len(encrypted_qrc), 8):
-            chunk = encrypted_qrc[i:i+8]
-            if len(chunk) < 8:
-                break
-            decrypted.extend(cipher.decrypt(chunk))
-
-        # Decompress using zlib
-        try:
-            return zlib.decompress(bytes(decrypted)).decode('utf-8')
-        except zlib.error:
-            # Try raw deflate
-            return zlib.decompress(bytes(decrypted), -15).decode('utf-8')
-
-    except Exception as e:
-        logger.error(f"QRC decryption failed: {e}")
-        return ""
+    return _qrc_decrypt(encrypted_qrc_hex)
 
 
 def calc_md5(*inputs) -> str:

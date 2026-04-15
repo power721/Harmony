@@ -910,6 +910,8 @@ def build_executable(
         "--name",
         APP_NAME,
         "--noconfirm",
+        "--collect-all",
+        "Crypto",
     ]
 
     # Single file or directory mode
