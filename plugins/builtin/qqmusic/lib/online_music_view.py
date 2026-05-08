@@ -851,6 +851,7 @@ class OnlineMusicView(QWidget):
 
         # Event bus
         self._event_bus = event_bus()
+        self._auth_bus_connected = False
 
         # Setup completion timer
         self._completion_timer = QTimer()
@@ -864,6 +865,7 @@ class OnlineMusicView(QWidget):
         # Register with theme system
         register_themed_widget(self)
         self._connect_language_events()
+        self._connect_auth_events()
         self._sync_language_from_context()
         self.refresh_theme()
 
@@ -946,6 +948,7 @@ class OnlineMusicView(QWidget):
     def closeEvent(self, event):
         """Handle close event and unregister global event filter."""
         self._unregister_focus_clear_filter()
+        self._disconnect_auth_events()
         super().closeEvent(event)
 
     def _register_focus_clear_filter(self):
@@ -1036,6 +1039,27 @@ class OnlineMusicView(QWidget):
         signal.connect(self._on_language_changed)
         self._language_connected = True
 
+    def _connect_auth_events(self) -> None:
+        if self._auth_bus_connected or self._event_bus is None:
+            return
+        signal = getattr(self._event_bus, "qqmusic_auth_changed", None)
+        if signal is None:
+            return
+        signal.connect(self._on_auth_changed)
+        self._auth_bus_connected = True
+
+    def _disconnect_auth_events(self) -> None:
+        if not self._auth_bus_connected or self._event_bus is None:
+            return
+        signal = getattr(self._event_bus, "qqmusic_auth_changed", None)
+        if signal is None:
+            return
+        try:
+            signal.disconnect(self._on_auth_changed)
+        except (RuntimeError, TypeError):
+            pass
+        self._auth_bus_connected = False
+
     def _sync_language_from_context(self) -> None:
         if self._plugin_context is None:
             return
@@ -1050,6 +1074,25 @@ class OnlineMusicView(QWidget):
             set_language(language)
         self._language_connected = True
         self.refresh_ui()
+
+    def _on_auth_changed(self, provider_id: str, credential: object, nick: str) -> None:
+        if provider_id != "qqmusic":
+            return
+
+        self._handle_auth_state_change(
+            credential if isinstance(credential, dict) else None,
+            str(nick or ""),
+        )
+
+    def _emit_auth_changed(self, credential: dict | None, nick: str = "") -> None:
+        """Emit QQ Music auth changes when an event bus is available."""
+        bus = getattr(self, "_event_bus", None)
+        if bus is None:
+            try:
+                bus = event_bus()
+            except RuntimeError:
+                return
+        bus.emit_qqmusic_auth_change("qqmusic", credential, str(nick or ""))
 
     def _create_search_bar(self) -> QWidget:
         """Create search bar."""
@@ -1382,6 +1425,48 @@ class OnlineMusicView(QWidget):
                 logger.error(f"Failed to refresh QQ Music service: {e}")
         return None
 
+    def _clear_qqmusic_service(self) -> None:
+        """Clear QQ Music service references after logout or auth loss."""
+        self._qqmusic_service = None
+        self._service._provider = None
+        self._download_service._provider = None
+        if hasattr(self, '_detail_view') and self._detail_view:
+            self._detail_view._service._provider = None
+            self._detail_view._download_service._provider = None
+
+    def _reset_recommendations_state(self) -> None:
+        """Reset recommendation cache so the next login can reload it."""
+        self._recommendations_loaded = False
+        self._recommendations = {}
+        self._recommend_workers = []
+        if hasattr(self, "_recommend_section"):
+            self._recommend_section.hide()
+
+    def _reset_favorites_state(self) -> None:
+        """Reset QQ favorites cache and hide stale summary content."""
+        self._fav_loaded = False
+        self._fav_data = {}
+        self._fav_workers = []
+        if hasattr(self, "_favorites_section"):
+            self._favorites_section.hide()
+
+    def _handle_auth_state_change(self, credential: dict | None, nick: str = "") -> None:
+        """Synchronize view state after QQ Music auth changes outside this widget."""
+        if credential:
+            self._refresh_qqmusic_service(credential)
+            if nick and self._config and hasattr(self._config, "set_plugin_setting"):
+                self._config.set_plugin_setting("qqmusic", "nick", nick)
+            self._reset_recommendations_state()
+            self._reset_favorites_state()
+            self._update_login_status()
+            self._load_favorites()
+            return
+
+        self._clear_qqmusic_service()
+        self._reset_recommendations_state()
+        self._reset_favorites_state()
+        self._update_login_status()
+
     def _format_login_status_text(self, nick: str) -> str:
         """Format QQ Music login status text, linking only the nickname."""
         if nick:
@@ -1460,6 +1545,7 @@ class OnlineMusicView(QWidget):
                 if hasattr(self._config, "set_plugin_setting"):
                     self._config.set_plugin_setting("qqmusic", "credential", None)
                     self._config.set_plugin_setting("qqmusic", "nick", "")
+            self._emit_auth_changed(None, "")
             self._update_login_status()
             MessageDialog.information(self, t("logout"), t("logout_success"))
         else:

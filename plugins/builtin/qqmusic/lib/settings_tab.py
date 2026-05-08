@@ -20,7 +20,12 @@ from .common import get_quality_label_key, get_selectable_qualities
 from .i18n import get_language, set_language, t
 from .api import QQMusicPluginAPI
 from .login_dialog import QQMusicLoginDialog
-from .runtime_bridge import bind_context, current_theme as sdk_current_theme, register_themed_widget
+from .runtime_bridge import (
+    bind_context,
+    current_theme as sdk_current_theme,
+    event_bus,
+    register_themed_widget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -420,17 +425,23 @@ class QQMusicSettingsTab(QWidget):
 
     def _open_qqmusic_qr_login(self):
         dialog = QQMusicLoginDialog(self._context, self)
-        dialog.credentials_obtained.connect(lambda _credential: self._update_qqmusic_status())
+        dialog.credentials_obtained.connect(self._on_credentials_obtained)
         dialog.exec()
         self._update_qqmusic_status()
 
     def _open_login_dialog(self):
         self._open_qqmusic_qr_login()
 
+    def _on_credentials_obtained(self, credential: dict) -> None:
+        self._update_qqmusic_status()
+        nick = str(self._context.settings.get("nick", "") or "")
+        event_bus().emit_qqmusic_auth_change("qqmusic", credential, nick)
+
     def _qqmusic_logout(self):
         self._context.settings.set("credential", None)
         self._context.settings.set("nick", "")
         self._update_qqmusic_status()
+        event_bus().emit_qqmusic_auth_change("qqmusic", None, "")
 
     def _clear_credentials(self):
         self._qqmusic_logout()

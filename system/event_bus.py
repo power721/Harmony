@@ -89,6 +89,9 @@ class EventBus(QObject):
     # Emitted when UI language changes (lang code)
     language_changed = Signal(str)
 
+    # Emitted when QQ Music auth state changes (provider_id, credential, nick)
+    qqmusic_auth_changed = Signal(str, object, str)
+
     # Emitted when lyrics loading fails (error_message)
     lyrics_error = Signal(str)
 
@@ -198,6 +201,15 @@ class EventBus(QObject):
     def emit_favorite_change(self, item_id, is_favorite: bool, is_cloud: bool = False):
         """Emit a favorite change event."""
         self.favorite_changed.emit(item_id, is_favorite, is_cloud)
+
+    def emit_qqmusic_auth_change(
+        self,
+        provider_id: str,
+        credential,
+        nick: str = "",
+    ) -> None:
+        """Emit a QQ Music auth state change event."""
+        self.qqmusic_auth_changed.emit(provider_id, credential, nick)
 
 
 # Global convenience function

@@ -173,7 +173,7 @@ def test_update_login_status_renders_nick_as_profile_link():
     OnlineMusicView._update_login_status(view)
 
     view._login_status_label.setText.assert_called_once_with(
-        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">A&amp;B&lt;Nick&gt;</a>'
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/" style="color: #ffffff; text-decoration: none;">A&amp;B&lt;Nick&gt;</a>'
     )
 
 
@@ -190,7 +190,7 @@ def test_refresh_login_status_renders_nick_as_profile_link():
     OnlineMusicView._refresh_login_status(view)
 
     view._login_status_label.setText.assert_called_once_with(
-        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/">Tester</a>'
+        'Logged in as <a href="https://y.qq.com/n/ryqq_v2/profile/" style="color: #ffffff; text-decoration: none;">Tester</a>'
     )
 
 
@@ -621,6 +621,75 @@ def test_on_credentials_obtained_refreshes_service_from_emitted_credential(monke
     OnlineMusicView._on_credentials_obtained(view, {"musicid": "9", "musickey": "new-secret"})
 
     assert view._qqmusic_service.credential == {"musicid": "9", "musickey": "new-secret"}
+    view._update_login_status.assert_called_once_with()
+    view._load_favorites.assert_called_once_with()
+
+
+def test_auth_changed_logout_clears_provider_and_invalidates_cached_sections():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._qqmusic_service = Mock()
+    view._service = Mock()
+    view._download_service = Mock()
+    view._detail_view = SimpleNamespace(
+        _service=SimpleNamespace(_provider=Mock()),
+        _download_service=SimpleNamespace(_provider=Mock()),
+    )
+    view._recommend_section = Mock()
+    view._favorites_section = Mock()
+    view._recommendations_loaded = True
+    view._recommendations = {"home_feed": [{"id": "1"}]}
+    view._recommend_workers = [Mock()]
+    view._fav_loaded = True
+    view._fav_data = {"followed_singers": [{"mid": "artist-1"}]}
+    view._fav_workers = [Mock()]
+    view._update_login_status = Mock()
+
+    OnlineMusicView._on_auth_changed(view, "qqmusic", None, "")
+
+    assert view._qqmusic_service is None
+    assert view._service._provider is None
+    assert view._download_service._provider is None
+    assert view._detail_view._service._provider is None
+    assert view._detail_view._download_service._provider is None
+    assert view._recommendations_loaded is False
+    assert view._recommendations == {}
+    assert view._recommend_workers == []
+    assert view._fav_loaded is False
+    assert view._fav_data == {}
+    assert view._fav_workers == []
+    view._recommend_section.hide.assert_called_once_with()
+    view._favorites_section.hide.assert_called_once_with()
+    view._update_login_status.assert_called_once_with()
+
+
+def test_auth_changed_login_refreshes_provider_and_reloads_favorites():
+    view = OnlineMusicView.__new__(OnlineMusicView)
+    view._config = Mock()
+    view._recommend_section = Mock()
+    view._favorites_section = Mock()
+    view._recommendations_loaded = True
+    view._recommendations = {"guess": [{"id": "2"}]}
+    view._recommend_workers = [Mock()]
+    view._fav_loaded = True
+    view._fav_data = {"followed_singers": [{"mid": "artist-old"}]}
+    view._fav_workers = [Mock()]
+    view._update_login_status = Mock()
+    view._load_favorites = Mock()
+    view._refresh_qqmusic_service = Mock(return_value=Mock())
+
+    credential = {"musicid": "9", "musickey": "new-secret"}
+    OnlineMusicView._on_auth_changed(view, "qqmusic", credential, "Tester")
+
+    view._refresh_qqmusic_service.assert_called_once_with(credential)
+    view._config.set_plugin_setting.assert_called_once_with("qqmusic", "nick", "Tester")
+    assert view._recommendations_loaded is False
+    assert view._recommendations == {}
+    assert view._recommend_workers == []
+    assert view._fav_loaded is False
+    assert view._fav_data == {}
+    assert view._fav_workers == []
+    view._recommend_section.hide.assert_called_once_with()
+    view._favorites_section.hide.assert_called_once_with()
     view._update_login_status.assert_called_once_with()
     view._load_favorites.assert_called_once_with()
 

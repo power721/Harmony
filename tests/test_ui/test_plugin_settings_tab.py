@@ -5,7 +5,9 @@ from PySide6.QtWidgets import QLabel, QPushButton, QTabWidget, QTableWidget, QWi
 
 from plugins.builtin.qqmusic.lib.api import QQMusicPluginAPI
 from plugins.builtin.qqmusic.lib.login_dialog import QQMusicLoginDialog
+import plugins.builtin.qqmusic.lib.settings_tab as qqmusic_settings_tab_module
 from plugins.builtin.qqmusic.lib.settings_tab import QQMusicSettingsTab
+from system.event_bus import EventBus
 from system.i18n import set_language, t
 from system.plugins.host_services import PluginSettingsBridgeImpl
 from system.theme import ThemeManager
@@ -728,6 +730,56 @@ def test_qqmusic_settings_tab_wraps_login_controls_in_group(qtbot):
     assert widget._qqmusic_status_label.parentWidget() is widget._login_group
     assert widget._qqmusic_qr_btn.parentWidget() is widget._login_group
     assert widget._qqmusic_logout_btn.parentWidget() is widget._login_group
+
+
+def test_qqmusic_settings_tab_logout_emits_auth_changed(qtbot, monkeypatch):
+    EventBus.reset()
+    settings = Mock()
+    settings.get.side_effect = lambda key, default=None: {
+        "quality": "320",
+        "download_dir": "data/online_cache",
+        "remote_api_url": "https://music.har01d.cn",
+        "credential": {"musicid": "12345", "loginType": 2},
+        "nick": "Tester",
+    }.get(key, default)
+    context = _build_plugin_context(settings)
+    monkeypatch.setattr(qqmusic_settings_tab_module, "event_bus", EventBus.instance)
+    widget = QQMusicSettingsTab(context)
+    qtbot.addWidget(widget)
+
+    captured = []
+    EventBus.instance().qqmusic_auth_changed.connect(
+        lambda provider_id, credential, nick: captured.append((provider_id, credential, nick))
+    )
+
+    widget._qqmusic_logout()
+
+    assert captured == [("qqmusic", None, "")]
+    settings.set.assert_any_call("credential", None)
+    settings.set.assert_any_call("nick", "")
+
+
+def test_qqmusic_settings_tab_credentials_obtained_emits_auth_changed(qtbot, monkeypatch):
+    EventBus.reset()
+    settings = Mock()
+    store = {"nick": "Tester"}
+    settings.get.side_effect = lambda key, default=None: store.get(key, default)
+    context = _build_plugin_context(settings)
+    monkeypatch.setattr(qqmusic_settings_tab_module, "event_bus", EventBus.instance)
+    widget = QQMusicSettingsTab(context)
+    qtbot.addWidget(widget)
+    widget._update_qqmusic_status = Mock()
+
+    captured = []
+    EventBus.instance().qqmusic_auth_changed.connect(
+        lambda provider_id, credential, nick: captured.append((provider_id, credential, nick))
+    )
+
+    credential = {"musicid": "12345", "musickey": "secret"}
+    widget._on_credentials_obtained(credential)
+
+    widget._update_qqmusic_status.assert_called_once_with()
+    assert captured == [("qqmusic", credential, "Tester")]
 
 
 def test_qqmusic_settings_tab_avoids_duplicate_login_header_in_group(qtbot):

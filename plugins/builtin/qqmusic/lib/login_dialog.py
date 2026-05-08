@@ -23,6 +23,7 @@ from .qr_login import QQMusicQRLogin, QRLoginType, QRCodeLoginEvents
 from .runtime_bridge import (
     bind_context,
     current_theme,
+    event_bus,
     get_qss,
     show_information,
     register_themed_widget,
@@ -617,6 +618,8 @@ class QQMusicLoginDialog(QDialog):
             if nick:
                 self._context.settings.set("nick", nick)
                 logger.info(f"Got QQ Music nickname: {nick}")
+
+            event_bus().emit_qqmusic_auth_change("qqmusic", credential, str(nick or ""))
 
             show_information(
                 self,
