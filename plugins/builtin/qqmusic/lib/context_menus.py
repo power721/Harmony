@@ -20,7 +20,13 @@ class OnlineTrackContextMenu(QObject):
     qq_fav_toggled = Signal(list, bool)
     download = Signal(list)
 
-    def show_menu(self, tracks: list, favorite_mids: set | None = None, parent_widget=None):
+    def show_menu(
+        self,
+        tracks: list,
+        favorite_mids: set | None = None,
+        qq_favorite_mids: set | None = None,
+        parent_widget=None,
+    ):
         if not tracks:
             return
 
@@ -43,6 +49,12 @@ class OnlineTrackContextMenu(QObject):
                 getattr(track, "mid", None) and track.mid in favorite_mids
                 for track in tracks
             )
+        all_qq_favorited = False
+        if qq_favorite_mids:
+            all_qq_favorited = all(
+                getattr(track, "mid", None) and track.mid in qq_favorite_mids
+                for track in tracks
+            )
 
         action = menu.addAction(
             t("remove_from_favorites") if all_favorited else t("add_to_favorites")
@@ -50,9 +62,9 @@ class OnlineTrackContextMenu(QObject):
         action.triggered.connect(lambda: self.favorite_toggled.emit(tracks, all_favorited))
 
         action = menu.addAction(
-            t("remove_from_qq_favorites") if all_favorited else t("add_to_qq_favorites")
+            t("remove_from_qq_favorites") if all_qq_favorited else t("add_to_qq_favorites")
         )
-        action.triggered.connect(lambda: self.qq_fav_toggled.emit(tracks, all_favorited))
+        action.triggered.connect(lambda: self.qq_fav_toggled.emit(tracks, all_qq_favorited))
 
         action = menu.addAction(t("add_to_playlist"))
         action.triggered.connect(lambda: self.add_to_playlist.emit(tracks))

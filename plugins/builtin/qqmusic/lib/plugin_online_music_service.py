@@ -160,6 +160,18 @@ class PluginOnlineMusicService:
             return bool(provider.fav_song(song_mid))
         return False
 
+    def get_song_favorite_mids(self, song_mids: list[str]) -> set[str]:
+        provider = self._provider
+        if provider and hasattr(provider, "get_song_fav_status"):
+            result = provider.get_song_fav_status(song_mids)
+            if isinstance(result, dict):
+                return {
+                    str(mid)
+                    for mid, is_fav in result.items()
+                    if str(mid).strip() and bool(is_fav)
+                }
+        return set()
+
     def unfav_song(self, song_mid: str) -> bool:
         provider = self._provider
         if provider and hasattr(provider, "unfav_song"):

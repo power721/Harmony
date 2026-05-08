@@ -1321,6 +1321,30 @@ class QQMusicService:
             logger.error(f"Favorite song failed: {e}", exc_info=True)
             return False
 
+    def get_song_fav_status(self, song_mids: list[str]) -> dict[str, bool]:
+        """Get QQ Music favorite status keyed by song mid."""
+        try:
+            if not self._credential:
+                return {}
+
+            mids = []
+            seen = set()
+            for mid in song_mids:
+                normalized = str(mid).strip()
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                mids.append(normalized)
+
+            if not mids:
+                return {}
+
+            result = self.client.get_song_fav_status(mids)
+            return {str(mid): bool(is_fav) for mid, is_fav in result.items()}
+        except Exception as e:
+            logger.error(f"Get song favorite status failed: {e}", exc_info=True)
+            return {}
+
     def unfav_song(self, song_id: int) -> bool:
         """Remove a song from favorites. Returns True on success."""
         try:

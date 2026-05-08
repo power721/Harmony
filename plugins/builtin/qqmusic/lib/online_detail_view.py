@@ -1575,7 +1575,18 @@ class OnlineDetailView(QWidget):
         if self._detail_type == "album" or self._use_tracks_list_view:
             self._songs_table.hide()
             self._tracks_list_view.show()
-            self._tracks_list_view.load_tracks(songs)
+            mids = []
+            seen = set()
+            for song in songs:
+                mid = str(getattr(song, "mid", "") or "").strip()
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                mids.append(mid)
+            qq_favorite_mids = set()
+            if hasattr(self._service, "get_song_favorite_mids"):
+                qq_favorite_mids = self._service.get_song_favorite_mids(mids)
+            self._tracks_list_view.load_tracks(songs, qq_favorite_mids=qq_favorite_mids)
         else:
             self._tracks_list_view.hide()
             self._songs_table.show()
@@ -2006,9 +2017,14 @@ class OnlineDetailView(QWidget):
                 logger.warning(f"Cannot toggle QQ favorite for track without id: {track.title}")
                 continue
             if all_favorited:
-                changed = bool(self._service.unfav_song(track.id)) or changed
+                succeeded = bool(self._service.unfav_song(track.id))
+                if succeeded and getattr(track, "mid", None):
+                    self._tracks_list_view.set_track_qq_favorite(str(track.mid), False)
             else:
-                changed = bool(self._service.fav_song(track.id)) or changed
+                succeeded = bool(self._service.fav_song(track.id))
+                if succeeded and getattr(track, "mid", None):
+                    self._tracks_list_view.set_track_qq_favorite(str(track.mid), True)
+            changed = succeeded or changed
         if changed:
             self._notify_favorites_collection_changed("fav_songs")
 

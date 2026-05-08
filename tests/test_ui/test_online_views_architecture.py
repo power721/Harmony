@@ -157,13 +157,33 @@ def test_online_detail_view_playlist_unfavorite_click_requests_refresh():
 def test_online_detail_view_qq_favorite_toggle_requests_song_refresh():
     view = OnlineDetailView.__new__(OnlineDetailView)
     view._service = SimpleNamespace(fav_song=Mock(return_value=True))
+    view._tracks_list_view = SimpleNamespace(set_track_qq_favorite=Mock())
     view._notify_favorites_collection_changed = Mock()
-    track = SimpleNamespace(id=123, title="Song")
+    track = SimpleNamespace(id=123, mid="mid-1", title="Song")
 
     OnlineDetailView._on_list_qq_fav_toggle(view, [track], False)
 
     view._service.fav_song.assert_called_once_with(123)
+    view._tracks_list_view.set_track_qq_favorite.assert_called_once_with("mid-1", True)
     view._notify_favorites_collection_changed.assert_called_once_with("fav_songs")
+
+
+def test_online_detail_view_display_songs_loads_remote_qq_favorite_mids():
+    view = OnlineDetailView.__new__(OnlineDetailView)
+    view._detail_type = "album"
+    view._use_tracks_list_view = False
+    view._songs_table = SimpleNamespace(hide=Mock())
+    view._tracks_list_view = SimpleNamespace(show=Mock(), load_tracks=Mock())
+    view._service = SimpleNamespace(get_song_favorite_mids=Mock(return_value={"mid-1"}))
+    songs = [SimpleNamespace(mid="mid-1"), SimpleNamespace(mid="mid-2"), SimpleNamespace(mid="")]
+
+    OnlineDetailView._display_songs(view, songs)
+
+    view._service.get_song_favorite_mids.assert_called_once_with(["mid-1", "mid-2"])
+    view._tracks_list_view.load_tracks.assert_called_once_with(
+        songs,
+        qq_favorite_mids={"mid-1"},
+    )
 
 
 def test_online_music_view_add_online_track_to_library_passes_provider_id():

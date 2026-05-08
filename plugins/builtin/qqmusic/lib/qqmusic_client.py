@@ -260,6 +260,8 @@ class QQMusicClient:
 
         if result.get('code') != 0:
             code = result.get('code')
+            if code == 1000 and module == "music.musicasset.SongFavRead" and method == "IsSongFanByMid":
+                return {"__qqmusic_code__": 1000}
             # Code 2000 = need login - try refresh if possible
             if code == 2000:
                 if not _retry and self._try_refresh_credential():
@@ -757,6 +759,26 @@ class QQMusicClient:
         """Add a song to favorites (dirId=201 is favorites folder)."""
         params = {"dirId": 201, "v_songInfo": [{"songType": 0, "songId": song_id}]}
         return self._make_request("music.musicasset.PlaylistDetailWrite", "AddSonglist", params)
+
+    def get_song_fav_status(self, song_mids: List[str]) -> Dict[str, bool]:
+        """Get QQ Music favorite status for song mids."""
+        mids = [str(mid).strip() for mid in song_mids if str(mid).strip()]
+        if not mids:
+            return {}
+
+        result = self._make_request(
+            "music.musicasset.SongFavRead",
+            "IsSongFanByMid",
+            {"v_songMid": mids},
+        )
+        if result.get("__qqmusic_code__") == 1000:
+            return {mid: False for mid in mids}
+
+        return {
+            str(mid): bool(is_fav)
+            for mid, is_fav in result.items()
+            if str(mid).strip()
+        }
 
     def unfav_song(self, song_id: int) -> Dict:
         """Remove a song from favorites."""

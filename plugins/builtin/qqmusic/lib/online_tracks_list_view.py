@@ -76,7 +76,8 @@ class OnlineTracksModel(QAbstractListModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tracks: List[OnlineTrack] = []
-        self._favorite_mids: set = set()  # QQ music song mids
+        self._favorite_mids: set = set()
+        self._qq_favorite_mids: set = set()
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._tracks)
@@ -111,10 +112,11 @@ class OnlineTracksModel(QAbstractListModel):
             self.IndexRole: b"index",
         }
 
-    def reset_tracks(self, tracks: List[OnlineTrack], favorite_mids: set):
+    def reset_tracks(self, tracks: List[OnlineTrack], favorite_mids: set, qq_favorite_mids: set):
         self.beginResetModel()
         self._tracks = list(tracks)
         self._favorite_mids = set(favorite_mids)
+        self._qq_favorite_mids = set(qq_favorite_mids)
         self.endResetModel()
 
     def update_favorites(self, favorite_mids: set):
@@ -541,6 +543,13 @@ class OnlineTracksListView(QWidget):
                 self._model.dataChanged.emit(idx, idx, [OnlineTracksModel.IsFavoriteRole])
                 break
 
+    def set_track_qq_favorite(self, mid: str, is_favorite: bool):
+        """Update QQ Music favorite status for a specific track."""
+        if is_favorite:
+            self._model._qq_favorite_mids.add(mid)
+        else:
+            self._model._qq_favorite_mids.discard(mid)
+
     def _connect_context_menu(self):
         self._context_menu.play.connect(self.play_requested)
         self._context_menu.insert_to_queue.connect(self.insert_to_queue_requested)
@@ -563,7 +572,12 @@ class OnlineTracksListView(QWidget):
         if not tracks:
             return
 
-        self._context_menu.show_menu(tracks, favorite_mids=self._model._favorite_mids, parent_widget=self)
+        self._context_menu.show_menu(
+            tracks,
+            favorite_mids=self._model._favorite_mids,
+            qq_favorite_mids=self._model._qq_favorite_mids,
+            parent_widget=self,
+        )
 
     def _on_favorite_changed(self, item_id, is_favorite: bool, is_cloud: bool):
         """Handle favorite changed event from EventBus."""
@@ -608,11 +622,16 @@ class OnlineTracksListView(QWidget):
             f"QListView {{ background-color: {theme.background_alt}; border: none; outline: none; }}"
         )
 
-    def load_tracks(self, tracks: List[OnlineTrack], favorite_mids: set = None):
+    def load_tracks(
+        self,
+        tracks: List[OnlineTrack],
+        favorite_mids: set = None,
+        qq_favorite_mids: set = None,
+    ):
         """Load tracks into the view."""
-        self._model.reset_tracks(tracks, favorite_mids or set())
+        self._model.reset_tracks(tracks, favorite_mids or set(), qq_favorite_mids or set())
         self._apply_viewport_bg()
 
     def clear(self):
         """Clear all tracks."""
-        self._model.reset_tracks([], set())
+        self._model.reset_tracks([], set(), set())
