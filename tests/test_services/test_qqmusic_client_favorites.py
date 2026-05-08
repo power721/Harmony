@@ -50,6 +50,30 @@ def test_get_song_fav_status_returns_false_map_for_code_1000():
     }
 
 
+def test_get_song_fav_status_extracts_m_fan_from_nested_response():
+    client = QQMusicClient({"musicid": "1", "musickey": "secret"})
+
+    def fake_make_request(module, method, params, _retry=False, use_sign=False):
+        assert module == "music.musicasset.SongFavRead"
+        assert method == "IsSongFanByMid"
+        return {
+            "m_fan": {
+                "000XOvoA0RVaYt": True,
+                "001a1b2c3d4e5f": False,
+            },
+            "source": 0,
+        }
+
+    client._make_request = fake_make_request
+
+    result = client.get_song_fav_status(["000XOvoA0RVaYt", "001a1b2c3d4e5f"])
+
+    assert result == {
+        "000XOvoA0RVaYt": True,
+        "001a1b2c3d4e5f": False,
+    }
+
+
 def test_fav_playlist_uses_tid_payload_for_remote_write():
     client = QQMusicClient({"musicid": "1", "musickey": "secret"})
     captured = {}

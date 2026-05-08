@@ -774,10 +774,13 @@ class QQMusicClient:
         if result.get("__qqmusic_code__") == 1000:
             return {mid: False for mid in mids}
 
+        fan_map = result.get("m_fan", result)
+        if not isinstance(fan_map, dict):
+            return {mid: False for mid in mids}
+
         return {
-            str(mid): bool(is_fav)
-            for mid, is_fav in result.items()
-            if str(mid).strip()
+            mid: bool(fan_map.get(mid, False))
+            for mid in mids
         }
 
     def unfav_song(self, song_id: int) -> Dict:
