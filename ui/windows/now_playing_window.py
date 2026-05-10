@@ -453,6 +453,10 @@ class NowPlayingWindow(QWidget):
             self._current_time.setText(format_time(position_ms / 1000))
         self._lyrics_widget.update_position(position_ms / 1000)
 
+    def _sync_lyrics_to_current_position(self):
+        """Jump lyrics to the current playback position."""
+        self._lyrics_widget.update_position(self._playback.engine.position() / 1000)
+
     def _on_duration_changed(self, duration_ms: int):
         self._current_duration = duration_ms / 1000
         self._total_time.setText(format_time(self._current_duration))
@@ -895,6 +899,7 @@ class NowPlayingWindow(QWidget):
     def _on_lyrics_ready(self, lyrics: str):
         """Apply loaded lyrics to widget."""
         self._lyrics_widget.set_lyrics(lyrics or "")
+        self._sync_lyrics_to_current_position()
 
     def _on_lyrics_thread_finished(self):
         sender = self.sender()

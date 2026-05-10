@@ -25,7 +25,11 @@ class _DummyLabel:
 
 class _DummyLyrics:
     def __init__(self):
+        self.lyrics = []
         self.positions = []
+
+    def set_lyrics(self, lyrics_text):
+        self.lyrics.append(lyrics_text)
 
     def update_position(self, position_s):
         self.positions.append(position_s)
@@ -62,3 +66,17 @@ def test_on_position_changed_updates_slider_when_not_seeking():
     assert window._progress_slider.values == [400]
     assert window._current_time.texts
     assert window._lyrics_widget.positions == [120.0]
+
+
+def test_on_lyrics_ready_syncs_loaded_lyrics_to_current_position():
+    """Loaded lyrics should jump to the current playback line immediately."""
+    lyrics = _DummyLyrics()
+    playback = SimpleNamespace(engine=SimpleNamespace(position=lambda: 87_000))
+    window = NowPlayingWindow.__new__(NowPlayingWindow)
+    window._lyrics_widget = lyrics
+    window._playback = playback
+
+    NowPlayingWindow._on_lyrics_ready(window, "[00:10.00]line")
+
+    assert lyrics.lyrics == ["[00:10.00]line"]
+    assert lyrics.positions == [87.0]

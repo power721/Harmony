@@ -123,6 +123,7 @@ class LyricsWidget(QWidget):
         self.engine.set_lyrics(lines)
         self._set_animation_enabled(bool(lines))
 
+        self.current_index = 0
         self.scroll_y = 0
         self.target_scroll = 0
 

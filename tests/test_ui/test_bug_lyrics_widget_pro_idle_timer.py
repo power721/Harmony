@@ -51,3 +51,18 @@ def test_timer_starts_when_lyrics_are_present(qapp, mock_config):
     widget.set_lyrics("[00:00.00]hello")
 
     assert widget.timer.isActive()
+
+
+def test_set_lyrics_resets_current_index_for_immediate_position_sync(qapp, mock_config):
+    """Reloaded lyrics should allow the first position sync to re-scroll to the current line."""
+    ThemeManager.instance(mock_config)
+    widget = LyricsWidget()
+    widget.line_height = 60
+    widget.current_index = 1
+    widget.target_scroll = 180
+    widget.scroll_y = 180
+
+    widget.set_lyrics("[00:00.00]first\n[00:10.00]second")
+    widget.update_position(12.0)
+
+    assert widget.target_scroll == 60
