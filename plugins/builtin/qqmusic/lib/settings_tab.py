@@ -54,6 +54,33 @@ class VerifyLoginThread(QThread):
             self.verified.emit(False, "", 0)
 
 
+class RefreshTokenThread(QThread):
+    refreshed = Signal(bool, str)
+
+    def __init__(self, credential: dict, http_client=None, parent=None):
+        super().__init__(parent)
+        self._credential = credential
+        self._http_client = http_client
+        self._result_credential = None
+
+    def run(self):
+        try:
+            from .qqmusic_client import QQMusicClient
+
+            client = QQMusicClient(self._credential, http_client=self._http_client)
+            updated = client.refresh_credential()
+            if updated:
+                self._result_credential = updated
+                expires_in = updated.get("key_expires_in", 259200)
+                hours = expires_in // 3600
+                self.refreshed.emit(True, str(hours))
+            else:
+                self.refreshed.emit(False, "")
+        except Exception as exc:
+            logger.warning("Settings tab: refresh token failed: %s", exc)
+            self.refreshed.emit(False, str(exc))
+
+
 class QQMusicSettingsTab(QWidget):
     _STYLE_GROUP = """
         QGroupBox {
@@ -139,6 +166,7 @@ class QQMusicSettingsTab(QWidget):
         bind_context(context)
         self._language_connected = False
         self._verify_thread: Optional[VerifyLoginThread] = None
+        self._refresh_thread: Optional[RefreshTokenThread] = None
         self._loading_settings = False
 
         self._outer_layout = QVBoxLayout(self)
@@ -256,6 +284,11 @@ class QQMusicSettingsTab(QWidget):
         self._qqmusic_qr_btn.setCursor(Qt.PointingHandCursor)
         self._qqmusic_qr_btn.clicked.connect(self._open_qqmusic_qr_login)
         qqmusic_button_layout.addWidget(self._qqmusic_qr_btn)
+
+        self._qqmusic_refresh_btn = QPushButton(t("qqmusic_refresh_token", "刷新令牌"))
+        self._qqmusic_refresh_btn.setCursor(Qt.PointingHandCursor)
+        self._qqmusic_refresh_btn.clicked.connect(self._qqmusic_refresh_token)
+        qqmusic_button_layout.addWidget(self._qqmusic_refresh_btn)
 
         self._qqmusic_logout_btn = QPushButton(t("qqmusic_clear", t("clear_credentials")))
         self._qqmusic_logout_btn.setCursor(Qt.PointingHandCursor)
@@ -443,6 +476,51 @@ class QQMusicSettingsTab(QWidget):
         self._update_qqmusic_status()
         event_bus().emit_qqmusic_auth_change("qqmusic", None, "")
 
+    def _qqmusic_refresh_token(self):
+        credential = self._context.settings.get("credential", None)
+        if not credential:
+            self._qqmusic_status_label.setText(
+                f"❌ {t('qqmusic_not_logged_in')}"
+            )
+            return
+
+        self._qqmusic_refresh_btn.setEnabled(False)
+        self._qqmusic_status_label.setText(
+            f"⏳ {t('qqmusic_refreshing_token', '正在刷新令牌...')}"
+        )
+
+        if self._refresh_thread:
+            self._refresh_thread.quit()
+            self._refresh_thread.wait()
+
+        self._refresh_thread = RefreshTokenThread(
+            credential,
+            http_client=self._context.http,
+            parent=self,
+        )
+        self._refresh_thread.refreshed.connect(self._on_token_refreshed)
+        self._refresh_thread.start()
+
+    def _on_token_refreshed(self, success: bool, message: str):
+        self._qqmusic_refresh_btn.setEnabled(True)
+
+        if success:
+            updated = self._refresh_thread._result_credential if self._refresh_thread else None
+            if updated:
+                self._context.settings.set("credential", updated)
+                event_bus().emit_qqmusic_auth_change(
+                    "qqmusic", updated, self._context.settings.get("nick", "")
+                )
+            hours = message
+            self._qqmusic_status_label.setText(
+                f"✅ {t('qqmusic_refresh_token_success', '令牌刷新成功')} ({t('qqmusic_valid_for', '有效期')}: {hours}h)"
+            )
+        else:
+            self._qqmusic_status_label.setText(
+                f"❌ {t('qqmusic_refresh_token_failed', '令牌刷新失败')}"
+                + (f": {message}" if message else "")
+            )
+
     def _clear_credentials(self):
         self._qqmusic_logout()
 
@@ -469,6 +547,7 @@ class QQMusicSettingsTab(QWidget):
             t('qqmusic_faster_api_hint', t('qqmusic_account_hint'))
         )
         self._qqmusic_qr_btn.setText(t("qqmusic_qr_login", t("qqmusic_login")))
+        self._qqmusic_refresh_btn.setText(t("qqmusic_refresh_token", "刷新令牌"))
         self._qqmusic_logout_btn.setText(t("qqmusic_clear", t("clear_credentials")))
         self._update_qqmusic_status()
         self.refresh_theme()
@@ -490,7 +569,7 @@ class QQMusicSettingsTab(QWidget):
         self._quality_combo.view().window().setStyleSheet(qss(self._STYLE_POPUP_CONTAINER))
         self._download_dir_input.setStyleSheet(qss(self._STYLE_INPUT))
         self._remote_api_input.setStyleSheet(qss(self._STYLE_INPUT))
-        for button in (self._browse_btn, self._qqmusic_qr_btn, self._qqmusic_logout_btn):
+        for button in (self._browse_btn, self._qqmusic_qr_btn, self._qqmusic_refresh_btn, self._qqmusic_logout_btn):
             button.setStyleSheet(qss(self._STYLE_BUTTON))
         self._download_dir_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
         self._remote_api_hint.setStyleSheet(f"color: {theme.text_secondary}; font-size: 11px;")
