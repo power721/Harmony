@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 
 import requests
 
-from .crypto import generate_sign
+from .crypto import generate_sign, hash33
 from .common import (
     APIConfig, get_guid, get_search_id, parse_quality, normalize_quality,
     parse_search_type
@@ -178,9 +178,16 @@ class QQMusicClient:
         }
 
         if self.credential:
-            params['qq'] = str(self.credential.get('musicid', ''))
-            params['authst'] = self.credential.get('musickey', '')
+            musicid = str(self.credential.get('musicid', ''))
+            musickey = self.credential.get('musickey', '')
+            params['qq'] = musicid
+            params['authst'] = musickey
             params['tmeLoginType'] = str(self.credential.get('login_type', 2))
+            # g_tk is required for search and other APIs to return results
+            g_tk = hash33(musickey, 5381) if musickey else 0
+            params['uin'] = int(musicid) if musicid.isdigit() else 0
+            params['g_tk'] = g_tk
+            params['g_tk_new_20200303'] = g_tk
 
         return params
 
